@@ -14,6 +14,16 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
 
   const analytics = getPodcastAnalytics(podcast);
 
+  // Strip HTML tags from description
+  const stripHtml = (html: string | undefined) => {
+    if (!html) return '';
+    const tmp = document.createElement('DIV');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  };
+
+  const cleanDescription = stripHtml(podcast.podcast_description);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -29,7 +39,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             <div className="flex-1">
               <DialogTitle className="text-2xl mb-2">{podcast.podcast_name}</DialogTitle>
               <DialogDescription className="text-base">
-                {podcast.podcast_description}
+                {cleanDescription}
               </DialogDescription>
             </div>
           </div>
