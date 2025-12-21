@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Mic, TrendingUp, Loader2 } from 'lucide-react';
 import { searchBusinessPodcasts, PodcastData } from '@/services/podscan';
 import { useToast } from '@/hooks/use-toast';
+import { PodcastAnalyticsModal } from '@/components/PodcastAnalyticsModal';
 
 const stats = [
   { label: "Total Placements", value: "150+", icon: Mic },
@@ -15,7 +16,14 @@ const PodcastShowcaseSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [podcasts, setPodcasts] = useState<PodcastData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPodcast, setSelectedPodcast] = useState<PodcastData | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const { toast } = useToast();
+
+  const handlePodcastClick = (podcast: PodcastData) => {
+    setSelectedPodcast(podcast);
+    setIsModalOpen(true);
+  };
 
   useEffect(() => {
     const loadPodcasts = async () => {
@@ -98,7 +106,8 @@ const PodcastShowcaseSection = () => {
               {podcasts.map((podcast, index) => (
                 <div
                   key={podcast.podcast_id}
-                  className="group p-6 bg-background rounded-xl border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg flex flex-col items-center justify-center text-center min-h-[140px]"
+                  onClick={() => handlePodcastClick(podcast)}
+                  className="group p-6 bg-background rounded-xl border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg flex flex-col items-center justify-center text-center min-h-[140px] cursor-pointer"
                   style={{ transitionDelay: `${index * 50}ms` }}
                 >
                   {podcast.podcast_image_url ? (
@@ -139,6 +148,13 @@ const PodcastShowcaseSection = () => {
           </div>
         </div>
       </div>
+
+      {/* Podcast Analytics Modal */}
+      <PodcastAnalyticsModal
+        podcast={selectedPodcast}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </section>
   );
 };

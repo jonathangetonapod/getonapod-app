@@ -69,6 +69,16 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
 
           <div className="p-4 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
+              <Users className="h-5 w-5 text-primary" />
+              <p className="text-sm text-muted-foreground">Audience Size</p>
+            </div>
+            <p className="text-2xl font-bold text-foreground">
+              {analytics.audience_size > 0 ? `${(analytics.audience_size / 1000).toFixed(0)}K` : 'N/A'}
+            </p>
+          </div>
+
+          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+            <div className="flex items-center gap-2 mb-2">
               <Globe className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Language</p>
             </div>
@@ -79,7 +89,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
 
           <div className="p-4 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
-              <Users className="h-5 w-5 text-primary" />
+              <Globe className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Region</p>
             </div>
             <p className="text-lg font-semibold text-foreground uppercase">
