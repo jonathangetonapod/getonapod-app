@@ -6,34 +6,69 @@ import {
 } from "@/components/ui/accordion";
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 
-const faqs = [
+const faqCategories = [
   {
-    question: "What kind of podcasts will I be on?",
-    answer: "We focus on podcasts that match your expertise, target audience, and business goals. This includes industry-specific shows, entrepreneurship podcasts, and niche shows where your ideal clients are listening.",
+    category: "Podcasts & Booking",
+    faqs: [
+      {
+        question: "What kind of podcasts will I be on?",
+        answer: "Shows that match your niche and have engaged audiences. We vet every show for quality and relevance before pitching you.",
+      },
+      {
+        question: "What size podcasts will I be on?",
+        answer: "It varies. We focus on relevance over size. A niche podcast with 5,000 engaged listeners in your industry is often more valuable than a general show with 50,000.",
+      },
+      {
+        question: "How fast will I get booked?",
+        answer: "Most clients see their first booking within 2-4 weeks. Episodes typically air 4-8 weeks after recording.",
+      },
+      {
+        question: "Can I approve shows before you pitch me?",
+        answer: "Yes. We'll share our target list with you upfront, and you can veto any shows that don't feel like a fit.",
+      },
+    ],
   },
   {
-    question: "How fast will I get booked?",
-    answer: "Most clients see their first bookings within 2-4 weeks of starting. The timeline depends on your niche, the type of shows you're targeting, and host availability.",
+    category: "PR & Media (Pro Tier)",
+    faqs: [
+      {
+        question: "What's included in the PR outreach?",
+        answer: "We develop 2-3 pitchable angles each month based on your expertise and current trends. Then we build a media list of relevant publications, journalists, and contributors—and pitch them on your behalf.",
+      },
+      {
+        question: "What's a 'media angle'?",
+        answer: "A media angle is a newsworthy hook that makes journalists want to cover you. It could be a contrarian take, a timely insight, a data-backed trend, or a compelling personal story. We help you find and package these.",
+      },
+      {
+        question: "Do you guarantee press placements?",
+        answer: "No—journalists make their own decisions. What we guarantee is the work: developing strong angles, building your media list, and pitching on your behalf consistently. Most Pro clients see 1-3 media mentions per quarter.",
+      },
+    ],
   },
   {
-    question: "What's the difference between Growth and Pro?",
-    answer: "Growth focuses on podcast placements and content creation. Pro adds strategic content repurposing — LinkedIn posts, blog articles, and a monthly strategy call to maximize the impact of each appearance.",
-  },
-  {
-    question: "What happens on the monthly strategy call?",
-    answer: "We review your podcast performance, discuss upcoming bookings, refine your messaging based on what's working, and plan content strategy for the coming month.",
-  },
-  {
-    question: "Why the 3-month minimum?",
-    answer: "Building authority takes consistent effort. The 3-month minimum ensures you have enough time to see real results — multiple appearances, content momentum, and measurable audience growth.",
-  },
-  {
-    question: "What are Premium Placements?",
-    answer: "Premium Placements are top-tier podcasts with larger audiences and higher production value. These require more extensive pitching and relationship building, which is why they're included in higher-tier plans.",
-  },
-  {
-    question: "Can I upgrade my plan later?",
-    answer: "Absolutely. You can upgrade at any time. We'll prorate the difference and immediately start working on the additional deliverables.",
+    category: "Pricing & Logistics",
+    faqs: [
+      {
+        question: "What's the difference between Growth and Pro?",
+        answer: "Growth gives you 4 podcast placements per month with all the prep and content. Pro adds done-for-you PR: we develop media angles, build your target publication list, and pitch journalists on your behalf. Plus a monthly strategy call to review and plan.",
+      },
+      {
+        question: "Why the 3-month minimum?",
+        answer: "Authority isn't built in 30 days. Podcast episodes take time to book, record, and air. PR takes time to land. The 3-month minimum ensures you see real results and build momentum.",
+      },
+      {
+        question: "What happens on the monthly strategy call?",
+        answer: "We review your placement metrics, content performance, and PR outreach results. Then we map out the next month—which shows to target, what angles to pitch, and how to maximize your authority.",
+      },
+      {
+        question: "Can I upgrade or downgrade my plan?",
+        answer: "Yes. You can move between plans at any time after your initial 3 months.",
+      },
+      {
+        question: "What are Premium Placements?",
+        answer: "Guaranteed spots on specific podcasts from our curated menu. You pick the show, we book it. Priced per placement. Ask about the menu on your call.",
+      },
+    ],
   },
 ];
 
@@ -53,18 +88,32 @@ const FAQSection = () => {
             Questions
           </h2>
           
-          <Accordion type="single" collapsible className="w-full">
-            {faqs.map((faq, index) => (
-              <AccordionItem key={index} value={`item-${index}`} className="border-border">
-                <AccordionTrigger className="text-left text-foreground hover:no-underline hover:text-foreground/80">
-                  {faq.question}
-                </AccordionTrigger>
-                <AccordionContent className="text-muted-foreground">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
+          <div className="space-y-10">
+            {faqCategories.map((category, categoryIndex) => (
+              <div key={categoryIndex}>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+                  {category.category}
+                </h3>
+                
+                <Accordion type="single" collapsible className="w-full">
+                  {category.faqs.map((faq, index) => (
+                    <AccordionItem 
+                      key={index} 
+                      value={`${categoryIndex}-${index}`} 
+                      className="border-border"
+                    >
+                      <AccordionTrigger className="text-left text-foreground hover:no-underline hover:text-foreground/80">
+                        {faq.question}
+                      </AccordionTrigger>
+                      <AccordionContent className="text-muted-foreground">
+                        {faq.answer}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </div>
             ))}
-          </Accordion>
+          </div>
         </div>
       </div>
     </section>

@@ -29,13 +29,14 @@ const plans = [
   },
   {
     name: "Pro",
-    price: "$3,000",
+    price: "$4,000",
     period: "/month",
     features: [
-      "4 podcasts/month",
+      "4 podcasts/month + PR",
       "Everything in Growth, plus:",
-      "LinkedIn post per episode",
-      "Blog post per episode",
+      "Done-for-you PR outreach",
+      "2-3 media angles monthly",
+      "Custom media list",
       "Monthly strategy call",
     ],
     popular: false,

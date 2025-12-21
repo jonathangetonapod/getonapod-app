@@ -2,11 +2,11 @@ import { X } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 
 const painPoints = [
-  "You spend hours researching podcasts that might be a fit",
+  "You spend hours researching podcasts and publications",
   "You craft the perfect pitch... and hear nothing back",
   "You follow up. Still nothing.",
-  "Months go by. Maybe you land one or two shows.",
-  "The episode airs... and you have nothing to show for it",
+  "Months go by. Your competitors keep showing up everywhere.",
+  "You stay the best-kept secret in your industry.",
 ];
 
 const ProblemSection = () => {
@@ -26,8 +26,9 @@ const ProblemSection = () => {
           </p>
           
           <p className="text-xl md:text-2xl text-foreground leading-relaxed mb-12">
-            You know podcast guesting works. You've seen competitors build authority, 
-            generate leads, and close deals from being on the right shows.
+            You know visibility works. You've seen competitors build authority, 
+            generate leads, and close deals—all from being on the right podcasts 
+            and getting featured in the right publications.
           </p>
           
           <div className="space-y-4">
