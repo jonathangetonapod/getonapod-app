@@ -3,6 +3,7 @@ const API_KEY = import.meta.env.VITE_PODSCAN_API_KEY;
 
 export interface PodcastData {
   podcast_id: string;
+  podcast_guid?: string;
   podcast_name: string;
   podcast_url: string;
   podcast_description?: string;
@@ -12,65 +13,85 @@ export interface PodcastData {
   episode_count?: number;
   language?: string;
   region?: string;
+  publisher_name?: string;
+  is_active?: boolean;
+  rss_url?: string;
+  last_posted_at?: string;
+  podcast_itunes_id?: string;
+  podcast_spotify_id?: string;
+  podcast_has_guests?: boolean;
+  podcast_has_sponsors?: boolean;
   reach?: {
     itunes?: {
       itunes_rating_average?: string;
       itunes_rating_count?: string;
+      itunes_rating_count_bracket?: string;
     };
+    spotify?: {
+      spotify_rating_average?: string;
+      spotify_rating_count?: string;
+      spotify_rating_count_bracket?: string;
+    };
+    audience_size?: number;
+    social_links?: Array<{
+      platform: string;
+      url: string;
+    }>;
+    email?: string;
+    website?: string;
+  };
+  brand_safety?: {
+    framework: string;
+    risk_level: string;
+    recommendation: string;
   };
 }
 
-export interface EpisodeSearchResult {
-  id: string;
-  title: string;
-  description: string;
-  url: string;
-  posted_at: string;
-  podcast: PodcastData;
-}
-
-export interface SearchResponse {
-  episodes: EpisodeSearchResult[];
-  meta?: {
-    total?: number;
-    per_page?: number;
-    current_page?: number;
-    last_page?: number;
+export interface PodcastSearchResponse {
+  podcasts: PodcastData[];
+  pagination?: {
+    total?: string;
+    per_page?: string;
+    current_page?: string;
+    last_page?: string;
+    from?: string;
+    to?: string;
   };
 }
 
 interface SearchOptions {
   query?: string;
   category_ids?: string;
-  podcast_ids?: string;
-  before?: string;
-  since?: string;
   per_page?: number;
-  order_by?: 'best_match' | 'created_at' | 'title' | 'posted_at' | 'podcast_rating';
+  order_by?: 'best_match' | 'name' | 'created_at' | 'episode_count' | 'rating' | 'audience_size' | 'last_posted_at';
   order_dir?: 'asc' | 'desc';
-  podcast_language?: string;
-  podcast_region?: string;
-  show_full_podcast?: boolean;
+  search_fields?: string;
+  language?: string;
+  region?: string;
+  min_audience_size?: number;
+  max_audience_size?: number;
+  min_episode_count?: number;
+  max_episode_count?: number;
+  min_last_episode_posted_at?: string;
+  max_last_episode_posted_at?: string;
+  has_guests?: boolean;
+  has_sponsors?: boolean;
 }
 
 /**
- * Search for podcasts via episode search with full podcast metadata
+ * Search for podcasts directly
  */
-export async function searchPodcasts(options: SearchOptions = {}): Promise<SearchResponse> {
-  const params = new URLSearchParams({
-    show_full_podcast: 'true', // Always get full podcast data
-    per_page: String(options.per_page || 20),
-    order_by: options.order_by || 'podcast_rating',
-    order_dir: options.order_dir || 'desc',
-    ...Object.entries(options).reduce((acc, [key, value]) => {
-      if (value !== undefined && key !== 'show_full_podcast' && key !== 'per_page' && key !== 'order_by' && key !== 'order_dir') {
-        acc[key] = String(value);
-      }
-      return acc;
-    }, {} as Record<string, string>)
+export async function searchPodcasts(options: SearchOptions = {}): Promise<PodcastSearchResponse> {
+  const params = new URLSearchParams();
+
+  // Add all options to params
+  Object.entries(options).forEach(([key, value]) => {
+    if (value !== undefined) {
+      params.append(key, String(value));
+    }
   });
 
-  const url = `${PODSCAN_API_BASE}/episodes/search?${params}`;
+  const url = `${PODSCAN_API_BASE}/podcasts/search?${params}`;
   console.log('🎙️ Podscan API Request:', url);
   console.log('📊 Search options:', options);
 
@@ -88,24 +109,52 @@ export async function searchPodcasts(options: SearchOptions = {}): Promise<Searc
 
   const data = await response.json();
   console.log('✅ Podscan API Response:', data);
-  console.log('📦 Episodes found:', data.episodes?.length || 0);
+  console.log('📦 Podcasts found:', data.podcasts?.length || 0);
 
   return data;
 }
 
 /**
- * Get unique podcasts from search results (deduplicates by podcast ID)
+ * Search for business/entrepreneurship podcasts
  */
-export function extractUniquePodcasts(searchResponse: SearchResponse): PodcastData[] {
-  const podcastMap = new Map<string, PodcastData>();
-
-  searchResponse.episodes.forEach((episode) => {
-    if (episode.podcast && !podcastMap.has(episode.podcast.podcast_id)) {
-      podcastMap.set(episode.podcast.podcast_id, episode.podcast);
-    }
+export async function searchBusinessPodcasts(limit = 20): Promise<PodcastData[]> {
+  const response = await searchPodcasts({
+    query: 'business OR entrepreneurship OR startup OR founder',
+    per_page: limit,
+    order_by: 'rating',
+    order_dir: 'desc',
   });
 
-  return Array.from(podcastMap.values());
+  console.log(`🎯 Found ${response.podcasts.length} business podcasts`);
+  return response.podcasts;
+}
+
+/**
+ * Search for finance/investment podcasts
+ */
+export async function searchFinancePodcasts(limit = 20): Promise<PodcastData[]> {
+  const response = await searchPodcasts({
+    query: 'finance OR investing OR wealth OR fintech',
+    per_page: limit,
+    order_by: 'rating',
+    order_dir: 'desc',
+  });
+
+  return response.podcasts;
+}
+
+/**
+ * Search for tech/SaaS podcasts
+ */
+export async function searchTechPodcasts(limit = 20): Promise<PodcastData[]> {
+  const response = await searchPodcasts({
+    query: 'technology OR tech OR SaaS OR software',
+    per_page: limit,
+    order_by: 'rating',
+    order_dir: 'desc',
+  });
+
+  return response.podcasts;
 }
 
 /**
@@ -116,62 +165,17 @@ export async function searchPodcastsByCategory(
   limit = 20
 ): Promise<PodcastData[]> {
   const response = await searchPodcasts({
-    per_page: limit * 2, // Fetch more to account for duplicates
-    order_by: 'podcast_rating',
+    category_ids: categories.join(','),
+    per_page: limit,
+    order_by: 'rating',
     order_dir: 'desc',
   });
 
-  const podcasts = extractUniquePodcasts(response);
-  return podcasts.slice(0, limit);
+  return response.podcasts;
 }
 
 /**
- * Search for business/entrepreneurship podcasts
- */
-export async function searchBusinessPodcasts(limit = 20): Promise<PodcastData[]> {
-  const response = await searchPodcasts({
-    query: 'business OR entrepreneurship OR startup OR founder',
-    per_page: limit * 2,
-    order_by: 'podcast_rating',
-    order_dir: 'desc',
-  });
-
-  const podcasts = extractUniquePodcasts(response);
-  return podcasts.slice(0, limit);
-}
-
-/**
- * Search for finance/investment podcasts
- */
-export async function searchFinancePodcasts(limit = 20): Promise<PodcastData[]> {
-  const response = await searchPodcasts({
-    query: 'finance OR investing OR wealth OR fintech',
-    per_page: limit * 2,
-    order_by: 'podcast_rating',
-    order_dir: 'desc',
-  });
-
-  const podcasts = extractUniquePodcasts(response);
-  return podcasts.slice(0, limit);
-}
-
-/**
- * Search for tech/SaaS podcasts
- */
-export async function searchTechPodcasts(limit = 20): Promise<PodcastData[]> {
-  const response = await searchPodcasts({
-    query: 'technology OR tech OR SaaS OR software',
-    per_page: limit * 2,
-    order_by: 'podcast_rating',
-    order_dir: 'desc',
-  });
-
-  const podcasts = extractUniquePodcasts(response);
-  return podcasts.slice(0, limit);
-}
-
-/**
- * Get podcast analytics/stats (simplified - real analytics would need additional endpoints)
+ * Get podcast analytics/stats
  */
 export interface PodcastAnalytics {
   id: string;
@@ -182,6 +186,7 @@ export interface PodcastAnalytics {
   categories: string[];
   language: string;
   region: string;
+  audience_size: number;
 }
 
 export function getPodcastAnalytics(podcast: PodcastData): PodcastAnalytics {
@@ -200,5 +205,6 @@ export function getPodcastAnalytics(podcast: PodcastData): PodcastAnalytics {
     categories: categories,
     language: podcast.language || 'en',
     region: podcast.region || 'US',
+    audience_size: podcast.reach?.audience_size || 0,
   };
 }
