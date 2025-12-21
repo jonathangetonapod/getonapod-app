@@ -4,19 +4,6 @@ import { ArrowRight, TrendingUp, Users, DollarSign } from 'lucide-react';
 // Placeholder case studies - replace with real data
 const caseStudies = [
   {
-    client: "Sarah Chen",
-    title: "SaaS Founder",
-    industry: "B2B Tech",
-    before: "0 podcast appearances, struggling with visibility",
-    after: "12 podcast features in 3 months",
-    metrics: [
-      { icon: TrendingUp, label: "LinkedIn followers", value: "+240%" },
-      { icon: Users, label: "Qualified leads", value: "18" },
-      { icon: DollarSign, label: "Pipeline generated", value: "$85K" },
-    ],
-    quote: "Authority Lab helped me go from invisible to in-demand. My inbound completely changed.",
-  },
-  {
     client: "Michael Torres",
     title: "Wealth Advisor",
     industry: "Financial Services",
