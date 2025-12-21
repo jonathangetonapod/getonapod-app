@@ -22,9 +22,11 @@ const SolutionSection = () => {
           </h2>
           
           <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-10">
-            Authority Lab handles everything — researching shows, writing pitches, 
+            Authority Lab handles everything—researching shows, writing pitches, 
             following up, booking interviews, and coordinating your calendar. 
-            You pick a plan. We book the shows. You show up and talk.
+            For our Pro clients, we go further: pitching journalists and publications 
+            to get you featured in the press. You pick a plan. We do the work. 
+            You show up and talk.
           </p>
           
           <Button variant="hero" size="lg" asChild>

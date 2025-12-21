@@ -8,13 +8,13 @@ const HeroSection = () => {
           <h1 className="animate-fade-up text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-tight mb-6">
             Get Booked on Podcasts.
             <br />
-            Build Authority.
+            Get Featured in Press.
             <br />
             <span className="text-muted-foreground">Without Pitching Yourself.</span>
           </h1>
           
           <p className="animate-fade-up animation-delay-100 text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-            Done-for-you podcast placement for founders and financial professionals. 
+            Done-for-you podcast placement and PR for founders and financial professionals. 
             Show up. Talk. Let us handle the rest.
           </p>
           
