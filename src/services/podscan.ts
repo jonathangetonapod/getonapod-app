@@ -115,18 +115,35 @@ export async function searchPodcasts(options: SearchOptions = {}): Promise<Podca
 }
 
 /**
- * Search for business/entrepreneurship podcasts
+ * Search for business/entrepreneurship podcasts with variety
  */
 export async function searchBusinessPodcasts(limit = 20): Promise<PodcastData[]> {
+  // Fetch more than needed to create variety
+  const fetchSize = Math.min(limit * 3, 50); // Fetch 3x what we need, max 50
+
+  // Randomize the order_by to get different results each time
+  const orderOptions: Array<'rating' | 'episode_count' | 'audience_size' | 'last_posted_at'> = [
+    'rating',
+    'episode_count',
+    'audience_size',
+    'last_posted_at'
+  ];
+  const randomOrder = orderOptions[Math.floor(Math.random() * orderOptions.length)];
+
   const response = await searchPodcasts({
     query: 'business OR entrepreneurship OR startup OR founder',
-    per_page: limit,
-    order_by: 'rating',
+    per_page: fetchSize,
+    order_by: randomOrder,
     order_dir: 'desc',
+    min_episode_count: 10, // Filter out brand new podcasts
+    max_audience_size: 500000, // Exclude mega-podcasts to keep it realistic
   });
 
-  console.log(`🎯 Found ${response.podcasts.length} business podcasts`);
-  return response.podcasts;
+  console.log(`🎯 Fetched ${response.podcasts.length} business podcasts, selecting ${limit} randomly`);
+
+  // Shuffle and return random subset
+  const shuffled = response.podcasts.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, limit);
 }
 
 /**
