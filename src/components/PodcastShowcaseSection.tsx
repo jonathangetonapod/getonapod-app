@@ -102,31 +102,38 @@ const PodcastShowcaseSection = () => {
               <span className="ml-3 text-muted-foreground">Loading podcasts...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-12">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12">
               {podcasts.map((podcast, index) => (
                 <div
                   key={podcast.podcast_id}
                   onClick={() => handlePodcastClick(podcast)}
-                  className="group p-6 bg-background rounded-xl border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg flex flex-col items-center justify-center text-center min-h-[140px] cursor-pointer"
+                  className="group bg-background rounded-xl border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg overflow-hidden cursor-pointer"
                   style={{ transitionDelay: `${index * 50}ms` }}
                 >
-                  {podcast.podcast_image_url ? (
-                    <img
-                      src={podcast.podcast_image_url}
-                      alt={podcast.podcast_name}
-                      className="w-12 h-12 rounded-lg mb-3 object-cover"
-                    />
-                  ) : (
-                    <div className="p-3 bg-primary/10 rounded-full mb-3 group-hover:bg-primary/20 transition-colors">
-                      <Mic className="h-5 w-5 text-primary" />
-                    </div>
-                  )}
-                  <h3 className="font-semibold text-foreground mb-1 text-sm md:text-base">
-                    {podcast.podcast_name}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {podcast.podcast_categories?.[0]?.category_name || 'Business'}
-                  </p>
+                  {/* Podcast Artwork */}
+                  <div className="relative aspect-square bg-gradient-to-br from-primary/10 to-primary/5 overflow-hidden">
+                    {podcast.podcast_image_url ? (
+                      <img
+                        src={podcast.podcast_image_url}
+                        alt={podcast.podcast_name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Mic className="h-12 w-12 text-primary opacity-50" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Podcast Info */}
+                  <div className="p-4">
+                    <h3 className="font-semibold text-foreground mb-1 text-sm md:text-base line-clamp-2">
+                      {podcast.podcast_name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {podcast.podcast_categories?.[0]?.category_name || 'Business'}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
