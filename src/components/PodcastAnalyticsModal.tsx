@@ -1,7 +1,8 @@
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { PodcastData, getPodcastAnalytics } from '@/services/podscan';
-import { TrendingUp, Users, Globe, Award, ExternalLink, BarChart3 } from 'lucide-react';
+import { TrendingUp, Users, Globe, Award, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface PodcastAnalyticsModalProps {
   podcast: PodcastData | null;
@@ -10,6 +11,13 @@ interface PodcastAnalyticsModalProps {
 }
 
 export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnalyticsModalProps) => {
+  const [showFullDescription, setShowFullDescription] = useState(false);
+
+  // Reset description state when modal opens/closes or podcast changes
+  useEffect(() => {
+    setShowFullDescription(false);
+  }, [isOpen, podcast?.podcast_id]);
+
   if (!podcast) return null;
 
   const analytics = getPodcastAnalytics(podcast);
@@ -23,12 +31,13 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
   };
 
   const cleanDescription = stripHtml(podcast.podcast_description);
+  const hasLongDescription = cleanDescription.length > 150;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-start gap-4 mb-4">
+          <div className="flex items-start gap-4 mb-2">
             {podcast.podcast_image_url && (
               <img
                 src={podcast.podcast_image_url}
@@ -38,16 +47,38 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             )}
             <div className="flex-1">
               <DialogTitle className="text-2xl mb-2">{podcast.podcast_name}</DialogTitle>
-              <DialogDescription className="text-base">
-                {cleanDescription}
-              </DialogDescription>
+              {cleanDescription && (
+                <>
+                  <DialogDescription className="text-base mb-2">
+                    {showFullDescription || !hasLongDescription
+                      ? cleanDescription
+                      : `${cleanDescription.slice(0, 150)}...`}
+                  </DialogDescription>
+                  {hasLongDescription && (
+                    <button
+                      onClick={() => setShowFullDescription(!showFullDescription)}
+                      className="text-sm text-primary hover:underline flex items-center gap-1"
+                    >
+                      {showFullDescription ? (
+                        <>
+                          See Less <ChevronUp className="h-4 w-4" />
+                        </>
+                      ) : (
+                        <>
+                          See More <ChevronDown className="h-4 w-4" />
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </DialogHeader>
 
         {/* Analytics Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 my-6">
-          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+        <div className="grid grid-cols-2 gap-3 my-4">
+          <div className="p-3 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Reach Score</p>
@@ -57,7 +88,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             </p>
           </div>
 
-          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+          <div className="p-3 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
               <BarChart3 className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Episodes</p>
@@ -67,7 +98,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             </p>
           </div>
 
-          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+          <div className="p-3 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
               <Award className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Rating</p>
@@ -77,7 +108,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             </p>
           </div>
 
-          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+          <div className="p-3 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
               <Users className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Audience Size</p>
@@ -87,7 +118,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             </p>
           </div>
 
-          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+          <div className="p-3 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
               <Globe className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Language</p>
@@ -97,7 +128,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
             </p>
           </div>
 
-          <div className="p-4 bg-surface-subtle rounded-lg border border-border">
+          <div className="p-3 bg-surface-subtle rounded-lg border border-border">
             <div className="flex items-center gap-2 mb-2">
               <Globe className="h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Region</p>
@@ -110,8 +141,8 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
 
         {/* Categories */}
         {analytics.categories && analytics.categories.length > 0 && (
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Categories</h3>
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Categories</h3>
             <div className="flex flex-wrap gap-2">
               {analytics.categories.map((category, index) => (
                 <span
@@ -126,7 +157,7 @@ export const PodcastAnalyticsModal = ({ podcast, isOpen, onClose }: PodcastAnaly
         )}
 
         {/* Audience Insights */}
-        <div className="mb-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
+        <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
           <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
             Audience Insights
