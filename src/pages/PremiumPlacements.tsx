@@ -11,7 +11,7 @@ const premiumPlacements = [
   {
     name: "The SaaS Podcast",
     category: "SaaS & Tech",
-    artwork: "https://via.placeholder.com/400x400/6366f1/ffffff?text=SaaS+Podcast", // Replace with actual artwork URL
+    artwork: "https://placehold.co/400x400/6366f1/ffffff?text=SaaS+Podcast&font=roboto", // Replace with actual artwork URL
     audience: "25,000",
     downloads: "30K",
     rating: 4.8,
@@ -27,7 +27,7 @@ const premiumPlacements = [
   {
     name: "Founder Stories",
     category: "Entrepreneurship",
-    artwork: "https://via.placeholder.com/400x400/8b5cf6/ffffff?text=Founder+Stories", // Replace with actual artwork URL
+    artwork: "https://placehold.co/400x400/8b5cf6/ffffff?text=Founder+Stories&font=roboto", // Replace with actual artwork URL
     audience: "40,000",
     downloads: "50K",
     rating: 4.9,
@@ -43,7 +43,7 @@ const premiumPlacements = [
   {
     name: "FinTech Insider",
     category: "Finance & Tech",
-    artwork: "https://via.placeholder.com/400x400/10b981/ffffff?text=FinTech", // Replace with actual artwork URL
+    artwork: "https://placehold.co/400x400/10b981/ffffff?text=FinTech+Insider&font=roboto", // Replace with actual artwork URL
     audience: "15,000",
     downloads: "18K",
     rating: 4.7,
@@ -59,7 +59,7 @@ const premiumPlacements = [
   {
     name: "Scale & Grow",
     category: "Business Growth",
-    artwork: "https://via.placeholder.com/400x400/f59e0b/ffffff?text=Scale+%26+Grow", // Replace with actual artwork URL
+    artwork: "https://placehold.co/400x400/f59e0b/ffffff?text=Scale+and+Grow&font=roboto", // Replace with actual artwork URL
     audience: "32,000",
     downloads: "40K",
     rating: 4.8,
@@ -75,7 +75,7 @@ const premiumPlacements = [
   {
     name: "The Executive Edge",
     category: "Leadership",
-    artwork: "https://via.placeholder.com/400x400/ec4899/ffffff?text=Executive+Edge", // Replace with actual artwork URL
+    artwork: "https://placehold.co/400x400/ec4899/ffffff?text=Executive+Edge&font=roboto", // Replace with actual artwork URL
     audience: "18,000",
     downloads: "22K",
     rating: 4.9,
@@ -91,7 +91,7 @@ const premiumPlacements = [
   {
     name: "Tech Talks Daily",
     category: "Technology",
-    artwork: "https://via.placeholder.com/400x400/3b82f6/ffffff?text=Tech+Talks", // Replace with actual artwork URL
+    artwork: "https://placehold.co/400x400/3b82f6/ffffff?text=Tech+Talks+Daily&font=roboto", // Replace with actual artwork URL
     audience: "28,000",
     downloads: "35K",
     rating: 4.6,
