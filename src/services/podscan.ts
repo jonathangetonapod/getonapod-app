@@ -150,6 +150,32 @@ export async function searchBusinessPodcasts(limit = 20): Promise<PodcastData[]>
 }
 
 /**
+ * Search for premium/high-tier podcasts for premium placements
+ */
+export async function searchPremiumPodcasts(limit = 12): Promise<PodcastData[]> {
+  // Fetch more for variety
+  const fetchSize = Math.min(limit * 2, 50);
+
+  const response = await searchPodcasts({
+    query: 'business OR entrepreneurship OR startup OR founder OR leadership OR SaaS',
+    per_page: fetchSize,
+    order_by: 'audience_size', // Sort by audience size for premium tier
+    order_dir: 'desc',
+    min_episode_count: 20, // More established shows
+    min_audience_size: 10000, // Minimum 10K audience
+    max_audience_size: 200000, // Max 200K - premium tier shows
+    region: 'US',
+    has_guests: true,
+  });
+
+  console.log(`💎 Fetched ${response.podcasts.length} premium podcasts, selecting ${limit} randomly`);
+
+  // Shuffle and return subset
+  const shuffled = response.podcasts.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, limit);
+}
+
+/**
  * Search for finance/investment podcasts
  */
 export async function searchFinancePodcasts(limit = 20): Promise<PodcastData[]> {

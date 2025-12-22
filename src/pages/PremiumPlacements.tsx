@@ -1,120 +1,112 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target } from 'lucide-react';
+import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2 } from 'lucide-react';
+import { searchPremiumPodcasts, PodcastData, getPodcastAnalytics } from '@/services/podscan';
+import { useToast } from '@/hooks/use-toast';
 
-// YOUR CURATED PREMIUM PLACEMENTS - Edit this list with your actual shows
-const premiumPlacements = [
-  {
-    name: "The SaaS Podcast",
-    category: "SaaS & Tech",
-    artwork: "https://placehold.co/400x400/6366f1/ffffff?text=SaaS+Podcast&font=roboto", // Replace with actual artwork URL
-    audience: "25,000",
-    downloads: "30K",
-    rating: 4.8,
-    engagement: "High",
-    niche: "B2B SaaS Founders",
-    description: "Weekly interviews with successful SaaS founders and executives. Known for tactical insights and actionable advice.",
-    aiSummary: "Perfect for SaaS founders looking to reach decision-makers. Audience consists of 70% founders/executives with avg company revenue $2M+. Known for converting listeners into qualified leads.",
-    price: "$1,200",
-    features: ["Pre-interview strategy call", "Professional audio editing", "Show notes included", "Social media promotion"],
-    popular: false,
-    featured: false
-  },
-  {
-    name: "Founder Stories",
-    category: "Entrepreneurship",
-    artwork: "https://placehold.co/400x400/8b5cf6/ffffff?text=Founder+Stories&font=roboto", // Replace with actual artwork URL
-    audience: "40,000",
-    downloads: "50K",
-    rating: 4.9,
-    engagement: "Very High",
-    niche: "Startup Founders",
-    description: "Deep dives into the journey of building and scaling startups. Focuses on lessons learned and pivotal moments.",
-    aiSummary: "Top-performing show for founder visibility. 85% of listeners are in leadership roles. Past guests report 3-5x LinkedIn growth and significant inbound within 30 days.",
-    price: "$1,800",
-    features: ["Extended 60-min episode", "YouTube video version", "Newsletter feature", "Audiogram clips"],
-    popular: true,
-    featured: true
-  },
-  {
-    name: "FinTech Insider",
-    category: "Finance & Tech",
-    artwork: "https://placehold.co/400x400/10b981/ffffff?text=FinTech+Insider&font=roboto", // Replace with actual artwork URL
-    audience: "15,000",
-    downloads: "18K",
-    rating: 4.7,
-    engagement: "High",
-    niche: "Financial Professionals",
-    description: "Exploring innovation in financial technology. Highly engaged audience of investors, advisors, and fintech leaders.",
-    aiSummary: "Ideal for fintech and financial services leaders. Highly engaged audience with strong conversion rates. Known for quality over quantity—listeners take action.",
-    price: "$950",
-    features: ["Industry-focused audience", "Episode transcript", "LinkedIn promotion", "Content repurposing guide"],
-    popular: false,
-    featured: false
-  },
-  {
-    name: "Scale & Grow",
-    category: "Business Growth",
-    artwork: "https://placehold.co/400x400/f59e0b/ffffff?text=Scale+and+Grow&font=roboto", // Replace with actual artwork URL
-    audience: "32,000",
-    downloads: "40K",
-    rating: 4.8,
-    engagement: "High",
-    niche: "Growth Leaders",
-    description: "Marketing, sales, and growth strategies from those who've done it. Tactical, no-fluff conversations.",
-    aiSummary: "Best for growth-stage companies and consultants. Audience is actively seeking solutions. High replay value creates ongoing visibility for guests.",
-    price: "$1,500",
-    features: ["Pre-show guest prep", "Multi-platform distribution", "Post-episode promotion", "Guest highlight reel"],
-    popular: false,
-    featured: false
-  },
-  {
-    name: "The Executive Edge",
-    category: "Leadership",
-    artwork: "https://placehold.co/400x400/ec4899/ffffff?text=Executive+Edge&font=roboto", // Replace with actual artwork URL
-    audience: "18,000",
-    downloads: "22K",
-    rating: 4.9,
-    engagement: "Very High",
-    niche: "C-Suite Executives",
-    description: "Leadership insights from CEOs, founders, and executives. Premium positioning for thought leaders.",
-    aiSummary: "Premium positioning for C-suite and board members. Elite audience demographic. Past guests have secured board seats, advisory roles, and speaking engagements.",
-    price: "$2,200",
-    features: ["Premium audience targeting", "LinkedIn article feature", "Video clips package", "PR-ready content"],
-    popular: true,
-    featured: true
-  },
-  {
-    name: "Tech Talks Daily",
-    category: "Technology",
-    artwork: "https://placehold.co/400x400/3b82f6/ffffff?text=Tech+Talks+Daily&font=roboto", // Replace with actual artwork URL
-    audience: "28,000",
-    downloads: "35K",
-    rating: 4.6,
-    engagement: "Medium",
-    niche: "Tech Innovators",
-    description: "Daily tech news, trends, and interviews. Fast-moving show with strong listener engagement.",
-    aiSummary: "Great for tech product launches and B2B SaaS. Fast turnaround time. Audience skews toward early adopters and tech decision-makers.",
-    price: "$1,100",
-    features: ["Same-week publishing", "Social amplification", "Newsletter mention", "Bite-sized clips"],
-    popular: false,
-    featured: false
+// Helper function to generate pricing tiers based on audience size
+const generatePricing = (audienceSize: number): { price: string; features: string[] } => {
+  if (audienceSize >= 100000) {
+    return {
+      price: '$3,500',
+      features: [
+        'Premium audience targeting',
+        'Full video + audio production',
+        'Multi-platform distribution',
+        'LinkedIn article feature',
+        '3-month promotion package'
+      ]
+    };
+  } else if (audienceSize >= 50000) {
+    return {
+      price: '$2,200',
+      features: [
+        'Extended 60-min episode',
+        'YouTube video version',
+        'Newsletter feature',
+        'Audiogram clips package',
+        'Social amplification'
+      ]
+    };
+  } else if (audienceSize >= 25000) {
+    return {
+      price: '$1,500',
+      features: [
+        'Pre-show guest prep',
+        'Professional audio editing',
+        'Show notes included',
+        'Social media promotion',
+        'Content repurposing guide'
+      ]
+    };
+  } else {
+    return {
+      price: '$950',
+      features: [
+        'Pre-interview strategy call',
+        'Episode transcript',
+        'LinkedIn promotion',
+        'Guest highlight reel'
+      ]
+    };
   }
-];
+};
+
+// AI-style summary generator based on podcast data
+const generateAISummary = (podcast: PodcastData, analytics: any): string => {
+  const audienceLevel = analytics.audience_size >= 50000 ? 'large' : analytics.audience_size >= 25000 ? 'substantial' : 'engaged';
+  const rating = analytics.rating;
+
+  const summaries = [
+    `Perfect for ${analytics.categories[0]?.toLowerCase() || 'business'} leaders looking to reach ${audienceLevel} audiences. ${rating > 4.7 ? 'Highly-rated show' : 'Established show'} with proven track record of converting listeners into followers and clients.`,
+    `Ideal positioning for thought leaders in ${analytics.categories[0] || 'business'}. ${audienceLevel === 'large' ? 'Elite' : 'Highly engaged'} audience with strong conversion rates. Past guests report significant LinkedIn growth and inbound within 30 days.`,
+    `Top-tier show for ${analytics.categories[0]?.toLowerCase() || 'industry'} visibility. Audience consists of decision-makers and leaders. Known for ${rating > 4.8 ? 'exceptional quality' : 'quality content'} and strong listener engagement.`,
+  ];
+
+  return summaries[Math.floor(Math.random() * summaries.length)];
+};
 
 const categories = ["All", "SaaS & Tech", "Entrepreneurship", "Finance & Tech", "Business Growth", "Leadership", "Technology"];
 
 const PremiumPlacements = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [podcasts, setPodcasts] = useState<PodcastData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const loadPodcasts = async () => {
+      try {
+        setIsLoading(true);
+        const data = await searchPremiumPodcasts(12); // Load 12 premium podcasts
+        setPodcasts(data);
+      } catch (error) {
+        console.error('Failed to load premium podcasts:', error);
+        toast({
+          title: "Failed to load podcasts",
+          description: "Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPodcasts();
+  }, []);
 
   const filteredPlacements = selectedCategory === "All"
-    ? premiumPlacements
-    : premiumPlacements.filter(p => p.category === selectedCategory);
+    ? podcasts
+    : podcasts.filter(p => {
+        const primaryCategory = p.podcast_categories?.[0]?.category_name || '';
+        return primaryCategory.toLowerCase().includes(selectedCategory.toLowerCase()) ||
+               selectedCategory.toLowerCase().includes(primaryCategory.toLowerCase());
+      });
 
   return (
     <main className="min-h-screen bg-background">
@@ -179,139 +171,153 @@ const PremiumPlacements = () => {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredPlacements.map((placement, index) => (
-                <div
-                  key={index}
-                  className="bg-surface-subtle rounded-2xl border-2 border-border hover:border-primary/50 transition-all duration-300 hover:shadow-2xl relative overflow-hidden group"
-                  style={{ transitionDelay: `${index * 100}ms` }}
-                >
-                  {/* Badges */}
-                  <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
-                    {placement.featured && (
-                      <Badge className="bg-gradient-to-r from-primary to-purple-600 border-0">
-                        ⭐ Featured
-                      </Badge>
-                    )}
-                    {placement.popular && !placement.featured && (
-                      <Badge variant="default">
-                        Popular
-                      </Badge>
-                    )}
-                  </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-3 text-muted-foreground">Loading premium podcasts...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {filteredPlacements.map((podcast, index) => {
+                  const analytics = getPodcastAnalytics(podcast);
+                  const pricing = generatePricing(analytics.audience_size);
+                  const aiSummary = generateAISummary(podcast, analytics);
+                  const isFeatured = analytics.audience_size >= 75000;
+                  const isPopular = analytics.rating >= 4.7 && !isFeatured;
 
-                  {/* Podcast Artwork */}
-                  <div className="relative h-48 bg-gradient-to-br from-primary/20 to-primary/5 overflow-hidden">
-                    <img
-                      src={placement.artwork}
-                      alt={placement.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-surface-subtle via-transparent to-transparent" />
-                  </div>
-
-                  <div className="p-6">
-                    {/* Category & Name */}
-                    <div className="mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Mic className="h-4 w-4 text-primary" />
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                          {placement.category}
-                        </span>
+                  return (
+                    <div
+                      key={podcast.podcast_id}
+                      className="bg-surface-subtle rounded-2xl border-2 border-border hover:border-primary/50 transition-all duration-300 hover:shadow-2xl relative overflow-hidden group"
+                      style={{ transitionDelay: `${index * 100}ms` }}
+                    >
+                      {/* Badges */}
+                      <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+                        {isFeatured && (
+                          <Badge className="bg-gradient-to-r from-primary to-purple-600 border-0">
+                            ⭐ Featured
+                          </Badge>
+                        )}
+                        {isPopular && (
+                          <Badge variant="default">
+                            Popular
+                          </Badge>
+                        )}
                       </div>
-                      <h3 className="text-2xl font-bold text-foreground mb-2">
-                        {placement.name}
-                      </h3>
-                    </div>
 
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="h-4 w-4 text-primary" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Audience</p>
-                          <p className="font-semibold text-foreground">{placement.audience}</p>
+                      {/* Podcast Artwork */}
+                      <div className="relative h-48 bg-gradient-to-br from-primary/20 to-primary/5 overflow-hidden">
+                        {podcast.podcast_image_url ? (
+                          <img
+                            src={podcast.podcast_image_url}
+                            alt={podcast.podcast_name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Mic className="h-16 w-16 text-primary opacity-50" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-surface-subtle via-transparent to-transparent" />
+                      </div>
+
+                      <div className="p-6">
+                        {/* Category & Name */}
+                        <div className="mb-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Mic className="h-4 w-4 text-primary" />
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              {podcast.podcast_categories?.[0]?.category_name || 'Business'}
+                            </span>
+                          </div>
+                          <h3 className="text-2xl font-bold text-foreground mb-2 line-clamp-2">
+                            {podcast.podcast_name}
+                          </h3>
+                        </div>
+
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Users className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Audience</p>
+                              <p className="font-semibold text-foreground">
+                                {analytics.audience_size > 0
+                                  ? `${(analytics.audience_size / 1000).toFixed(0)}K`
+                                  : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <BarChart3 className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Episodes</p>
+                              <p className="font-semibold text-foreground">{analytics.episode_count}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <Star className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Rating</p>
+                              <p className="font-semibold text-foreground">
+                                {analytics.rating ? `${analytics.rating.toFixed(1)}/5` : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <TrendingUp className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Reach Score</p>
+                              <p className="font-semibold text-foreground">{Math.round(analytics.reach_score)}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* AI Summary */}
+                        <div className="mb-4 p-3 bg-gradient-to-br from-purple-500/10 to-primary/10 rounded-lg border border-purple-500/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Award className="h-4 w-4 text-purple-500" />
+                            <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
+                              Why This Show
+                            </p>
+                          </div>
+                          <p className="text-sm text-foreground leading-relaxed">
+                            {aiSummary}
+                          </p>
+                        </div>
+
+                        {/* Features */}
+                        <div className="mb-6 space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                            What's Included:
+                          </p>
+                          {pricing.features.map((feature, idx) => (
+                            <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                              <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                              {feature}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Price & CTA */}
+                        <div className="border-t-2 border-border pt-6">
+                          <div className="flex items-end justify-between mb-4">
+                            <div>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Investment</p>
+                              <p className="text-4xl font-bold text-foreground">{pricing.price}</p>
+                              <p className="text-xs text-muted-foreground mt-1">One-time placement</p>
+                            </div>
+                          </div>
+                          <Button className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70" size="lg" asChild>
+                            <a href="/#book">Book This Show →</a>
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <BarChart3 className="h-4 w-4 text-primary" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Avg Downloads</p>
-                          <p className="font-semibold text-foreground">{placement.downloads}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Star className="h-4 w-4 text-primary" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Rating</p>
-                          <p className="font-semibold text-foreground">{placement.rating}/5</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Target className="h-4 w-4 text-primary" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Engagement</p>
-                          <p className="font-semibold text-foreground">{placement.engagement}</p>
-                        </div>
-                      </div>
                     </div>
-
-                    {/* Niche Badge */}
-                    <div className="mb-4 p-3 bg-primary/10 rounded-lg border border-primary/20">
-                      <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" />
-                        Target: {placement.niche}
-                      </p>
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {placement.description}
-                    </p>
-
-                    {/* AI Summary */}
-                    <div className="mb-4 p-3 bg-gradient-to-br from-purple-500/10 to-primary/10 rounded-lg border border-purple-500/20">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Award className="h-4 w-4 text-purple-500" />
-                        <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
-                          Why This Show
-                        </p>
-                      </div>
-                      <p className="text-sm text-foreground leading-relaxed">
-                        {placement.aiSummary}
-                      </p>
-                    </div>
-
-                    {/* Features */}
-                    <div className="mb-6 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                        What's Included:
-                      </p>
-                      {placement.features.map((feature, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
-                          {feature}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Price & CTA */}
-                    <div className="border-t-2 border-border pt-6">
-                      <div className="flex items-end justify-between mb-4">
-                        <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wider">Investment</p>
-                          <p className="text-4xl font-bold text-foreground">{placement.price}</p>
-                          <p className="text-xs text-muted-foreground mt-1">One-time placement</p>
-                        </div>
-                      </div>
-                      <Button className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70" size="lg" asChild>
-                        <a href="/#book">Book This Show →</a>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </section>
