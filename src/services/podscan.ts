@@ -142,10 +142,18 @@ export async function searchBusinessPodcasts(limit = 20): Promise<PodcastData[]>
     has_guests: true, // Only shows that do interviews
   });
 
-  console.log(`🎯 Fetched ${response.podcasts.length} business podcasts, selecting ${limit} randomly`);
+  console.log(`🎯 Fetched ${response.podcasts.length} business podcasts`);
+
+  // Filter out podcasts with invalid/missing image URLs
+  const validPodcasts = response.podcasts.filter(podcast =>
+    podcast.podcast_image_url &&
+    podcast.podcast_image_url.startsWith('http')
+  );
+
+  console.log(`✅ ${validPodcasts.length} podcasts have valid images, selecting ${limit} randomly`);
 
   // Shuffle and return random subset
-  const shuffled = response.podcasts.sort(() => Math.random() - 0.5);
+  const shuffled = validPodcasts.sort(() => Math.random() - 0.5);
   return shuffled.slice(0, limit);
 }
 
@@ -168,10 +176,18 @@ export async function searchPremiumPodcasts(limit = 12): Promise<PodcastData[]> 
     has_guests: true,
   });
 
-  console.log(`💎 Fetched ${response.podcasts.length} premium podcasts, selecting ${limit} randomly`);
+  console.log(`💎 Fetched ${response.podcasts.length} premium podcasts`);
+
+  // Filter out podcasts with invalid/missing image URLs
+  const validPodcasts = response.podcasts.filter(podcast =>
+    podcast.podcast_image_url &&
+    podcast.podcast_image_url.startsWith('http')
+  );
+
+  console.log(`✅ ${validPodcasts.length} premium podcasts have valid images, selecting ${limit} randomly`);
 
   // Shuffle and return subset
-  const shuffled = response.podcasts.sort(() => Math.random() - 0.5);
+  const shuffled = validPodcasts.sort(() => Math.random() - 0.5);
   return shuffled.slice(0, limit);
 }
 

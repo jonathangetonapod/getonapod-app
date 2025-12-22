@@ -112,17 +112,11 @@ const PodcastShowcaseSection = () => {
                 >
                   {/* Podcast Artwork */}
                   <div className="relative aspect-square bg-gradient-to-br from-primary/10 to-primary/5 overflow-hidden">
-                    {podcast.podcast_image_url ? (
-                      <img
-                        src={podcast.podcast_image_url}
-                        alt={podcast.podcast_name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Mic className="h-12 w-12 text-primary opacity-50" />
-                      </div>
-                    )}
+                    <img
+                      src={podcast.podcast_image_url}
+                      alt={podcast.podcast_name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
                   </div>
 
                   {/* Podcast Info */}

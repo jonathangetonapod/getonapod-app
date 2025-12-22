@@ -221,17 +221,11 @@ const PremiumPlacements = () => {
 
                       {/* Podcast Artwork */}
                       <div className="relative h-48 bg-gradient-to-br from-primary/20 to-primary/5 overflow-hidden">
-                        {podcast.podcast_image_url ? (
-                          <img
-                            src={podcast.podcast_image_url}
-                            alt={podcast.podcast_name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Mic className="h-16 w-16 text-primary opacity-50" />
-                          </div>
-                        )}
+                        <img
+                          src={podcast.podcast_image_url}
+                          alt={podcast.podcast_name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-surface-subtle via-transparent to-transparent" />
                       </div>
 
