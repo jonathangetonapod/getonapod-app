@@ -4,7 +4,7 @@ import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2 } from 'lucide-react';
+import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { searchPremiumPodcasts, PodcastData, getPodcastAnalytics } from '@/services/podscan';
 import { useToast } from '@/hooks/use-toast';
 
@@ -77,7 +77,20 @@ const PremiumPlacements = () => {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [podcasts, setPodcasts] = useState<PodcastData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+
+  const toggleFeatures = (podcastId: string) => {
+    setExpandedCards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(podcastId)) {
+        newSet.delete(podcastId);
+      } else {
+        newSet.add(podcastId);
+      }
+      return newSet;
+    });
+  };
 
   useEffect(() => {
     const loadPodcasts = async () => {
@@ -286,17 +299,29 @@ const PremiumPlacements = () => {
                           </p>
                         </div>
 
-                        {/* Features */}
-                        <div className="mb-6 space-y-2">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                            What's Included:
-                          </p>
-                          {pricing.features.map((feature, idx) => (
-                            <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-                              <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
-                              {feature}
+                        {/* Features - Collapsible */}
+                        <div className="mb-6">
+                          <button
+                            onClick={() => toggleFeatures(podcast.podcast_id)}
+                            className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors"
+                          >
+                            <span>What's Included:</span>
+                            {expandedCards.has(podcast.podcast_id) ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </button>
+                          {expandedCards.has(podcast.podcast_id) && (
+                            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                              {pricing.features.map((feature, idx) => (
+                                <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                                  <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                                  {feature}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
 
                         {/* Price & CTA */}
