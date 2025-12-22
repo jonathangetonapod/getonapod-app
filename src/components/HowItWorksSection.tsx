@@ -27,7 +27,7 @@ const HowItWorksSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section id="how-it-works" className="py-20 md:py-32 bg-surface-subtle">
+    <section id="how-it-works" className="py-12 md:py-20 bg-surface-subtle">
       <div className="container mx-auto">
         <div
           ref={ref}

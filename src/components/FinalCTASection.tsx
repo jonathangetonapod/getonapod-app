@@ -5,7 +5,7 @@ const FinalCTASection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section id="book" className="py-20 md:py-32 bg-primary text-primary-foreground">
+    <section id="book" className="py-12 md:py-20 bg-primary text-primary-foreground">
       <div className="container mx-auto">
         <div
           ref={ref}

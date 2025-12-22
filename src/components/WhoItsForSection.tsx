@@ -18,7 +18,7 @@ const WhoItsForSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-20 md:py-32">
+    <section className="py-12 md:py-20">
       <div className="container mx-auto">
         <div
           ref={ref}

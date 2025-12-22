@@ -33,7 +33,7 @@ const SocialProofSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-20 md:py-32 bg-surface-subtle">
+    <section className="py-12 md:py-20 bg-surface-subtle">
       <div className="container mx-auto">
         <div
           ref={ref}
