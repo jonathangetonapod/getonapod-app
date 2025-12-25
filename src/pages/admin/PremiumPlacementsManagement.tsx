@@ -32,6 +32,7 @@ import {
   type CreatePremiumPodcastInput
 } from '@/services/premiumPodcasts'
 import { getPodcastById } from '@/services/podscan'
+import { generatePodcastSummary, generatePodcastFeatures } from '@/services/ai'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const PremiumPlacementsManagement = () => {
@@ -151,17 +152,21 @@ const PremiumPlacementsManagement = () => {
                             audienceSize >= 50000 ? '$3,500' :
                             audienceSize >= 20000 ? '$2,500' : '$1,500'
 
-      // Default "What's Included" features
-      const defaultInclusions = [
-        'Pre-interview strategy call',
-        'Professional audio editing',
-        'Show notes included',
-        'Social media promotion',
-        'Guaranteed publishing timeline'
-      ]
+      // Generate AI-powered features based on audience size
+      const defaultInclusions = await generatePodcastFeatures(audienceSize)
 
-      // Auto-generated "Why This Show" based on data
-      const whyThisShow = `Ideal positioning for thought leaders. ${formatAudience(audienceSize)} audience with strong conversion rates. High engagement with ${rating}/5 rating.`
+      // Generate AI-powered "Why This Show" summary
+      toast.info('🤖 Generating AI summary with Claude...')
+      const whyThisShow = await generatePodcastSummary({
+        podcast_name: podcastData.podcast_name,
+        audience_size: formatAudience(audienceSize),
+        episode_count: episodeCount.toString(),
+        rating: rating ? `${rating}/5` : '0/5',
+        reach_score: reachScore.toString(),
+        description: podcastData.podcast_description,
+        categories: podcastData.podcast_categories?.map(c => c.category_name),
+        publisher_name: podcastData.publisher_name,
+      })
 
       setFormData({
         ...formData,
@@ -177,7 +182,7 @@ const PremiumPlacementsManagement = () => {
         notes: `Host: ${podcastData.publisher_name || 'N/A'}\nCategories: ${podcastData.podcast_categories?.map(c => c.category_name).join(', ') || 'N/A'}`
       })
 
-      toast.success(`Details loaded for "${podcastData.podcast_name}"`)
+      toast.success(`✨ AI summary generated for "${podcastData.podcast_name}"`)
     } catch (error: any) {
       console.error('❌ Failed to fetch podcast:', error)
       toast.error(error.message || 'Failed to fetch podcast details. Check console for details.')

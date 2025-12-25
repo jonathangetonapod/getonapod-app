@@ -8,6 +8,13 @@ import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, T
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts';
 import { useToast } from '@/hooks/use-toast';
 import { SocialProofNotifications } from '@/components/SocialProofNotifications';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const categories = ["All", "SaaS & Tech", "Entrepreneurship", "Finance & Tech", "Business Growth", "Leadership", "Technology"];
 
@@ -17,6 +24,7 @@ const PremiumPlacements = () => {
   const [podcasts, setPodcasts] = useState<PremiumPodcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [modalPodcast, setModalPodcast] = useState<PremiumPodcast | null>(null);
   const { toast } = useToast();
 
   const toggleFeatures = (podcastId: string) => {
@@ -29,6 +37,20 @@ const PremiumPlacements = () => {
       }
       return newSet;
     });
+  };
+
+  // Get preview text (50 chars max)
+  const getPreviewText = (text: string): string => {
+    if (text.length <= 50) return text;
+    // Truncate to 50 chars at word boundary
+    const truncated = text.substring(0, 50);
+    const lastSpace = truncated.lastIndexOf(' ');
+    return (lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated).trim() + '...';
+  };
+
+  // Check if text needs "Read More" (longer than 50 chars)
+  const needsReadMore = (text: string): boolean => {
+    return text.length > 50;
   };
 
   useEffect(() => {
@@ -163,8 +185,8 @@ const PremiumPlacements = () => {
 
                       <div className="p-6">
                         {/* Podcast Name */}
-                        <div className="mb-4">
-                          <h3 className="text-2xl font-bold text-foreground mb-2 line-clamp-2">
+                        <div className="mb-4 h-16 flex items-center">
+                          <h3 className="text-2xl font-bold text-foreground line-clamp-2">
                             {podcast.podcast_name}
                           </h3>
                         </div>
@@ -218,9 +240,17 @@ const PremiumPlacements = () => {
                                 Why This Show
                               </p>
                             </div>
-                            <p className="text-sm text-foreground leading-relaxed">
-                              {podcast.why_this_show}
-                            </p>
+                            <div className="text-sm text-foreground leading-relaxed">
+                              <p>{getPreviewText(podcast.why_this_show)}</p>
+                              {needsReadMore(podcast.why_this_show) && (
+                                <button
+                                  onClick={() => setModalPodcast(podcast)}
+                                  className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium mt-2 text-xs underline transition-colors"
+                                >
+                                  Read More
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -333,6 +363,21 @@ const PremiumPlacements = () => {
 
       <Footer />
       <SocialProofNotifications />
+
+      {/* Why This Show Modal */}
+      <Dialog open={!!modalPodcast} onOpenChange={(open) => !open && setModalPodcast(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+              <Award className="h-6 w-6 text-purple-500" />
+              Why {modalPodcast?.podcast_name}?
+            </DialogTitle>
+          </DialogHeader>
+          <DialogDescription className="text-base text-foreground leading-relaxed pt-4">
+            {modalPodcast?.why_this_show}
+          </DialogDescription>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 };
