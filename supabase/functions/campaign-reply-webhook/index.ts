@@ -30,7 +30,7 @@ serve(async (req) => {
     const payload = await req.json()
     console.log('[Campaign Webhook] Received payload:', payload)
 
-    // Parse Instantly webhook structure
+    // Parse Email Bison webhook structure
     const eventType = payload?.data?.event?.type
     const leadData = payload?.data?.lead
     const campaignData = payload?.data?.campaign
@@ -38,7 +38,7 @@ serve(async (req) => {
     const campaignEvent = payload?.data?.campaign_event
 
     // Only process reply events (adjust event type as needed)
-    // Common Instantly event types: EMAIL_REPLY, EMAIL_REPLIED, LEAD_REPLIED
+    // Common Email Bison event types: EMAIL_REPLY, EMAIL_REPLIED, LEAD_REPLIED
     const replyEvents = ['EMAIL_REPLY', 'EMAIL_REPLIED', 'LEAD_REPLIED', 'REPLY_RECEIVED']
 
     if (!replyEvents.includes(eventType)) {
