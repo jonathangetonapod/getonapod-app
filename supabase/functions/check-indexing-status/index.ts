@@ -82,7 +82,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           inspectionUrl: url,
-          siteUrl: 'sc-domain:getonapod.com', // Use domain property format
+          siteUrl: 'sc-domain:getonapod.com', // Domain property format
         }),
       }
     )
