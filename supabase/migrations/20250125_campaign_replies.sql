@@ -36,17 +36,10 @@ CREATE INDEX idx_campaign_replies_email ON campaign_replies(email);
 ALTER TABLE campaign_replies ENABLE ROW LEVEL SECURITY;
 
 -- Admin users can do everything
-CREATE POLICY "Admin users can manage campaign replies"
+CREATE POLICY "Only admins can manage campaign replies"
   ON campaign_replies
   FOR ALL
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM auth.users
-      WHERE auth.users.id = auth.uid()
-      AND auth.users.raw_user_meta_data->>'role' = 'admin'
-    )
-  );
+  USING (auth.jwt() ->> 'email' = 'jonathan@getonapod.com');
 
 -- Trigger to update updated_at
 CREATE OR REPLACE FUNCTION update_campaign_replies_updated_at()
