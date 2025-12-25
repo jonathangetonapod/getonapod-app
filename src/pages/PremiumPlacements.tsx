@@ -5,78 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
-import { searchPremiumPodcasts, PodcastData, getPodcastAnalytics } from '@/services/podscan';
+import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts';
 import { useToast } from '@/hooks/use-toast';
 import { SocialProofNotifications } from '@/components/SocialProofNotifications';
-
-// Helper function to generate pricing tiers based on audience size
-const generatePricing = (audienceSize: number): { price: string; features: string[] } => {
-  if (audienceSize >= 100000) {
-    return {
-      price: '$3,500',
-      features: [
-        'Premium audience targeting',
-        'Full video + audio production',
-        'Multi-platform distribution',
-        'LinkedIn article feature',
-        '3-month promotion package'
-      ]
-    };
-  } else if (audienceSize >= 50000) {
-    return {
-      price: '$2,200',
-      features: [
-        'Extended 60-min episode',
-        'YouTube video version',
-        'Newsletter feature',
-        'Audiogram clips package',
-        'Social amplification'
-      ]
-    };
-  } else if (audienceSize >= 25000) {
-    return {
-      price: '$1,500',
-      features: [
-        'Pre-show guest prep',
-        'Professional audio editing',
-        'Show notes included',
-        'Social media promotion',
-        'Content repurposing guide'
-      ]
-    };
-  } else {
-    return {
-      price: '$950',
-      features: [
-        'Pre-interview strategy call',
-        'Episode transcript',
-        'LinkedIn promotion',
-        'Guest highlight reel'
-      ]
-    };
-  }
-};
-
-// AI-style summary generator based on podcast data
-const generateAISummary = (podcast: PodcastData, analytics: any): string => {
-  const audienceLevel = analytics.audience_size >= 50000 ? 'large' : analytics.audience_size >= 25000 ? 'substantial' : 'engaged';
-  const rating = analytics.rating;
-
-  const summaries = [
-    `Perfect for ${analytics.categories[0]?.toLowerCase() || 'business'} leaders looking to reach ${audienceLevel} audiences. ${rating > 4.7 ? 'Highly-rated show' : 'Established show'} with proven track record of converting listeners into followers and clients.`,
-    `Ideal positioning for thought leaders in ${analytics.categories[0] || 'business'}. ${audienceLevel === 'large' ? 'Elite' : 'Highly engaged'} audience with strong conversion rates. Past guests report significant LinkedIn growth and inbound within 30 days.`,
-    `Top-tier show for ${analytics.categories[0]?.toLowerCase() || 'industry'} visibility. Audience consists of decision-makers and leaders. Known for ${rating > 4.8 ? 'exceptional quality' : 'quality content'} and strong listener engagement.`,
-  ];
-
-  return summaries[Math.floor(Math.random() * summaries.length)];
-};
 
 const categories = ["All", "SaaS & Tech", "Entrepreneurship", "Finance & Tech", "Business Growth", "Leadership", "Technology"];
 
 const PremiumPlacements = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [podcasts, setPodcasts] = useState<PodcastData[]>([]);
+  const [podcasts, setPodcasts] = useState<PremiumPodcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const { toast } = useToast();
@@ -97,7 +35,7 @@ const PremiumPlacements = () => {
     const loadPodcasts = async () => {
       try {
         setIsLoading(true);
-        const data = await searchPremiumPodcasts(12); // Load 12 premium podcasts
+        const data = await getActivePremiumPodcasts(); // Load active podcasts from backend
         setPodcasts(data);
       } catch (error) {
         console.error('Failed to load premium podcasts:', error);
@@ -192,52 +130,40 @@ const PremiumPlacements = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredPlacements.map((podcast, index) => {
-                  const analytics = getPodcastAnalytics(podcast);
-                  const pricing = generatePricing(analytics.audience_size);
-                  const aiSummary = generateAISummary(podcast, analytics);
-                  const isFeatured = analytics.audience_size >= 75000;
-                  const isPopular = analytics.rating >= 4.7 && !isFeatured;
-
-                  return (
+                {filteredPlacements.map((podcast, index) => (
                     <div
-                      key={podcast.podcast_id}
+                      key={podcast.id}
                       className="bg-surface-subtle rounded-2xl border-2 border-border hover:border-primary/50 transition-all duration-300 hover:shadow-2xl relative overflow-hidden group"
                       style={{ transitionDelay: `${index * 100}ms` }}
                     >
                       {/* Badges */}
                       <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
-                        {isFeatured && (
+                        {podcast.is_featured && (
                           <Badge className="bg-gradient-to-r from-primary to-purple-600 border-0">
                             ⭐ Featured
-                          </Badge>
-                        )}
-                        {isPopular && (
-                          <Badge variant="default">
-                            Popular
                           </Badge>
                         )}
                       </div>
 
                       {/* Podcast Artwork */}
                       <div className="relative h-48 bg-gradient-to-br from-primary/20 to-primary/5 overflow-hidden">
-                        <img
-                          src={podcast.podcast_image_url}
-                          alt={podcast.podcast_name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
+                        {podcast.podcast_image_url ? (
+                          <img
+                            src={podcast.podcast_image_url}
+                            alt={podcast.podcast_name}
+                            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Mic className="h-16 w-16 text-muted-foreground" />
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-surface-subtle via-transparent to-transparent" />
                       </div>
 
                       <div className="p-6">
-                        {/* Category & Name */}
+                        {/* Podcast Name */}
                         <div className="mb-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Mic className="h-4 w-4 text-primary" />
-                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                              {podcast.podcast_categories?.[0]?.category_name || 'Business'}
-                            </span>
-                          </div>
                           <h3 className="text-2xl font-bold text-foreground mb-2 line-clamp-2">
                             {podcast.podcast_name}
                           </h3>
@@ -245,86 +171,92 @@ const PremiumPlacements = () => {
 
                         {/* Stats Grid */}
                         <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div className="flex items-center gap-2 text-sm">
-                            <Users className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-xs text-muted-foreground">Audience</p>
-                              <p className="font-semibold text-foreground">
-                                {analytics.audience_size > 0
-                                  ? `${(analytics.audience_size / 1000).toFixed(0)}K`
-                                  : 'N/A'}
-                              </p>
+                          {podcast.audience_size && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <Users className="h-4 w-4 text-primary" />
+                              <div>
+                                <p className="text-xs text-muted-foreground">Audience</p>
+                                <p className="font-semibold text-foreground">{podcast.audience_size}</p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <BarChart3 className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-xs text-muted-foreground">Episodes</p>
-                              <p className="font-semibold text-foreground">{analytics.episode_count}</p>
+                          )}
+                          {podcast.episode_count && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <BarChart3 className="h-4 w-4 text-primary" />
+                              <div>
+                                <p className="text-xs text-muted-foreground">Episodes</p>
+                                <p className="font-semibold text-foreground">{podcast.episode_count}</p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <Star className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-xs text-muted-foreground">Rating</p>
-                              <p className="font-semibold text-foreground">
-                                {analytics.rating ? `${analytics.rating.toFixed(1)}/5` : 'N/A'}
-                              </p>
+                          )}
+                          {podcast.rating && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <Star className="h-4 w-4 text-primary" />
+                              <div>
+                                <p className="text-xs text-muted-foreground">Rating</p>
+                                <p className="font-semibold text-foreground">{podcast.rating}</p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <TrendingUp className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-xs text-muted-foreground">Reach Score</p>
-                              <p className="font-semibold text-foreground">{Math.round(analytics.reach_score)}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* AI Summary */}
-                        <div className="mb-4 p-3 bg-gradient-to-br from-purple-500/10 to-primary/10 rounded-lg border border-purple-500/20">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Award className="h-4 w-4 text-purple-500" />
-                            <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
-                              Why This Show
-                            </p>
-                          </div>
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {aiSummary}
-                          </p>
-                        </div>
-
-                        {/* Features - Collapsible */}
-                        <div className="mb-6">
-                          <button
-                            onClick={() => toggleFeatures(podcast.podcast_id)}
-                            className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors py-2 min-h-[44px]"
-                          >
-                            <span>What's Included:</span>
-                            {expandedCards.has(podcast.podcast_id) ? (
-                              <ChevronUp className="h-5 w-5" />
-                            ) : (
-                              <ChevronDown className="h-5 w-5" />
-                            )}
-                          </button>
-                          {expandedCards.has(podcast.podcast_id) && (
-                            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                              {pricing.features.map((feature, idx) => (
-                                <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-                                  <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
-                                  {feature}
-                                </div>
-                              ))}
+                          )}
+                          {podcast.reach_score && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <TrendingUp className="h-4 w-4 text-primary" />
+                              <div>
+                                <p className="text-xs text-muted-foreground">Reach Score</p>
+                                <p className="font-semibold text-foreground">{podcast.reach_score}</p>
+                              </div>
                             </div>
                           )}
                         </div>
+
+                        {/* Why This Show */}
+                        {podcast.why_this_show && (
+                          <div className="mb-4 p-3 bg-gradient-to-br from-purple-500/10 to-primary/10 rounded-lg border border-purple-500/20">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Award className="h-4 w-4 text-purple-500" />
+                              <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
+                                Why This Show
+                              </p>
+                            </div>
+                            <p className="text-sm text-foreground leading-relaxed">
+                              {podcast.why_this_show}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Features - Collapsible */}
+                        {podcast.whats_included && podcast.whats_included.length > 0 && (
+                          <div className="mb-6">
+                            <button
+                              onClick={() => toggleFeatures(podcast.id)}
+                              className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors py-2 min-h-[44px]"
+                            >
+                              <span>What's Included:</span>
+                              {expandedCards.has(podcast.id) ? (
+                                <ChevronUp className="h-5 w-5" />
+                              ) : (
+                                <ChevronDown className="h-5 w-5" />
+                              )}
+                            </button>
+                            {expandedCards.has(podcast.id) && (
+                              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {podcast.whats_included.map((feature, idx) => (
+                                  <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                                    <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                                    {feature}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Price & CTA */}
                         <div className="border-t-2 border-border pt-6">
                           <div className="flex items-end justify-between mb-4">
                             <div>
                               <p className="text-xs text-muted-foreground uppercase tracking-wider">Investment</p>
-                              <p className="text-4xl font-bold text-foreground">{pricing.price}</p>
+                              <p className="text-4xl font-bold text-foreground">{podcast.price}</p>
                               <p className="text-xs text-muted-foreground mt-1">One-time placement</p>
                             </div>
                           </div>
@@ -334,8 +266,7 @@ const PremiumPlacements = () => {
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
               </div>
             )}
           </div>

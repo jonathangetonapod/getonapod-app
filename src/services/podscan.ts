@@ -237,6 +237,31 @@ export async function searchPodcastsByCategory(
 }
 
 /**
+ * Get a single podcast by ID
+ */
+export async function getPodcastById(podcastId: string): Promise<PodcastData> {
+  const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}`;
+  console.log('🎙️ Fetching podcast by ID:', podcastId);
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    console.error('❌ Podscan API error:', response.status, response.statusText);
+    throw new Error(`Failed to fetch podcast: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log('✅ Podcast fetched:', data);
+
+  return data;
+}
+
+/**
  * Get podcast analytics/stats
  */
 export interface PodcastAnalytics {

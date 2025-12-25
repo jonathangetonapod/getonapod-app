@@ -16,6 +16,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import AuthCallback from "./pages/admin/Callback";
 import BlogManagement from "./pages/admin/BlogManagement";
 import VideoManagement from "./pages/admin/VideoManagement";
+import PremiumPlacementsManagement from "./pages/admin/PremiumPlacementsManagement";
 import LeadsManagement from "./pages/admin/LeadsManagement";
 import Settings from "./pages/admin/Settings";
 
@@ -59,6 +60,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <VideoManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/premium-placements"
+              element={
+                <ProtectedRoute>
+                  <PremiumPlacementsManagement />
                 </ProtectedRoute>
               }
             />
