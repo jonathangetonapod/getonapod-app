@@ -31,16 +31,16 @@ serve(async (req) => {
     console.log('[Campaign Webhook] Received payload:', JSON.stringify(payload, null, 2))
 
     // Parse Email Bison webhook structure
-    // Structure: { event: {...}, data: { lead, campaign, scheduled_email, campaign_event } }
+    // Structure: { event: {...}, data: { lead, campaign, reply, scheduled_email, campaign_event } }
     const eventType = payload?.event?.type
     const leadData = payload?.data?.lead
     const campaignData = payload?.data?.campaign
-    const scheduledEmail = payload?.data?.scheduled_email
+    const replyData = payload?.data?.reply
     const campaignEvent = payload?.data?.campaign_event
 
-    // Only process reply events (adjust event type as needed)
-    // Common Email Bison event types: EMAIL_REPLY, EMAIL_REPLIED, LEAD_REPLIED
-    const replyEvents = ['EMAIL_REPLY', 'EMAIL_REPLIED', 'LEAD_REPLIED', 'REPLY_RECEIVED']
+    // Only process reply/interested events
+    // Email Bison event types: LEAD_INTERESTED, EMAIL_REPLIED, LEAD_REPLIED, etc.
+    const replyEvents = ['LEAD_INTERESTED', 'EMAIL_REPLY', 'EMAIL_REPLIED', 'LEAD_REPLIED', 'REPLY_RECEIVED']
 
     if (!replyEvents.includes(eventType)) {
       console.log(`[Campaign Webhook] Skipping event type: ${eventType}`)
@@ -63,15 +63,19 @@ serve(async (req) => {
     const name = [firstName, lastName].filter(Boolean).join(' ') || null
     const company = leadData?.company || null
     const campaignName = campaignData?.name || null
-    const replyContent = scheduledEmail?.email_body || null
-    const receivedAt = campaignEvent?.created_at || new Date().toISOString()
+
+    // Extract reply content - prefer text_body over html_body
+    const replyContent = replyData?.text_body || replyData?.html_body || null
+
+    // Use reply date if available, otherwise campaign event date
+    const receivedAt = replyData?.date_received || campaignEvent?.created_at || new Date().toISOString()
 
     // Validation
     if (!email) {
       throw new Error('Email is required')
     }
 
-    console.log('[Campaign Webhook] Processing reply from:', email)
+    console.log('[Campaign Webhook] Processing interested reply from:', email)
 
     // Initialize Supabase client with service role key
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
