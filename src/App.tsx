@@ -14,6 +14,10 @@ import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AuthCallback from "./pages/admin/Callback";
+import BlogManagement from "./pages/admin/BlogManagement";
+import VideoManagement from "./pages/admin/VideoManagement";
+import LeadsManagement from "./pages/admin/LeadsManagement";
+import Settings from "./pages/admin/Settings";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +43,38 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/blog"
+              element={
+                <ProtectedRoute>
+                  <BlogManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/videos"
+              element={
+                <ProtectedRoute>
+                  <VideoManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/leads"
+              element={
+                <ProtectedRoute>
+                  <LeadsManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/settings"
+              element={
+                <ProtectedRoute>
+                  <Settings />
                 </ProtectedRoute>
               }
             />

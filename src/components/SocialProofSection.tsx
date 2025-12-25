@@ -1,36 +1,21 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Play } from 'lucide-react';
-
-// VIDEO TESTIMONIALS - Replace these with your actual video embed URLs
-const videoTestimonials = [
-  {
-    videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ", // Replace with your video
-    thumbnail: "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg", // Auto-generated from YouTube ID
-    name: "Sarah Chen",
-    title: "Founder & CEO",
-    company: "TechStart Ventures",
-    quote: "Authority Lab helped me land 12 podcast appearances in 3 months.",
-  },
-  {
-    videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ", // Replace with your video
-    thumbnail: "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
-    name: "Michael Torres",
-    title: "Managing Partner",
-    company: "Torres Wealth Advisory",
-    quote: "I hated self-promotion. Now I just show up to interviews fully prepped.",
-  },
-  {
-    videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ", // Replace with your video
-    thumbnail: "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
-    name: "Emily Watson",
-    title: "CFO",
-    company: "GrowthScale Inc",
-    quote: "The content package alone is worth the investment.",
-  },
-];
+import { useQuery } from '@tanstack/react-query';
+import { getFeaturedTestimonials, getEmbedUrl } from '@/services/testimonials';
+import { Loader2 } from 'lucide-react';
 
 const SocialProofSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
+
+  // Fetch featured testimonials from database
+  const { data: testimonials = [], isLoading } = useQuery({
+    queryKey: ['featured-testimonials'],
+    queryFn: getFeaturedTestimonials
+  });
+
+  // Show nothing if no testimonials
+  if (!isLoading && testimonials.length === 0) {
+    return null;
+  }
 
   return (
     <section className="py-8 md:py-16 bg-surface-subtle">
@@ -50,42 +35,54 @@ const SocialProofSection = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {videoTestimonials.map((testimonial, index) => (
-              <div
-                key={index}
-                className="group bg-background rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-lg"
-                style={{ transitionDelay: `${index * 100}ms` }}
-              >
-                {/* Video Embed */}
-                <div className="relative aspect-video bg-muted">
-                  <iframe
-                    src={testimonial.videoUrl}
-                    title={`${testimonial.name} testimonial`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="absolute inset-0 w-full h-full"
-                  />
-                </div>
+          {isLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {testimonials.map((testimonial, index) => (
+                <div
+                  key={testimonial.id}
+                  className="group bg-background rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-lg"
+                  style={{ transitionDelay: `${index * 100}ms` }}
+                >
+                  {/* Video Embed */}
+                  <div className="relative aspect-video bg-muted">
+                    <iframe
+                      src={getEmbedUrl(testimonial.video_url)}
+                      title={`${testimonial.client_name} testimonial`}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="absolute inset-0 w-full h-full"
+                    />
+                  </div>
 
-                {/* Testimonial Info */}
-                <div className="p-6">
-                  <blockquote className="text-foreground mb-4 italic">
-                    "{testimonial.quote}"
-                  </blockquote>
-                  <div>
-                    <p className="font-semibold text-foreground">{testimonial.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {testimonial.title}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {testimonial.company}
-                    </p>
+                  {/* Testimonial Info */}
+                  <div className="p-6">
+                    {testimonial.quote && (
+                      <blockquote className="text-foreground mb-4 italic">
+                        "{testimonial.quote}"
+                      </blockquote>
+                    )}
+                    <div>
+                      <p className="font-semibold text-foreground">{testimonial.client_name}</p>
+                      {testimonial.client_title && (
+                        <p className="text-sm text-muted-foreground">
+                          {testimonial.client_title}
+                        </p>
+                      )}
+                      {testimonial.client_company && (
+                        <p className="text-sm text-muted-foreground">
+                          {testimonial.client_company}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

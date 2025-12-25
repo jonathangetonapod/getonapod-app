@@ -1,79 +1,116 @@
-import { useAuth } from '@/contexts/AuthContext'
-import { Button } from '@/components/ui/button'
+import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { LogOut, User } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
+import { FileText, Video, Users, TrendingUp } from 'lucide-react'
 
 const AdminDashboard = () => {
-  const { user, signOut } = useAuth()
-  const navigate = useNavigate()
-
-  const handleSignOut = async () => {
-    try {
-      await signOut()
-      toast.success('Signed out successfully')
-      navigate('/admin/login')
-    } catch (error) {
-      console.error('Error signing out:', error)
-      toast.error('Failed to sign out. Please try again.')
+  // These will be replaced with real data later
+  const stats = [
+    {
+      title: 'Total Blog Posts',
+      value: '6',
+      description: 'Published articles',
+      icon: FileText,
+      trend: '+2 this month'
+    },
+    {
+      title: 'Videos',
+      value: '0',
+      description: 'Video content',
+      icon: Video,
+      trend: 'Coming soon'
+    },
+    {
+      title: 'Email Leads',
+      value: '0',
+      description: 'Form submissions',
+      icon: Users,
+      trend: 'No data yet'
+    },
+    {
+      title: 'Site Traffic',
+      value: 'N/A',
+      description: 'Monthly visitors',
+      icon: TrendingUp,
+      trend: 'Analytics pending'
     }
-  }
+  ]
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          <Button onClick={handleSignOut} variant="outline" size="sm">
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
-          </Button>
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard Overview</h1>
+          <p className="text-muted-foreground mt-2">
+            Welcome to your Authority Lab command center
+          </p>
         </div>
-      </header>
 
-      <main className="container mx-auto px-4 py-8">
-        <Card className="max-w-2xl mx-auto">
+        {/* Stats Grid */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {stats.map((stat) => {
+            const Icon = stat.icon
+            return (
+              <Card key={stat.title}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {stat.description}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stat.trend}
+                  </p>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+
+        {/* Recent Activity */}
+        <Card>
           <CardHeader>
-            <CardTitle>Welcome to Admin Command Center</CardTitle>
+            <CardTitle>Quick Actions</CardTitle>
             <CardDescription>
-              This is a proof of concept. More features coming soon.
+              Manage your content and leads from here
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center space-x-4 p-4 bg-muted rounded-lg">
-              <Avatar className="h-16 w-16">
-                <AvatarImage src={user?.user_metadata?.avatar_url} />
-                <AvatarFallback>
-                  <User className="h-8 w-8" />
-                </AvatarFallback>
-              </Avatar>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
               <div>
-                <p className="font-medium">{user?.user_metadata?.full_name || 'User'}</p>
-                <p className="text-sm text-muted-foreground">{user?.email}</p>
+                <p className="font-medium">Blog Posts</p>
+                <p className="text-sm text-muted-foreground">
+                  Create, edit, and manage your blog content
+                </p>
               </div>
+              <FileText className="h-8 w-8 text-muted-foreground" />
             </div>
-
-            <div className="space-y-2">
-              <h3 className="font-semibold">User Information</h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">User ID:</div>
-                <div className="font-mono text-xs">{user?.id}</div>
-                <div className="text-muted-foreground">Last Sign In:</div>
-                <div>{new Date(user?.last_sign_in_at || '').toLocaleString()}</div>
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Videos</p>
+                <p className="text-sm text-muted-foreground">
+                  Upload and manage video content
+                </p>
               </div>
+              <Video className="h-8 w-8 text-muted-foreground" />
             </div>
-
-            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
-              <p className="text-sm text-blue-900 dark:text-blue-100">
-                Authentication is working! This is a protected route that requires Google OAuth login.
-              </p>
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Email Leads</p>
+                <p className="text-sm text-muted-foreground">
+                  View and export lead submissions
+                </p>
+              </div>
+              <Users className="h-8 w-8 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   )
 }
 
