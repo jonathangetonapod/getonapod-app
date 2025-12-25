@@ -1,0 +1,6 @@
+# Ignore Supabase functions (deployed separately to Supabase, not Railway)
+supabase/
+
+# Ignore other build artifacts
+node_modules/
+.git/
