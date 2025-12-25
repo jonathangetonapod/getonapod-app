@@ -82,6 +82,38 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Check for duplicates - same email and campaign within 1 hour window
+    const oneHourAgo = new Date(new Date(receivedAt).getTime() - 60 * 60 * 1000).toISOString()
+    const oneHourLater = new Date(new Date(receivedAt).getTime() + 60 * 60 * 1000).toISOString()
+
+    const { data: existingReply } = await supabase
+      .from('campaign_replies')
+      .select('id, email, campaign_name')
+      .eq('email', email)
+      .eq('campaign_name', campaignName)
+      .gte('received_at', oneHourAgo)
+      .lte('received_at', oneHourLater)
+      .limit(1)
+      .single()
+
+    if (existingReply) {
+      console.log('[Campaign Webhook] Duplicate detected - reply already exists:', existingReply.id)
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Duplicate reply ignored - already exists',
+          reply_id: existingReply.id,
+        }),
+        {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    }
+
     // Insert campaign reply
     const { data, error } = await supabase
       .from('campaign_replies')
