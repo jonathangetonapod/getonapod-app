@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus, Edit, Trash2, Star, Eye, EyeOff, Loader2, Sparkles, Download, Users, BarChart3, TrendingUp, Award, CheckCircle2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Star, Eye, EyeOff, Loader2, Sparkles, Download, Users, BarChart3, TrendingUp, Award, CheckCircle2, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   getAllPremiumPodcasts,
@@ -33,13 +33,23 @@ import {
 } from '@/services/premiumPodcasts'
 import { getPodcastById } from '@/services/podscan'
 import { generatePodcastSummary, generatePodcastFeatures } from '@/services/ai'
+import { autoCategorizePodcast } from '@/services/categorization'
+import { PODCAST_CATEGORIES } from '@/lib/categories'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const PremiumPlacementsManagement = () => {
   const queryClient = useQueryClient()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingPodcast, setEditingPodcast] = useState<PremiumPodcast | null>(null)
   const [isFetchingDetails, setIsFetchingDetails] = useState(false)
+  const [isAutoCategorizing, setIsAutoCategorizing] = useState(false)
   const [formData, setFormData] = useState<CreatePremiumPodcastInput>({
     podscan_id: '',
     podcast_name: '',
@@ -52,6 +62,7 @@ const PremiumPlacementsManagement = () => {
     whats_included: [],
     price: '$3,500',
     my_cost: '',
+    category: undefined,
     notes: '',
     is_featured: false,
     display_order: 0
@@ -169,6 +180,14 @@ const PremiumPlacementsManagement = () => {
         publisher_name: podcastData.publisher_name,
       })
 
+      // Auto-categorize using Claude
+      toast.info('🎯 Auto-categorizing podcast...')
+      const suggestedCategory = await autoCategorizePodcast({
+        podcastName: podcastData.podcast_name,
+        description: podcastData.podcast_description,
+        whyThisShow: whyThisShow,
+      })
+
       setFormData({
         ...formData,
         podcast_name: podcastData.podcast_name || 'Unknown Podcast',
@@ -180,15 +199,43 @@ const PremiumPlacementsManagement = () => {
         why_this_show: whyThisShow,
         whats_included: defaultInclusions,
         price: suggestedPrice,
+        category: suggestedCategory,
         notes: `Host: ${podcastData.publisher_name || 'N/A'}\nCategories: ${podcastData.podcast_categories?.map(c => c.category_name).join(', ') || 'N/A'}`
       })
 
-      toast.success(`✨ AI summary generated for "${podcastData.podcast_name}"`)
+      toast.success(`✨ Categorized as "${suggestedCategory}" - ${podcastData.podcast_name}`)
     } catch (error: any) {
       console.error('❌ Failed to fetch podcast:', error)
       toast.error(error.message || 'Failed to fetch podcast details. Check console for details.')
     } finally {
       setIsFetchingDetails(false)
+    }
+  }
+
+  const handleAutoCategorize = async () => {
+    if (!formData.podcast_name) {
+      toast.error('Please add a podcast name first')
+      return
+    }
+
+    setIsAutoCategorizing(true)
+    try {
+      const suggestedCategory = await autoCategorizePodcast({
+        podcastName: formData.podcast_name,
+        description: formData.why_this_show,
+      })
+
+      setFormData({
+        ...formData,
+        category: suggestedCategory,
+      })
+
+      toast.success(`✨ Suggested category: ${suggestedCategory}`)
+    } catch (error: any) {
+      console.error('Auto-categorization failed:', error)
+      toast.error('Failed to auto-categorize. Please select manually.')
+    } finally {
+      setIsAutoCategorizing(false)
     }
   }
 
@@ -207,6 +254,7 @@ const PremiumPlacementsManagement = () => {
         whats_included: podcast.whats_included,
         price: podcast.price,
         my_cost: podcast.my_cost || '',
+        category: podcast.category || undefined,
         notes: podcast.notes || '',
         is_featured: podcast.is_featured,
         display_order: podcast.display_order
@@ -229,6 +277,7 @@ const PremiumPlacementsManagement = () => {
           'Social media promotion'
         ],
         price: '$3,500',
+        category: undefined,
         notes: '',
         is_featured: false,
         display_order: podcasts.length
@@ -656,6 +705,47 @@ const PremiumPlacementsManagement = () => {
                     onChange={(e) => setFormData({ ...formData, why_this_show: e.target.value })}
                     rows={4}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={formData.category || ''}
+                      onValueChange={(value) => setFormData({ ...formData, category: value })}
+                    >
+                      <SelectTrigger id="category">
+                        <SelectValue placeholder="Select a category..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PODCAST_CATEGORIES.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleAutoCategorize}
+                          disabled={isAutoCategorizing || !formData.podcast_name}
+                        >
+                          {isAutoCategorizing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Wand2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Auto-categorize with AI</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
 
                 <div className="space-y-2">

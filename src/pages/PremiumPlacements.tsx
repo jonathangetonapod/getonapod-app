@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2, ChevronDown, ChevronUp, ShoppingCart } from 'lucide-react';
+import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2, ChevronDown, ChevronUp, ShoppingCart, Search, X, SlidersHorizontal } from 'lucide-react';
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts';
 import { useToast } from '@/hooks/use-toast';
 import { SocialProofNotifications } from '@/components/SocialProofNotifications';
@@ -12,6 +12,14 @@ import { CartButton } from '@/components/CartButton';
 import { CartDrawer } from '@/components/CartDrawer';
 import { useCartStore } from '@/stores/cartStore';
 import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -19,16 +27,54 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { PODCAST_CATEGORIES } from '@/lib/categories';
 
-const categories = ["All", "SaaS & Tech", "Entrepreneurship", "Finance & Tech", "Business Growth", "Leadership", "Technology"];
+const AUDIENCE_TIERS = [
+  { label: "All Sizes", value: "all", min: 0, max: Infinity },
+  { label: "Small (0-25K)", value: "small", min: 0, max: 25000 },
+  { label: "Medium (25K-50K)", value: "medium", min: 25000, max: 50000 },
+  { label: "Large (50K-100K)", value: "large", min: 50000, max: 100000 },
+  { label: "Mega (100K+)", value: "mega", min: 100000, max: Infinity },
+];
+const PRICE_RANGES = [
+  { label: "All Prices", value: "all", min: 0, max: Infinity },
+  { label: "Under $1,000", value: "under1k", min: 0, max: 1000 },
+  { label: "$1,000 - $2,500", value: "1k-2.5k", min: 1000, max: 2500 },
+  { label: "$2,500 - $5,000", value: "2.5k-5k", min: 2500, max: 5000 },
+  { label: "$5,000 - $10,000", value: "5k-10k", min: 5000, max: 10000 },
+  { label: "$10,000+", value: "10k+", min: 10000, max: Infinity },
+];
+const SORT_OPTIONS = [
+  { label: "Featured", value: "featured" },
+  { label: "Price: Low to High", value: "price-asc" },
+  { label: "Price: High to Low", value: "price-desc" },
+  { label: "Audience: Large to Small", value: "audience-desc" },
+  { label: "Audience: Small to Large", value: "audience-asc" },
+  { label: "Name: A-Z", value: "name-asc" },
+];
 
 const PremiumPlacements = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
-  const [selectedCategory, setSelectedCategory] = useState("All");
   const [podcasts, setPodcasts] = useState<PremiumPodcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [modalPodcast, setModalPodcast] = useState<PremiumPodcast | null>(null);
+
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedAudienceTier, setSelectedAudienceTier] = useState("all");
+  const [selectedPriceRange, setSelectedPriceRange] = useState("all");
+  const [sortBy, setSortBy] = useState("featured");
+
   const { toast: toastHook } = useToast();
 
   // Cart store
@@ -89,13 +135,101 @@ const PremiumPlacements = () => {
     loadPodcasts();
   }, []);
 
-  const filteredPlacements = selectedCategory === "All"
-    ? podcasts
-    : podcasts.filter(p => {
-        const primaryCategory = p.podcast_categories?.[0]?.category_name || '';
-        return primaryCategory.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-               selectedCategory.toLowerCase().includes(primaryCategory.toLowerCase());
-      });
+  // Helper functions
+  const parsePrice = (priceString: string): number => {
+    return parseFloat(priceString.replace(/[$,]/g, ''));
+  };
+
+  const parseAudience = (audienceString: string | undefined): number => {
+    if (!audienceString) return 0;
+    return parseFloat(audienceString.replace(/,/g, ''));
+  };
+
+  // Comprehensive filtering and sorting
+  const filteredAndSortedPodcasts = useMemo(() => {
+    let filtered = [...podcasts];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(p =>
+        p.podcast_name.toLowerCase().includes(query) ||
+        p.why_this_show?.toLowerCase().includes(query) ||
+        p.category?.toLowerCase().includes(query)
+      );
+    }
+
+    // Category filter
+    if (selectedCategory) {
+      filtered = filtered.filter(p => p.category === selectedCategory);
+    }
+
+    // Audience tier filter
+    if (selectedAudienceTier !== "all") {
+      const tier = AUDIENCE_TIERS.find(t => t.value === selectedAudienceTier);
+      if (tier) {
+        filtered = filtered.filter(p => {
+          const audience = parseAudience(p.audience_size);
+          return audience >= tier.min && audience < tier.max;
+        });
+      }
+    }
+
+    // Price range filter
+    if (selectedPriceRange !== "all") {
+      const range = PRICE_RANGES.find(r => r.value === selectedPriceRange);
+      if (range) {
+        filtered = filtered.filter(p => {
+          const price = parsePrice(p.price);
+          return price >= range.min && price < range.max;
+        });
+      }
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "featured":
+          // Featured first, then by display order
+          if (a.is_featured !== b.is_featured) {
+            return a.is_featured ? -1 : 1;
+          }
+          return a.display_order - b.display_order;
+
+        case "price-asc":
+          return parsePrice(a.price) - parsePrice(b.price);
+
+        case "price-desc":
+          return parsePrice(b.price) - parsePrice(a.price);
+
+        case "audience-desc":
+          return parseAudience(b.audience_size) - parseAudience(a.audience_size);
+
+        case "audience-asc":
+          return parseAudience(a.audience_size) - parseAudience(b.audience_size);
+
+        case "name-asc":
+          return a.podcast_name.localeCompare(b.podcast_name);
+
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  }, [podcasts, searchQuery, selectedCategory, selectedAudienceTier, selectedPriceRange, sortBy]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedCategory(null);
+    setSelectedAudienceTier("all");
+    setSelectedPriceRange("all");
+    setSortBy("featured");
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery || selectedCategory || selectedAudienceTier !== "all" || selectedPriceRange !== "all" || sortBy !== "featured";
 
   return (
     <main className="min-h-screen bg-background">
@@ -131,22 +265,186 @@ const PremiumPlacements = () => {
         </div>
       </section>
 
-      {/* Filter Section */}
-      <section className="pb-12">
-        <div className="container mx-auto">
-          <div className="flex items-center gap-4 overflow-x-auto pb-4">
-            <Filter className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-            {categories.map((category) => (
+      {/* Filter & Search Section */}
+      <section className="pb-8 border-b">
+        <div className="container mx-auto space-y-4">
+          {/* Search and Sort */}
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Search Bar */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search podcasts by name, category, or description..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-10"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                >
+                  <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort Dropdown */}
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full md:w-[220px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Mobile Filter Button */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="md:hidden">
+                  <SlidersHorizontal className="h-4 w-4 mr-2" />
+                  Filters
+                  {hasActiveFilters && (
+                    <Badge variant="destructive" className="ml-2 rounded-full px-2">
+                      {[searchQuery, selectedCategory, selectedAudienceTier !== "all", selectedPriceRange !== "all"].filter(Boolean).length}
+                    </Badge>
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[300px] overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>Filters</SheetTitle>
+                  <SheetDescription>
+                    Refine your podcast search
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="space-y-6 mt-6">
+                  {/* Mobile Filters */}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Audience Size</label>
+                    <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AUDIENCE_TIERS.map((tier) => (
+                          <SelectItem key={tier.value} value={tier.value}>
+                            {tier.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Price Range</label>
+                    <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRICE_RANGES.map((range) => (
+                          <SelectItem key={range.value} value={range.value}>
+                            {range.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {hasActiveFilters && (
+                    <Button onClick={clearFilters} variant="outline" className="w-full">
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Filters
+                    </Button>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Desktop Filters */}
+          <div className="hidden md:flex items-center gap-3">
+            {/* Category Pills */}
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Category:</span>
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
-                key={category}
-                variant={selectedCategory === category ? "default" : "outline"}
+                variant={selectedCategory === null ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSelectedCategory(category)}
-                className="whitespace-nowrap"
+                onClick={() => setSelectedCategory(null)}
+                className="h-8"
               >
-                {category}
+                All
               </Button>
-            ))}
+              {PODCAST_CATEGORIES.map((category) => (
+                <Button
+                  key={category}
+                  variant={selectedCategory === category ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedCategory(category)}
+                  className="h-8 whitespace-nowrap"
+                >
+                  {category}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden md:flex items-center gap-4">
+            {/* Audience Tier Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Audience:</span>
+              <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUDIENCE_TIERS.map((tier) => (
+                    <SelectItem key={tier.value} value={tier.value}>
+                      {tier.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Price Range Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Price:</span>
+              <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRICE_RANGES.map((range) => (
+                    <SelectItem key={range.value} value={range.value}>
+                      {range.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <Button onClick={clearFilters} variant="ghost" size="sm" className="h-9">
+                <X className="h-4 w-4 mr-2" />
+                Clear All
+              </Button>
+            )}
+          </div>
+
+          {/* Results Count */}
+          <div className="flex items-center justify-between text-sm text-muted-foreground pt-2">
+            <span>
+              Showing <span className="font-semibold text-foreground">{filteredAndSortedPodcasts.length}</span> of{' '}
+              <span className="font-semibold text-foreground">{podcasts.length}</span> podcasts
+            </span>
           </div>
         </div>
       </section>
@@ -165,9 +463,23 @@ const PremiumPlacements = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <span className="ml-3 text-muted-foreground">Loading premium podcasts...</span>
               </div>
+            ) : filteredAndSortedPodcasts.length === 0 ? (
+              <div className="text-center py-20">
+                <Filter className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No podcasts found</h3>
+                <p className="text-muted-foreground mb-4">
+                  Try adjusting your filters or search query
+                </p>
+                {hasActiveFilters && (
+                  <Button onClick={clearFilters} variant="outline">
+                    <X className="h-4 w-4 mr-2" />
+                    Clear All Filters
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredPlacements.map((podcast, index) => (
+                {filteredAndSortedPodcasts.map((podcast, index) => (
                     <div
                       key={podcast.id}
                       className="bg-surface-subtle rounded-2xl border-2 border-border hover:border-primary/50 transition-all duration-300 hover:shadow-2xl relative overflow-hidden group"

@@ -23,6 +23,8 @@ import PremiumPlacementsManagement from "./pages/admin/PremiumPlacementsManageme
 import CustomersManagement from "./pages/admin/CustomersManagement";
 import LeadsManagement from "./pages/admin/LeadsManagement";
 import Settings from "./pages/admin/Settings";
+import Analytics from "./pages/admin/Analytics";
+import AnalyticsTest from "./pages/AnalyticsTest";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +46,9 @@ const App = () => (
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/checkout/success" element={<CheckoutSuccess />} />
             <Route path="/checkout/canceled" element={<CheckoutCanceled />} />
+
+            {/* Test route - no auth required */}
+            <Route path="/test-analytics" element={<AnalyticsTest />} />
 
             {/* Admin routes */}
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
@@ -102,6 +107,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Settings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/analytics"
+              element={
+                <ProtectedRoute>
+                  <Analytics />
                 </ProtectedRoute>
               }
             />
