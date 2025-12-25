@@ -9,6 +9,7 @@ import Index from "./pages/Index";
 import Resources from "./pages/Resources";
 import PremiumPlacements from "./pages/PremiumPlacements";
 import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 import Course from "./pages/Course";
 import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
@@ -18,6 +19,7 @@ import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AuthCallback from "./pages/admin/Callback";
 import BlogManagement from "./pages/admin/BlogManagement";
+import BlogEditor from "./pages/admin/BlogEditor";
 import VideoManagement from "./pages/admin/VideoManagement";
 import PremiumPlacementsManagement from "./pages/admin/PremiumPlacementsManagement";
 import CustomersManagement from "./pages/admin/CustomersManagement";
@@ -40,6 +42,7 @@ const App = () => (
             <Route path="/resources" element={<Resources />} />
             <Route path="/premium-placements" element={<PremiumPlacements />} />
             <Route path="/blog" element={<Blog />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/course" element={<Course />} />
 
             {/* Checkout routes */}
@@ -67,6 +70,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <BlogManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/blog/new"
+              element={
+                <ProtectedRoute>
+                  <BlogEditor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/blog/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <BlogEditor />
                 </ProtectedRoute>
               }
             />
