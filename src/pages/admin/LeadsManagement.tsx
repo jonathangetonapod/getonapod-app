@@ -108,7 +108,11 @@ const LeadsManagement = () => {
 
     // Type filter
     if (typeFilter !== 'all') {
-      filtered = filtered.filter((r) => r.lead_type === typeFilter)
+      if (typeFilter === 'unlabeled') {
+        filtered = filtered.filter((r) => !r.lead_type)
+      } else {
+        filtered = filtered.filter((r) => r.lead_type === typeFilter)
+      }
     }
 
     // Status filter
@@ -434,9 +438,10 @@ const LeadsManagement = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="sales">Sales</SelectItem>
-                  <SelectItem value="podcasts">Premium Placements</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  <SelectItem value="unlabeled">Unlabeled Only</SelectItem>
+                  <SelectItem value="sales">Sales Only</SelectItem>
+                  <SelectItem value="podcasts">Premium Placements Only</SelectItem>
+                  <SelectItem value="other">Other Only</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
