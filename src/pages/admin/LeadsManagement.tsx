@@ -164,9 +164,14 @@ const LeadsManagement = () => {
 
       if (error) throw error
 
+      const typeLabels: Record<string, string> = {
+        sales: 'sales',
+        podcasts: 'premium placement',
+        other: 'other'
+      }
       toast({
         title: 'Lead type updated',
-        description: `Marked as ${leadType}`,
+        description: `Marked as ${typeLabels[leadType] || leadType}`,
       })
 
       loadReplies()
@@ -246,7 +251,7 @@ const LeadsManagement = () => {
 
     const variants: Record<string, any> = {
       sales: { variant: 'default', label: 'Sales', className: 'bg-blue-500' },
-      podcasts: { variant: 'default', label: 'Podcasts', className: 'bg-purple-500' },
+      podcasts: { variant: 'default', label: 'Premium Placement', className: 'bg-purple-500' },
       other: { variant: 'outline', label: 'Other' },
     }
     const config = variants[leadType] || variants.other
@@ -396,11 +401,11 @@ const LeadsManagement = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Podcast Leads</CardTitle>
+              <CardTitle className="text-sm font-medium">Premium Placement Leads</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.podcasts}</div>
-              <p className="text-xs text-muted-foreground">Labeled as podcasts</p>
+              <p className="text-xs text-muted-foreground">Labeled as premium placements</p>
             </CardContent>
           </Card>
         </div>
@@ -430,7 +435,7 @@ const LeadsManagement = () => {
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="sales">Sales</SelectItem>
-                  <SelectItem value="podcasts">Podcasts</SelectItem>
+                  <SelectItem value="podcasts">Premium Placements</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
@@ -535,7 +540,7 @@ const LeadsManagement = () => {
                                 className="text-xs"
                               >
                                 <Tag className="h-3 w-3 mr-1" />
-                                Podcasts
+                                Premium Placement
                               </Button>
                             </>
                           )}
