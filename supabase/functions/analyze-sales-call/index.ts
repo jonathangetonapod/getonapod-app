@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { sales_call_id, recording_id } = await req.json()
+    const { sales_call_id, recording_id: requestRecordingId } = await req.json()
 
     if (!sales_call_id) {
       throw new Error('sales_call_id is required')
@@ -46,10 +46,17 @@ serve(async (req) => {
       throw new Error('Sales call not found')
     }
 
+    // Use recording_id from request or fallback to database value
+    const recording_id = requestRecordingId || salesCall.recording_id
+
+    if (!recording_id) {
+      throw new Error('recording_id not found')
+    }
+
     // Fetch full transcript from Fathom if not already stored
     let transcript = salesCall.transcript
 
-    if (!transcript && recording_id) {
+    if (!transcript) {
       console.log(`[Analyze Call] Fetching transcript from Fathom for recording ${recording_id}`)
       const transcriptResponse = await fetch(
         `https://api.fathom.ai/external/v1/recordings/${recording_id}/transcript`,
@@ -69,11 +76,15 @@ serve(async (req) => {
           .from('sales_calls')
           .update({ transcript })
           .eq('id', sales_call_id)
+      } else {
+        const errorText = await transcriptResponse.text()
+        console.error('[Analyze Call] Failed to fetch transcript from Fathom:', errorText)
+        throw new Error(`Failed to fetch transcript from Fathom: ${transcriptResponse.status}`)
       }
     }
 
     if (!transcript || transcript.length === 0) {
-      throw new Error('No transcript available for analysis')
+      throw new Error('No transcript available for analysis. The call may still be processing in Fathom.')
     }
 
     // Build transcript text for AI analysis
