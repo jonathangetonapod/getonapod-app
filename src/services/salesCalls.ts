@@ -187,9 +187,10 @@ export const getTopRecommendations = async () => {
   return [...highPriority, ...mediumPriority, ...strengths].slice(0, 3)
 }
 
-// Get recent calls for list view
+// Get recent calls for list view with pagination
 export const getRecentSalesCalls = async (
-  limit = 10,
+  page = 1,
+  pageSize = 10,
   showHidden = false,
   callTypeFilter: CallType | 'all' = 'all'
 ) => {
@@ -198,7 +199,7 @@ export const getRecentSalesCalls = async (
     .select(`
       *,
       analysis:sales_call_analysis(*)
-    `)
+    `, { count: 'exact' })
 
   // Only filter out hidden calls if showHidden is false
   if (!showHidden) {
@@ -210,9 +211,11 @@ export const getRecentSalesCalls = async (
     query = query.eq('call_type', callTypeFilter)
   }
 
-  const { data: calls, error: callsError } = await query
+  const offset = (page - 1) * pageSize
+
+  const { data: calls, error: callsError, count } = await query
     .order('recording_start_time', { ascending: false })
-    .limit(limit)
+    .range(offset, offset + pageSize - 1)
 
   if (callsError) {
     console.error('Error fetching sales calls:', callsError)
@@ -220,10 +223,17 @@ export const getRecentSalesCalls = async (
   }
 
   // Transform the data to flatten analysis
-  return (calls || []).map(call => ({
+  const transformedCalls = (calls || []).map(call => ({
     ...call,
     analysis: call.analysis?.[0] || undefined,
   }))
+
+  return {
+    calls: transformedCalls,
+    totalCount: count || 0,
+    totalPages: Math.ceil((count || 0) / pageSize),
+    currentPage: page,
+  }
 }
 
 // Manually trigger analysis for a specific call

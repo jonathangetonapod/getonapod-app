@@ -57,7 +57,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 const AISalesDirector = () => {
   const [syncing, setSyncing] = useState(false)
   const [daysBack, setDaysBack] = useState(30)
-  const [callsLimit, setCallsLimit] = useState(10)
+  const [currentPage, setCurrentPage] = useState(1)
   const [showHidden, setShowHidden] = useState(false)
   const [callTypeFilter, setCallTypeFilter] = useState<CallType | 'all'>('all')
   const [analyzingCalls, setAnalyzingCalls] = useState<Record<string, boolean>>({})
@@ -78,11 +78,15 @@ const AISalesDirector = () => {
     queryFn: getTopRecommendations,
   })
 
-  // Fetch recent calls
-  const { data: recentCalls, isLoading: callsLoading, refetch: refetchCalls } = useQuery({
-    queryKey: ['recent-sales-calls', callsLimit, showHidden, callTypeFilter],
-    queryFn: () => getRecentSalesCalls(callsLimit, showHidden, callTypeFilter),
+  // Fetch recent calls with pagination
+  const { data: callsData, isLoading: callsLoading, refetch: refetchCalls } = useQuery({
+    queryKey: ['recent-sales-calls', currentPage, showHidden, callTypeFilter],
+    queryFn: () => getRecentSalesCalls(currentPage, 10, showHidden, callTypeFilter),
   })
+
+  const recentCalls = callsData?.calls || []
+  const totalPages = callsData?.totalPages || 0
+  const totalCount = callsData?.totalCount || 0
 
   // Fetch unclassified count
   const { data: unclassifiedCount } = useQuery({
@@ -90,6 +94,11 @@ const AISalesDirector = () => {
     queryFn: getUnclassifiedCallsCount,
     refetchInterval: 10000, // Refetch every 10 seconds
   })
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [showHidden, callTypeFilter])
 
   const handleSyncCalls = async () => {
     try {
@@ -935,14 +944,59 @@ const AISalesDirector = () => {
                       </div>
                     )
                   })}
-                  {recentCalls.length >= callsLimit && (
-                    <div className="flex justify-center pt-4">
-                      <Button
-                        variant="outline"
-                        onClick={() => setCallsLimit(prev => prev + 10)}
-                      >
-                        Load More
-                      </Button>
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-6 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Page {currentPage} of {totalPages} ({totalCount} total calls)
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={currentPage === 1}
+                        >
+                          Previous
+                        </Button>
+
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum: number
+                            if (totalPages <= 5) {
+                              pageNum = i + 1
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i
+                            } else {
+                              pageNum = currentPage - 2 + i
+                            }
+
+                            return (
+                              <Button
+                                key={pageNum}
+                                variant={currentPage === pageNum ? "default" : "outline"}
+                                size="sm"
+                                className="w-9"
+                                onClick={() => setCurrentPage(pageNum)}
+                              >
+                                {pageNum}
+                              </Button>
+                            )
+                          })}
+                        </div>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                          disabled={currentPage === totalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
