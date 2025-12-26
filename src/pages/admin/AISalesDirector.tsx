@@ -59,7 +59,16 @@ const AISalesDirector = () => {
 
       const result = await syncFathomCalls()
 
-      toast.success(`Synced ${result.data.new_calls} new calls, ${result.data.analyzed_calls} analyzed`)
+      const { new_calls, analyzed_calls, total_meetings } = result.data
+
+      if (new_calls > 0) {
+        toast.success(
+          `Synced ${new_calls} new call${new_calls > 1 ? 's' : ''}! ${analyzed_calls > 0 ? `AI analyzed ${analyzed_calls} call${analyzed_calls > 1 ? 's' : ''}.` : 'Analysis in progress...'}`,
+          { duration: 5000 }
+        )
+      } else {
+        toast.info(`No new calls found. Checked ${total_meetings} meeting${total_meetings !== 1 ? 's' : ''}.`)
+      }
 
       // Refetch all data
       refetchStats()
@@ -324,13 +333,8 @@ const AISalesDirector = () => {
           {/* Recent Calls */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Recent Call Analysis</CardTitle>
-                  <CardDescription>Your latest Fathom recordings</CardDescription>
-                </div>
-                <Button variant="ghost" size="sm">View All</Button>
-              </div>
+              <CardTitle>Recent Call Analysis</CardTitle>
+              <CardDescription>Your latest Fathom recordings</CardDescription>
             </CardHeader>
             <CardContent>
               {callsLoading ? (
@@ -383,7 +387,7 @@ const AISalesDirector = () => {
                             <p className="font-medium text-sm truncate">
                               {call.title || call.meeting_title || 'Untitled Call'}
                             </p>
-                            {call.analysis && (
+                            {call.analysis ? (
                               <Badge
                                 variant="secondary"
                                 className={`text-xs ${
@@ -393,6 +397,11 @@ const AISalesDirector = () => {
                                 }`}
                               >
                                 {score}/10
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Analyzing...
                               </Badge>
                             )}
                           </div>
