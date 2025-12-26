@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send, Archive, ArchiveRestore, LayoutList, Layers } from 'lucide-react'
+import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send, Archive, ArchiveRestore, LayoutList, Layers, RefreshCw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 import { LeadSwipeCard } from '@/components/admin/LeadSwipeCard'
@@ -61,6 +61,7 @@ const LeadsManagement = () => {
   const [viewMode, setViewMode] = useState<'list' | 'cards'>('list')
   const [cardIndex, setCardIndex] = useState(0)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [threadDialogOpen, setThreadDialogOpen] = useState(false)
   const [loadingThread, setLoadingThread] = useState(false)
@@ -597,6 +598,43 @@ const LeadsManagement = () => {
     await updateLeadType(reply.id, 'podcasts')
   }
 
+  const handleSync = async () => {
+    try {
+      setSyncing(true)
+
+      toast({
+        title: 'Syncing...',
+        description: 'Checking Email Bison for new replies',
+      })
+
+      const { data, error } = await supabase.functions.invoke('sync-replies')
+
+      if (error) throw error
+
+      if (!data.success) {
+        throw new Error(data.error || 'Sync failed')
+      }
+
+      const { new_replies, updated_replies, total_processed } = data.data
+
+      // Reload replies to show new ones
+      await loadReplies()
+
+      toast({
+        title: 'Sync Complete!',
+        description: `Processed ${total_processed} replies. ${new_replies} new, ${updated_replies} updated.`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Sync Failed',
+        description: error.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const exportCSV = () => {
     const headers = ['Email', 'Name', 'Company', 'Campaign', 'Lead Type', 'Status', 'Received At']
     const rows = filteredReplies.map((r) => [
@@ -663,6 +701,14 @@ const LeadsManagement = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={handleSync}
+              variant="outline"
+              disabled={syncing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync'}
+            </Button>
             <Button
               onClick={() => {
                 setViewMode(viewMode === 'list' ? 'cards' : 'list')
