@@ -690,107 +690,186 @@ const LeadsManagement = () => {
 
         {/* Email Thread Modal */}
         <Dialog open={threadDialogOpen} onOpenChange={setThreadDialogOpen}>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Email Thread</DialogTitle>
+          <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader className="border-b pb-4">
+              <DialogTitle className="text-2xl flex items-center gap-2">
+                <MessageSquare className="h-6 w-6 text-primary" />
+                Email Conversation
+              </DialogTitle>
               <DialogDescription>
-                View the full email conversation
+                Full email thread with context
               </DialogDescription>
             </DialogHeader>
-            {loadingThread ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : threadData ? (
-              <div className="space-y-4">
-                {/* Older Messages */}
-                {threadData.data?.older_messages && threadData.data.older_messages.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-muted-foreground">Earlier Messages</h3>
-                    {threadData.data.older_messages.map((msg: any) => (
-                      <Card key={msg.id} className="p-4">
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-medium">{msg.from_name || msg.from_email_address}</p>
-                              <p className="text-sm text-muted-foreground">{msg.from_email_address}</p>
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(msg.date_received).toLocaleString()}
-                            </span>
-                          </div>
-                          {msg.subject && (
-                            <p className="text-sm font-medium">Subject: {msg.subject}</p>
-                          )}
-                          <div
-                            className="text-sm prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{ __html: msg.html_body || msg.text_body }}
-                          />
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-
-                {/* Current Reply */}
-                {threadData.data?.current_reply && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-primary">Current Reply</h3>
-                    <Card key={threadData.data.current_reply.id} className="p-4 border-primary">
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="font-medium">{threadData.data.current_reply.from_name || threadData.data.current_reply.from_email_address}</p>
-                            <p className="text-sm text-muted-foreground">{threadData.data.current_reply.from_email_address}</p>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(threadData.data.current_reply.date_received).toLocaleString()}
-                          </span>
-                        </div>
-                        {threadData.data.current_reply.subject && (
-                          <p className="text-sm font-medium">Subject: {threadData.data.current_reply.subject}</p>
-                        )}
-                        <div
-                          className="text-sm prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{ __html: threadData.data.current_reply.html_body || threadData.data.current_reply.text_body }}
-                        />
+            <div className="flex-1 overflow-y-auto pr-2">
+              {loadingThread ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+                  <p className="text-sm text-muted-foreground">Loading conversation...</p>
+                </div>
+              ) : threadData ? (
+                <div className="space-y-6 py-4">
+                  {/* Older Messages */}
+                  {threadData.data?.older_messages && threadData.data.older_messages.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-border"></div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Earlier in thread</span>
+                        <div className="h-px flex-1 bg-border"></div>
                       </div>
-                    </Card>
-                  </div>
-                )}
-
-                {/* Newer Messages */}
-                {threadData.data?.newer_messages && threadData.data.newer_messages.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-muted-foreground">Follow-up Messages</h3>
-                    {threadData.data.newer_messages.map((msg: any) => (
-                      <Card key={msg.id} className="p-4">
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-medium">{msg.from_name || msg.from_email_address}</p>
-                              <p className="text-sm text-muted-foreground">{msg.from_email_address}</p>
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(msg.date_received).toLocaleString()}
-                            </span>
-                          </div>
-                          {msg.subject && (
-                            <p className="text-sm font-medium">Subject: {msg.subject}</p>
-                          )}
-                          <div
-                            className="text-sm prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{ __html: msg.html_body || msg.text_body }}
-                          />
+                      {threadData.data.older_messages.map((msg: any, index: number) => (
+                        <div key={msg.id} className="relative pl-8">
+                          <div className="absolute left-0 top-0 bottom-0 w-px bg-border"></div>
+                          <div className="absolute left-0 top-6 w-2 h-2 rounded-full bg-muted-foreground"></div>
+                          <Card className="hover:shadow-md transition-shadow">
+                            <CardHeader className="pb-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                                    {(msg.from_name || msg.from_email_address).charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-base">{msg.from_name || 'Unknown'}</p>
+                                    <p className="text-sm text-muted-foreground">{msg.from_email_address}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(msg.date_received).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(msg.date_received).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                              </div>
+                              {msg.subject && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <p className="text-sm font-medium text-muted-foreground">Re: {msg.subject}</p>
+                                </div>
+                              )}
+                            </CardHeader>
+                            <CardContent>
+                              <div
+                                className="prose prose-sm max-w-none dark:prose-invert [&>p]:my-2 [&>div]:my-2"
+                                dangerouslySetInnerHTML={{ __html: msg.html_body || `<p>${msg.text_body}</p>` }}
+                              />
+                            </CardContent>
+                          </Card>
                         </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-center py-8 text-muted-foreground">No thread data available</p>
-            )}
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Current Reply - Highlighted */}
+                  {threadData.data?.current_reply && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-primary/30"></div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          Current Reply
+                        </span>
+                        <div className="h-px flex-1 bg-primary/30"></div>
+                      </div>
+                      <div className="relative pl-8">
+                        <div className="absolute left-0 top-0 bottom-0 w-px bg-primary"></div>
+                        <div className="absolute left-0 top-6 w-3 h-3 rounded-full bg-primary ring-4 ring-primary/20"></div>
+                        <Card className="border-primary/50 bg-primary/5 shadow-lg">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white font-semibold text-lg ring-4 ring-primary/20">
+                                  {(threadData.data.current_reply.from_name || threadData.data.current_reply.from_email_address).charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-lg">{threadData.data.current_reply.from_name || 'Unknown'}</p>
+                                  <p className="text-sm text-muted-foreground">{threadData.data.current_reply.from_email_address}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <Badge variant="default" className="mb-1">Latest</Badge>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(threadData.data.current_reply.date_received).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(threadData.data.current_reply.date_received).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </div>
+                            {threadData.data.current_reply.subject && (
+                              <div className="mt-3 pt-3 border-t">
+                                <p className="text-sm font-medium">Re: {threadData.data.current_reply.subject}</p>
+                              </div>
+                            )}
+                          </CardHeader>
+                          <CardContent>
+                            <div
+                              className="prose prose-sm max-w-none dark:prose-invert [&>p]:my-2 [&>div]:my-2"
+                              dangerouslySetInnerHTML={{ __html: threadData.data.current_reply.html_body || `<p>${threadData.data.current_reply.text_body}</p>` }}
+                            />
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Newer Messages */}
+                  {threadData.data?.newer_messages && threadData.data.newer_messages.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-border"></div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Follow-up</span>
+                        <div className="h-px flex-1 bg-border"></div>
+                      </div>
+                      {threadData.data.newer_messages.map((msg: any) => (
+                        <div key={msg.id} className="relative pl-8">
+                          <div className="absolute left-0 top-0 bottom-0 w-px bg-border"></div>
+                          <div className="absolute left-0 top-6 w-2 h-2 rounded-full bg-muted-foreground"></div>
+                          <Card className="hover:shadow-md transition-shadow">
+                            <CardHeader className="pb-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white font-semibold">
+                                    {(msg.from_name || msg.from_email_address).charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-base">{msg.from_name || 'Unknown'}</p>
+                                    <p className="text-sm text-muted-foreground">{msg.from_email_address}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(msg.date_received).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {new Date(msg.date_received).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                              </div>
+                              {msg.subject && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <p className="text-sm font-medium text-muted-foreground">Re: {msg.subject}</p>
+                                </div>
+                              )}
+                            </CardHeader>
+                            <CardContent>
+                              <div
+                                className="prose prose-sm max-w-none dark:prose-invert [&>p]:my-2 [&>div]:my-2"
+                                dangerouslySetInnerHTML={{ __html: msg.html_body || `<p>${msg.text_body}</p>` }}
+                              />
+                            </CardContent>
+                          </Card>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <MessageSquare className="h-16 w-16 text-muted-foreground/30 mb-4" />
+                  <p className="text-center text-muted-foreground">No thread data available</p>
+                </div>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
