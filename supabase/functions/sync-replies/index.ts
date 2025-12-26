@@ -48,11 +48,8 @@ serve(async (req) => {
 
     console.log('[Sync Replies] Fetching replies from Email Bison...')
 
-    // Build API URL with filters
-    let apiUrl = 'https://send.leadgenjay.com/api/replies?folder=inbox'
-    if (unreadOnly) {
-      apiUrl += '&read=false' // Smart sync: only unread replies
-    }
+    // Build API URL (no read filter - Email Bison API doesn't support it)
+    const apiUrl = 'https://send.leadgenjay.com/api/replies?folder=inbox'
 
     const bisonResponse = await fetch(apiUrl, {
       method: 'GET',
@@ -74,10 +71,16 @@ serve(async (req) => {
     console.log(`[Sync Replies] Found ${allReplies.length} replies from Email Bison`)
 
     // Filter to only replies received in last 7 days
-    const recentReplies = allReplies.filter((reply: any) => {
+    let recentReplies = allReplies.filter((reply: any) => {
       const replyDate = new Date(reply.date_received)
       return replyDate >= sevenDaysAgo
     })
+
+    // Smart sync: filter to unread only (client-side)
+    if (unreadOnly) {
+      recentReplies = recentReplies.filter((reply: any) => !reply.read)
+      console.log(`[Sync Replies] Smart sync enabled - filtering to ${recentReplies.length} unread replies`)
+    }
 
     console.log(`[Sync Replies] Processing ${recentReplies.length} recent replies`)
 
