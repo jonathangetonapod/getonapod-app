@@ -67,6 +67,8 @@ const LeadsManagement = () => {
     body: '',
   })
   const [sendingReply, setSendingReply] = useState(false)
+  const [replyThreadData, setReplyThreadData] = useState<any>(null)
+  const [loadingReplyThread, setLoadingReplyThread] = useState(false)
 
   // New reply form state
   const [newReply, setNewReply] = useState({
@@ -373,7 +375,7 @@ const LeadsManagement = () => {
     }
   }
 
-  const openReplyDialog = (reply: CampaignReply) => {
+  const openReplyDialog = async (reply: CampaignReply) => {
     setReplyingTo(reply)
     setReplyForm({
       to: reply.email,
@@ -381,6 +383,45 @@ const LeadsManagement = () => {
       body: '',
     })
     setReplyDialogOpen(true)
+    setReplyThreadData(null)
+
+    // Fetch latest thread if we have a bison_reply_id
+    if (reply.bison_reply_id) {
+      try {
+        setLoadingReplyThread(true)
+
+        toast({
+          title: 'Fetching latest messages...',
+          description: 'Loading conversation thread',
+        })
+
+        const { data, error } = await supabase.functions.invoke('fetch-email-thread', {
+          body: { replyId: reply.bison_reply_id },
+        })
+
+        if (error) throw error
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to fetch email thread')
+        }
+
+        setReplyThreadData(data.data)
+
+        toast({
+          title: 'Thread loaded!',
+          description: 'You can now see the latest messages',
+        })
+      } catch (error: any) {
+        console.error('Error fetching thread for reply:', error)
+        toast({
+          title: 'Could not load thread',
+          description: 'Continuing without thread context',
+          variant: 'destructive',
+        })
+      } finally {
+        setLoadingReplyThread(false)
+      }
+    }
   }
 
   const handleSendReply = async () => {
@@ -928,8 +969,103 @@ const LeadsManagement = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto pr-2 space-y-6 py-4">
-              {/* Original Message Context */}
-              {replyingTo && (
+              {/* Loading Thread */}
+              {loadingReplyThread && (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+                  <p className="text-sm font-medium">Fetching latest messages...</p>
+                  <p className="text-xs text-muted-foreground">Loading conversation thread</p>
+                </div>
+              )}
+
+              {/* Email Thread Context */}
+              {!loadingReplyThread && replyThreadData?.data && (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Conversation Thread</p>
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto border rounded-lg p-4 bg-muted/20">
+                    {/* Older Messages */}
+                    {replyThreadData.data.older_messages?.map((msg: any, index: number) => (
+                      <Card key={msg.id} className="bg-background/50">
+                        <CardContent className="pt-3 pb-3">
+                          <div className="flex items-start gap-2 mb-2">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                              {(msg.from_name || msg.from_email_address).charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-semibold text-sm truncate">{msg.from_name || 'Unknown'}</p>
+                                <p className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(msg.date_received).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </p>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{msg.from_email_address}</p>
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground line-clamp-2 pl-10">
+                            {msg.text_body?.substring(0, 150) || 'No preview available'}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+
+                    {/* Current Reply - Highlighted */}
+                    {replyThreadData.data.current_reply && (
+                      <Card className="border-primary/50 bg-primary/5">
+                        <CardContent className="pt-3 pb-3">
+                          <div className="flex items-start gap-2 mb-2">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 ring-2 ring-primary/30">
+                              {(replyThreadData.data.current_reply.from_name || replyThreadData.data.current_reply.from_email_address).charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-sm truncate">{replyThreadData.data.current_reply.from_name || 'Unknown'}</p>
+                                  <Badge variant="default" className="text-[10px] px-1 py-0">Latest</Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(replyThreadData.data.current_reply.date_received).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </p>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{replyThreadData.data.current_reply.from_email_address}</p>
+                            </div>
+                          </div>
+                          <div className="text-xs pl-10 line-clamp-3">
+                            {replyThreadData.data.current_reply.text_body || 'No preview available'}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Newer Messages */}
+                    {replyThreadData.data.newer_messages?.map((msg: any) => (
+                      <Card key={msg.id} className="bg-background/50">
+                        <CardContent className="pt-3 pb-3">
+                          <div className="flex items-start gap-2 mb-2">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-400 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                              {(msg.from_name || msg.from_email_address).charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-semibold text-sm truncate">{msg.from_name || 'Unknown'}</p>
+                                <p className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {new Date(msg.date_received).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </p>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{msg.from_email_address}</p>
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground line-clamp-2 pl-10">
+                            {msg.text_body?.substring(0, 150) || 'No preview available'}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Original Message Context (Fallback if no thread) */}
+              {!loadingReplyThread && !replyThreadData && replyingTo && (
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Original Message</p>
                   <Card className="bg-muted/30">
@@ -963,60 +1099,62 @@ const LeadsManagement = () => {
               )}
 
               {/* Compose Form */}
-              <div className="space-y-4">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Your Reply</p>
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="reply-to">To</Label>
-                    <Input
-                      id="reply-to"
-                      type="email"
-                      value={replyForm.to}
-                      onChange={(e) => setReplyForm({ ...replyForm, to: e.target.value })}
-                      placeholder="recipient@example.com"
-                      disabled
-                      className="bg-muted/50"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reply-subject">Subject</Label>
-                    <Input
-                      id="reply-subject"
-                      value={replyForm.subject}
-                      onChange={(e) => setReplyForm({ ...replyForm, subject: e.target.value })}
-                      placeholder="Email subject"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reply-body">Message</Label>
-                    <Textarea
-                      id="reply-body"
-                      value={replyForm.body}
-                      onChange={(e) => setReplyForm({ ...replyForm, body: e.target.value })}
-                      placeholder="Type your reply here..."
-                      rows={12}
-                      className="resize-none"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {replyForm.body.length} characters
-                    </p>
+              {!loadingReplyThread && (
+                <div className="space-y-4">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Your Reply</p>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="reply-to">To</Label>
+                      <Input
+                        id="reply-to"
+                        type="email"
+                        value={replyForm.to}
+                        onChange={(e) => setReplyForm({ ...replyForm, to: e.target.value })}
+                        placeholder="recipient@example.com"
+                        disabled
+                        className="bg-muted/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reply-subject">Subject</Label>
+                      <Input
+                        id="reply-subject"
+                        value={replyForm.subject}
+                        onChange={(e) => setReplyForm({ ...replyForm, subject: e.target.value })}
+                        placeholder="Email subject"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reply-body">Message</Label>
+                      <Textarea
+                        id="reply-body"
+                        value={replyForm.body}
+                        onChange={(e) => setReplyForm({ ...replyForm, body: e.target.value })}
+                        placeholder="Type your reply here..."
+                        rows={12}
+                        className="resize-none"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {replyForm.body.length} characters
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
             <DialogFooter className="border-t pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setReplyDialogOpen(false)}
-                disabled={sendingReply}
+                disabled={sendingReply || loadingReplyThread}
               >
                 Cancel
               </Button>
               <Button
                 type="button"
                 onClick={handleSendReply}
-                disabled={!replyForm.body.trim() || sendingReply}
+                disabled={!replyForm.body.trim() || sendingReply || loadingReplyThread}
               >
                 {sendingReply ? (
                   <>
