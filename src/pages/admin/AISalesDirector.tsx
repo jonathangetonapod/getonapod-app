@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Brain,
   Sparkles,
   TrendingUp,
@@ -65,6 +72,8 @@ const AISalesDirector = () => {
   const [bulkClassifying, setBulkClassifying] = useState(false)
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
   const [lastSynced, setLastSynced] = useState<Date | null>(null)
+  const [selectedRecommendation, setSelectedRecommendation] = useState<any>(null)
+  const [recommendationModalOpen, setRecommendationModalOpen] = useState(false)
 
   // Fetch performance stats
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
@@ -634,19 +643,27 @@ const AISalesDirector = () => {
                       <div className="space-y-2">
                         {selectedCall.analysis.recommendations.map((rec: any, i: number) => {
                           const priorityStyles = {
-                            high: { bg: 'bg-orange-50 dark:bg-orange-950/20', border: 'border-orange-200 dark:border-orange-900', icon: 'text-orange-600' },
-                            medium: { bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-900', icon: 'text-blue-600' },
-                            low: { bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-200 dark:border-green-900', icon: 'text-green-600' },
+                            high: { bg: 'bg-orange-50 dark:bg-orange-950/20', border: 'border-orange-200 dark:border-orange-900', icon: 'text-orange-600', hover: 'hover:bg-orange-100 dark:hover:bg-orange-950/30' },
+                            medium: { bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-900', icon: 'text-blue-600', hover: 'hover:bg-blue-100 dark:hover:bg-blue-950/30' },
+                            low: { bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-200 dark:border-green-900', icon: 'text-green-600', hover: 'hover:bg-green-100 dark:hover:bg-green-950/30' },
                           }
                           const style = priorityStyles[rec.priority as keyof typeof priorityStyles] || priorityStyles.medium
                           const Icon = rec.priority === 'low' ? CheckCircle2 : AlertCircle
 
                           return (
-                            <div key={i} className={`flex gap-2 p-2 border rounded-lg ${style.bg} ${style.border}`}>
+                            <div
+                              key={i}
+                              className={`flex gap-2 p-2 border rounded-lg cursor-pointer transition-colors ${style.bg} ${style.border} ${style.hover}`}
+                              onClick={() => {
+                                setSelectedRecommendation(rec)
+                                setRecommendationModalOpen(true)
+                              }}
+                            >
                               <Icon className={`h-4 w-4 ${style.icon} flex-shrink-0 mt-0.5`} />
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-xs mb-1">{rec.title}</p>
                                 <p className="text-xs text-muted-foreground line-clamp-2">{rec.description}</p>
+                                <p className="text-xs text-primary mt-1">Click to read more →</p>
                               </div>
                             </div>
                           )
@@ -1080,6 +1097,56 @@ const AISalesDirector = () => {
           </Card>
         </div>
       </div>
+
+      {/* Recommendation Detail Modal */}
+      <Dialog open={recommendationModalOpen} onOpenChange={setRecommendationModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedRecommendation?.priority === 'high' && (
+                <AlertCircle className="h-5 w-5 text-orange-600" />
+              )}
+              {selectedRecommendation?.priority === 'medium' && (
+                <AlertCircle className="h-5 w-5 text-blue-600" />
+              )}
+              {selectedRecommendation?.priority === 'low' && (
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              )}
+              {selectedRecommendation?.title}
+            </DialogTitle>
+            <DialogDescription>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant={selectedRecommendation?.priority === 'high' ? 'destructive' : 'secondary'}>
+                  {selectedRecommendation?.priority?.toUpperCase()} PRIORITY
+                </Badge>
+                {selectedRecommendation?.framework_stage && (
+                  <Badge variant="outline">
+                    {selectedRecommendation.framework_stage.replace(/_/g, ' ').toUpperCase()}
+                  </Badge>
+                )}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Recommendation</h4>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {selectedRecommendation?.description}
+              </p>
+            </div>
+
+            {selectedRecommendation?.specific_timestamp && (
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Timestamp</h4>
+                <p className="text-sm text-muted-foreground">
+                  {selectedRecommendation.specific_timestamp}
+                </p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }
