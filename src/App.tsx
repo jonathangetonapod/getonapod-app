@@ -18,6 +18,7 @@ import CheckoutCanceled from "./pages/CheckoutCanceled";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AuthCallback from "./pages/admin/Callback";
+import AISalesDirector from "./pages/admin/AISalesDirector";
 import BlogManagement from "./pages/admin/BlogManagement";
 import BlogEditor from "./pages/admin/BlogEditor";
 import VideoManagement from "./pages/admin/VideoManagement";
@@ -62,6 +63,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/ai-sales-director"
+              element={
+                <ProtectedRoute>
+                  <AISalesDirector />
                 </ProtectedRoute>
               }
             />
