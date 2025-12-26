@@ -357,3 +357,107 @@ export const getUnclassifiedCalls = async (limit = 50) => {
 
   return calls || []
 }
+
+// Get sales analytics over time
+export const getSalesAnalytics = async () => {
+  const { data: analyses, error } = await supabase
+    .from('sales_call_analysis')
+    .select(`
+      *,
+      sales_call:sales_calls!sales_call_id(
+        recording_start_time,
+        title,
+        meeting_title
+      )
+    `)
+    .order('analyzed_at', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching sales analytics:', error)
+    throw error
+  }
+
+  if (!analyses || analyses.length === 0) {
+    return {
+      timeSeriesData: [],
+      frameworkBreakdown: [],
+      improvementAreas: [],
+      topStrengths: [],
+      skillProgression: {
+        overall: 0,
+        discovery: 0,
+        objectionHandling: 0,
+        closing: 0,
+        engagement: 0,
+      },
+      totalAnalyzedCalls: 0,
+    }
+  }
+
+  // Time series data for charts
+  const timeSeriesData = analyses.map((analysis: any) => ({
+    date: new Date(analysis.analyzed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    overall: analysis.overall_score,
+    framework: analysis.framework_adherence_score || null,
+    discovery: analysis.discovery_score,
+    closing: analysis.closing_score,
+    engagement: analysis.engagement_score,
+  }))
+
+  // Framework stage breakdown (average scores)
+  const frameworkBreakdown = [
+    { stage: 'Frame Control', score: avg(analyses.map((a: any) => a.frame_control_score)) },
+    { stage: 'Current State', score: avg(analyses.map((a: any) => a.discovery_current_state_score)) },
+    { stage: 'Desired State', score: avg(analyses.map((a: any) => a.discovery_desired_state_score)) },
+    { stage: 'Cost of Inaction', score: avg(analyses.map((a: any) => a.discovery_cost_of_inaction_score)) },
+    { stage: 'WATT Tie-downs', score: avg(analyses.map((a: any) => a.watt_tiedowns_score)) },
+    { stage: 'Bridge Gap', score: avg(analyses.map((a: any) => a.bridge_gap_score)) },
+    { stage: 'Sellback', score: avg(analyses.map((a: any) => a.sellback_score)) },
+    { stage: 'Price Drop', score: avg(analyses.map((a: any) => a.price_drop_score)) },
+    { stage: 'Objection Handling', score: avg(analyses.map((a: any) => a.objection_handling_score)) },
+    { stage: 'Close & Celebrate', score: avg(analyses.map((a: any) => a.close_celebration_score)) },
+  ].filter(item => item.score !== null)
+
+  // Identify improvement areas (lowest 3 scores)
+  const sortedFramework = [...frameworkBreakdown].sort((a, b) => (a.score || 0) - (b.score || 0))
+  const improvementAreas = sortedFramework.slice(0, 3)
+
+  // Top strengths (highest 3 scores)
+  const topStrengths = [...frameworkBreakdown].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 3)
+
+  // Calculate skill progression (recent vs older)
+  const midpoint = Math.floor(analyses.length / 2)
+  const recentCalls = analyses.slice(midpoint)
+  const olderCalls = analyses.slice(0, midpoint)
+
+  const skillProgression = {
+    overall: calcProgression(olderCalls, recentCalls, 'overall_score'),
+    discovery: calcProgression(olderCalls, recentCalls, 'discovery_score'),
+    objectionHandling: calcProgression(olderCalls, recentCalls, 'objection_handling_score'),
+    closing: calcProgression(olderCalls, recentCalls, 'closing_score'),
+    engagement: calcProgression(olderCalls, recentCalls, 'engagement_score'),
+  }
+
+  return {
+    timeSeriesData,
+    frameworkBreakdown,
+    improvementAreas,
+    topStrengths,
+    skillProgression,
+    totalAnalyzedCalls: analyses.length,
+  }
+}
+
+// Helper functions
+const avg = (arr: any[]) => {
+  const filtered = arr.filter(n => n != null && n > 0)
+  if (filtered.length === 0) return null
+  return parseFloat((filtered.reduce((a, b) => a + b, 0) / filtered.length).toFixed(1))
+}
+
+const calcProgression = (olderCalls: any[], recentCalls: any[], field: string) => {
+  const oldAvg = avg(olderCalls.map((c: any) => c[field]))
+  const recentAvg = avg(recentCalls.map((c: any) => c[field]))
+  if (oldAvg === null || recentAvg === null) return 0
+  return parseFloat((recentAvg - oldAvg).toFixed(1))
+}

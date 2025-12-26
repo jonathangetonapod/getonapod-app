@@ -49,6 +49,7 @@ import {
   classifySalesCall,
   getUnclassifiedCallsCount,
   getUnclassifiedCalls,
+  getSalesAnalytics,
   CallType
 } from '@/services/salesCalls'
 import { toast } from 'sonner'
@@ -60,6 +61,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MoreVertical, Eye, EyeOff, Trash2 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 const AISalesDirector = () => {
   const [syncing, setSyncing] = useState(false)
@@ -102,6 +104,12 @@ const AISalesDirector = () => {
     queryKey: ['unclassified-count'],
     queryFn: getUnclassifiedCallsCount,
     refetchInterval: 10000, // Refetch every 10 seconds
+  })
+
+  // Fetch analytics data
+  const { data: analytics, isLoading: analyticsLoading, refetch: refetchAnalytics } = useQuery({
+    queryKey: ['sales-analytics'],
+    queryFn: getSalesAnalytics,
   })
 
   // Reset to page 1 when filters change
@@ -153,6 +161,7 @@ const AISalesDirector = () => {
       refetchStats()
       refetchRecommendations()
       refetchCalls()
+      refetchAnalytics()
     } catch (error: any) {
       console.error('Error analyzing call:', error)
       toast.error('Failed to analyze: ' + error.message)
@@ -488,6 +497,172 @@ const AISalesDirector = () => {
                 )}
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* Personal Sales Analytics Section */}
+        {analytics && analytics.totalAnalyzedCalls > 0 && (
+          <div className="space-y-6">
+            {/* Performance Trend Over Time */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Performance Trend Over Time
+                </CardTitle>
+                <CardDescription>
+                  Track your sales skills progression across {analytics.totalAnalyzedCalls} analyzed calls
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsLoading ? (
+                  <Skeleton className="h-64 w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={analytics.timeSeriesData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" style={{ fontSize: '12px' }} />
+                      <YAxis domain={[0, 10]} style={{ fontSize: '12px' }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="overall"
+                        stroke="#8b5cf6"
+                        strokeWidth={2}
+                        name="Overall Score"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="discovery"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        name="Discovery"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="closing"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        name="Closing"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="engagement"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        name="Engagement"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Framework Breakdown & Improvement Areas */}
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Framework Stage Breakdown */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Corey Jackson Framework Breakdown</CardTitle>
+                  <CardDescription>Average scores across all 8 stages</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {analyticsLoading ? (
+                    <Skeleton className="h-96 w-full" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={analytics.frameworkBreakdown} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" domain={[0, 10]} style={{ fontSize: '12px' }} />
+                        <YAxis dataKey="stage" type="category" width={120} style={{ fontSize: '11px' }} />
+                        <Tooltip />
+                        <Bar dataKey="score" fill="#8b5cf6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Improvement Areas & Strengths */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Your Sales Profile</CardTitle>
+                  <CardDescription>Focus areas and strengths</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Skill Progression */}
+                  <div>
+                    <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-green-600" />
+                      Recent Progress
+                    </h4>
+                    <div className="space-y-2">
+                      {analytics.skillProgression.overall !== 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Overall</span>
+                          <span className={analytics.skillProgression.overall > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                            {analytics.skillProgression.overall > 0 ? '+' : ''}{analytics.skillProgression.overall}
+                          </span>
+                        </div>
+                      )}
+                      {analytics.skillProgression.discovery !== 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Discovery</span>
+                          <span className={analytics.skillProgression.discovery > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                            {analytics.skillProgression.discovery > 0 ? '+' : ''}{analytics.skillProgression.discovery}
+                          </span>
+                        </div>
+                      )}
+                      {analytics.skillProgression.closing !== 0 && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span>Closing</span>
+                          <span className={analytics.skillProgression.closing > 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                            {analytics.skillProgression.closing > 0 ? '+' : ''}{analytics.skillProgression.closing}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Top Improvement Areas */}
+                  <div>
+                    <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-orange-600" />
+                      Focus on These Areas
+                    </h4>
+                    <div className="space-y-2">
+                      {analytics.improvementAreas.map((area: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-2 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900 rounded-lg">
+                          <span className="text-xs font-medium">{area.stage}</span>
+                          <Badge variant="outline" className="bg-white dark:bg-gray-900">
+                            {area.score}/10
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Top Strengths */}
+                  <div>
+                    <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Your Strengths
+                    </h4>
+                    <div className="space-y-2">
+                      {analytics.topStrengths.map((strength: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg">
+                          <span className="text-xs font-medium">{strength.stage}</span>
+                          <Badge variant="outline" className="bg-white dark:bg-gray-900">
+                            {strength.score}/10
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 
