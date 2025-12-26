@@ -53,6 +53,7 @@ const LeadsManagement = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [readFilter, setReadFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
+  const [quickFilter, setQuickFilter] = useState<string>('all')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [threadDialogOpen, setThreadDialogOpen] = useState(false)
@@ -83,7 +84,7 @@ const LeadsManagement = () => {
 
   useEffect(() => {
     filterReplies()
-  }, [replies, searchTerm, typeFilter, statusFilter, readFilter, dateFilter])
+  }, [replies, searchTerm, typeFilter, statusFilter, readFilter, dateFilter, quickFilter])
 
   const loadReplies = async () => {
     try {
@@ -108,6 +109,32 @@ const LeadsManagement = () => {
 
   const filterReplies = () => {
     let filtered = [...replies]
+
+    // Quick filter (applies before other filters)
+    if (quickFilter !== 'all') {
+      switch (quickFilter) {
+        case 'needs_reply':
+          // New status AND unread
+          filtered = filtered.filter((r) => r.status === 'new' && !r.read)
+          break
+        case 'unread':
+          // All unread
+          filtered = filtered.filter((r) => !r.read)
+          break
+        case 'contacted':
+          // Status = contacted
+          filtered = filtered.filter((r) => r.status === 'contacted')
+          break
+        case 'qualified':
+          // Status = qualified
+          filtered = filtered.filter((r) => r.status === 'qualified')
+          break
+        case 'unlabeled':
+          // No lead type assigned
+          filtered = filtered.filter((r) => !r.lead_type)
+          break
+      }
+    }
 
     // Search filter
     if (searchTerm) {
@@ -389,6 +416,16 @@ const LeadsManagement = () => {
     }
   }
 
+  const applyQuickFilter = (filter: string) => {
+    setQuickFilter(filter)
+    // Reset other filters when applying quick filter
+    if (filter !== 'all') {
+      setTypeFilter('all')
+      setStatusFilter('all')
+      setReadFilter('all')
+    }
+  }
+
   const exportCSV = () => {
     const headers = ['Email', 'Name', 'Company', 'Campaign', 'Lead Type', 'Status', 'Received At']
     const rows = filteredReplies.map((r) => [
@@ -437,9 +474,11 @@ const LeadsManagement = () => {
   // Calculate stats
   const stats = {
     total: replies.length,
-    new: replies.filter((r) => r.status === 'new').length,
-    sales: replies.filter((r) => r.lead_type === 'sales').length,
-    podcasts: replies.filter((r) => r.lead_type === 'podcasts').length,
+    needsReply: replies.filter((r) => r.status === 'new' && !r.read).length,
+    unread: replies.filter((r) => !r.read).length,
+    contacted: replies.filter((r) => r.status === 'contacted').length,
+    qualified: replies.filter((r) => r.status === 'qualified').length,
+    unlabeled: replies.filter((r) => !r.lead_type).length,
   }
 
   return (
@@ -547,44 +586,84 @@ const LeadsManagement = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Replies</CardTitle>
+              <CardTitle className="text-sm font-medium">Total</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">All campaign replies</p>
+              <p className="text-xs text-muted-foreground">All replies</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => applyQuickFilter('needs_reply')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">New</CardTitle>
+              <CardTitle className="text-sm font-medium">Needs Reply</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.new}</div>
-              <p className="text-xs text-muted-foreground">Uncontacted replies</p>
+              <div className="text-2xl font-bold text-red-500">{stats.needsReply}</div>
+              <p className="text-xs text-muted-foreground">New & unread</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => applyQuickFilter('unread')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Sales Leads</CardTitle>
+              <CardTitle className="text-sm font-medium">Unread</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.sales}</div>
-              <p className="text-xs text-muted-foreground">Labeled as sales</p>
+              <div className="text-2xl font-bold text-blue-500">{stats.unread}</div>
+              <p className="text-xs text-muted-foreground">Not yet read</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => applyQuickFilter('contacted')}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Premium Placement Leads</CardTitle>
+              <CardTitle className="text-sm font-medium">Contacted</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.podcasts}</div>
-              <p className="text-xs text-muted-foreground">Labeled as premium placements</p>
+              <div className="text-2xl font-bold">{stats.contacted}</div>
+              <p className="text-xs text-muted-foreground">Replied to</p>
+            </CardContent>
+          </Card>
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => applyQuickFilter('qualified')}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Qualified</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-500">{stats.qualified}</div>
+              <p className="text-xs text-muted-foreground">Hot leads</p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Quick Filters */}
+        {quickFilter !== 'all' && (
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" className="text-xs">
+                    Quick Filter Active
+                  </Badge>
+                  <span className="text-sm font-medium">
+                    {quickFilter === 'needs_reply' && 'Needs Reply'}
+                    {quickFilter === 'unread' && 'Unread'}
+                    {quickFilter === 'contacted' && 'Contacted'}
+                    {quickFilter === 'qualified' && 'Qualified'}
+                    {quickFilter === 'unlabeled' && 'Unlabeled'}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyQuickFilter('all')}
+                  className="text-xs"
+                >
+                  Clear Filter
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <Card>
