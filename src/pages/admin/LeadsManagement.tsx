@@ -22,9 +22,10 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send, Archive, ArchiveRestore } from 'lucide-react'
+import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send, Archive, ArchiveRestore, LayoutList, Layers } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
+import { LeadSwipeCard } from '@/components/admin/LeadSwipeCard'
 
 interface CampaignReply {
   id: string
@@ -57,6 +58,8 @@ const LeadsManagement = () => {
   const [dateFilter, setDateFilter] = useState<string>('all')
   const [quickFilter, setQuickFilter] = useState<string>('all')
   const [showArchived, setShowArchived] = useState(false)
+  const [viewMode, setViewMode] = useState<'list' | 'cards'>('list')
+  const [cardIndex, setCardIndex] = useState(0)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [threadDialogOpen, setThreadDialogOpen] = useState(false)
@@ -543,6 +546,49 @@ const LeadsManagement = () => {
     }
   }
 
+  // Swipe card handlers
+  const handleSwipeLeft = async (reply: CampaignReply) => {
+    // Archive
+    await toggleArchive(reply.id, reply.archived)
+    // Move to next card
+    if (cardIndex < filteredReplies.length - 1) {
+      setCardIndex(cardIndex + 1)
+    }
+  }
+
+  const handleSwipeRight = async (reply: CampaignReply) => {
+    // Mark as qualified
+    await updateStatus(reply.id, 'qualified')
+    // Move to next card
+    if (cardIndex < filteredReplies.length - 1) {
+      setCardIndex(cardIndex + 1)
+    }
+  }
+
+  const handleSwipeUp = (reply: CampaignReply) => {
+    // Open reply dialog
+    openReplyDialog(reply)
+  }
+
+  const handleSwipeDown = (reply: CampaignReply) => {
+    // View thread
+    if (reply.bison_reply_id) {
+      fetchEmailThread(reply.bison_reply_id)
+    }
+  }
+
+  const handleNextCard = () => {
+    if (cardIndex < filteredReplies.length - 1) {
+      setCardIndex(cardIndex + 1)
+    }
+  }
+
+  const handlePreviousCard = () => {
+    if (cardIndex > 0) {
+      setCardIndex(cardIndex - 1)
+    }
+  }
+
   const exportCSV = () => {
     const headers = ['Email', 'Name', 'Company', 'Campaign', 'Lead Type', 'Status', 'Received At']
     const rows = filteredReplies.map((r) => [
@@ -609,6 +655,25 @@ const LeadsManagement = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              onClick={() => {
+                setViewMode(viewMode === 'list' ? 'cards' : 'list')
+                setCardIndex(0)
+              }}
+              variant="outline"
+            >
+              {viewMode === 'list' ? (
+                <>
+                  <Layers className="mr-2 h-4 w-4" />
+                  Card View
+                </>
+              ) : (
+                <>
+                  <LayoutList className="mr-2 h-4 w-4" />
+                  List View
+                </>
+              )}
+            </Button>
             <Button onClick={exportCSV} variant="outline">
               <Download className="mr-2 h-4 w-4" />
               Export CSV
@@ -867,26 +932,45 @@ const LeadsManagement = () => {
           </CardContent>
         </Card>
 
-        {/* Replies List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Replies ({filteredReplies.length})</CardTitle>
-            <CardDescription>
-              Latest campaign replies from Instantly and other platforms
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : filteredReplies.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No replies found. Add your first reply to get started.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredReplies.map((reply) => (
+        {/* Card View */}
+        {viewMode === 'cards' && !loading && filteredReplies.length > 0 && (
+          <Card>
+            <CardContent className="p-8">
+              <LeadSwipeCard
+                replies={filteredReplies}
+                currentIndex={cardIndex}
+                onSwipeLeft={handleSwipeLeft}
+                onSwipeRight={handleSwipeRight}
+                onSwipeUp={handleSwipeUp}
+                onSwipeDown={handleSwipeDown}
+                onNext={handleNextCard}
+                onPrevious={handlePreviousCard}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* List View */}
+        {viewMode === 'list' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Replies ({filteredReplies.length})</CardTitle>
+              <CardDescription>
+                Latest campaign replies from Instantly and other platforms
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredReplies.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No replies found. Add your first reply to get started.
+                </div>
+                ) : (
+                <div className="space-y-4">
+                  {filteredReplies.map((reply) => (
                   <div
                     key={reply.id}
                     className={`p-4 border rounded-lg hover:bg-muted/50 transition-colors ${!reply.read ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900' : ''}`}
@@ -1071,11 +1155,12 @@ const LeadsManagement = () => {
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Reply Dialog */}
         <Dialog open={replyDialogOpen} onOpenChange={setReplyDialogOpen}>
