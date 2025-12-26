@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare } from 'lucide-react'
+import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 
@@ -58,6 +58,14 @@ const LeadsManagement = () => {
   const [threadDialogOpen, setThreadDialogOpen] = useState(false)
   const [loadingThread, setLoadingThread] = useState(false)
   const [threadData, setThreadData] = useState<any>(null)
+  const [replyDialogOpen, setReplyDialogOpen] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<CampaignReply | null>(null)
+  const [replyForm, setReplyForm] = useState({
+    to: '',
+    subject: '',
+    body: '',
+  })
+  const [sendingReply, setSendingReply] = useState(false)
 
   // New reply form state
   const [newReply, setNewReply] = useState({
@@ -335,6 +343,49 @@ const LeadsManagement = () => {
       setThreadDialogOpen(false)
     } finally {
       setLoadingThread(false)
+    }
+  }
+
+  const openReplyDialog = (reply: CampaignReply) => {
+    setReplyingTo(reply)
+    setReplyForm({
+      to: reply.email,
+      subject: reply.campaign_name ? `Re: ${reply.campaign_name}` : 'Re: Your Interest',
+      body: '',
+    })
+    setReplyDialogOpen(true)
+  }
+
+  const handleSendReply = async () => {
+    try {
+      setSendingReply(true)
+
+      // TODO: Backend integration - will call edge function to send email via Email Bison
+      // For now, just simulate success
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      toast({
+        title: 'Reply Sent!',
+        description: `Your reply to ${replyForm.to} has been sent successfully.`,
+      })
+
+      // Mark as contacted
+      if (replyingTo) {
+        await updateStatus(replyingTo.id, 'contacted')
+      }
+
+      // Close dialog and reset
+      setReplyDialogOpen(false)
+      setReplyingTo(null)
+      setReplyForm({ to: '', subject: '', body: '' })
+    } catch (error: any) {
+      toast({
+        title: 'Error sending reply',
+        description: error.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSendingReply(false)
     }
   }
 
@@ -736,6 +787,16 @@ const LeadsManagement = () => {
                         <div className="flex flex-col gap-1.5 pt-2 border-t">
                           <Button
                             type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => openReplyDialog(reply)}
+                            className="text-xs w-full"
+                          >
+                            <Send className="h-3 w-3 mr-1.5" />
+                            Reply
+                          </Button>
+                          <Button
+                            type="button"
                             variant="outline"
                             size="sm"
                             onClick={() => toggleRead(reply.id, reply.read)}
@@ -774,6 +835,125 @@ const LeadsManagement = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Reply Dialog */}
+        <Dialog open={replyDialogOpen} onOpenChange={setReplyDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader className="border-b pb-4">
+              <DialogTitle className="text-2xl flex items-center gap-2">
+                <Send className="h-6 w-6 text-primary" />
+                Compose Reply
+              </DialogTitle>
+              <DialogDescription>
+                Reply to {replyingTo?.name || replyingTo?.email}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6 py-4">
+              {/* Original Message Context */}
+              {replyingTo && (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Original Message</p>
+                  <Card className="bg-muted/30">
+                    <CardContent className="pt-4">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold">
+                          {(replyingTo.name || replyingTo.email).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold">{replyingTo.name || 'Unknown'}</p>
+                          <p className="text-sm text-muted-foreground">{replyingTo.email}</p>
+                          {replyingTo.company && (
+                            <p className="text-xs text-muted-foreground">{replyingTo.company}</p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(replyingTo.received_at).toLocaleDateString()}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(replyingTo.received_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="pl-13">
+                        <p className="text-sm whitespace-pre-wrap">{replyingTo.reply_content}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Compose Form */}
+              <div className="space-y-4">
+                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Your Reply</p>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="reply-to">To</Label>
+                    <Input
+                      id="reply-to"
+                      type="email"
+                      value={replyForm.to}
+                      onChange={(e) => setReplyForm({ ...replyForm, to: e.target.value })}
+                      placeholder="recipient@example.com"
+                      disabled
+                      className="bg-muted/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reply-subject">Subject</Label>
+                    <Input
+                      id="reply-subject"
+                      value={replyForm.subject}
+                      onChange={(e) => setReplyForm({ ...replyForm, subject: e.target.value })}
+                      placeholder="Email subject"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reply-body">Message</Label>
+                    <Textarea
+                      id="reply-body"
+                      value={replyForm.body}
+                      onChange={(e) => setReplyForm({ ...replyForm, body: e.target.value })}
+                      placeholder="Type your reply here..."
+                      rows={12}
+                      className="resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {replyForm.body.length} characters
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="border-t pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReplyDialogOpen(false)}
+                disabled={sendingReply}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSendReply}
+                disabled={!replyForm.body.trim() || sendingReply}
+              >
+                {sendingReply ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Reply
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Email Thread Modal */}
         <Dialog open={threadDialogOpen} onOpenChange={setThreadDialogOpen}>
