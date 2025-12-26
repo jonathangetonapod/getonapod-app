@@ -14,6 +14,7 @@ export interface SalesCall {
   duration_minutes: number | null
   transcript: any
   summary: string | null
+  hidden: boolean
   created_at: string
   updated_at: string
 }
@@ -172,7 +173,87 @@ export const getTopRecommendations = async () => {
 }
 
 // Get recent calls for list view
-export const getRecentSalesCalls = async (limit = 10) => {
-  const calls = await getSalesCallsWithAnalysis()
-  return calls.slice(0, limit)
+export const getRecentSalesCalls = async (limit = 10, showHidden = false) => {
+  let query = supabase
+    .from('sales_calls')
+    .select(`
+      *,
+      analysis:sales_call_analysis(*)
+    `)
+
+  // Only filter out hidden calls if showHidden is false
+  if (!showHidden) {
+    query = query.eq('hidden', false)
+  }
+
+  const { data: calls, error: callsError } = await query
+    .order('recording_start_time', { ascending: false })
+    .limit(limit)
+
+  if (callsError) {
+    console.error('Error fetching sales calls:', callsError)
+    throw callsError
+  }
+
+  // Transform the data to flatten analysis
+  return (calls || []).map(call => ({
+    ...call,
+    analysis: call.analysis?.[0] || undefined,
+  }))
+}
+
+// Manually trigger analysis for a specific call
+export const analyzeSalesCall = async (callId: string, recordingId: number) => {
+  const { data, error } = await supabase.functions.invoke('analyze-sales-call', {
+    body: {
+      sales_call_id: callId,
+      recording_id: recordingId,
+    },
+  })
+
+  if (error) {
+    console.error('Error analyzing call:', error)
+    throw error
+  }
+
+  return data
+}
+
+// Hide a sales call
+export const hideSalesCall = async (callId: string) => {
+  const { error } = await supabase
+    .from('sales_calls')
+    .update({ hidden: true })
+    .eq('id', callId)
+
+  if (error) {
+    console.error('Error hiding call:', error)
+    throw error
+  }
+}
+
+// Unhide a sales call
+export const unhideSalesCall = async (callId: string) => {
+  const { error } = await supabase
+    .from('sales_calls')
+    .update({ hidden: false })
+    .eq('id', callId)
+
+  if (error) {
+    console.error('Error unhiding call:', error)
+    throw error
+  }
+}
+
+// Delete a sales call permanently
+export const deleteSalesCall = async (callId: string) => {
+  const { error } = await supabase
+    .from('sales_calls')
+    .delete()
+    .eq('id', callId)
+
+  if (error) {
+    console.error('Error deleting call:', error)
+    throw error
+  }
 }

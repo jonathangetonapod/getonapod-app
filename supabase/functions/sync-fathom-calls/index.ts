@@ -60,7 +60,6 @@ serve(async (req) => {
 
     let newCount = 0
     let updatedCount = 0
-    let analyzedCount = 0
 
     for (const meeting of meetings) {
       // Check if call already exists
@@ -115,34 +114,10 @@ serve(async (req) => {
 
         newCount++
         console.log(`[Sync Fathom] Created new call ${meeting.recording_id}`)
-
-        // Trigger AI analysis for new calls
-        if (newCall) {
-          try {
-            const analyzeResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-sales-call`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${supabaseServiceKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                sales_call_id: newCall.id,
-                recording_id: meeting.recording_id,
-              }),
-            })
-
-            if (analyzeResponse.ok) {
-              analyzedCount++
-              console.log(`[Sync Fathom] Triggered analysis for call ${meeting.recording_id}`)
-            }
-          } catch (analyzeError) {
-            console.error(`[Sync Fathom] Error triggering analysis:`, analyzeError)
-          }
-        }
       }
     }
 
-    console.log(`[Sync Fathom] Sync complete - New: ${newCount}, Updated: ${updatedCount}, Analyzed: ${analyzedCount}`)
+    console.log(`[Sync Fathom] Sync complete - New: ${newCount}, Updated: ${updatedCount}`)
 
     return new Response(
       JSON.stringify({
@@ -152,7 +127,6 @@ serve(async (req) => {
           total_meetings: meetings.length,
           new_calls: newCount,
           updated_calls: updatedCount,
-          analyzed_calls: analyzedCount,
         },
       }),
       {
