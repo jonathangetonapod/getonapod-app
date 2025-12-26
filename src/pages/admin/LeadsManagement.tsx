@@ -220,6 +220,13 @@ const LeadsManagement = () => {
 
       if (error) throw error
 
+      // Update local state instead of refetching
+      setReplies(prevReplies =>
+        prevReplies.map(reply =>
+          reply.id === id ? { ...reply, lead_type: leadType } : reply
+        )
+      )
+
       const typeLabels: Record<string, string> = {
         sales: 'sales',
         podcasts: 'premium placement',
@@ -229,8 +236,6 @@ const LeadsManagement = () => {
         title: 'Lead type updated',
         description: `Marked as ${typeLabels[leadType] || leadType}`,
       })
-
-      loadReplies()
     } catch (error: any) {
       toast({
         title: 'Error updating lead type',
@@ -252,12 +257,17 @@ const LeadsManagement = () => {
 
       if (error) throw error
 
+      // Update local state instead of refetching
+      setReplies(prevReplies =>
+        prevReplies.map(reply =>
+          reply.id === id ? { ...reply, status } : reply
+        )
+      )
+
       toast({
         title: 'Status updated',
         description: `Marked as ${status.replace('_', ' ')}`,
       })
-
-      loadReplies()
     } catch (error: any) {
       toast({
         title: 'Error updating status',
@@ -279,11 +289,16 @@ const LeadsManagement = () => {
 
       if (error) throw error
 
+      // Update local state instead of refetching
+      setReplies(prevReplies =>
+        prevReplies.map(reply =>
+          reply.id === id ? { ...reply, read: !currentReadStatus } : reply
+        )
+      )
+
       toast({
         title: !currentReadStatus ? 'Marked as read' : 'Marked as unread',
       })
-
-      loadReplies()
     } catch (error: any) {
       toast({
         title: 'Error updating read status',
