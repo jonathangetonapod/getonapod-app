@@ -67,6 +67,9 @@ serve(async (req) => {
     // Extract reply content - prefer text_body over html_body
     const replyContent = replyData?.text_body || replyData?.html_body || null
 
+    // Extract Email Bison reply ID for thread fetching
+    const bisonReplyId = replyData?.id || null
+
     // Use reply date if available, otherwise campaign event date
     const receivedAt = replyData?.date_received || campaignEvent?.created_at || new Date().toISOString()
 
@@ -124,6 +127,7 @@ serve(async (req) => {
         reply_content: replyContent,
         campaign_name: campaignName,
         received_at: receivedAt,
+        bison_reply_id: bisonReplyId,
         status: 'new',
       })
       .select()

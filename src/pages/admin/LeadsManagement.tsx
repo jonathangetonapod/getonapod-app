@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2 } from 'lucide-react'
+import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 
@@ -38,6 +38,7 @@ interface CampaignReply {
   status: 'new' | 'contacted' | 'qualified' | 'not_interested' | 'converted'
   notes: string | null
   read: boolean
+  bison_reply_id: number | null
   created_at: string
   updated_at: string
 }
@@ -53,6 +54,9 @@ const LeadsManagement = () => {
   const [readFilter, setReadFilter] = useState<string>('all')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [threadDialogOpen, setThreadDialogOpen] = useState(false)
+  const [loadingThread, setLoadingThread] = useState(false)
+  const [threadData, setThreadData] = useState<any>(null)
 
   // New reply form state
   const [newReply, setNewReply] = useState({
@@ -251,6 +255,34 @@ const LeadsManagement = () => {
       })
     } finally {
       setUpdatingId(null)
+    }
+  }
+
+  const fetchEmailThread = async (bisonReplyId: number) => {
+    try {
+      setLoadingThread(true)
+      setThreadDialogOpen(true)
+
+      const { data, error } = await supabase.functions.invoke('fetch-email-thread', {
+        body: { replyId: bisonReplyId },
+      })
+
+      if (error) throw error
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch email thread')
+      }
+
+      setThreadData(data.data)
+    } catch (error: any) {
+      toast({
+        title: 'Error fetching email thread',
+        description: error.message,
+        variant: 'destructive',
+      })
+      setThreadDialogOpen(false)
+    } finally {
+      setLoadingThread(false)
     }
   }
 
@@ -635,6 +667,18 @@ const LeadsManagement = () => {
                             </>
                           )}
                         </Button>
+                        {reply.bison_reply_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fetchEmailThread(reply.bison_reply_id!)}
+                            className="text-xs"
+                            title="View email thread"
+                          >
+                            <MessageSquare className="h-3 w-3 mr-1" />
+                            View Thread
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -643,6 +687,112 @@ const LeadsManagement = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Email Thread Modal */}
+        <Dialog open={threadDialogOpen} onOpenChange={setThreadDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Email Thread</DialogTitle>
+              <DialogDescription>
+                View the full email conversation
+              </DialogDescription>
+            </DialogHeader>
+            {loadingThread ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : threadData ? (
+              <div className="space-y-4">
+                {/* Older Messages */}
+                {threadData.data?.older_messages && threadData.data.older_messages.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Earlier Messages</h3>
+                    {threadData.data.older_messages.map((msg: any) => (
+                      <Card key={msg.id} className="p-4">
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-medium">{msg.from_name || msg.from_email_address}</p>
+                              <p className="text-sm text-muted-foreground">{msg.from_email_address}</p>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(msg.date_received).toLocaleString()}
+                            </span>
+                          </div>
+                          {msg.subject && (
+                            <p className="text-sm font-medium">Subject: {msg.subject}</p>
+                          )}
+                          <div
+                            className="text-sm prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ __html: msg.html_body || msg.text_body }}
+                          />
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {/* Current Reply */}
+                {threadData.data?.current_reply && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-primary">Current Reply</h3>
+                    <Card key={threadData.data.current_reply.id} className="p-4 border-primary">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium">{threadData.data.current_reply.from_name || threadData.data.current_reply.from_email_address}</p>
+                            <p className="text-sm text-muted-foreground">{threadData.data.current_reply.from_email_address}</p>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(threadData.data.current_reply.date_received).toLocaleString()}
+                          </span>
+                        </div>
+                        {threadData.data.current_reply.subject && (
+                          <p className="text-sm font-medium">Subject: {threadData.data.current_reply.subject}</p>
+                        )}
+                        <div
+                          className="text-sm prose prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{ __html: threadData.data.current_reply.html_body || threadData.data.current_reply.text_body }}
+                        />
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Newer Messages */}
+                {threadData.data?.newer_messages && threadData.data.newer_messages.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Follow-up Messages</h3>
+                    {threadData.data.newer_messages.map((msg: any) => (
+                      <Card key={msg.id} className="p-4">
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className="font-medium">{msg.from_name || msg.from_email_address}</p>
+                              <p className="text-sm text-muted-foreground">{msg.from_email_address}</p>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(msg.date_received).toLocaleString()}
+                            </span>
+                          </div>
+                          {msg.subject && (
+                            <p className="text-sm font-medium">Subject: {msg.subject}</p>
+                          )}
+                          <div
+                            className="text-sm prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ __html: msg.html_body || msg.text_body }}
+                          />
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-center py-8 text-muted-foreground">No thread data available</p>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
