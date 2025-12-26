@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send } from 'lucide-react'
+import { Download, Mail, MailOpen, Calendar, Plus, Search, Tag, Loader2, MessageSquare, Send, Archive, ArchiveRestore } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 
@@ -39,6 +39,8 @@ interface CampaignReply {
   notes: string | null
   read: boolean
   bison_reply_id: number | null
+  archived: boolean
+  archived_at: string | null
   created_at: string
   updated_at: string
 }
@@ -54,6 +56,7 @@ const LeadsManagement = () => {
   const [readFilter, setReadFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('all')
   const [quickFilter, setQuickFilter] = useState<string>('all')
+  const [showArchived, setShowArchived] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [threadDialogOpen, setThreadDialogOpen] = useState(false)
@@ -86,7 +89,7 @@ const LeadsManagement = () => {
 
   useEffect(() => {
     filterReplies()
-  }, [replies, searchTerm, typeFilter, statusFilter, readFilter, dateFilter, quickFilter])
+  }, [replies, searchTerm, typeFilter, statusFilter, readFilter, dateFilter, quickFilter, showArchived])
 
   const loadReplies = async () => {
     try {
@@ -112,6 +115,11 @@ const LeadsManagement = () => {
   const filterReplies = () => {
     let filtered = [...replies]
 
+    // Archive filter (apply first - hide archived by default)
+    if (!showArchived) {
+      filtered = filtered.filter((r) => !r.archived)
+    }
+
     // Quick filter (applies before other filters)
     if (quickFilter !== 'all') {
       switch (quickFilter) {
@@ -134,6 +142,10 @@ const LeadsManagement = () => {
         case 'unlabeled':
           // No lead type assigned
           filtered = filtered.filter((r) => !r.lead_type)
+          break
+        case 'archived':
+          // Only archived
+          filtered = filtered.filter((r) => r.archived)
           break
       }
     }
@@ -347,6 +359,45 @@ const LeadsManagement = () => {
     }
   }
 
+  const toggleArchive = async (id: string, currentArchivedStatus: boolean) => {
+    try {
+      setUpdatingId(id)
+      const { error } = await supabase
+        .from('campaign_replies')
+        .update({
+          archived: !currentArchivedStatus,
+          archived_at: !currentArchivedStatus ? new Date().toISOString() : null
+        })
+        .eq('id', id)
+
+      if (error) throw error
+
+      // Update local state instead of refetching
+      setReplies(prevReplies =>
+        prevReplies.map(reply =>
+          reply.id === id ? {
+            ...reply,
+            archived: !currentArchivedStatus,
+            archived_at: !currentArchivedStatus ? new Date().toISOString() : null
+          } : reply
+        )
+      )
+
+      toast({
+        title: !currentArchivedStatus ? 'Archived' : 'Unarchived',
+        description: !currentArchivedStatus ? 'Lead moved to archive' : 'Lead restored from archive',
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error updating archive status',
+        description: error.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
   const fetchEmailThread = async (bisonReplyId: number) => {
     try {
       setLoadingThread(true)
@@ -486,6 +537,10 @@ const LeadsManagement = () => {
       setStatusFilter('all')
       setReadFilter('all')
     }
+    // If viewing archived, enable showArchived
+    if (filter === 'archived') {
+      setShowArchived(true)
+    }
   }
 
   const exportCSV = () => {
@@ -535,12 +590,12 @@ const LeadsManagement = () => {
 
   // Calculate stats
   const stats = {
-    total: replies.length,
-    needsReply: replies.filter((r) => r.status === 'new' && !r.read).length,
-    unread: replies.filter((r) => !r.read).length,
-    contacted: replies.filter((r) => r.status === 'contacted').length,
-    qualified: replies.filter((r) => r.status === 'qualified').length,
-    unlabeled: replies.filter((r) => !r.lead_type).length,
+    total: replies.filter((r) => !r.archived).length,
+    needsReply: replies.filter((r) => r.status === 'new' && !r.read && !r.archived).length,
+    unread: replies.filter((r) => !r.read && !r.archived).length,
+    contacted: replies.filter((r) => r.status === 'contacted' && !r.archived).length,
+    qualified: replies.filter((r) => r.status === 'qualified' && !r.archived).length,
+    archived: replies.filter((r) => r.archived).length,
   }
 
   return (
@@ -648,14 +703,14 @@ const LeadsManagement = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Active</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">All replies</p>
+              <p className="text-xs text-muted-foreground">Not archived</p>
             </CardContent>
           </Card>
           <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => applyQuickFilter('needs_reply')}>
@@ -694,6 +749,15 @@ const LeadsManagement = () => {
               <p className="text-xs text-muted-foreground">Hot leads</p>
             </CardContent>
           </Card>
+          <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => applyQuickFilter('archived')}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Archived</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-muted-foreground">{stats.archived}</div>
+              <p className="text-xs text-muted-foreground">Done/closed</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Quick Filters */}
@@ -711,6 +775,7 @@ const LeadsManagement = () => {
                     {quickFilter === 'contacted' && 'Contacted'}
                     {quickFilter === 'qualified' && 'Qualified'}
                     {quickFilter === 'unlabeled' && 'Unlabeled'}
+                    {quickFilter === 'archived' && 'Archived'}
                   </span>
                 </div>
                 <Button
@@ -981,6 +1046,27 @@ const LeadsManagement = () => {
                               View Thread
                             </Button>
                           )}
+                          <div className="pt-2 border-t">
+                            <Button
+                              type="button"
+                              variant={reply.archived ? "default" : "ghost"}
+                              size="sm"
+                              onClick={() => toggleArchive(reply.id, reply.archived)}
+                              className="text-xs w-full"
+                            >
+                              {reply.archived ? (
+                                <>
+                                  <ArchiveRestore className="h-3 w-3 mr-1.5" />
+                                  Unarchive
+                                </>
+                              ) : (
+                                <>
+                                  <Archive className="h-3 w-3 mr-1.5" />
+                                  Archive
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
