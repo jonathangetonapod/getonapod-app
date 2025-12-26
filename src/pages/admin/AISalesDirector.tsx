@@ -38,7 +38,11 @@ import {
   analyzeSalesCall,
   hideSalesCall,
   unhideSalesCall,
-  deleteSalesCall
+  deleteSalesCall,
+  classifySalesCall,
+  getUnclassifiedCallsCount,
+  getUnclassifiedCalls,
+  CallType
 } from '@/services/salesCalls'
 import { toast } from 'sonner'
 import {
@@ -55,7 +59,10 @@ const AISalesDirector = () => {
   const [daysBack, setDaysBack] = useState(30)
   const [callsLimit, setCallsLimit] = useState(10)
   const [showHidden, setShowHidden] = useState(false)
+  const [callTypeFilter, setCallTypeFilter] = useState<CallType | 'all'>('all')
   const [analyzingCalls, setAnalyzingCalls] = useState<Record<string, boolean>>({})
+  const [classifyingCalls, setClassifyingCalls] = useState<Record<string, boolean>>({})
+  const [bulkClassifying, setBulkClassifying] = useState(false)
 
   // Fetch performance stats
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
@@ -71,8 +78,15 @@ const AISalesDirector = () => {
 
   // Fetch recent calls
   const { data: recentCalls, isLoading: callsLoading, refetch: refetchCalls } = useQuery({
-    queryKey: ['recent-sales-calls', callsLimit, showHidden],
-    queryFn: () => getRecentSalesCalls(callsLimit, showHidden),
+    queryKey: ['recent-sales-calls', callsLimit, showHidden, callTypeFilter],
+    queryFn: () => getRecentSalesCalls(callsLimit, showHidden, callTypeFilter),
+  })
+
+  // Fetch unclassified count
+  const { data: unclassifiedCount } = useQuery({
+    queryKey: ['unclassified-count'],
+    queryFn: getUnclassifiedCallsCount,
+    refetchInterval: 10000, // Refetch every 10 seconds
   })
 
   const handleSyncCalls = async () => {
@@ -157,6 +171,58 @@ const AISalesDirector = () => {
     }
   }
 
+  const handleClassifyCall = async (callId: string, title: string) => {
+    try {
+      setClassifyingCalls(prev => ({ ...prev, [callId]: true }))
+      toast.info(`Classifying "${title}"...`)
+
+      const result = await classifySalesCall(callId)
+
+      const callType = result.data.call_type
+      const typeLabel = callType === 'sales' ? 'Sales Call' : 'Non-Sales Call'
+
+      toast.success(`Classified as: ${typeLabel}`, { duration: 3000 })
+      refetchCalls()
+    } catch (error: any) {
+      console.error('Error classifying call:', error)
+      toast.error('Failed to classify: ' + error.message)
+    } finally {
+      setClassifyingCalls(prev => ({ ...prev, [callId]: false }))
+    }
+  }
+
+  const handleBulkClassify = async () => {
+    try {
+      setBulkClassifying(true)
+      const unclassifiedCalls = await getUnclassifiedCalls(50)
+
+      if (unclassifiedCalls.length === 0) {
+        toast.info('No unclassified calls found')
+        return
+      }
+
+      toast.info(`Classifying ${unclassifiedCalls.length} calls...`, { duration: 5000 })
+
+      let classified = 0
+      for (const call of unclassifiedCalls) {
+        try {
+          await classifySalesCall(call.id)
+          classified++
+        } catch (error) {
+          console.error(`Failed to classify call ${call.id}:`, error)
+        }
+      }
+
+      toast.success(`Classified ${classified}/${unclassifiedCalls.length} calls!`, { duration: 5000 })
+      refetchCalls()
+    } catch (error: any) {
+      console.error('Error bulk classifying:', error)
+      toast.error('Failed to classify calls: ' + error.message)
+    } finally {
+      setBulkClassifying(false)
+    }
+  }
+
   const hasData = stats && stats.total_calls > 0
 
   return (
@@ -186,7 +252,7 @@ const AISalesDirector = () => {
 
           {/* Sync Controls */}
           <div className="flex items-center justify-between border-t pt-4 flex-wrap gap-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Sync period:</span>
                 <Select value={daysBack.toString()} onValueChange={(val) => setDaysBack(Number(val))}>
@@ -203,6 +269,28 @@ const AISalesDirector = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {unclassifiedCount !== undefined && unclassifiedCount > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={handleBulkClassify}
+                  disabled={bulkClassifying}
+                >
+                  {bulkClassifying ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Classifying...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3 w-3" />
+                      Classify {unclassifiedCount} Unclassified
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             <Button
@@ -433,20 +521,36 @@ const AISalesDirector = () => {
           {/* Recent Calls */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <CardTitle>Recent Call Analysis</CardTitle>
                   <CardDescription>Your latest Fathom recordings</CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="show-hidden"
-                    checked={showHidden}
-                    onCheckedChange={(checked) => setShowHidden(checked as boolean)}
-                  />
-                  <label htmlFor="show-hidden" className="text-sm text-muted-foreground cursor-pointer">
-                    Show hidden
-                  </label>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Filter:</span>
+                    <Select value={callTypeFilter} onValueChange={(val) => setCallTypeFilter(val as CallType | 'all')}>
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Calls</SelectItem>
+                        <SelectItem value="sales">Sales Only</SelectItem>
+                        <SelectItem value="non-sales">Non-Sales Only</SelectItem>
+                        <SelectItem value="unclassified">Unclassified</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="show-hidden"
+                      checked={showHidden}
+                      onCheckedChange={(checked) => setShowHidden(checked as boolean)}
+                    />
+                    <label htmlFor="show-hidden" className="text-sm text-muted-foreground cursor-pointer">
+                      Show hidden
+                    </label>
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -463,7 +567,9 @@ const AISalesDirector = () => {
                     const score = call.analysis?.overall_score || 0
                     const outcome = score >= 7.5 ? 'positive' : score >= 6 ? 'neutral' : 'negative'
                     const isAnalyzing = analyzingCalls[call.id]
+                    const isClassifying = classifyingCalls[call.id]
                     const callTitle = call.title || call.meeting_title || 'Untitled Call'
+                    const callType = call.call_type || 'unclassified'
 
                     // Format date
                     const callDate = call.recording_start_time
@@ -510,6 +616,21 @@ const AISalesDirector = () => {
                                 <Badge variant="outline" className="text-xs">
                                   <EyeOff className="h-3 w-3 mr-1" />
                                   Hidden
+                                </Badge>
+                              )}
+                              {callType === 'sales' && (
+                                <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+                                  Sales
+                                </Badge>
+                              )}
+                              {callType === 'non-sales' && (
+                                <Badge variant="outline" className="text-xs">
+                                  Non-Sales
+                                </Badge>
+                              )}
+                              {callType === 'unclassified' && (
+                                <Badge variant="outline" className="text-xs text-muted-foreground">
+                                  Unclassified
                                 </Badge>
                               )}
                               {call.analysis && (
@@ -571,8 +692,28 @@ const AISalesDirector = () => {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {!call.analysis && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {callType === 'unclassified' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleClassifyCall(call.id, callTitle)}
+                              disabled={isClassifying}
+                            >
+                              {isClassifying ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Classifying...
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="h-3 w-3 mr-1" />
+                                  Classify with AI
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          {!call.analysis && callType === 'sales' && (
                             <Button
                               size="sm"
                               variant="outline"

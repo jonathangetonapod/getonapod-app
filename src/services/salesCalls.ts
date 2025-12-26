@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
+export type CallType = 'sales' | 'non-sales' | 'unclassified'
+
 export interface SalesCall {
   id: string
   recording_id: number
@@ -15,6 +17,7 @@ export interface SalesCall {
   transcript: any
   summary: string | null
   hidden: boolean
+  call_type: CallType
   created_at: string
   updated_at: string
 }
@@ -173,7 +176,11 @@ export const getTopRecommendations = async () => {
 }
 
 // Get recent calls for list view
-export const getRecentSalesCalls = async (limit = 10, showHidden = false) => {
+export const getRecentSalesCalls = async (
+  limit = 10,
+  showHidden = false,
+  callTypeFilter: CallType | 'all' = 'all'
+) => {
   let query = supabase
     .from('sales_calls')
     .select(`
@@ -184,6 +191,11 @@ export const getRecentSalesCalls = async (limit = 10, showHidden = false) => {
   // Only filter out hidden calls if showHidden is false
   if (!showHidden) {
     query = query.eq('hidden', false)
+  }
+
+  // Filter by call type if specified
+  if (callTypeFilter !== 'all') {
+    query = query.eq('call_type', callTypeFilter)
   }
 
   const { data: calls, error: callsError } = await query
@@ -256,4 +268,54 @@ export const deleteSalesCall = async (callId: string) => {
     console.error('Error deleting call:', error)
     throw error
   }
+}
+
+// Classify a single call with Haiku
+export const classifySalesCall = async (callId: string) => {
+  const { data, error } = await supabase.functions.invoke('classify-sales-call', {
+    body: {
+      sales_call_id: callId,
+    },
+  })
+
+  if (error) {
+    console.error('Error classifying call:', error)
+    throw error
+  }
+
+  return data
+}
+
+// Get count of unclassified calls
+export const getUnclassifiedCallsCount = async () => {
+  const { count, error } = await supabase
+    .from('sales_calls')
+    .select('*', { count: 'exact', head: true })
+    .eq('call_type', 'unclassified')
+    .eq('hidden', false)
+
+  if (error) {
+    console.error('Error counting unclassified calls:', error)
+    throw error
+  }
+
+  return count || 0
+}
+
+// Get all unclassified calls for bulk classification
+export const getUnclassifiedCalls = async (limit = 50) => {
+  const { data: calls, error } = await supabase
+    .from('sales_calls')
+    .select('id, title, meeting_title')
+    .eq('call_type', 'unclassified')
+    .eq('hidden', false)
+    .order('recording_start_time', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('Error fetching unclassified calls:', error)
+    throw error
+  }
+
+  return calls || []
 }
