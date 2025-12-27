@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
   ArrowLeft,
   Plus,
@@ -33,11 +34,16 @@ import {
   Rocket,
   Download,
   MessageSquare,
-  XCircle
+  XCircle,
+  Lock,
+  Unlock,
+  Copy,
+  Send
 } from 'lucide-react'
 import { getClientById, updateClient } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
 import { getPodcastById } from '@/services/podscan'
+import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPortal'
 import { useToast } from '@/hooks/use-toast'
 
 type TimeRange = 30 | 60 | 90 | 180
@@ -56,6 +62,8 @@ export default function ClientDetail() {
   const [editingBooking, setEditingBooking] = useState<any>(null)
   const [deletingBooking, setDeletingBooking] = useState<any>(null)
   const [fetchingPodcast, setFetchingPodcast] = useState(false)
+  const [sendingInvitation, setSendingInvitation] = useState(false)
+  const [togglingPortalAccess, setTogglingPortalAccess] = useState(false)
   const [editBookingForm, setEditBookingForm] = useState({
     podcast_name: '',
     host_name: '',
@@ -421,6 +429,71 @@ export default function ClientDetail() {
     })
   }
 
+  const handleTogglePortalAccess = async (enabled: boolean) => {
+    if (!client) return
+    setTogglingPortalAccess(true)
+    try {
+      await updatePortalAccess(client.id, enabled)
+      toast({
+        title: enabled ? 'Portal Access Enabled' : 'Portal Access Disabled',
+        description: enabled
+          ? 'Client can now access their portal'
+          : 'Client can no longer access their portal'
+      })
+      // Refresh client data
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update portal access',
+        variant: 'destructive'
+      })
+    } finally {
+      setTogglingPortalAccess(false)
+    }
+  }
+
+  const handleSendInvitation = async () => {
+    if (!client) return
+
+    if (!client.email) {
+      toast({
+        title: 'No Email Address',
+        description: 'Please add an email address to this client first',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setSendingInvitation(true)
+    try {
+      await sendPortalInvitation(client.id)
+      toast({
+        title: 'Invitation Sent',
+        description: `Portal invitation sent to ${client.email}`
+      })
+      // Refresh client data to update invitation_sent_at
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to send invitation',
+        variant: 'destructive'
+      })
+    } finally {
+      setSendingInvitation(false)
+    }
+  }
+
+  const handleCopyPortalUrl = () => {
+    const portalUrl = `${window.location.origin}/portal/login`
+    navigator.clipboard.writeText(portalUrl)
+    toast({
+      title: 'Copied!',
+      description: 'Portal login URL copied to clipboard'
+    })
+  }
+
   if (clientLoading || bookingsLoading) {
     return (
       <DashboardLayout>
@@ -602,6 +675,107 @@ export default function ClientDetail() {
                     >
                       Book Time
                     </a>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Client Portal Access */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {client.portal_access_enabled ? (
+                  <Unlock className="h-5 w-5 text-green-600" />
+                ) : (
+                  <Lock className="h-5 w-5 text-muted-foreground" />
+                )}
+                Client Portal Access
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Toggle Portal Access */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="portal-access">Enable Portal Access</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Allow client to view their bookings
+                  </p>
+                </div>
+                <Switch
+                  id="portal-access"
+                  checked={client.portal_access_enabled || false}
+                  onCheckedChange={handleTogglePortalAccess}
+                  disabled={togglingPortalAccess}
+                />
+              </div>
+
+              {/* Portal Actions */}
+              {client.portal_access_enabled && (
+                <div className="space-y-3 pt-3 border-t">
+                  <Button
+                    onClick={handleSendInvitation}
+                    disabled={!client.email || sendingInvitation}
+                    className="w-full"
+                  >
+                    {sendingInvitation ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-4 w-4" />
+                        Send Portal Invitation
+                      </>
+                    )}
+                  </Button>
+
+                  {!client.email && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Add email address to send invitation
+                    </p>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    onClick={handleCopyPortalUrl}
+                    className="w-full"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Portal URL
+                  </Button>
+
+                  {/* Portal Info */}
+                  <div className="space-y-2 text-xs text-muted-foreground pt-2">
+                    {client.portal_last_login_at && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        <span>
+                          Last login:{' '}
+                          {new Date(client.portal_last_login_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    )}
+                    {client.portal_invitation_sent_at && (
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3 w-3" />
+                        <span>
+                          Invitation sent:{' '}
+                          {new Date(client.portal_invitation_sent_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
