@@ -61,7 +61,7 @@ const Navbar = () => {
               )
             ))}
             <Button variant="hero" size="default" asChild>
-              <a href="/#book">Book a Call</a>
+              <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Book a Call</a>
             </Button>
           </div>
 
@@ -105,7 +105,7 @@ const Navbar = () => {
               ))}
               <div className="px-4 pt-2">
                 <Button variant="hero" size="default" className="w-full" asChild>
-                  <a href="/#book">Book a Call</a>
+                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Book a Call</a>
                 </Button>
               </div>
             </div>

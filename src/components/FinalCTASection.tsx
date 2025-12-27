@@ -27,7 +27,7 @@ const FinalCTASection = () => {
             className="shadow-lg min-h-[48px] sm:min-h-[56px] w-full sm:w-auto"
             asChild
           >
-            <a href="#book">Book Your Call</a>
+            <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Book Your Call</a>
           </Button>
 
           <p className="text-sm text-primary-foreground/60 mt-6 px-4">

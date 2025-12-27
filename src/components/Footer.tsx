@@ -3,7 +3,7 @@ const Footer = () => {
     { href: '#how-it-works', label: 'How It Works' },
     { href: '#pricing', label: 'Pricing' },
     { href: '#faq', label: 'FAQ' },
-    { href: '#book', label: 'Book a Call' },
+    { href: 'https://calendly.com/getonapodjg/30min', label: 'Book a Call' },
   ];
 
   return (
@@ -20,6 +20,7 @@ const Footer = () => {
                 key={link.href}
                 href={link.href}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                {...(link.href.startsWith('http') && { target: '_blank', rel: 'noopener noreferrer' })}
               >
                 {link.label}
               </a>
