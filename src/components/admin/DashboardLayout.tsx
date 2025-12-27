@@ -56,9 +56,9 @@ const defaultNavItems: NavItem[] = [
   { id: 'blog', name: 'Blog Posts', href: '/admin/blog', icon: FileText },
   { id: 'videos', name: 'Video Testimonials', href: '/admin/videos', icon: Video },
   { id: 'premium', name: 'Premium Placements', href: '/admin/premium-placements', icon: Sparkles },
-  { id: 'customers', name: 'Customers', href: '/admin/customers', icon: ShoppingBag },
-  { id: 'analytics', name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
-  { id: 'leads', name: 'Leads', href: '/admin/leads', icon: Users },
+  { id: 'customers', name: 'Premium Placement Orders', href: '/admin/customers', icon: ShoppingBag },
+  { id: 'analytics', name: 'Premium Placement Analytics', href: '/admin/analytics', icon: BarChart3 },
+  { id: 'leads', name: 'Unibox', href: '/admin/leads', icon: Users },
   { id: 'settings', name: 'Settings', href: '/admin/settings', icon: Settings },
 ]
 
@@ -157,7 +157,11 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   }
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px of movement before drag starts
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
