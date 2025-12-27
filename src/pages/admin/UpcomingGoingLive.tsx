@@ -91,56 +91,68 @@ export default function UpcomingGoingLive() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold">Upcoming Going Live</h1>
-          <p className="text-muted-foreground">Track when podcast episodes are scheduled to publish</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Upcoming Going Live</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Track when podcast episodes are scheduled to publish</p>
         </div>
 
         {/* Time Range Selector */}
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-2">
+          <CardContent className="pt-4 sm:pt-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   variant={timeRange === 7 ? 'default' : 'outline'}
                   onClick={() => setTimeRange(7)}
+                  size="sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   7 Days
                 </Button>
                 <Button
                   variant={timeRange === 14 ? 'default' : 'outline'}
                   onClick={() => setTimeRange(14)}
+                  size="sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   14 Days
                 </Button>
                 <Button
                   variant={timeRange === 30 ? 'default' : 'outline'}
                   onClick={() => setTimeRange(30)}
+                  size="sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   30 Days
                 </Button>
                 <Button
                   variant={timeRange === 60 ? 'default' : 'outline'}
                   onClick={() => setTimeRange(60)}
+                  size="sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   2 Months
                 </Button>
                 <Button
                   variant={timeRange === 90 ? 'default' : 'outline'}
                   onClick={() => setTimeRange(90)}
+                  size="sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   3 Months
                 </Button>
                 <Button
                   variant={timeRange === 180 ? 'default' : 'outline'}
                   onClick={() => setTimeRange(180)}
+                  size="sm"
+                  className="flex-1 sm:flex-none text-xs sm:text-sm"
                 >
                   6 Months
                 </Button>
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Showing {totalUpcoming} upcoming {totalUpcoming === 1 ? 'publication' : 'publications'}
               </div>
             </div>
@@ -148,7 +160,7 @@ export default function UpcomingGoingLive() {
         </Card>
 
         {/* Stats Overview */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Going Live</CardTitle>

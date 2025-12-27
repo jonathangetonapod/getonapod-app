@@ -350,8 +350,8 @@ export default function ClientDetail() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">{client.name}</h1>
-            <div className="flex items-center gap-2 mt-2">
+            <h1 className="text-2xl sm:text-3xl font-bold">{client.name}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               <Badge className={
                 client.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                 client.status === 'paused' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
@@ -520,13 +520,14 @@ export default function ClientDetail() {
         {/* Upcoming Recordings */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Upcoming Recordings</CardTitle>
-              <div className="flex items-center gap-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <CardTitle className="text-lg sm:text-xl">Upcoming Recordings</CardTitle>
+              <div className="flex items-center gap-1 flex-wrap">
                 <Button
                   variant={upcomingTimeRange === 30 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setUpcomingTimeRange(30)}
+                  className="text-xs"
                 >
                   1mo
                 </Button>
@@ -534,6 +535,7 @@ export default function ClientDetail() {
                   variant={upcomingTimeRange === 60 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setUpcomingTimeRange(60)}
+                  className="text-xs"
                 >
                   2mo
                 </Button>
@@ -541,6 +543,7 @@ export default function ClientDetail() {
                   variant={upcomingTimeRange === 90 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setUpcomingTimeRange(90)}
+                  className="text-xs"
                 >
                   3mo
                 </Button>
@@ -548,12 +551,13 @@ export default function ClientDetail() {
                   variant={upcomingTimeRange === 180 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setUpcomingTimeRange(180)}
+                  className="text-xs"
                 >
                   6mo
                 </Button>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">Next {upcomingTimeRange} days</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Next {upcomingTimeRange} days</p>
           </CardHeader>
           <CardContent>
             {upcomingRecordings.length === 0 ? (
@@ -607,13 +611,14 @@ export default function ClientDetail() {
         {/* Upcoming Going Live */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Upcoming Going Live</CardTitle>
-              <div className="flex items-center gap-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <CardTitle className="text-lg sm:text-xl">Upcoming Going Live</CardTitle>
+              <div className="flex items-center gap-1 flex-wrap">
                 <Button
                   variant={goingLiveTimeRange === 30 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setGoingLiveTimeRange(30)}
+                  className="text-xs"
                 >
                   1mo
                 </Button>
@@ -621,6 +626,7 @@ export default function ClientDetail() {
                   variant={goingLiveTimeRange === 60 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setGoingLiveTimeRange(60)}
+                  className="text-xs"
                 >
                   2mo
                 </Button>
@@ -628,6 +634,7 @@ export default function ClientDetail() {
                   variant={goingLiveTimeRange === 90 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setGoingLiveTimeRange(90)}
+                  className="text-xs"
                 >
                   3mo
                 </Button>
@@ -635,12 +642,13 @@ export default function ClientDetail() {
                   variant={goingLiveTimeRange === 180 ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setGoingLiveTimeRange(180)}
+                  className="text-xs"
                 >
                   6mo
                 </Button>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground">Next {goingLiveTimeRange} days</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Next {goingLiveTimeRange} days</p>
           </CardHeader>
           <CardContent>
             {upcomingGoingLive.length === 0 ? (

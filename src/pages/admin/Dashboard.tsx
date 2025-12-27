@@ -124,12 +124,12 @@ export default function Dashboard() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Dashboard</h1>
-            <p className="text-muted-foreground">Podcast placement overview</p>
+            <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Podcast placement overview</p>
           </div>
-          <Button asChild size="lg">
+          <Button asChild size="lg" className="w-full sm:w-auto">
             <Link to="/admin/clients">
               <Plus className="h-4 w-4 mr-2" />
               Add Client
@@ -138,7 +138,7 @@ export default function Dashboard() {
         </div>
 
         {/* Overview Stats */}
-        <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[240px_1fr]">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Clients</CardTitle>
@@ -179,42 +179,42 @@ export default function Dashboard() {
                 </div>
 
                 {/* Status Breakdown */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 pt-2">
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                     </div>
-                    <div>
-                      <div className="text-xl font-bold">{bookedThisMonth}</div>
+                    <div className="min-w-0">
+                      <div className="text-lg sm:text-xl font-bold">{bookedThisMonth}</div>
                       <div className="text-xs text-muted-foreground">Booked</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
-                      <Clock className="h-5 w-5 text-yellow-600" />
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
+                      <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                     </div>
-                    <div>
-                      <div className="text-xl font-bold">{inProgressThisMonth}</div>
+                    <div className="min-w-0">
+                      <div className="text-lg sm:text-xl font-bold">{inProgressThisMonth}</div>
                       <div className="text-xs text-muted-foreground">In Progress</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                      <Video className="h-5 w-5 text-blue-600" />
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                      <Video className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                     </div>
-                    <div>
-                      <div className="text-xl font-bold">
+                    <div className="min-w-0">
+                      <div className="text-lg sm:text-xl font-bold">
                         {thisMonthBookings.filter(b => b.status === 'recorded').length}
                       </div>
                       <div className="text-xs text-muted-foreground">Recorded</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                      <CheckCheck className="h-5 w-5 text-purple-600" />
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
+                    <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center flex-shrink-0">
+                      <CheckCheck className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
                     </div>
-                    <div>
-                      <div className="text-xl font-bold">{publishedThisMonth}</div>
+                    <div className="min-w-0">
+                      <div className="text-lg sm:text-xl font-bold">{publishedThisMonth}</div>
                       <div className="text-xs text-muted-foreground">Published</div>
                     </div>
                   </div>
@@ -225,7 +225,7 @@ export default function Dashboard() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
           {/* Left Column */}
           <div className="space-y-6">
             {/* Upcoming Recordings */}
@@ -240,13 +240,14 @@ export default function Dashboard() {
                     </Link>
                   </Button>
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-sm text-muted-foreground">Show:</span>
-                  <div className="flex items-center gap-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
+                  <span className="text-xs sm:text-sm text-muted-foreground">Show:</span>
+                  <div className="flex items-center gap-1 flex-wrap">
                     <Button
                       variant={upcomingTimeRange === 7 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(7)}
+                      className="text-xs"
                     >
                       7d
                     </Button>
@@ -254,6 +255,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 14 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(14)}
+                      className="text-xs"
                     >
                       14d
                     </Button>
@@ -261,6 +263,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 30 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(30)}
+                      className="text-xs"
                     >
                       30d
                     </Button>
@@ -268,6 +271,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 60 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(60)}
+                      className="text-xs"
                     >
                       2mo
                     </Button>
@@ -275,6 +279,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 90 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(90)}
+                      className="text-xs"
                     >
                       3mo
                     </Button>
@@ -356,12 +361,13 @@ export default function Dashboard() {
                     </Link>
                   </Button>
                 </div>
-                <div className="flex items-center justify-between mt-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
                   <div className="flex items-center gap-1 flex-wrap">
                     <Button
                       variant={upcomingTimeRange === 7 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(7)}
+                      className="text-xs"
                     >
                       7d
                     </Button>
@@ -369,6 +375,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 14 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(14)}
+                      className="text-xs"
                     >
                       14d
                     </Button>
@@ -376,6 +383,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 30 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(30)}
+                      className="text-xs"
                     >
                       30d
                     </Button>
@@ -383,6 +391,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 60 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(60)}
+                      className="text-xs"
                     >
                       2mo
                     </Button>
@@ -390,6 +399,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 90 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(90)}
+                      className="text-xs"
                     >
                       3mo
                     </Button>
@@ -397,6 +407,7 @@ export default function Dashboard() {
                       variant={upcomingTimeRange === 180 ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setUpcomingTimeRange(180)}
+                      className="text-xs"
                     >
                       6mo
                     </Button>
