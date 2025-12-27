@@ -64,13 +64,12 @@ export default function Dashboard() {
     .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
     .slice(0, 8)
 
-  // Upcoming going live (filtered by time range)
+  // Upcoming going live (filtered by time range, all statuses with publish date)
   const upcomingGoingLive = allBookings
     .filter(booking => {
       if (!booking.publish_date) return false
       const publishDate = new Date(booking.publish_date)
-      return publishDate >= now && publishDate <= futureDateFromNow &&
-             (booking.status === 'recorded' || booking.status === 'published')
+      return publishDate >= now && publishDate <= futureDateFromNow
     })
     .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
     .slice(0, 5)

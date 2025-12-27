@@ -177,7 +177,7 @@ export default function ClientDetail() {
     })
     .sort((a, b) => new Date(a.recording_date!).getTime() - new Date(b.recording_date!).getTime())
 
-  // Calculate upcoming going live (filtered by time range)
+  // Calculate upcoming going live (filtered by time range, all statuses with publish date)
   const goingLiveFutureDate = new Date()
   goingLiveFutureDate.setDate(goingLiveFutureDate.getDate() + goingLiveTimeRange)
 
@@ -186,8 +186,7 @@ export default function ClientDetail() {
       if (!booking.publish_date) return false
       const publishDate = new Date(booking.publish_date)
       return publishDate >= now &&
-             publishDate <= goingLiveFutureDate &&
-             (booking.status === 'recorded' || booking.status === 'published')
+             publishDate <= goingLiveFutureDate
     })
     .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
 
