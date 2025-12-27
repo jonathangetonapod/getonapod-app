@@ -697,7 +697,7 @@ const PremiumPlacements = () => {
           <p className="text-xl mb-8 max-w-2xl mx-auto opacity-90">
             Book a call to discuss which shows are the best fit for your message and goals.
           </p>
-          <Button variant="heroOutline" size="lg" asChild>
+          <Button variant="secondary" size="lg" asChild>
             <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Book Your Call</a>
           </Button>
         </div>
