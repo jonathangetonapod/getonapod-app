@@ -57,7 +57,7 @@ CREATE TABLE public.blog_posts (
   google_indexing_status TEXT,
 
   -- Metadata
-  author_name TEXT DEFAULT 'Authority Lab Team',
+  author_name TEXT DEFAULT 'Get On A Pod Team',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL

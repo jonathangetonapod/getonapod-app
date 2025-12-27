@@ -11,7 +11,7 @@ const Footer = () => {
       <div className="container mx-auto">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="text-xl font-bold tracking-tight text-foreground">
-            AUTHORITY LAB
+            GET ON A POD
           </div>
           
           <nav className="flex flex-wrap items-center justify-center gap-6">
@@ -27,7 +27,7 @@ const Footer = () => {
           </nav>
           
           <p className="text-sm text-muted-foreground">
-            &copy; 2025 Authority Lab. All rights reserved.
+            &copy; 2025 Get On A Pod. All rights reserved.
           </p>
         </div>
       </div>

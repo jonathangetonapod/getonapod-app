@@ -22,7 +22,7 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
   return (
     <Helmet>
       {/* Basic Meta Tags */}
-      <title>{post.title} | Authority Lab</title>
+      <title>{post.title} | Get On A Pod</title>
       <meta name="description" content={post.meta_description} />
       {keywords && <meta name="keywords" content={keywords} />}
       <meta name="author" content={post.author_name} />
@@ -34,7 +34,7 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
       <meta property="og:title" content={post.title} />
       <meta property="og:description" content={post.meta_description} />
       <meta property="og:image" content={ogImage} />
-      <meta property="og:site_name" content="Authority Lab" />
+      <meta property="og:site_name" content="Get On A Pod" />
       {post.published_at && (
         <meta property="article:published_time" content={post.published_at} />
       )}

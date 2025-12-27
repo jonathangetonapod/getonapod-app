@@ -155,7 +155,7 @@ const Settings = () => {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="site-name">Site Name</Label>
-              <Input id="site-name" value="Authority Lab" />
+              <Input id="site-name" value="Get On A Pod" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="site-url">Site URL</Label>

@@ -353,11 +353,11 @@ export const generateSchemaMarkup = (post: BlogPost) => {
     dateModified: post.updated_at,
     author: {
       '@type': 'Person',
-      name: post.author_name || 'Authority Lab Team',
+      name: post.author_name || 'Get On A Pod Team',
     },
     publisher: {
       '@type': 'Organization',
-      name: 'Authority Lab',
+      name: 'Get On A Pod',
       logo: {
         '@type': 'ImageObject',
         url: 'https://getonapod.com/logo.png',

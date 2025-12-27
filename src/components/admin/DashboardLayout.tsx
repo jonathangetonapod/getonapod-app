@@ -208,7 +208,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         <div className="flex h-full flex-col">
           {/* Logo/Brand */}
           <div className="flex h-16 items-center justify-between border-b border-border px-6">
-            <h1 className="text-xl font-bold">Authority Lab</h1>
+            <h1 className="text-xl font-bold">Get On A Pod</h1>
             <Button
               variant="ghost"
               size="icon"

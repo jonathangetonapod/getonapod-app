@@ -51,7 +51,7 @@ const AdminDashboard = () => {
         <div>
           <h1 className="text-3xl font-bold">Dashboard Overview</h1>
           <p className="text-muted-foreground mt-2">
-            Welcome to your Authority Lab command center
+            Welcome to your Get On A Pod command center
           </p>
         </div>
 

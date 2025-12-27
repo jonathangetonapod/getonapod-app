@@ -288,7 +288,7 @@ export default function BlogEditor() {
       excerpt: excerpt || generateExcerpt(content),
       featured_image_url: featuredImageUrl,
       read_time_minutes: calculateReadTime(content),
-      author_name: 'Authority Lab Team',
+      author_name: 'Get On A Pod Team',
       published_at: new Date().toISOString(),
     }))
     window.open('/blog/preview', '_blank')

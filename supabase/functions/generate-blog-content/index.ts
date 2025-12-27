@@ -27,7 +27,7 @@ serve(async (req) => {
     })
 
     // Construct prompt for blog post generation
-    const prompt = `You are an expert content writer for Authority Lab, a podcast booking agency that helps entrepreneurs and thought leaders get booked on top podcasts.
+    const prompt = `You are an expert content writer for Get On A Pod, a podcast booking agency that helps entrepreneurs and thought leaders get booked on top podcasts.
 
 Write a comprehensive, SEO-optimized blog post about: "${topic}"
 
@@ -52,14 +52,14 @@ Write a comprehensive, SEO-optimized blog post about: "${topic}"
 
 3. **Conclusion** (150-200 words)
    - Summarize key takeaways
-   - Include a call-to-action encouraging readers to explore Authority Lab's services
+   - Include a call-to-action encouraging readers to explore Get On A Pod's services
 
 **Content Requirements:**
 - Write in HTML format using semantic tags: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>
 - Make content scannable with clear headings and short paragraphs (2-3 sentences)
 - Include specific examples and actionable advice
 - Naturally incorporate keywords without over-optimization
-- Mention "Authority Lab" once in the context of podcast booking services
+- Mention "Get On A Pod" once in the context of podcast booking services
 - End with a CTA: "Ready to get booked on top podcasts? <a href='/premium-placements'>Explore our Premium Podcast Placements</a>"
 
 **Tone Guidelines:**

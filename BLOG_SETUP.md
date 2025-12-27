@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-The Authority Lab blog system is an AI-powered, SEO-optimized blog integrated into the main React application with:
+The Get On A Pod blog system is an AI-powered, SEO-optimized blog integrated into the main React application with:
 - AI content generation using Claude API
 - Google Indexing API for fast indexation
 - Rich text editor (TipTap)
@@ -91,7 +91,7 @@ The Google Indexing API allows your blog posts to be indexed within hours instea
 
 1. **Create Google Cloud Project**
    - Go to https://console.cloud.google.com/
-   - Create a new project (e.g., "Authority Lab Blog")
+   - Create a new project (e.g., "Get On A Pod Blog")
 
 2. **Enable Indexing API**
    - Go to API & Services → Library
@@ -172,7 +172,7 @@ The Google Search Console API allows you to verify if your blog posts are **actu
 - Go to "APIs & Services" > "Credentials"
 - Click "Create Credentials" > "OAuth client ID"
 - Application type: "Web application"
-- Name: "Authority Lab Blog - Search Console"
+- Name: "Get On A Pod Blog - Search Console"
 - Authorized redirect URIs:
   - `http://localhost:3000/oauth/callback` (for setup)
   - `https://getonapod.com/oauth/callback` (optional, for production)

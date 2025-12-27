@@ -18,7 +18,7 @@ const FinalCTASection = () => {
           </h2>
 
           <p className="text-base sm:text-lg md:text-xl text-primary-foreground/80 mb-8 sm:mb-10 px-4">
-            Book a call to see if Authority Lab is right for you.
+            Book a call to see if Get On A Pod is right for you.
           </p>
 
           <Button

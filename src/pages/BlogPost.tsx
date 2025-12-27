@@ -231,7 +231,7 @@ export default function BlogPost() {
                       />
                       <div>
                         <p className="font-semibold">{post.author_name}</p>
-                        <p className="text-sm text-muted-foreground">Authority Lab</p>
+                        <p className="text-sm text-muted-foreground">Get On A Pod</p>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground">

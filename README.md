@@ -1,10 +1,10 @@
-# Authority Lab - Podcast Placement + PR for Founders
+# Get On A Pod - Podcast Placement + PR for Founders
 
-A modern, conversion-focused landing page for Authority Lab, offering done-for-you podcast placement and PR services.
+A modern, conversion-focused landing page for Get On A Pod, offering done-for-you podcast placement and PR services.
 
 ## 🚀 Project Overview
 
-Authority Lab helps founders and financial professionals build authority through podcast appearances and press features. This site implements a complete revenue ladder architecture based on the Matt Larsson flywheel framework, capturing leads from free resources to premium $4K/month services.
+Get On A Pod helps founders and financial professionals build authority through podcast appearances and press features. This site implements a complete revenue ladder architecture based on the Matt Larsson flywheel framework, capturing leads from free resources to premium $4K/month services.
 
 ## 📁 Site Structure
 
@@ -185,7 +185,7 @@ npm run build
 
 ## 🤝 Contributing
 
-This is a private project for Authority Lab. For questions or support:
+This is a private project for Get On A Pod. For questions or support:
 - Email: support@authoritylab.com
 - GitHub Issues: [Report an issue](https://github.com/jonathangetonapod/authority-built/issues)
 
