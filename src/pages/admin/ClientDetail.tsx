@@ -29,7 +29,8 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  Rocket
 } from 'lucide-react'
 import { getClientById, updateClient } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
@@ -43,6 +44,7 @@ export default function ClientDetail() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [upcomingTimeRange, setUpcomingTimeRange] = useState<TimeRange>(30)
+  const [goingLiveTimeRange, setGoingLiveTimeRange] = useState<TimeRange>(30)
   const [editingBooking, setEditingBooking] = useState<any>(null)
   const [deletingBooking, setDeletingBooking] = useState<any>(null)
   const [editBookingForm, setEditBookingForm] = useState({
@@ -174,6 +176,20 @@ export default function ClientDetail() {
               booking.status === 'in_progress')
     })
     .sort((a, b) => new Date(a.recording_date!).getTime() - new Date(b.recording_date!).getTime())
+
+  // Calculate upcoming going live (filtered by time range)
+  const goingLiveFutureDate = new Date()
+  goingLiveFutureDate.setDate(goingLiveFutureDate.getDate() + goingLiveTimeRange)
+
+  const upcomingGoingLive = bookings
+    .filter(booking => {
+      if (!booking.publish_date) return false
+      const publishDate = new Date(booking.publish_date)
+      return publishDate >= now &&
+             publishDate <= goingLiveFutureDate &&
+             (booking.status === 'recorded' || booking.status === 'published')
+    })
+    .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
 
   const goToPreviousMonth = () => {
     setSelectedDate(new Date(selectedYear, selectedMonth - 1, 1))
@@ -574,6 +590,90 @@ export default function ClientDetail() {
                             <CheckCircle2 className="h-3 w-3" />
                             <span>Prep sent</span>
                           </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Upcoming Going Live */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Upcoming Going Live</CardTitle>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={goingLiveTimeRange === 30 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setGoingLiveTimeRange(30)}
+                >
+                  1mo
+                </Button>
+                <Button
+                  variant={goingLiveTimeRange === 60 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setGoingLiveTimeRange(60)}
+                >
+                  2mo
+                </Button>
+                <Button
+                  variant={goingLiveTimeRange === 90 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setGoingLiveTimeRange(90)}
+                >
+                  3mo
+                </Button>
+                <Button
+                  variant={goingLiveTimeRange === 180 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setGoingLiveTimeRange(180)}
+                >
+                  6mo
+                </Button>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">Next {goingLiveTimeRange} days</p>
+          </CardHeader>
+          <CardContent>
+            {upcomingGoingLive.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Rocket className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No upcoming publications</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingGoingLive.map(booking => (
+                  <div
+                    key={booking.id}
+                    className="flex items-start gap-4 p-3 rounded-lg border bg-muted/30"
+                  >
+                    {/* Date Column */}
+                    <div className="flex-shrink-0 text-center min-w-[80px]">
+                      <div className="text-sm font-bold">{formatUpcomingDate(booking.publish_date!)}</div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{booking.podcast_name}</p>
+                      {booking.host_name && (
+                        <p className="text-xs text-muted-foreground">Host: {booking.host_name}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {getStatusBadge(booking.status)}
+                        {booking.episode_url && (
+                          <a
+                            href={booking.episode_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                          >
+                            <Rocket className="h-3 w-3" />
+                            Episode Link
+                          </a>
                         )}
                       </div>
                     </div>

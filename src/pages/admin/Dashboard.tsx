@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Users, Calendar, TrendingUp, CheckCircle2, Clock, Video, CheckCheck, Plus, ArrowRight, AlertCircle } from 'lucide-react'
+import { Users, Calendar, TrendingUp, CheckCircle2, Clock, Video, CheckCheck, Plus, ArrowRight, AlertCircle, Rocket } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { getClients } from '@/services/clients'
 import { getBookings } from '@/services/bookings'
@@ -63,6 +63,17 @@ export default function Dashboard() {
   const recentActivity = [...allBookings]
     .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
     .slice(0, 8)
+
+  // Upcoming going live (filtered by time range)
+  const upcomingGoingLive = allBookings
+    .filter(booking => {
+      if (!booking.publish_date) return false
+      const publishDate = new Date(booking.publish_date)
+      return publishDate >= now && publishDate <= futureDateFromNow &&
+             (booking.status === 'recorded' || booking.status === 'published')
+    })
+    .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
+    .slice(0, 5)
 
   const getStatusBadge = (status: string) => {
     const styles = {
@@ -125,6 +136,12 @@ export default function Dashboard() {
             <Link to="/admin/upcoming">
               <Clock className="h-4 w-4 mr-2" />
               Upcoming Recordings
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/admin/going-live">
+              <Rocket className="h-4 w-4 mr-2" />
+              Going Live
             </Link>
           </Button>
         </div>
@@ -331,6 +348,117 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Upcoming Going Live */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Upcoming Going Live</CardTitle>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/admin/going-live">
+                  View All
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Link>
+              </Button>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <div className="flex items-center gap-1 flex-wrap">
+                <Button
+                  variant={upcomingTimeRange === 7 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUpcomingTimeRange(7)}
+                >
+                  7 days
+                </Button>
+                <Button
+                  variant={upcomingTimeRange === 14 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUpcomingTimeRange(14)}
+                >
+                  14 days
+                </Button>
+                <Button
+                  variant={upcomingTimeRange === 30 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUpcomingTimeRange(30)}
+                >
+                  30 days
+                </Button>
+                <Button
+                  variant={upcomingTimeRange === 60 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUpcomingTimeRange(60)}
+                >
+                  2 months
+                </Button>
+                <Button
+                  variant={upcomingTimeRange === 90 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUpcomingTimeRange(90)}
+                >
+                  3 months
+                </Button>
+                <Button
+                  variant={upcomingTimeRange === 180 ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUpcomingTimeRange(180)}
+                >
+                  6 months
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {upcomingGoingLive.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Rocket className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No upcoming publications</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingGoingLive.map(booking => (
+                  <div
+                    key={booking.id}
+                    className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30"
+                  >
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Link
+                          to={`/admin/clients/${booking.client_id}`}
+                          className="font-semibold hover:text-primary hover:underline truncate"
+                        >
+                          {booking.client.name}
+                        </Link>
+                        {getStatusBadge(booking.status)}
+                      </div>
+                      <p className="text-sm font-medium truncate">{booking.podcast_name}</p>
+                      {booking.host_name && (
+                        <p className="text-xs text-muted-foreground">Host: {booking.host_name}</p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="font-medium">Going Live: {formatDate(booking.publish_date!)}</span>
+                        {booking.recording_date && (
+                          <span>Recorded: {formatDate(booking.recording_date)}</span>
+                        )}
+                      </div>
+                      {booking.episode_url && (
+                        <a
+                          href={booking.episode_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                        >
+                          <Rocket className="h-3 w-3" />
+                          Episode Link
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Monthly Pipeline Status */}
         <Card>
