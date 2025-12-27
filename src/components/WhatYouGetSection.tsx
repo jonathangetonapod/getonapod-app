@@ -110,19 +110,19 @@ const WhatYouGetSection = () => {
                   </div>
 
                   {/* Content */}
-                  <h3 className="text-2xl md:text-2xl font-bold text-foreground mb-2">
+                  <h3 className="text-xl sm:text-2xl font-bold text-foreground mb-2">
                     {feature.title}
                   </h3>
-                  <p className="text-muted-foreground mb-4">
+                  <p className="text-sm sm:text-base text-muted-foreground mb-4">
                     {feature.description}
                   </p>
 
                   {/* Items List */}
-                  <ul className="space-y-2.5">
+                  <ul className="space-y-2 sm:space-y-2.5">
                     {feature.items.map((item, i) => (
-                      <li key={i} className="flex items-start gap-3 text-foreground">
-                        <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                        <span className="text-sm md:text-base">{item}</span>
+                      <li key={i} className="flex items-start gap-2 sm:gap-3 text-foreground">
+                        <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span className="text-sm sm:text-base">{item}</span>
                       </li>
                     ))}
                   </ul>

@@ -78,17 +78,17 @@ const GuaranteeSection = () => {
           </div>
 
           {/* Trust Badge */}
-          <div className="max-w-3xl mx-auto text-center p-8 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 rounded-2xl border-2 border-primary/20">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Shield className="h-10 w-10 text-primary" />
-              <h3 className="text-3xl md:text-4xl font-bold text-foreground">
+          <div className="max-w-3xl mx-auto text-center p-6 md:p-8 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 rounded-2xl border-2 border-primary/20">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
+              <Shield className="h-8 w-8 md:h-10 md:w-10 text-primary flex-shrink-0" />
+              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">
                 If We Don't Hit Your Number, We Work For Free
               </h3>
             </div>
-            <p className="text-lg text-muted-foreground mb-6">
+            <p className="text-base md:text-lg text-muted-foreground mb-6 px-2">
               Miss the deadline? We keep going—for free—until every promised placement is delivered. You paid for X podcasts, you get X podcasts. Period.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-success" />
                 <span>Get every placement promised</span>
