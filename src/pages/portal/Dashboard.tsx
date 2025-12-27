@@ -55,8 +55,26 @@ import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
 import { CartButton } from '@/components/CartButton'
 import { CartDrawer } from '@/components/CartDrawer'
+import { PODCAST_CATEGORIES } from '@/lib/categories'
 
 type TimeRange = 'all' | 'month' | 'quarter' | 'year'
+
+const AUDIENCE_TIERS = [
+  { label: "All Sizes", value: "all", min: 0, max: Infinity },
+  { label: "Small (0-25K)", value: "small", min: 0, max: 25000 },
+  { label: "Medium (25K-50K)", value: "medium", min: 25000, max: 50000 },
+  { label: "Large (50K-100K)", value: "large", min: 50000, max: 100000 },
+  { label: "Mega (100K+)", value: "mega", min: 100000, max: Infinity },
+]
+
+const PRICE_RANGES = [
+  { label: "All Prices", value: "all", min: 0, max: Infinity },
+  { label: "Under $1,000", value: "under1k", min: 0, max: 1000 },
+  { label: "$1,000 - $2,500", value: "1k-2.5k", min: 1000, max: 2500 },
+  { label: "$2,500 - $5,000", value: "2.5k-5k", min: 2500, max: 5000 },
+  { label: "$5,000 - $10,000", value: "5k-10k", min: 5000, max: 10000 },
+  { label: "$10,000+", value: "10k+", min: 10000, max: Infinity },
+]
 
 const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -78,6 +96,9 @@ export default function PortalDashboard() {
   const [premiumSearchQuery, setPremiumSearchQuery] = useState('')
   const [premiumSortBy, setPremiumSortBy] = useState('featured')
   const [expandedPremiumCards, setExpandedPremiumCards] = useState<Set<string>>(new Set())
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedAudienceTier, setSelectedAudienceTier] = useState('all')
+  const [selectedPriceRange, setSelectedPriceRange] = useState('all')
   const { addItem, isInCart } = useCartStore()
 
   // Fetch bookings
@@ -651,6 +672,33 @@ export default function PortalDashboard() {
       )
     }
 
+    // Category filter
+    if (selectedCategory) {
+      filtered = filtered.filter(p => p.category === selectedCategory)
+    }
+
+    // Audience tier filter
+    if (selectedAudienceTier !== "all") {
+      const tier = AUDIENCE_TIERS.find(t => t.value === selectedAudienceTier)
+      if (tier) {
+        filtered = filtered.filter(p => {
+          const audience = parseAudience(p.audience_size)
+          return audience >= tier.min && audience < tier.max
+        })
+      }
+    }
+
+    // Price range filter
+    if (selectedPriceRange !== "all") {
+      const range = PRICE_RANGES.find(r => r.value === selectedPriceRange)
+      if (range) {
+        filtered = filtered.filter(p => {
+          const price = parsePrice(p.price)
+          return price >= range.min && price < range.max
+        })
+      }
+    }
+
     // Sort
     filtered.sort((a, b) => {
       switch (premiumSortBy) {
@@ -681,7 +729,19 @@ export default function PortalDashboard() {
     })
 
     return filtered
-  }, [premiumPodcasts, premiumSearchQuery, premiumSortBy])
+  }, [premiumPodcasts, premiumSearchQuery, premiumSortBy, selectedCategory, selectedAudienceTier, selectedPriceRange])
+
+  // Check if any premium filters are active
+  const hasPremiumFilters = premiumSearchQuery || selectedCategory || selectedAudienceTier !== "all" || selectedPriceRange !== "all" || premiumSortBy !== "featured"
+
+  // Clear all premium filters
+  const clearPremiumFilters = () => {
+    setPremiumSearchQuery("")
+    setSelectedCategory(null)
+    setSelectedAudienceTier("all")
+    setSelectedPriceRange("all")
+    setPremiumSortBy("featured")
+  }
 
   // Export to CSV
   const exportToCSV = () => {
@@ -740,7 +800,7 @@ export default function PortalDashboard() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="premium">Premium</TabsTrigger>
+            <TabsTrigger value="premium">Premium Placements</TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW TAB */}
@@ -1472,7 +1532,8 @@ export default function PortalDashboard() {
 
             {/* Search and Sort */}
             <Card>
-              <CardContent className="pt-6">
+              <CardContent className="pt-6 space-y-4">
+                {/* Search and Sort Row */}
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1507,7 +1568,74 @@ export default function PortalDashboard() {
                   </Select>
                 </div>
 
-                <div className="mt-4 text-sm text-muted-foreground">
+                {/* Category Pills */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Category:</span>
+                  <Button
+                    variant={selectedCategory === null ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedCategory(null)}
+                    className="h-8"
+                  >
+                    All
+                  </Button>
+                  {PODCAST_CATEGORIES.map((category) => (
+                    <Button
+                      key={category}
+                      variant={selectedCategory === category ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedCategory(category)}
+                      className="h-8 whitespace-nowrap"
+                    >
+                      {category}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Audience and Price Filters */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">Audience:</span>
+                    <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
+                      <SelectTrigger className="w-[180px] h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AUDIENCE_TIERS.map((tier) => (
+                          <SelectItem key={tier.value} value={tier.value}>
+                            {tier.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">Price:</span>
+                    <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
+                      <SelectTrigger className="w-[180px] h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRICE_RANGES.map((range) => (
+                          <SelectItem key={range.value} value={range.value}>
+                            {range.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {hasPremiumFilters && (
+                    <Button onClick={clearPremiumFilters} variant="ghost" size="sm" className="h-9">
+                      <X className="h-4 w-4 mr-2" />
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+
+                {/* Results Count */}
+                <div className="text-sm text-muted-foreground pt-2 border-t">
                   Showing <span className="font-semibold text-foreground">{filteredPremiumPodcasts.length}</span> of{' '}
                   <span className="font-semibold text-foreground">{premiumPodcasts?.length || 0}</span> podcasts
                 </div>
