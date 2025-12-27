@@ -486,7 +486,9 @@ export default function ClientDetail() {
   }
 
   const handleCopyPortalUrl = () => {
-    const portalUrl = `${window.location.origin}/portal/login`
+    // Always use production URL, not localhost
+    const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
+    const portalUrl = `${baseUrl}/portal/login`
     navigator.clipboard.writeText(portalUrl)
     toast({
       title: 'Copied!',
