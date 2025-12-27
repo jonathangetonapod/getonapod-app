@@ -246,10 +246,19 @@ export default function ClientDetail() {
       })
       return
     }
-    console.log('Creating booking with data:', newBookingForm)
+
+    // Clean up form data - convert empty strings to undefined for date fields
+    const cleanedData = {
+      ...newBookingForm,
+      scheduled_date: newBookingForm.scheduled_date || undefined,
+      recording_date: undefined,
+      publish_date: undefined,
+    }
+
+    console.log('Creating booking with data:', cleanedData)
     createBookingMutation.mutate({
       client_id: id,
-      ...newBookingForm
+      ...cleanedData
     })
   }
 
