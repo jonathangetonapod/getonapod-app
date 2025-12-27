@@ -17,7 +17,8 @@ import {
   Sparkles,
   ShoppingBag,
   BarChart3,
-  Brain
+  Brain,
+  Calendar
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -53,6 +54,8 @@ interface NavItem {
 const defaultNavItems: NavItem[] = [
   { id: 'overview', name: 'Overview', href: '/admin/dashboard', icon: LayoutDashboard },
   { id: 'ai-sales-director', name: 'AI Sales Director', href: '/admin/ai-sales-director', icon: Brain },
+  { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
+  { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
   { id: 'blog', name: 'Blog Posts', href: '/admin/blog', icon: FileText },
   { id: 'videos', name: 'Video Testimonials', href: '/admin/videos', icon: Video },
   { id: 'premium', name: 'Premium Placements', href: '/admin/premium-placements', icon: Sparkles },

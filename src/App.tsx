@@ -19,6 +19,9 @@ import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AuthCallback from "./pages/admin/Callback";
 import AISalesDirector from "./pages/admin/AISalesDirector";
+import CalendarDashboard from "./pages/admin/CalendarDashboard";
+import ClientsManagement from "./pages/admin/ClientsManagement";
+import ClientDetail from "./pages/admin/ClientDetail";
 import BlogManagement from "./pages/admin/BlogManagement";
 import BlogEditor from "./pages/admin/BlogEditor";
 import VideoManagement from "./pages/admin/VideoManagement";
@@ -71,6 +74,30 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AISalesDirector />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/calendar"
+              element={
+                <ProtectedRoute>
+                  <CalendarDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/clients"
+              element={
+                <ProtectedRoute>
+                  <ClientsManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/clients/:id"
+              element={
+                <ProtectedRoute>
+                  <ClientDetail />
                 </ProtectedRoute>
               }
             />
