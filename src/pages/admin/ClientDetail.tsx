@@ -257,13 +257,12 @@ export default function ClientDetail() {
         ? parseInt(podcastData.reach.itunes.itunes_rating_count)
         : null
 
-      // Auto-fill form with ALL podcast data
+      // Auto-fill form with ALL podcast data (except notes - keep user's notes)
       setNewBookingForm(prev => ({
         ...prev,
         podcast_name: prev.podcast_name || podcastData.podcast_name,
         host_name: prev.host_name || hostName,
         podcast_url: prev.podcast_url || podcastData.podcast_url || '',
-        notes: prev.notes || podcastData.podcast_description || '',
         audience_size: podcastData.reach?.audience_size || null,
         podcast_description: podcastData.podcast_description || '',
         itunes_rating: itunesRating,
