@@ -152,7 +152,19 @@ export default function ClientDetail() {
     mutationFn: ({ id, updates }: { id: string, updates: any }) => updateBooking(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] })
+      toast({
+        title: 'Booking Updated',
+        description: 'Successfully updated booking',
+      })
       setEditingBooking(null)
+    },
+    onError: (error) => {
+      console.error('Failed to update booking:', error)
+      toast({
+        title: 'Failed to Update Booking',
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: 'destructive'
+      })
     }
   })
 
@@ -345,9 +357,17 @@ export default function ClientDetail() {
 
   const handleSaveBooking = () => {
     if (editingBooking && editBookingForm.podcast_name) {
+      // Clean up form data - convert empty strings to undefined for date fields
+      const cleanedUpdates = {
+        ...editBookingForm,
+        scheduled_date: editBookingForm.scheduled_date || undefined,
+        recording_date: editBookingForm.recording_date || undefined,
+        publish_date: editBookingForm.publish_date || undefined,
+      }
+
       updateBookingMutation.mutate({
         id: editingBooking.id,
-        updates: editBookingForm
+        updates: cleanedUpdates
       })
     }
   }
