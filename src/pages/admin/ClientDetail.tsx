@@ -71,7 +71,14 @@ export default function ClientDetail() {
     podcast_url: '',
     scheduled_date: '',
     status: 'booked' as const,
-    notes: ''
+    notes: '',
+    audience_size: null as number | null,
+    podcast_description: '',
+    itunes_rating: null as number | null,
+    itunes_rating_count: null as number | null,
+    episode_count: null as number | null,
+    podcast_image_url: '',
+    rss_url: ''
   })
   const [editClientForm, setEditClientForm] = useState({
     name: '',
@@ -117,7 +124,14 @@ export default function ClientDetail() {
         podcast_url: '',
         scheduled_date: '',
         status: 'booked',
-        notes: ''
+        notes: '',
+        audience_size: null,
+        podcast_description: '',
+        itunes_rating: null,
+        itunes_rating_count: null,
+        episode_count: null,
+        podcast_image_url: '',
+        rss_url: ''
       })
     }
   })
@@ -234,18 +248,34 @@ export default function ClientDetail() {
       // Extract host/publisher name
       const hostName = podcastData.publisher_name || ''
 
-      // Auto-fill form with podcast data
+      // Parse ratings
+      const itunesRating = podcastData.reach?.itunes?.itunes_rating_average
+        ? parseFloat(podcastData.reach.itunes.itunes_rating_average)
+        : null
+
+      const itunesRatingCount = podcastData.reach?.itunes?.itunes_rating_count
+        ? parseInt(podcastData.reach.itunes.itunes_rating_count)
+        : null
+
+      // Auto-fill form with ALL podcast data
       setNewBookingForm(prev => ({
         ...prev,
         podcast_name: prev.podcast_name || podcastData.podcast_name,
         host_name: prev.host_name || hostName,
         podcast_url: prev.podcast_url || podcastData.podcast_url || '',
-        notes: prev.notes || podcastData.podcast_description || ''
+        notes: prev.notes || podcastData.podcast_description || '',
+        audience_size: podcastData.reach?.audience_size || null,
+        podcast_description: podcastData.podcast_description || '',
+        itunes_rating: itunesRating,
+        itunes_rating_count: itunesRatingCount,
+        episode_count: podcastData.episode_count || null,
+        podcast_image_url: podcastData.podcast_image_url || '',
+        rss_url: podcastData.rss_url || ''
       }))
 
       toast({
         title: 'Podcast Details Loaded',
-        description: `Successfully fetched details for "${podcastData.podcast_name}"`,
+        description: `Successfully fetched details for "${podcastData.podcast_name}" (${podcastData.reach?.audience_size?.toLocaleString() || 'N/A'} audience)`,
       })
     } catch (error) {
       console.error('Error fetching podcast:', error)
@@ -897,6 +927,42 @@ export default function ClientDetail() {
                 </Button>
               </div>
             </div>
+
+            {/* Fetched Data Summary */}
+            {newBookingForm.audience_size && (
+              <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-900">
+                <h4 className="text-sm font-semibold mb-3 text-green-900 dark:text-green-100">Podcast Details Fetched ✓</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Audience:</span>
+                    <div className="font-semibold">{newBookingForm.audience_size.toLocaleString()}</div>
+                  </div>
+                  {newBookingForm.episode_count && (
+                    <div>
+                      <span className="text-muted-foreground">Episodes:</span>
+                      <div className="font-semibold">{newBookingForm.episode_count}</div>
+                    </div>
+                  )}
+                  {newBookingForm.itunes_rating && (
+                    <div>
+                      <span className="text-muted-foreground">Rating:</span>
+                      <div className="font-semibold">
+                        ⭐ {newBookingForm.itunes_rating} ({newBookingForm.itunes_rating_count || 0} reviews)
+                      </div>
+                    </div>
+                  )}
+                  {newBookingForm.podcast_image_url && (
+                    <div className="col-span-2">
+                      <img
+                        src={newBookingForm.podcast_image_url}
+                        alt="Podcast cover"
+                        className="w-20 h-20 rounded-lg object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="podcastName">Podcast Name *</Label>
