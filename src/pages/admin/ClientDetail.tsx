@@ -187,24 +187,17 @@ export default function ClientDetail() {
 
   const bookings = bookingsData?.bookings || []
 
-  // Split bookings into scheduled and unscheduled
-  const scheduledBookings = bookings.filter(booking => booking.scheduled_date)
-  const unscheduledBookings = bookings.filter(booking => !booking.scheduled_date)
+  // Show all bookings in timeline regardless of date
+  const filteredBookings = bookings.filter(booking =>
+    statusFilter === 'all' || booking.status === statusFilter
+  )
 
-  // Filter bookings by selected month
-  const bookingsInSelectedMonth = scheduledBookings.filter(booking => {
-    const bookingDate = new Date(booking.scheduled_date!)
+  // For stats, only count bookings with scheduled dates in the selected month
+  const bookingsInSelectedMonth = bookings.filter(booking => {
+    if (!booking.scheduled_date) return false
+    const bookingDate = new Date(booking.scheduled_date)
     return bookingDate.getMonth() === selectedMonth && bookingDate.getFullYear() === selectedYear
   })
-
-  const filteredBookings = bookingsInSelectedMonth.filter(booking =>
-    statusFilter === 'all' || booking.status === statusFilter
-  )
-
-  // Filter unscheduled bookings by status
-  const filteredUnscheduledBookings = unscheduledBookings.filter(booking =>
-    statusFilter === 'all' || booking.status === statusFilter
-  )
 
   const bookedCount = bookingsInSelectedMonth.filter(b => b.status === 'booked').length
   const inProgressCount = bookingsInSelectedMonth.filter(b => b.status === 'in_progress').length
@@ -837,7 +830,12 @@ export default function ClientDetail() {
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <CardTitle>Booking Timeline</CardTitle>
+              <div>
+                <CardTitle>All Bookings</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Complete list of podcast bookings - scheduled and unscheduled
+                </p>
+              </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-[180px]">
                   <SelectValue placeholder="Filter by status" />
@@ -869,11 +867,20 @@ export default function ClientDetail() {
                   {filteredBookings.map((booking) => (
                     <TableRow key={booking.id}>
                       <TableCell className="font-medium">
-                        {formatDate(booking.scheduled_date)}
+                        {booking.scheduled_date ? formatDate(booking.scheduled_date) : (
+                          <span className="text-muted-foreground text-sm">Unscheduled</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{booking.podcast_name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{booking.podcast_name}</p>
+                            {booking.audience_size && (
+                              <span className="text-xs text-muted-foreground">
+                                👥 {booking.audience_size.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
                           {booking.notes && (
                             <p className="text-xs text-muted-foreground mt-1">
                               {booking.notes}
@@ -934,63 +941,6 @@ export default function ClientDetail() {
             )}
           </CardContent>
         </Card>
-
-        {/* Unscheduled Bookings */}
-        {filteredUnscheduledBookings.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Unscheduled Bookings</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Bookings without a scheduled date - add a date to see them in the timeline
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {filteredUnscheduledBookings.map((booking) => (
-                  <div
-                    key={booking.id}
-                    className="flex items-start gap-4 p-4 rounded-lg border bg-muted/30"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">{booking.podcast_name}</p>
-                      {booking.host_name && (
-                        <p className="text-xs text-muted-foreground">Host: {booking.host_name}</p>
-                      )}
-                      {booking.notes && (
-                        <p className="text-xs text-muted-foreground mt-1">{booking.notes}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2">
-                        {getStatusBadge(booking.status)}
-                        {booking.audience_size && (
-                          <span className="text-xs text-muted-foreground">
-                            👥 {booking.audience_size.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEditBooking(booking)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteBooking(booking)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* Add Booking Modal */}
