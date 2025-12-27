@@ -38,11 +38,21 @@ import {
   Target,
   Bell,
   Share2,
-  FileText
+  FileText,
+  ShoppingCart,
+  Award,
+  Filter,
+  Mic,
+  X,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
 import type { Booking } from '@/services/bookings'
+import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
+import { useCartStore } from '@/stores/cartStore'
+import { toast as sonnerToast } from 'sonner'
 
 type TimeRange = 'all' | 'month' | 'quarter' | 'year'
 
@@ -62,11 +72,23 @@ export default function PortalDashboard() {
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [completedActions, setCompletedActions] = useState<Set<string>>(new Set())
 
+  // Premium Placements state
+  const [premiumSearchQuery, setPremiumSearchQuery] = useState('')
+  const [premiumSortBy, setPremiumSortBy] = useState('featured')
+  const [expandedPremiumCards, setExpandedPremiumCards] = useState<Set<string>>(new Set())
+  const { addItem, isInCart } = useCartStore()
+
   // Fetch bookings
   const { data: bookings, isLoading } = useQuery({
     queryKey: ['client-bookings', client?.id],
     queryFn: () => getClientBookings(client!.id),
     enabled: !!client
+  })
+
+  // Fetch premium podcasts
+  const { data: premiumPodcasts, isLoading: premiumLoading } = useQuery({
+    queryKey: ['premium-podcasts'],
+    queryFn: () => getActivePremiumPodcasts()
   })
 
   // Helper functions for date filtering
@@ -571,6 +593,94 @@ export default function PortalDashboard() {
     setCompletedActions(newCompleted)
   }
 
+  // Premium Placements functions
+  const parsePrice = (priceString: string): number => {
+    return parseFloat(priceString.replace(/[$,]/g, ''))
+  }
+
+  const parseAudience = (audienceString: string | undefined): number => {
+    if (!audienceString) return 0
+    return parseFloat(audienceString.replace(/,/g, ''))
+  }
+
+  const togglePremiumFeatures = (podcastId: string) => {
+    setExpandedPremiumCards(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(podcastId)) {
+        newSet.delete(podcastId)
+      } else {
+        newSet.add(podcastId)
+      }
+      return newSet
+    })
+  }
+
+  const getPreviewText = (text: string): string => {
+    if (text.length <= 50) return text
+    const truncated = text.substring(0, 50)
+    const lastSpace = truncated.lastIndexOf(' ')
+    return (lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated).trim() + '...'
+  }
+
+  const needsReadMore = (text: string): boolean => {
+    return text.length > 50
+  }
+
+  const handleAddToCart = (podcast: PremiumPodcast) => {
+    addItem(podcast)
+    sonnerToast.success(`${podcast.podcast_name} added to cart!`, {
+      description: 'View your cart to proceed to checkout',
+    })
+  }
+
+  // Filter and sort premium podcasts
+  const filteredPremiumPodcasts = useMemo(() => {
+    if (!premiumPodcasts) return []
+
+    let filtered = [...premiumPodcasts]
+
+    // Search filter
+    if (premiumSearchQuery.trim()) {
+      const query = premiumSearchQuery.toLowerCase()
+      filtered = filtered.filter(p =>
+        p.podcast_name.toLowerCase().includes(query) ||
+        p.why_this_show?.toLowerCase().includes(query) ||
+        p.category?.toLowerCase().includes(query)
+      )
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (premiumSortBy) {
+        case 'featured':
+          if (a.is_featured !== b.is_featured) {
+            return a.is_featured ? -1 : 1
+          }
+          return a.display_order - b.display_order
+
+        case 'price-asc':
+          return parsePrice(a.price) - parsePrice(b.price)
+
+        case 'price-desc':
+          return parsePrice(b.price) - parsePrice(a.price)
+
+        case 'audience-desc':
+          return parseAudience(b.audience_size) - parseAudience(a.audience_size)
+
+        case 'audience-asc':
+          return parseAudience(a.audience_size) - parseAudience(b.audience_size)
+
+        case 'name-asc':
+          return a.podcast_name.localeCompare(b.podcast_name)
+
+        default:
+          return 0
+      }
+    })
+
+    return filtered
+  }, [premiumPodcasts, premiumSearchQuery, premiumSortBy])
+
   // Export to CSV
   const exportToCSV = () => {
     if (!filteredBookings.length) return
@@ -624,10 +734,11 @@ export default function PortalDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full max-w-2xl grid-cols-3">
+          <TabsList className="grid w-full max-w-3xl grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="premium">Premium</TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW TAB */}
@@ -1341,6 +1452,208 @@ export default function PortalDashboard() {
             </CardContent>
           </Card>
         )}
+          </TabsContent>
+
+          {/* PREMIUM PLACEMENTS TAB */}
+          <TabsContent value="premium" className="space-y-6">
+            {/* Header */}
+            <Card className="bg-gradient-to-br from-primary/10 to-purple-500/10 border-primary/20">
+              <CardContent className="pt-6">
+                <div className="text-center space-y-3">
+                  <h2 className="text-2xl font-bold">Premium Podcast Placements</h2>
+                  <p className="text-muted-foreground max-w-2xl mx-auto">
+                    Browse our exclusive catalog of guaranteed podcast placements. Pick your shows, get booked, no pitching required.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Search and Sort */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search podcasts by name or category..."
+                      value={premiumSearchQuery}
+                      onChange={(e) => setPremiumSearchQuery(e.target.value)}
+                      className="pl-10 pr-10"
+                    />
+                    {premiumSearchQuery && (
+                      <button
+                        onClick={() => setPremiumSearchQuery("")}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                      >
+                        <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                      </button>
+                    )}
+                  </div>
+
+                  <Select value={premiumSortBy} onValueChange={setPremiumSortBy}>
+                    <SelectTrigger className="w-full md:w-[220px]">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="featured">Featured</SelectItem>
+                      <SelectItem value="price-asc">Price: Low to High</SelectItem>
+                      <SelectItem value="price-desc">Price: High to Low</SelectItem>
+                      <SelectItem value="audience-desc">Audience: Large to Small</SelectItem>
+                      <SelectItem value="audience-asc">Audience: Small to Large</SelectItem>
+                      <SelectItem value="name-asc">Name: A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="mt-4 text-sm text-muted-foreground">
+                  Showing <span className="font-semibold text-foreground">{filteredPremiumPodcasts.length}</span> of{' '}
+                  <span className="font-semibold text-foreground">{premiumPodcasts?.length || 0}</span> podcasts
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Podcasts Grid */}
+            {premiumLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <span className="ml-3 text-muted-foreground">Loading premium podcasts...</span>
+              </div>
+            ) : filteredPremiumPodcasts.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-20">
+                  <Filter className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">No podcasts found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Try adjusting your search query
+                  </p>
+                  {premiumSearchQuery && (
+                    <Button onClick={() => setPremiumSearchQuery("")} variant="outline">
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Search
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredPremiumPodcasts.map((podcast) => (
+                  <Card key={podcast.id} className="overflow-hidden hover:shadow-lg transition-all">
+                    {/* Podcast Image */}
+                    <div className="relative h-48 bg-gradient-to-br from-primary/20 to-primary/5">
+                      {podcast.podcast_image_url ? (
+                        <img
+                          src={podcast.podcast_image_url}
+                          alt={podcast.podcast_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Mic className="h-16 w-16 text-muted-foreground" />
+                        </div>
+                      )}
+                      {podcast.is_featured && (
+                        <Badge className="absolute top-4 right-4 bg-gradient-to-r from-primary to-purple-600">
+                          ⭐ Featured
+                        </Badge>
+                      )}
+                    </div>
+
+                    <CardContent className="p-6">
+                      {/* Podcast Name */}
+                      <h3 className="text-xl font-bold mb-4 line-clamp-2 min-h-[3.5rem]">
+                        {podcast.podcast_name}
+                      </h3>
+
+                      {/* Stats */}
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {podcast.audience_size && (
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Audience</p>
+                              <p className="font-semibold text-sm">{podcast.audience_size}</p>
+                            </div>
+                          </div>
+                        )}
+                        {podcast.rating && (
+                          <div className="flex items-center gap-2">
+                            <Star className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="text-xs text-muted-foreground">Rating</p>
+                              <p className="font-semibold text-sm">{podcast.rating}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Why This Show */}
+                      {podcast.why_this_show && (
+                        <div className="mb-4 p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Award className="h-4 w-4 text-purple-500" />
+                            <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase">
+                              Why This Show
+                            </p>
+                          </div>
+                          <p className="text-sm">{getPreviewText(podcast.why_this_show)}</p>
+                        </div>
+                      )}
+
+                      {/* Features - Collapsible */}
+                      {podcast.whats_included && podcast.whats_included.length > 0 && (
+                        <div className="mb-4">
+                          <button
+                            onClick={() => togglePremiumFeatures(podcast.id)}
+                            className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase py-2"
+                          >
+                            <span>What's Included</span>
+                            {expandedPremiumCards.has(podcast.id) ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </button>
+                          {expandedPremiumCards.has(podcast.id) && (
+                            <div className="space-y-2 mt-2">
+                              {podcast.whats_included.map((feature, idx) => (
+                                <div key={idx} className="flex items-start gap-2 text-sm">
+                                  <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                                  {feature}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Price & CTA */}
+                      <div className="border-t pt-4">
+                        <div className="mb-4">
+                          <p className="text-xs text-muted-foreground uppercase">Investment</p>
+                          <p className="text-3xl font-bold">{podcast.price}</p>
+                          <p className="text-xs text-muted-foreground">One-time placement</p>
+                        </div>
+                        {isInCart(podcast.id) ? (
+                          <Button className="w-full bg-green-600 hover:bg-green-700" size="lg" disabled>
+                            <CheckCircle2 className="mr-2 h-5 w-5" />
+                            Added to Cart
+                          </Button>
+                        ) : (
+                          <Button
+                            className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
+                            size="lg"
+                            onClick={() => handleAddToCart(podcast)}
+                          >
+                            <ShoppingCart className="mr-2 h-5 w-5" />
+                            Add to Cart
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
