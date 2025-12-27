@@ -11,6 +11,7 @@ export interface Client {
   first_invoice_paid_date: string | null
   status: 'active' | 'paused' | 'churned'
   notes: string | null
+  photo_url: string | null
   created_at: string
   updated_at: string
 }
@@ -179,4 +180,80 @@ export async function getClientStats() {
     activeClients: activeClients || 0,
     totalBookings: totalBookings || 0,
   }
+}
+
+/**
+ * Upload client photo to Supabase Storage
+ */
+export async function uploadClientPhoto(clientId: string, file: File) {
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${clientId}-${Date.now()}.${fileExt}`
+  const filePath = `client-photos/${fileName}`
+
+  // Upload to Supabase Storage
+  const { error: uploadError } = await supabase.storage
+    .from('client-assets')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true
+    })
+
+  if (uploadError) {
+    throw new Error(`Failed to upload photo: ${uploadError.message}`)
+  }
+
+  // Get public URL
+  const { data: { publicUrl } } = supabase.storage
+    .from('client-assets')
+    .getPublicUrl(filePath)
+
+  // Update client record with photo URL
+  const { data, error } = await supabase
+    .from('clients')
+    .update({ photo_url: publicUrl })
+    .eq('id', clientId)
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(`Failed to update client photo URL: ${error.message}`)
+  }
+
+  return data as Client
+}
+
+/**
+ * Remove client photo
+ */
+export async function removeClientPhoto(clientId: string, photoUrl: string) {
+  // Extract file path from URL
+  const urlParts = photoUrl.split('/client-assets/')
+  if (urlParts.length < 2) {
+    throw new Error('Invalid photo URL')
+  }
+  const filePath = `client-photos/${urlParts[1]}`
+
+  // Delete from storage
+  const { error: deleteError } = await supabase.storage
+    .from('client-assets')
+    .remove([filePath])
+
+  if (deleteError) {
+    console.error('Failed to delete photo from storage:', deleteError)
+    // Continue anyway to clear the URL
+  }
+
+  // Clear photo URL in database
+  const { data, error } = await supabase
+    .from('clients')
+    .update({ photo_url: null })
+    .eq('id', clientId)
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(`Failed to clear client photo URL: ${error.message}`)
+  }
+
+  return data as Client
 }

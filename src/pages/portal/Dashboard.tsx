@@ -789,11 +789,24 @@ export default function PortalDashboard() {
     <PortalLayout>
       <div className="space-y-6">
         {/* Welcome Header */}
-        <div>
-          <h1 className="text-3xl font-bold">Welcome back, {client?.contact_person || client?.name}!</h1>
-          <p className="text-muted-foreground mt-1">
-            Your podcast journey dashboard
-          </p>
+        <div className="flex items-center gap-4">
+          {client?.photo_url ? (
+            <img
+              src={client.photo_url}
+              alt={client.name}
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-primary/20"
+            />
+          ) : (
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20">
+              <User className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
+            </div>
+          )}
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Welcome back, {client?.contact_person || client?.name}!</h1>
+            <p className="text-muted-foreground mt-1">
+              Your podcast journey dashboard
+            </p>
+          </div>
         </div>
 
         {/* Tabs */}

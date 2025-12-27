@@ -38,9 +38,12 @@ import {
   Lock,
   Unlock,
   Copy,
-  Send
+  Send,
+  Upload,
+  Image,
+  X
 } from 'lucide-react'
-import { getClientById, updateClient } from '@/services/clients'
+import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
 import { getPodcastById } from '@/services/podscan'
 import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPortal'
@@ -64,6 +67,9 @@ export default function ClientDetail() {
   const [fetchingPodcast, setFetchingPodcast] = useState(false)
   const [sendingInvitation, setSendingInvitation] = useState(false)
   const [togglingPortalAccess, setTogglingPortalAccess] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [editBookingForm, setEditBookingForm] = useState({
     podcast_name: '',
     host_name: '',
@@ -429,6 +435,86 @@ export default function ClientDetail() {
     })
   }
 
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid File',
+        description: 'Please select an image file',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: 'Please select an image under 5MB',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setPhotoFile(file)
+
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPhotoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handlePhotoUpload = async () => {
+    if (!photoFile || !id) return
+
+    setUploadingPhoto(true)
+    try {
+      await uploadClientPhoto(id, photoFile)
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+      toast({
+        title: 'Photo Uploaded',
+        description: 'Client photo updated successfully'
+      })
+      setPhotoFile(null)
+      setPhotoPreview(null)
+    } catch (error) {
+      toast({
+        title: 'Upload Failed',
+        description: error instanceof Error ? error.message : 'Failed to upload photo',
+        variant: 'destructive'
+      })
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  const handlePhotoRemove = async () => {
+    if (!client?.photo_url || !id) return
+
+    setUploadingPhoto(true)
+    try {
+      await removeClientPhoto(id, client.photo_url)
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+      toast({
+        title: 'Photo Removed',
+        description: 'Client photo removed successfully'
+      })
+    } catch (error) {
+      toast({
+        title: 'Removal Failed',
+        description: error instanceof Error ? error.message : 'Failed to remove photo',
+        variant: 'destructive'
+      })
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   const handleTogglePortalAccess = async (enabled: boolean) => {
     if (!client) return
     setTogglingPortalAccess(true)
@@ -614,6 +700,76 @@ export default function ClientDetail() {
               <CardTitle>Client Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Client Photo */}
+              <div className="flex items-center gap-4 pb-4 border-b">
+                <div className="relative">
+                  {client.photo_url ? (
+                    <img
+                      src={client.photo_url}
+                      alt={client.name}
+                      className="w-20 h-20 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
+                      <User className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium mb-2">Client Photo</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      id="photo-upload"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePhotoSelect}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => document.getElementById('photo-upload')?.click()}
+                      disabled={uploadingPhoto}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {client.photo_url ? 'Change' : 'Upload'}
+                    </Button>
+                    {client.photo_url && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePhotoRemove}
+                        disabled={uploadingPhoto}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  {photoFile && (
+                    <div className="mt-2">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Selected: {photoFile.name}
+                      </p>
+                      <Button
+                        size="sm"
+                        onClick={handlePhotoUpload}
+                        disabled={uploadingPhoto}
+                      >
+                        {uploadingPhoto ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          'Save Photo'
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {client.email && (
                 <div className="flex items-center gap-3">
                   <Mail className="h-4 w-4 text-muted-foreground" />
