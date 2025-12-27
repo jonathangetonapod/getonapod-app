@@ -4,7 +4,7 @@ import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Download, FileText, Mail, Mic, TrendingUp, Target, Sparkles } from 'lucide-react';
+import { Download, FileText, Mail, Mic, TrendingUp, Target, Sparkles, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const leadMagnets = [
@@ -142,10 +142,10 @@ const Resources = () => {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => handleDownload(resource.title)}
+                      disabled
                     >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download Now
+                      <Clock className="h-4 w-4 mr-2" />
+                      Coming Soon
                     </Button>
                   </div>
                 );
