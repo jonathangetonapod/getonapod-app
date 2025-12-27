@@ -1183,6 +1183,96 @@ export default function PortalDashboard() {
                 </CardDescription>
               </div>
             </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-col gap-3 mt-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Search */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search podcasts..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-10"
+                  />
+                </div>
+
+                {/* Status Filter */}
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-10">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="conversation_started">Conversation Started</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="booked">Booked</SelectItem>
+                    <SelectItem value="recorded">Recorded</SelectItem>
+                    <SelectItem value="published">Published</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Sort By */}
+                <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'date' | 'audience' | 'rating' | 'name')}>
+                  <SelectTrigger className="w-full sm:w-[180px] h-10">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="date">Sort by Date</SelectItem>
+                    <SelectItem value="name">Sort by Name</SelectItem>
+                    <SelectItem value="audience">Sort by Audience</SelectItem>
+                    <SelectItem value="rating">Sort by Rating</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Sort Order */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10"
+                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Active Filters Display & Clear */}
+              {(searchQuery || statusFilter !== 'all') && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Active filters:</span>
+                  {searchQuery && (
+                    <Badge variant="secondary" className="gap-1">
+                      Search: {searchQuery}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setSearchQuery('')} />
+                    </Badge>
+                  )}
+                  {statusFilter !== 'all' && (
+                    <Badge variant="secondary" className="gap-1">
+                      Status: {statusFilter.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      <X className="h-3 w-3 cursor-pointer" onClick={() => setStatusFilter('all')} />
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => {
+                      setSearchQuery('')
+                      setStatusFilter('all')
+                    }}
+                  >
+                    Clear all
+                  </Button>
+                </div>
+              )}
+
+              {/* Results Count */}
+              <div className="text-xs text-muted-foreground">
+                Showing {filteredBookings.length} of {bookings?.length || 0} bookings
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -1192,11 +1282,28 @@ export default function PortalDashboard() {
             ) : filteredBookings.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No bookings found</p>
+                <p className="text-sm">
+                  {searchQuery || statusFilter !== 'all'
+                    ? 'No bookings match your filters'
+                    : 'No bookings found'}
+                </p>
+                {(searchQuery || statusFilter !== 'all') && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => {
+                      setSearchQuery('')
+                      setStatusFilter('all')
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
             ) : (
-              <div className="space-y-3">
-                {filteredBookings.slice(0, 5).map((booking) => (
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                {filteredBookings.map((booking) => (
                   <div
                     key={booking.id}
                     onClick={() => setViewingBooking(booking)}
@@ -1206,7 +1313,7 @@ export default function PortalDashboard() {
                       <img
                         src={booking.podcast_image_url}
                         alt={booking.podcast_name}
-                        className="w-16 h-16 rounded object-cover"
+                        className="w-16 h-16 rounded object-cover flex-shrink-0"
                       />
                     )}
                     <div className="flex-1 min-w-0">
@@ -1214,11 +1321,18 @@ export default function PortalDashboard() {
                       <p className="text-sm text-muted-foreground">
                         {booking.host_name || 'Host not specified'}
                       </p>
-                      {booking.audience_size && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          👥 {booking.audience_size.toLocaleString()} listeners
-                        </p>
-                      )}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1">
+                        {booking.audience_size && (
+                          <p className="text-xs text-muted-foreground">
+                            👥 {booking.audience_size.toLocaleString()} listeners
+                          </p>
+                        )}
+                        {booking.recording_date && (
+                          <p className="text-xs text-muted-foreground">
+                            📅 {formatDate(booking.recording_date)}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     {getStatusBadge(booking.status)}
                   </div>
