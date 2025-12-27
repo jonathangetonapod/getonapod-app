@@ -5,7 +5,7 @@ const HeroSection = () => {
     <section className="relative min-h-screen flex items-center justify-center pt-24 pb-16 md:pt-20 md:pb-24 px-4">
       <div className="container mx-auto text-center">
         <div className="max-w-4xl mx-auto">
-          <h1 className="animate-fade-up text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.2] sm:leading-tight mb-6 px-2">
+          <h1 className="animate-fade-up text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-foreground leading-[1.2] sm:leading-tight mb-6 px-2">
             Get Booked on Podcasts.
             <br />
             Get Featured in Press.

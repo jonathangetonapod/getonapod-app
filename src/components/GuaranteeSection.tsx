@@ -37,7 +37,7 @@ const GuaranteeSection = () => {
             <Badge className="mb-4 bg-success/10 text-success border-success/20">
               Results Guaranteed
             </Badge>
-            <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6">
               Our Iron-Clad Guarantee
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -81,7 +81,7 @@ const GuaranteeSection = () => {
           <div className="max-w-3xl mx-auto text-center p-8 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 rounded-2xl border-2 border-primary/20">
             <div className="flex items-center justify-center gap-3 mb-4">
               <Shield className="h-10 w-10 text-primary" />
-              <h3 className="text-2xl md:text-3xl font-bold text-foreground">
+              <h3 className="text-3xl md:text-4xl font-bold text-foreground">
                 If We Don't Hit Your Number, We Work For Free
               </h3>
             </div>

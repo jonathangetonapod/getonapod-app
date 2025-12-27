@@ -29,7 +29,7 @@ const LeadMagnetSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-4 px-4">
+          <h2 className="text-4xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4 px-4">
             Not Ready for a Call?
           </h2>
 

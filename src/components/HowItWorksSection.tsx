@@ -35,7 +35,7 @@ const HowItWorksSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground text-center mb-16">
+          <h2 className="text-4xl md:text-5xl font-bold text-foreground text-center mb-16">
             How It Works
           </h2>
           

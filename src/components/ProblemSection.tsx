@@ -25,7 +25,7 @@ const ProblemSection = () => {
             The Problem
           </p>
           
-          <p className="text-xl md:text-2xl text-foreground leading-relaxed mb-12">
+          <p className="text-2xl md:text-3xl text-foreground leading-relaxed mb-12">
             You know visibility works. You've seen competitors build authority, 
             generate leads, and close deals—all from being on the right podcasts 
             and getting featured in the right publications.
