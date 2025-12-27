@@ -349,27 +349,27 @@ const BlogManagement = () => {
                       className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <h3 className="font-medium truncate">{post.title}</h3>
-                          <Badge variant={post.status === 'published' ? 'default' : 'secondary'}>
+                          <Badge variant={post.status === 'published' ? 'default' : 'secondary'} className="text-xs">
                             {post.status}
                           </Badge>
                           {post.status === 'published' && (
                             <Badge
                               variant="outline"
-                              className={
+                              className={`text-xs whitespace-nowrap ${
                                 indexingBadge.color === 'green'
-                                  ? 'border-green-500 text-green-700'
+                                  ? 'border-green-500 text-green-700 bg-green-50 dark:bg-green-950/20'
                                   : indexingBadge.color === 'blue'
-                                  ? 'border-blue-500 text-blue-700'
+                                  ? 'border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-950/20'
                                   : indexingBadge.color === 'yellow'
-                                  ? 'border-yellow-500 text-yellow-700'
+                                  ? 'border-yellow-500 text-yellow-700 bg-yellow-50 dark:bg-yellow-950/20'
                                   : indexingBadge.color === 'red'
-                                  ? 'border-red-500 text-red-700'
+                                  ? 'border-red-500 text-red-700 bg-red-50 dark:bg-red-950/20'
                                   : indexingBadge.color === 'orange'
-                                  ? 'border-orange-500 text-orange-700'
-                                  : 'border-gray-500 text-gray-700'
-                              }
+                                  ? 'border-orange-500 text-orange-700 bg-orange-50 dark:bg-orange-950/20'
+                                  : 'border-gray-500 text-gray-700 bg-gray-50 dark:bg-gray-950/20'
+                              }`}
                             >
                               {indexingBadge.label}
                             </Badge>
@@ -393,7 +393,7 @@ const BlogManagement = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 ml-4">
+                      <div className="flex items-center gap-1 sm:gap-2 ml-2 sm:ml-4 flex-shrink-0">
                         {post.status === 'published' && (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -401,8 +401,9 @@ const BlogManagement = () => {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => window.open(`/blog/${post.slug}`, '_blank')}
+                                className="h-8 w-8 sm:h-10 sm:w-10"
                               >
-                                <ExternalLink className="h-4 w-4" />
+                                <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -418,8 +419,9 @@ const BlogManagement = () => {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleResubmitToGoogle(post)}
+                                className="h-8 w-8 sm:h-10 sm:w-10"
                               >
-                                <RefreshCw className="h-4 w-4" />
+                                <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -436,11 +438,12 @@ const BlogManagement = () => {
                                 size="icon"
                                 onClick={() => handleCheckIndexingStatus(post)}
                                 disabled={checkingStatus[post.id]}
+                                className="h-8 w-8 sm:h-10 sm:w-10"
                               >
                                 {checkingStatus[post.id] ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                                 ) : (
-                                  <Search className="h-4 w-4" />
+                                  <Search className="h-3 w-3 sm:h-4 sm:w-4" />
                                 )}
                               </Button>
                             </TooltipTrigger>
@@ -456,8 +459,9 @@ const BlogManagement = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleTogglePublish(post)}
+                              className="h-8 w-8 sm:h-10 sm:w-10"
                             >
-                              <Globe className={`h-4 w-4 ${post.status === 'published' ? 'text-green-600' : ''}`} />
+                              <Globe className={`h-3 w-3 sm:h-4 sm:w-4 ${post.status === 'published' ? 'text-green-600' : ''}`} />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -471,8 +475,9 @@ const BlogManagement = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => navigate(`/admin/blog/${post.id}/edit`)}
+                              className="h-8 w-8 sm:h-10 sm:w-10"
                             >
-                              <Edit className="h-4 w-4" />
+                              <Edit className="h-3 w-3 sm:h-4 sm:w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -489,8 +494,9 @@ const BlogManagement = () => {
                                 setPostToDelete(post.id)
                                 setDeleteDialogOpen(true)
                               }}
+                              className="h-8 w-8 sm:h-10 sm:w-10"
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                              <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-destructive" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>

@@ -737,41 +737,43 @@ const LeadsManagement = () => {
       <div className="space-y-6">
         <div className="flex flex-col gap-4">
           {/* Title and Action Buttons */}
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold">Campaign Replies</h1>
-              <p className="text-muted-foreground mt-2">
+              <h1 className="text-2xl sm:text-3xl font-bold">Campaign Replies</h1>
+              <p className="text-sm sm:text-base text-muted-foreground mt-2">
                 Track and label email campaign replies
               </p>
             </div>
-            <div className="flex gap-2 items-center flex-wrap justify-end">
+            <div className="flex gap-2 items-center flex-wrap w-full sm:w-auto sm:justify-end">
               <Button
                 onClick={() => {
                   setViewMode(viewMode === 'list' ? 'cards' : 'list')
                   setCardIndex(0)
                 }}
                 variant="outline"
+                size="sm"
+                className="flex-1 sm:flex-none text-xs sm:text-sm"
               >
                 {viewMode === 'list' ? (
                   <>
-                    <Layers className="mr-2 h-4 w-4" />
+                    <Layers className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                     Card View
                   </>
                 ) : (
                   <>
-                    <LayoutList className="mr-2 h-4 w-4" />
+                    <LayoutList className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                     List View
                   </>
                 )}
               </Button>
-              <Button onClick={exportCSV} variant="outline">
-                <Download className="mr-2 h-4 w-4" />
+              <Button onClick={exportCSV} variant="outline" size="sm" className="flex-1 sm:flex-none text-xs sm:text-sm">
+                <Download className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                 Export CSV
               </Button>
               <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="mr-2 h-4 w-4" />
+                  <Button size="sm" className="flex-1 sm:flex-none text-xs sm:text-sm">
+                    <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                     Add Reply
                   </Button>
                 </DialogTrigger>
@@ -857,37 +859,37 @@ const LeadsManagement = () => {
           </div>
 
           {/* Sync Controls Row */}
-          <div className="flex items-center justify-between border-t pt-4 flex-wrap gap-4">
-            <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-t pt-4 gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 flex-wrap w-full sm:w-auto">
               {lastSyncTime && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
                   Last sync: {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               )}
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <label className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm cursor-pointer">
                 <input
                   type="checkbox"
                   checked={autoSyncEnabled}
                   onChange={(e) => setAutoSyncEnabled(e.target.checked)}
                   className="rounded"
                 />
-                <span className="text-muted-foreground">Auto-sync (5min)</span>
+                <span className="text-muted-foreground whitespace-nowrap">Auto-sync (5min)</span>
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <label className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm cursor-pointer">
                 <input
                   type="checkbox"
                   checked={smartSyncEnabled}
                   onChange={(e) => setSmartSyncEnabled(e.target.checked)}
                   className="rounded"
                 />
-                <span className="text-muted-foreground">Unread only</span>
+                <span className="text-muted-foreground whitespace-nowrap">Unread only</span>
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Look back:</span>
+              <label className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+                <span className="text-muted-foreground whitespace-nowrap">Look back:</span>
                 <select
                   value={daysBack}
                   onChange={(e) => setDaysBack(Number(e.target.value))}
-                  className="text-sm border rounded px-2 py-1 bg-background"
+                  className="text-xs sm:text-sm border rounded px-2 py-1 bg-background"
                 >
                   <option value={1}>1 day</option>
                   <option value={3}>3 days</option>
@@ -903,9 +905,11 @@ const LeadsManagement = () => {
             <Button
               onClick={() => handleSync('manual')}
               variant="outline"
+              size="sm"
               disabled={syncing}
+              className="w-full sm:w-auto text-xs sm:text-sm"
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing...' : 'Sync'}
             </Button>
           </div>
