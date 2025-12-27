@@ -245,8 +245,8 @@ const Course = () => {
             If you'd rather have experts handle everything while you focus on your business,
             check out our done-for-you services.
           </p>
-          <Button variant="heroOutline" size="lg" asChild>
-            <a href="/#pricing">View Our Services</a>
+          <Button variant="secondary" size="lg" asChild>
+            <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Schedule a Call</a>
           </Button>
         </div>
       </section>
