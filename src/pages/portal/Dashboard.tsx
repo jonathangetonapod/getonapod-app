@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import {
   Calendar,
   User,
@@ -45,7 +46,8 @@ import {
   Mic,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  SlidersHorizontal
 } from 'lucide-react'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -1532,16 +1534,16 @@ export default function PortalDashboard() {
 
             {/* Search and Sort */}
             <Card>
-              <CardContent className="pt-6 space-y-4">
-                {/* Search and Sort Row */}
-                <div className="flex flex-col md:flex-row gap-4">
+              <CardContent className="pt-4 sm:pt-6 space-y-4">
+                {/* Search, Sort, and Mobile Filter Button */}
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search podcasts by name or category..."
+                      placeholder="Search podcasts..."
                       value={premiumSearchQuery}
                       onChange={(e) => setPremiumSearchQuery(e.target.value)}
-                      className="pl-10 pr-10"
+                      className="pl-10 pr-10 h-11"
                     />
                     {premiumSearchQuery && (
                       <button
@@ -1554,7 +1556,7 @@ export default function PortalDashboard() {
                   </div>
 
                   <Select value={premiumSortBy} onValueChange={setPremiumSortBy}>
-                    <SelectTrigger className="w-full md:w-[220px]">
+                    <SelectTrigger className="w-full sm:w-[200px] h-11">
                       <SelectValue placeholder="Sort by" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1566,10 +1568,102 @@ export default function PortalDashboard() {
                       <SelectItem value="name-asc">Name: A-Z</SelectItem>
                     </SelectContent>
                   </Select>
+
+                  {/* Mobile Filter Button */}
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <Button variant="outline" className="lg:hidden h-11">
+                        <SlidersHorizontal className="h-4 w-4 mr-2" />
+                        Filters
+                        {hasPremiumFilters && (
+                          <Badge variant="destructive" className="ml-2 rounded-full px-2">
+                            {[selectedCategory, selectedAudienceTier !== "all", selectedPriceRange !== "all"].filter(Boolean).length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="w-[300px] overflow-y-auto">
+                      <SheetHeader>
+                        <SheetTitle>Filters</SheetTitle>
+                        <SheetDescription>
+                          Refine your podcast search
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="space-y-6 mt-6">
+                        {/* Mobile Category Filter */}
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Category</label>
+                          <div className="space-y-2">
+                            <Button
+                              variant={selectedCategory === null ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setSelectedCategory(null)}
+                              className="w-full justify-start h-10"
+                            >
+                              All Categories
+                            </Button>
+                            {PODCAST_CATEGORIES.map((category) => (
+                              <Button
+                                key={category}
+                                variant={selectedCategory === category ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setSelectedCategory(category)}
+                                className="w-full justify-start h-10"
+                              >
+                                {category}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Mobile Audience Filter */}
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Audience Size</label>
+                          <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
+                            <SelectTrigger className="h-10">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {AUDIENCE_TIERS.map((tier) => (
+                                <SelectItem key={tier.value} value={tier.value}>
+                                  {tier.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Mobile Price Filter */}
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Price Range</label>
+                          <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
+                            <SelectTrigger className="h-10">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PRICE_RANGES.map((range) => (
+                                <SelectItem key={range.value} value={range.value}>
+                                  {range.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Clear Filters */}
+                        {hasPremiumFilters && (
+                          <Button onClick={clearPremiumFilters} variant="outline" className="w-full h-10">
+                            <X className="h-4 w-4 mr-2" />
+                            Clear All Filters
+                          </Button>
+                        )}
+                      </div>
+                    </SheetContent>
+                  </Sheet>
                 </div>
 
-                {/* Category Pills */}
-                <div className="flex items-center gap-2 flex-wrap">
+                {/* Desktop Category Pills - Hidden on Mobile */}
+                <div className="hidden lg:flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground whitespace-nowrap">Category:</span>
                   <Button
                     variant={selectedCategory === null ? "default" : "outline"}
@@ -1592,8 +1686,8 @@ export default function PortalDashboard() {
                   ))}
                 </div>
 
-                {/* Audience and Price Filters */}
-                <div className="flex items-center gap-4 flex-wrap">
+                {/* Desktop Audience and Price Filters - Hidden on Mobile */}
+                <div className="hidden lg:flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground whitespace-nowrap">Audience:</span>
                     <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
@@ -1635,7 +1729,7 @@ export default function PortalDashboard() {
                 </div>
 
                 {/* Results Count */}
-                <div className="text-sm text-muted-foreground pt-2 border-t">
+                <div className="text-xs sm:text-sm text-muted-foreground pt-2 border-t">
                   Showing <span className="font-semibold text-foreground">{filteredPremiumPodcasts.length}</span> of{' '}
                   <span className="font-semibold text-foreground">{premiumPodcasts?.length || 0}</span> podcasts
                 </div>
