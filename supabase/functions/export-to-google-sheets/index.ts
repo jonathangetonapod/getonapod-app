@@ -185,20 +185,18 @@ serve(async (req) => {
 
     const { access_token } = await tokenResponse.json()
 
-    // Prepare rows to append
+    // Prepare rows to append - matching template columns:
+    // Column A: Podcast Name
+    // Column B: Description
+    // Column C: Ratings
+    // Column D: Episode Count
+    // Column E: Podscan Podcast ID
     const rows = podcasts.map(podcast => [
       podcast.podcast_name || '',
-      podcast.publisher_name || '',
       podcast.podcast_description || '',
-      podcast.audience_size?.toString() || '',
-      podcast.episode_count?.toString() || '',
       podcast.itunes_rating?.toString() || '',
-      podcast.podcast_url || '',
-      podcast.podcast_email || '',
-      podcast.rss_feed || '',
-      podcast.compatibility_score?.toString() || '',
-      podcast.compatibility_reasoning || '',
-      new Date().toISOString(), // Timestamp
+      podcast.episode_count?.toString() || '',
+      podcast.podscan_podcast_id || podcast.podcast_id || '',
     ])
 
     // Check if sheet has headers, if not add them

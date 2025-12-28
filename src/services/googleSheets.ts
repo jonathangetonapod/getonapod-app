@@ -11,11 +11,14 @@ export interface CreateSheetResult {
 
 export interface PodcastExportData {
   podcast_name: string
-  publisher_name?: string | null
   podcast_description?: string | null
-  audience_size?: number | null
-  episode_count?: number | null
   itunes_rating?: number | null
+  episode_count?: number | null
+  podscan_podcast_id?: string | null
+  podcast_id?: string | null  // Fallback if podscan_podcast_id not available
+  // Legacy fields (not currently exported to sheets):
+  publisher_name?: string | null
+  audience_size?: number | null
   podcast_url?: string | null
   podcast_email?: string | null
   rss_feed?: string | null
