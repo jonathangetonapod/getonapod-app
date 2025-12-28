@@ -61,7 +61,8 @@ export async function createClientGoogleSheet(
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || 'Failed to create Google Sheet')
+      console.error('Create sheet error response:', error)
+      throw new Error(error.error || error.details || 'Failed to create Google Sheet')
     }
 
     const data = await response.json()

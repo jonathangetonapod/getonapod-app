@@ -324,10 +324,17 @@ serve(async (req) => {
     )
   } catch (error) {
     console.error('[Create Sheet] Error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    const errorStack = error instanceof Error ? error.stack : undefined
+
+    console.error('[Create Sheet] Error message:', errorMessage)
+    console.error('[Create Sheet] Error stack:', errorStack)
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: errorMessage,
+        details: errorStack,
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
