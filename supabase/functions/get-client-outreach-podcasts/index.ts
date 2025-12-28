@@ -45,7 +45,7 @@ async function getGoogleAccessToken(): Promise<string> {
 
   const jwtPayload = base64UrlEncode(JSON.stringify({
     iss: client_email,
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
     aud: 'https://oauth2.googleapis.com/token',
     exp: expiry,
     iat: now,
