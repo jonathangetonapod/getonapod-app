@@ -75,8 +75,8 @@ serve(async (req) => {
     }
     const spreadsheetId = spreadsheetIdMatch[1]
 
-    // Get Google Service Account credentials from environment
-    const googleCredentials = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')
+    // Get Google Service Account credentials from environment (same as indexing function)
+    const googleCredentials = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')
     if (!googleCredentials) {
       return new Response(
         JSON.stringify({ error: 'Google Service Account credentials not configured' }),

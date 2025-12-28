@@ -87,6 +87,51 @@ export default function PodcastFinder() {
   const clients = clientsData?.clients || []
   const selectedClientData = clients.find(c => c.id === selectedClient)
 
+  // Load persisted state from localStorage on mount
+  useEffect(() => {
+    const savedState = localStorage.getItem('podcast-finder-state')
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState)
+        if (parsed.selectedClient) setSelectedClient(parsed.selectedClient)
+        if (parsed.queries) setQueries(parsed.queries)
+        if (parsed.selectedPodcasts) setSelectedPodcasts(new Set(parsed.selectedPodcasts))
+        if (parsed.filters) {
+          if (parsed.filters.minAudience !== undefined) setMinAudience(parsed.filters.minAudience)
+          if (parsed.filters.maxAudience !== undefined) setMaxAudience(parsed.filters.maxAudience)
+          if (parsed.filters.minEpisodes !== undefined) setMinEpisodes(parsed.filters.minEpisodes)
+          if (parsed.filters.region !== undefined) setRegion(parsed.filters.region)
+          if (parsed.filters.hasGuests !== undefined) setHasGuests(parsed.filters.hasGuests)
+          if (parsed.filters.hasSponsors !== undefined) setHasSponsors(parsed.filters.hasSponsors)
+          if (parsed.filters.searchFields !== undefined) setSearchFields(parsed.filters.searchFields)
+          if (parsed.filters.activeOnly !== undefined) setActiveOnly(parsed.filters.activeOnly)
+        }
+      } catch (e) {
+        console.error('Failed to load saved state:', e)
+      }
+    }
+  }, [])
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    const stateToSave = {
+      selectedClient,
+      queries,
+      selectedPodcasts: Array.from(selectedPodcasts),
+      filters: {
+        minAudience,
+        maxAudience,
+        minEpisodes,
+        region,
+        hasGuests,
+        hasSponsors,
+        searchFields,
+        activeOnly,
+      },
+    }
+    localStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
+  }, [selectedClient, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly])
+
   const handleGenerateQueries = async () => {
     if (!selectedClient || !selectedClientData) {
       toast.error('Please select a client first')
@@ -423,6 +468,7 @@ export default function PodcastFinder() {
     setQueries([])
     setExpandedQueryId(null)
     setSelectedPodcasts(new Set())
+    localStorage.removeItem('podcast-finder-state') // Clear persisted state
     toast.success('Queries cleared')
   }
 
