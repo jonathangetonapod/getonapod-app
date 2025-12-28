@@ -1,0 +1,150 @@
+import { supabase } from '@/lib/supabase'
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
+export interface PodcastForScoring {
+  podcast_id: string
+  podcast_name: string
+  podcast_description?: string | null
+  publisher_name?: string | null
+  podcast_categories?: Array<{ category_name: string }> | null
+  audience_size?: number | null
+  episode_count?: number | null
+}
+
+export interface CompatibilityScore {
+  podcast_id: string
+  score: number | null
+  reasoning?: string
+}
+
+/**
+ * Score multiple podcasts in parallel batches
+ * Processes in chunks to avoid rate limits and improve UX
+ */
+export async function scoreCompatibilityBatch(
+  clientBio: string,
+  podcasts: PodcastForScoring[],
+  batchSize: number = 10,
+  onProgress?: (completed: number, total: number) => void
+): Promise<CompatibilityScore[]> {
+  if (!clientBio || clientBio.trim().length === 0) {
+    throw new Error('Client bio is required for compatibility scoring')
+  }
+
+  if (podcasts.length === 0) {
+    return []
+  }
+
+  // Get the authenticated user's JWT token
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    throw new Error('You must be logged in to score podcasts')
+  }
+
+  const results: CompatibilityScore[] = []
+  let completed = 0
+
+  // Process in batches
+  for (let i = 0; i < podcasts.length; i += batchSize) {
+    const batch = podcasts.slice(i, i + batchSize)
+
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/score-podcast-compatibility`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          clientBio,
+          podcasts: batch,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to score podcasts')
+      }
+
+      const data = await response.json()
+      results.push(...data.scores)
+
+      completed += batch.length
+      if (onProgress) {
+        onProgress(completed, podcasts.length)
+      }
+
+      // Small delay between batches to be nice to the API
+      if (i + batchSize < podcasts.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    } catch (error) {
+      console.error('Error scoring batch:', error)
+      // Add null scores for failed batch
+      batch.forEach(podcast => {
+        results.push({ podcast_id: podcast.podcast_id, score: null })
+      })
+      completed += batch.length
+      if (onProgress) {
+        onProgress(completed, podcasts.length)
+      }
+    }
+  }
+
+  return results
+}
+
+/**
+ * Score all podcasts and return sorted by score
+ */
+export async function scoreAndRankPodcasts(
+  clientBio: string,
+  podcasts: PodcastForScoring[],
+  minScore: number = 7,
+  onProgress?: (completed: number, total: number) => void
+): Promise<Array<PodcastForScoring & { compatibility_score: number }>> {
+  // Score all podcasts
+  const scores = await scoreCompatibilityBatch(clientBio, podcasts, 10, onProgress)
+
+  // Create lookup map
+  const scoreMap = new Map<string, number>()
+  scores.forEach(s => {
+    if (s.score !== null) {
+      scoreMap.set(s.podcast_id, s.score)
+    }
+  })
+
+  // Filter and rank
+  const rankedPodcasts = podcasts
+    .map(podcast => ({
+      ...podcast,
+      compatibility_score: scoreMap.get(podcast.podcast_id) || 0,
+    }))
+    .filter(p => p.compatibility_score >= minScore)
+    .sort((a, b) => {
+      // Sort by: score desc, then audience desc, then name asc
+      if (b.compatibility_score !== a.compatibility_score) {
+        return b.compatibility_score - a.compatibility_score
+      }
+      if ((b.audience_size || 0) !== (a.audience_size || 0)) {
+        return (b.audience_size || 0) - (a.audience_size || 0)
+      }
+      return a.podcast_name.localeCompare(b.podcast_name)
+    })
+
+  return rankedPodcasts
+}
+
+/**
+ * Get compatibility score explanation
+ * Note: This is currently not used in the UI but kept for future use
+ */
+export async function getScoreExplanation(
+  clientBio: string,
+  podcast: PodcastForScoring,
+  score: number
+): Promise<string> {
+  // TODO: Implement Edge Function for score explanation if needed
+  return `This podcast scored ${score}/10 for compatibility based on alignment between the client's expertise and the podcast's focus.`
+}

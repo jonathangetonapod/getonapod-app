@@ -41,7 +41,8 @@ import {
   Send,
   Upload,
   Image,
-  X
+  X,
+  FileText
 } from 'lucide-react'
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
@@ -1322,12 +1323,12 @@ export default function ClientDetail() {
 
       {/* Add Booking Modal */}
       <Dialog open={isAddBookingModalOpen} onOpenChange={setIsAddBookingModalOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Add Booking for {client.name}</DialogTitle>
             <DialogDescription>Create a new podcast booking</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto pr-2 flex-1">
             {/* Podcast ID Fetcher */}
             <div className="space-y-2 p-4 bg-muted/50 rounded-lg border">
               <Label htmlFor="podcast_id" className="text-sm font-semibold">
@@ -1470,36 +1471,36 @@ export default function ClientDetail() {
                 onChange={(e) => setNewBookingForm({ ...newBookingForm, notes: e.target.value })}
               />
             </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setIsAddBookingModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateBooking}
-                disabled={!newBookingForm.podcast_name || createBookingMutation.isPending}
-              >
-                {createBookingMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Booking'
-                )}
-              </Button>
-            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+            <Button variant="outline" onClick={() => setIsAddBookingModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateBooking}
+              disabled={!newBookingForm.podcast_name || createBookingMutation.isPending}
+            >
+              {createBookingMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Booking'
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Edit Client Modal */}
       <Dialog open={isEditClientModalOpen} onOpenChange={setIsEditClientModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit Client</DialogTitle>
             <DialogDescription>Update client information</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto pr-2 flex-1">
             <div className="space-y-2">
               <Label htmlFor="edit-name">Client Name *</Label>
               <Input
@@ -1587,35 +1588,35 @@ export default function ClientDetail() {
                 This bio is used by AI to generate relevant podcast search queries in the Podcast Finder
               </p>
             </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setIsEditClientModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleUpdateClient}
-                disabled={!editClientForm.name || updateClientMutation.isPending}
-              >
-                {updateClientMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Changes'
-                )}
-              </Button>
-            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+            <Button variant="outline" onClick={() => setIsEditClientModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateClient}
+              disabled={!editClientForm.name || updateClientMutation.isPending}
+            >
+              {updateClientMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Edit Booking Modal */}
       <Dialog open={!!editingBooking} onOpenChange={() => setEditingBooking(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit Podcast Booking</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto pr-2 flex-1">
             <div className="space-y-2">
               <Label htmlFor="edit-podcast-name">Podcast Name *</Label>
               <Input
@@ -1730,36 +1731,35 @@ export default function ClientDetail() {
                 onChange={(e) => setEditBookingForm({ ...editBookingForm, notes: e.target.value })}
               />
             </div>
-
-            <div className="flex justify-between pt-4">
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  handleDeleteBooking(editingBooking)
-                  setEditingBooking(null)
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
+          </div>
+          <div className="flex justify-between pt-4 border-t mt-4">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                handleDeleteBooking(editingBooking)
+                setEditingBooking(null)
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEditingBooking(null)}>
+                Cancel
               </Button>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setEditingBooking(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveBooking}
-                  disabled={!editBookingForm.podcast_name || updateBookingMutation.isPending}
-                >
-                  {updateBookingMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-              </div>
+              <Button
+                onClick={handleSaveBooking}
+                disabled={!editBookingForm.podcast_name || updateBookingMutation.isPending}
+              >
+                {updateBookingMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>
