@@ -135,6 +135,9 @@ export default function PortalDashboard() {
   })
 
   // Debug logging
+  console.log('[Dashboard] Client object:', client)
+  console.log('[Dashboard] Client ID:', client?.id)
+  console.log('[Dashboard] Client google_sheet_url:', client?.google_sheet_url)
   console.log('[Dashboard] Outreach query enabled:', !!client?.id && !!client?.google_sheet_url)
   console.log('[Dashboard] Outreach data:', outreachData)
   console.log('[Dashboard] Outreach loading:', outreachLoading)
