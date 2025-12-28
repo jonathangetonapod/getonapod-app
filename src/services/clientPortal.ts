@@ -58,45 +58,37 @@ export async function verifyToken(token: string): Promise<ClientPortalAuthRespon
  * Validate an existing session and return client data
  */
 export async function validateSession(sessionToken: string): Promise<Client> {
-  // Verify session exists and is not expired
-  const { data: session, error: sessionError } = await supabase
-    .from('client_portal_sessions')
-    .select('*, clients(*)')
-    .eq('session_token', sessionToken)
-    .gt('expires_at', new Date().toISOString())
-    .single()
+  const { data, error } = await supabase.functions.invoke('validate-portal-session', {
+    body: { sessionToken }
+  })
 
-  if (sessionError || !session) {
-    throw new Error('Session expired or invalid')
+  if (error) {
+    console.error('Failed to validate session:', error)
+    throw new Error(error.message || 'Session expired or invalid')
   }
 
-  // Update last_active_at
-  await supabase
-    .from('client_portal_sessions')
-    .update({ last_active_at: new Date().toISOString() })
-    .eq('session_token', sessionToken)
+  if (!data.success) {
+    throw new Error(data.error || 'Session expired or invalid')
+  }
 
-  // Return client data
-  return session.clients as Client
+  return data.client
 }
 
 /**
  * Logout and invalidate the session
  */
 export async function logout(sessionToken: string): Promise<void> {
-  const { error } = await supabase
-    .from('client_portal_sessions')
-    .delete()
-    .eq('session_token', sessionToken)
-
-  if (error) {
+  try {
+    await supabase.functions.invoke('logout-portal-session', {
+      body: { sessionToken }
+    })
+  } catch (error) {
     console.error('Failed to logout:', error)
     // Don't throw - logout should always succeed client-side
   }
 
   // Clear local storage
-  localStorage.removeItem('client_portal_session')
-  localStorage.removeItem('client_portal_client')
+  sessionStorage.clear()
 }
 
 /**
