@@ -815,10 +815,11 @@ export default function PortalDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full max-w-3xl grid-cols-4">
+          <TabsList className="grid w-full max-w-4xl grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="podcast-list">My Podcast List</TabsTrigger>
             <TabsTrigger value="premium">Premium Placements</TabsTrigger>
           </TabsList>
 
@@ -1741,6 +1742,54 @@ export default function PortalDashboard() {
             </CardContent>
           </Card>
         )}
+          </TabsContent>
+
+          {/* MY PODCAST LIST TAB */}
+          <TabsContent value="podcast-list" className="space-y-6">
+            {client?.google_sheet_url ? (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>My Podcast List</CardTitle>
+                      <CardDescription>
+                        Your personalized list of podcast opportunities
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => window.open(client.google_sheet_url!, '_blank', 'noopener,noreferrer')}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open in Google Sheets
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="w-full h-[800px] border rounded-lg overflow-hidden bg-muted/20">
+                    <iframe
+                      src={`${client.google_sheet_url.replace('/edit', '/preview')}`}
+                      className="w-full h-full"
+                      title="My Podcast List"
+                      style={{ border: 'none' }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-4 text-center">
+                    This is a live view of your podcast list. Open in Google Sheets to see formulas and make edits.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+                  <FileText className="h-16 w-16 text-muted-foreground/50 mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">No Podcast List Yet</h3>
+                  <p className="text-muted-foreground max-w-md">
+                    Your personalized podcast list hasn't been created yet. Contact your account manager to get started.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* PREMIUM PLACEMENTS TAB */}

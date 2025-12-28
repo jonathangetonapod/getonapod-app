@@ -13,6 +13,7 @@ export interface Client {
   notes: string | null
   bio: string | null
   photo_url: string | null
+  google_sheet_url: string | null
   created_at: string
   updated_at: string
 }
