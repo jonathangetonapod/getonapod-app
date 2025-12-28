@@ -524,11 +524,13 @@ export default function PodcastFinder() {
           if (selectedPodcasts.has(podcast.podcast_id)) {
             podcastsToExport.push({
               podcast_name: podcast.podcast_name,
-              publisher_name: podcast.publisher_name,
               podcast_description: podcast.podcast_description,
-              audience_size: podcast.reach?.audience_size,
-              episode_count: podcast.episode_count,
               itunes_rating: podcast.itunes_rating,
+              episode_count: podcast.episode_count,
+              podscan_podcast_id: podcast.podcast_id,
+              // Legacy fields kept for backward compatibility:
+              publisher_name: podcast.publisher_name,
+              audience_size: podcast.reach?.audience_size,
               podcast_url: podcast.podcast_url,
               podcast_email: podcast.podcast_email,
               rss_feed: podcast.rss_url,
