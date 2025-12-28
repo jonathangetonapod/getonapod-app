@@ -132,12 +132,19 @@ serve(async (req) => {
     const accessToken = await getGoogleAccessToken()
     console.log('[Create Sheet] Access token obtained, length:', accessToken.length)
 
-    // Create a new spreadsheet using Drive API instead of Sheets API
-    // Sometimes Drive API has different permissions in Workspace orgs
-    const sheetTitle = `Podcast Leads - ${clientName}`
-    console.log('[Create Sheet] Creating spreadsheet via Drive API:', sheetTitle)
+    // Get template spreadsheet ID from environment
+    const templateId = Deno.env.get('GOOGLE_SHEET_TEMPLATE_ID')
+    if (!templateId) {
+      throw new Error('GOOGLE_SHEET_TEMPLATE_ID not configured. Please create a template spreadsheet and add its ID to Supabase secrets.')
+    }
 
-    const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+    // Copy the template spreadsheet
+    // Copies are created in the template owner's Drive, not service account's Drive
+    // This avoids storage quota issues with service accounts
+    const sheetTitle = `Podcast Leads - ${clientName}`
+    console.log('[Create Sheet] Copying template to create:', sheetTitle)
+
+    const copyResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${templateId}/copy`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -145,22 +152,21 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         name: sheetTitle,
-        mimeType: 'application/vnd.google-apps.spreadsheet',
       }),
     })
 
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text()
-      console.error('[Create Sheet] Failed to create:', errorText)
-      console.error('[Create Sheet] Status:', createResponse.status)
-      throw new Error(`Google Sheets API error (${createResponse.status}): ${errorText}`)
+    if (!copyResponse.ok) {
+      const errorText = await copyResponse.text()
+      console.error('[Create Sheet] Failed to copy template:', errorText)
+      console.error('[Create Sheet] Status:', copyResponse.status)
+      throw new Error(`Google Drive API error (${copyResponse.status}): ${errorText}`)
     }
 
-    const spreadsheet = await createResponse.json()
-    const spreadsheetId = spreadsheet.spreadsheetId
-    const spreadsheetUrl = spreadsheet.spreadsheetUrl
+    const copiedFile = await copyResponse.json()
+    const spreadsheetId = copiedFile.id
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
 
-    console.log('[Create Sheet] Created with ID:', spreadsheetId)
+    console.log('[Create Sheet] Created copy with ID:', spreadsheetId)
     console.log('[Create Sheet] Spreadsheet URL:', spreadsheetUrl)
 
     // Transfer ownership to the user's email to avoid service account storage quota
@@ -215,108 +221,6 @@ serve(async (req) => {
     } else {
       console.log('[Create Sheet] Made sheet publicly editable via link')
     }
-
-    // Add headers to the first row
-    const headers = [
-      'Podcast Name',
-      'Publisher/Host',
-      'Description',
-      'Audience Size',
-      'Episodes',
-      'Rating',
-      'Podcast URL',
-      'Email',
-      'RSS Feed',
-      'Fit Score',
-      'AI Reasoning',
-      'Export Date',
-    ]
-
-    // Add headers and format them
-    const updateResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requests: [
-            // Add header values
-            {
-              updateCells: {
-                range: {
-                  sheetId: 0,
-                  startRowIndex: 0,
-                  endRowIndex: 1,
-                  startColumnIndex: 0,
-                  endColumnIndex: headers.length,
-                },
-                rows: [{
-                  values: headers.map(header => ({
-                    userEnteredValue: { stringValue: header },
-                  })),
-                }],
-                fields: 'userEnteredValue',
-              },
-            },
-            // Format headers: bold, background color, text color
-            {
-              repeatCell: {
-                range: {
-                  sheetId: 0,
-                  startRowIndex: 0,
-                  endRowIndex: 1,
-                  startColumnIndex: 0,
-                  endColumnIndex: headers.length,
-                },
-                cell: {
-                  userEnteredFormat: {
-                    backgroundColor: {
-                      red: 0.2,
-                      green: 0.6,
-                      blue: 0.86,
-                    },
-                    textFormat: {
-                      foregroundColor: {
-                        red: 1.0,
-                        green: 1.0,
-                        blue: 1.0,
-                      },
-                      fontSize: 11,
-                      bold: true,
-                    },
-                    horizontalAlignment: 'CENTER',
-                    verticalAlignment: 'MIDDLE',
-                  },
-                },
-                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
-              },
-            },
-            // Auto-resize columns
-            {
-              autoResizeDimensions: {
-                dimensions: {
-                  sheetId: 0,
-                  dimension: 'COLUMNS',
-                  startIndex: 0,
-                  endIndex: headers.length,
-                },
-              },
-            },
-          ],
-        }),
-      }
-    )
-
-    if (!updateResponse.ok) {
-      const errorText = await updateResponse.text()
-      console.error('[Create Sheet] Failed to format:', errorText)
-      // Continue anyway - sheet is created even if formatting fails
-    }
-
-    console.log('[Create Sheet] Formatted headers')
 
     // Share the sheet with the service account (so it can write to it)
     const shareResponse = await fetch(
