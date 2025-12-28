@@ -38,12 +38,19 @@ async function getGoogleAccessToken(): Promise<string> {
     typ: 'JWT',
   }))
 
+  // Get user email for domain-wide delegation (impersonation)
+  const userEmail = Deno.env.get('GOOGLE_WORKSPACE_USER_EMAIL')
+  if (!userEmail) {
+    throw new Error('GOOGLE_WORKSPACE_USER_EMAIL not configured')
+  }
+
   const jwtPayload = base64UrlEncode(JSON.stringify({
     iss: client_email,
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
     aud: 'https://oauth2.googleapis.com/token',
     exp: expiry,
     iat: now,
+    sub: userEmail,  // Domain-wide delegation: impersonate this user
   }))
 
   // Import private key

@@ -104,13 +104,23 @@ serve(async (req) => {
         .replace(/\//g, '_')
         .replace(/=/g, '')
 
+    // Get user email for domain-wide delegation
+    const userEmail = Deno.env.get('GOOGLE_WORKSPACE_USER_EMAIL')
+    if (!userEmail) {
+      return new Response(
+        JSON.stringify({ error: 'GOOGLE_WORKSPACE_USER_EMAIL not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const jwtHeader = base64UrlEncode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
     const jwtClaim = base64UrlEncode(JSON.stringify({
       iss: credentials.client_email,
-      scope: 'https://www.googleapis.com/auth/spreadsheets',
+      scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
       aud: 'https://oauth2.googleapis.com/token',
       exp: now + 3600,
       iat: now,
+      sub: userEmail,  // Domain-wide delegation: impersonate this user
     }))
 
     // Import private key for signing (same approach as submit-to-indexing function)
