@@ -124,10 +124,21 @@ export default function PortalDashboard() {
   // Fetch outreach podcasts from Google Sheet
   const { data: outreachData, isLoading: outreachLoading, error: outreachError } = useQuery({
     queryKey: ['outreach-podcasts', client?.id],
-    queryFn: () => getClientOutreachPodcasts(client!.id),
+    queryFn: () => {
+      console.log('[Dashboard] Fetching outreach podcasts for client:', client?.id)
+      console.log('[Dashboard] Client has google_sheet_url:', !!client?.google_sheet_url)
+      console.log('[Dashboard] Google Sheet URL:', client?.google_sheet_url)
+      return getClientOutreachPodcasts(client!.id)
+    },
     enabled: !!client?.id && !!client?.google_sheet_url,
     retry: 1,
   })
+
+  // Debug logging
+  console.log('[Dashboard] Outreach query enabled:', !!client?.id && !!client?.google_sheet_url)
+  console.log('[Dashboard] Outreach data:', outreachData)
+  console.log('[Dashboard] Outreach loading:', outreachLoading)
+  console.log('[Dashboard] Outreach error:', outreachError)
 
   // Helper functions for date filtering
   const getDateRange = () => {
