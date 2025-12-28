@@ -202,17 +202,21 @@ export async function getClientOutreachPodcasts(
         )
 
         if (podcastResponse.ok) {
-          const podcast = await podcastResponse.json()
+          const data = await podcastResponse.json()
+          // API returns { podcast: { ... } }, extract the podcast object
+          const podcast = data.podcast || data
+          console.log('[getClientOutreachPodcasts] Podcast data:', podcastId, podcast)
+
           podcasts.push({
             podcast_id: podcastId,
-            podcast_name: podcast.name || 'Unknown Podcast',
-            podcast_description: podcast.description || null,
-            podcast_image_url: podcast.image_url || null,
-            podcast_url: podcast.website || podcast.listen_url || null,
-            publisher_name: podcast.publisher || null,
-            itunes_rating: podcast.itunes_rating || null,
+            podcast_name: podcast.podcast_name || 'Unknown Podcast',
+            podcast_description: podcast.podcast_description || null,
+            podcast_image_url: podcast.podcast_image_url || null,
+            podcast_url: podcast.podcast_url || null,
+            publisher_name: podcast.publisher_name || null,
+            itunes_rating: podcast.reach?.itunes?.itunes_rating_average || null,
             episode_count: podcast.episode_count || null,
-            audience_size: podcast.audience_size || null,
+            audience_size: podcast.reach?.audience_size || null,
           })
         }
       } catch (error) {
