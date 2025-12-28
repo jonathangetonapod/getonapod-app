@@ -56,6 +56,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import { getClientBookings } from '@/services/clientPortal'
 import type { Booking } from '@/services/bookings'
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
+import { getClientOutreachPodcasts, type OutreachPodcast } from '@/services/googleSheets'
 import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
 import { CartButton } from '@/components/CartButton'
@@ -118,6 +119,14 @@ export default function PortalDashboard() {
   const { data: premiumPodcasts, isLoading: premiumLoading } = useQuery({
     queryKey: ['premium-podcasts'],
     queryFn: () => getActivePremiumPodcasts()
+  })
+
+  // Fetch outreach podcasts from Google Sheet
+  const { data: outreachData, isLoading: outreachLoading, error: outreachError } = useQuery({
+    queryKey: ['outreach-podcasts', client?.id],
+    queryFn: () => getClientOutreachPodcasts(client!.id),
+    enabled: !!client?.id && !!client?.google_sheet_url,
+    retry: 1,
   })
 
   // Helper functions for date filtering
@@ -1747,38 +1756,139 @@ export default function PortalDashboard() {
           {/* OUTREACH LIST TAB */}
           <TabsContent value="podcast-list" className="space-y-6">
             {client?.google_sheet_url ? (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Outreach List</CardTitle>
-                      <CardDescription>
-                        Your personalized list of podcast opportunities
-                      </CardDescription>
+              <>
+                {/* Podcasts from Sheet */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Your Outreach Podcasts</CardTitle>
+                        <CardDescription>
+                          {outreachLoading ? 'Loading podcasts...' :
+                           outreachData?.total ? `${outreachData.total} podcast${outreachData.total === 1 ? '' : 's'} in your outreach list` :
+                           'Podcasts from your Google Sheet'}
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => window.open(client.google_sheet_url!, '_blank', 'noopener,noreferrer')}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Open in Google Sheets
+                      </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => window.open(client.google_sheet_url!, '_blank', 'noopener,noreferrer')}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Open in Google Sheets
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="w-full h-[800px] border rounded-lg overflow-hidden bg-muted/20">
-                    <iframe
-                      src={`${client.google_sheet_url.replace('/edit', '/preview')}`}
-                      className="w-full h-full"
-                      title="Outreach List"
-                      style={{ border: 'none' }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-4 text-center">
-                    This is a live view of your outreach list. Open in Google Sheets to see formulas and make edits.
-                  </p>
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    {outreachLoading ? (
+                      <div className="flex items-center justify-center py-20">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary mr-3" />
+                        <span className="text-muted-foreground">Loading podcasts from your outreach list...</span>
+                      </div>
+                    ) : outreachError ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <AlertCircle className="h-12 w-12 text-destructive mb-3" />
+                        <h3 className="text-lg font-semibold mb-2">Failed to Load Podcasts</h3>
+                        <p className="text-sm text-muted-foreground max-w-md">
+                          There was an error loading your outreach list. Please try refreshing the page or contact support if the issue persists.
+                        </p>
+                      </div>
+                    ) : outreachData?.podcasts && outreachData.podcasts.length > 0 ? (
+                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {outreachData.podcasts.map((podcast) => (
+                          <div
+                            key={podcast.podcast_id}
+                            className="flex flex-col gap-4 p-4 rounded-lg border bg-card hover:shadow-lg transition-shadow"
+                          >
+                            {podcast.podcast_image_url && (
+                              <img
+                                src={podcast.podcast_image_url}
+                                alt={podcast.podcast_name}
+                                className="w-full h-48 object-cover rounded-md"
+                              />
+                            )}
+                            <div className="flex-1 space-y-2">
+                              <h3 className="font-semibold text-lg line-clamp-2">{podcast.podcast_name}</h3>
+
+                              {podcast.podcast_description && (
+                                <p className="text-sm text-muted-foreground line-clamp-3">
+                                  {podcast.podcast_description}
+                                </p>
+                              )}
+
+                              <div className="flex flex-wrap gap-2 pt-2">
+                                {podcast.audience_size && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    👥 {podcast.audience_size.toLocaleString()}
+                                  </Badge>
+                                )}
+                                {podcast.itunes_rating && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    ⭐ {podcast.itunes_rating.toFixed(1)}
+                                  </Badge>
+                                )}
+                                {podcast.episode_count && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    🎙️ {podcast.episode_count} eps
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {podcast.publisher_name && (
+                                <p className="text-xs text-muted-foreground">
+                                  By {podcast.publisher_name}
+                                </p>
+                              )}
+                            </div>
+
+                            {podcast.podcast_url && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')}
+                              >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Visit Podcast
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <FileText className="h-12 w-12 text-muted-foreground/50 mb-3" />
+                        <h3 className="text-lg font-semibold mb-2">No Podcasts Found</h3>
+                        <p className="text-sm text-muted-foreground max-w-md">
+                          No podcast IDs found in column E of your Google Sheet. Add podcast IDs to see them here!
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Embedded Google Sheet */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Full Outreach List</CardTitle>
+                    <CardDescription>
+                      View and manage your complete outreach list
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="w-full h-[600px] border rounded-lg overflow-hidden bg-muted/20">
+                      <iframe
+                        src={`${client.google_sheet_url.replace('/edit', '/preview')}`}
+                        className="w-full h-full"
+                        title="Outreach List"
+                        style={{ border: 'none' }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-4 text-center">
+                      This is a live view of your outreach list. Open in Google Sheets to see formulas and make edits.
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
             ) : (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-20 text-center">

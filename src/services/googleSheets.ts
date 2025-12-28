@@ -32,6 +32,24 @@ export interface ExportToSheetsResult {
   updatedRange: string
 }
 
+export interface OutreachPodcast {
+  podcast_id: string
+  podcast_name: string
+  podcast_description: string | null
+  podcast_image_url: string | null
+  podcast_url: string | null
+  publisher_name: string | null
+  itunes_rating: number | null
+  episode_count: number | null
+  audience_size: number | null
+}
+
+export interface GetOutreachPodcastsResult {
+  success: boolean
+  podcasts: OutreachPodcast[]
+  total: number
+}
+
 /**
  * Create a new Google Sheet for a client with formatted headers
  */
@@ -121,5 +139,47 @@ export async function exportPodcastsToGoogleSheets(
   } catch (error) {
     console.error('Error exporting to Google Sheets:', error)
     throw new Error(`Failed to export podcasts: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Get outreach podcasts from a client's Google Sheet
+ * Reads column E (Podscan Podcast IDs) and fetches podcast details
+ */
+export async function getClientOutreachPodcasts(
+  clientId: string
+): Promise<GetOutreachPodcastsResult> {
+  if (!clientId) {
+    throw new Error('Client ID is required')
+  }
+
+  try {
+    // Get the authenticated user's JWT token
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      throw new Error('You must be logged in to view outreach podcasts')
+    }
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-outreach-podcasts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        clientId,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to fetch outreach podcasts')
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error fetching outreach podcasts:', error)
+    throw new Error(`Failed to fetch outreach podcasts: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
