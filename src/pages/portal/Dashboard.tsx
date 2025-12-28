@@ -1790,7 +1790,7 @@ export default function PortalDashboard() {
                 {/* Podcasts from Sheet */}
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <CardTitle>Your Outreach Podcasts</CardTitle>
                         <CardDescription>
@@ -1799,23 +1799,25 @@ export default function PortalDashboard() {
                            'Podcasts from your Google Sheet'}
                         </CardDescription>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => refetchOutreach()}
                           disabled={outreachLoading}
+                          className="flex-1 sm:flex-none"
                         >
-                          <RefreshCw className={`h-4 w-4 mr-2 ${outreachLoading ? 'animate-spin' : ''}`} />
-                          Refresh
+                          <RefreshCw className={`h-4 w-4 sm:mr-2 ${outreachLoading ? 'animate-spin' : ''}`} />
+                          <span className="hidden sm:inline">Refresh</span>
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => window.open(client.google_sheet_url!, '_blank', 'noopener,noreferrer')}
+                          className="flex-1 sm:flex-none"
                         >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Open in Google Sheets
+                          <ExternalLink className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Open in Google Sheets</span>
                         </Button>
                       </div>
                     </div>
@@ -1836,20 +1838,20 @@ export default function PortalDashboard() {
                       </div>
                     ) : outreachData?.podcasts && outreachData.podcasts.length > 0 ? (
                       <>
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                           {outreachData.podcasts
                             .slice((outreachPage - 1) * outreachPerPage, outreachPage * outreachPerPage)
                             .map((podcast) => (
                           <div
                             key={podcast.podcast_id}
-                            className="flex flex-col gap-4 p-4 rounded-lg border bg-card hover:shadow-lg transition-shadow cursor-pointer"
+                            className="flex flex-col gap-3 p-3 sm:p-4 sm:gap-4 rounded-lg border bg-card hover:shadow-lg transition-shadow cursor-pointer"
                             onClick={() => setViewingOutreachPodcast(podcast)}
                           >
                             {podcast.podcast_image_url && (
                               <img
                                 src={podcast.podcast_image_url}
                                 alt={podcast.podcast_name}
-                                className="w-full h-48 object-cover rounded-md"
+                                className="w-full h-40 sm:h-48 object-cover rounded-md"
                               />
                             )}
                             <div className="flex-1 space-y-2">
@@ -1906,19 +1908,20 @@ export default function PortalDashboard() {
 
                         {/* Pagination */}
                         {outreachData.podcasts.length > outreachPerPage && (
-                          <div className="flex items-center justify-between pt-6 border-t">
-                            <div className="text-sm text-muted-foreground">
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t">
+                            <div className="text-sm text-muted-foreground text-center sm:text-left">
                               Showing {((outreachPage - 1) * outreachPerPage) + 1}-{Math.min(outreachPage * outreachPerPage, outreachData.podcasts.length)} of {outreachData.podcasts.length} podcasts
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap justify-center">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setOutreachPage(p => Math.max(1, p - 1))}
                                 disabled={outreachPage === 1}
+                                className="gap-1"
                               >
                                 <ChevronLeft className="h-4 w-4" />
-                                Previous
+                                <span className="hidden sm:inline">Previous</span>
                               </Button>
                               <div className="flex gap-1">
                                 {Array.from({ length: Math.ceil(outreachData.podcasts.length / outreachPerPage) }, (_, i) => i + 1)
@@ -1956,8 +1959,9 @@ export default function PortalDashboard() {
                                 size="sm"
                                 onClick={() => setOutreachPage(p => Math.min(Math.ceil(outreachData.podcasts.length / outreachPerPage), p + 1))}
                                 disabled={outreachPage === Math.ceil(outreachData.podcasts.length / outreachPerPage)}
+                                className="gap-1"
                               >
-                                Next
+                                <span className="hidden sm:inline">Next</span>
                                 <ChevronRight className="h-4 w-4" />
                               </Button>
                             </div>
@@ -2484,7 +2488,7 @@ export default function PortalDashboard() {
 
       {/* Outreach Podcast Detail Modal */}
       <Dialog open={!!viewingOutreachPodcast} onOpenChange={() => setViewingOutreachPodcast(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Podcast Details</DialogTitle>
             <DialogDescription>
@@ -2494,18 +2498,18 @@ export default function PortalDashboard() {
           {viewingOutreachPodcast && (
             <div className="space-y-6">
               {/* Podcast Header */}
-              <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-4">
                 {viewingOutreachPodcast.podcast_image_url && (
                   <img
                     src={viewingOutreachPodcast.podcast_image_url}
                     alt={viewingOutreachPodcast.podcast_name}
-                    className="w-24 h-24 rounded-lg object-cover shadow-md"
+                    className="w-24 h-24 sm:w-24 sm:h-24 rounded-lg object-cover shadow-md mx-auto sm:mx-0"
                   />
                 )}
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-2 text-center sm:text-left">
                   <h3 className="text-xl font-bold">{viewingOutreachPodcast.podcast_name}</h3>
                   {viewingOutreachPodcast.publisher_name && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex items-center justify-center sm:justify-start gap-2 text-muted-foreground">
                       <User className="h-4 w-4" />
                       <span className="text-sm">Publisher: {viewingOutreachPodcast.publisher_name}</span>
                     </div>
@@ -2527,7 +2531,7 @@ export default function PortalDashboard() {
 
               {/* Stats */}
               {(viewingOutreachPodcast.audience_size || viewingOutreachPodcast.episode_count || viewingOutreachPodcast.itunes_rating) && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {viewingOutreachPodcast.audience_size && (
                     <div className="p-4 bg-muted rounded-lg">
                       <p className="text-xs text-muted-foreground mb-1">Audience Size</p>
@@ -2568,7 +2572,7 @@ export default function PortalDashboard() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
                 {viewingOutreachPodcast.podcast_url && (
                   <Button
                     variant="default"
@@ -2579,7 +2583,7 @@ export default function PortalDashboard() {
                     Visit Podcast Website
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => setViewingOutreachPodcast(null)}>
+                <Button variant="outline" onClick={() => setViewingOutreachPodcast(null)} className="sm:w-auto">
                   Close
                 </Button>
               </div>
