@@ -131,30 +131,20 @@ serve(async (req) => {
     const accessToken = await getGoogleAccessToken()
     console.log('[Create Sheet] Access token obtained, length:', accessToken.length)
 
-    // Create a new spreadsheet
+    // Create a new spreadsheet using Drive API instead of Sheets API
+    // Sometimes Drive API has different permissions in Workspace orgs
     const sheetTitle = `Podcast Leads - ${clientName}`
-    console.log('[Create Sheet] Creating spreadsheet:', sheetTitle)
+    console.log('[Create Sheet] Creating spreadsheet via Drive API:', sheetTitle)
 
-    const createResponse = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+    const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        properties: {
-          title: sheetTitle,
-        },
-        sheets: [{
-          properties: {
-            title: 'Podcasts',
-            gridProperties: {
-              rowCount: 1000,
-              columnCount: 12,
-              frozenRowCount: 1, // Freeze header row
-            },
-          },
-        }],
+        name: sheetTitle,
+        mimeType: 'application/vnd.google-apps.spreadsheet',
       }),
     })
 
