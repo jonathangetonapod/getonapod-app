@@ -160,6 +160,7 @@ export async function getClientOutreachPodcasts(
       throw new Error('You must be logged in to view outreach podcasts')
     }
 
+    // Fetch podcast IDs from Edge Function
     const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-outreach-podcasts`, {
       method: 'POST',
       headers: {
@@ -177,7 +178,55 @@ export async function getClientOutreachPodcasts(
     }
 
     const data = await response.json()
-    return data
+
+    // If no podcast IDs, return empty
+    if (!data.podcastIds || data.podcastIds.length === 0) {
+      return { success: true, podcasts: [], total: 0 }
+    }
+
+    console.log('[getClientOutreachPodcasts] Fetching details for', data.podcastIds.length, 'podcasts from frontend')
+
+    // Fetch podcast details from Podscan API (from frontend where DNS works)
+    const podcasts: OutreachPodcast[] = []
+    const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
+
+    for (const podcastId of data.podcastIds) {
+      try {
+        const podcastResponse = await fetch(
+          `https://api.podscan.fm/podcasts/${podcastId}`,
+          {
+            headers: {
+              'X-API-KEY': podscanApiKey,
+            },
+          }
+        )
+
+        if (podcastResponse.ok) {
+          const podcast = await podcastResponse.json()
+          podcasts.push({
+            podcast_id: podcastId,
+            podcast_name: podcast.name || 'Unknown Podcast',
+            podcast_description: podcast.description || null,
+            podcast_image_url: podcast.image_url || null,
+            podcast_url: podcast.website || podcast.listen_url || null,
+            publisher_name: podcast.publisher || null,
+            itunes_rating: podcast.itunes_rating || null,
+            episode_count: podcast.episode_count || null,
+            audience_size: podcast.audience_size || null,
+          })
+        }
+      } catch (error) {
+        console.error('[getClientOutreachPodcasts] Error fetching podcast:', podcastId, error)
+      }
+    }
+
+    console.log('[getClientOutreachPodcasts] Successfully fetched', podcasts.length, 'podcasts')
+
+    return {
+      success: true,
+      podcasts,
+      total: podcasts.length,
+    }
   } catch (error) {
     console.error('Error fetching outreach podcasts:', error)
     throw new Error(`Failed to fetch outreach podcasts: ${error instanceof Error ? error.message : 'Unknown error'}`)

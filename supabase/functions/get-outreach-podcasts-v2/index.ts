@@ -209,13 +209,81 @@ serve(async (req) => {
     console.log('[Get Outreach Podcasts] Found', podcastIds.length, 'podcast IDs')
     console.log('[Get Outreach Podcasts] Sample IDs:', JSON.stringify(podcastIds.slice(0, 3)))
 
-    // Return podcast IDs for frontend to fetch details
-    // (Supabase Edge Functions have DNS issues reaching api.podscan.fm)
+    if (podcastIds.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          podcasts: [],
+          debug: {
+            spreadsheetId,
+            sheetName: firstSheetName,
+            range,
+            rowsReturned: rows.length,
+            sampleRows: rows.slice(0, 5),
+            message: 'No podcast IDs found in column E'
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch podcast details from Podscan API
+    const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
+    if (!podscanApiKey) {
+      throw new Error('PODSCAN_API_KEY not configured')
+    }
+
+    const podcasts = []
+
+    // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
+    const batchSize = 5
+    for (let i = 0; i < podcastIds.length; i += batchSize) {
+      const batch = podcastIds.slice(i, i + batchSize)
+      const batchPromises = batch.map(async (podcastId: string) => {
+        try {
+          const response = await fetch(
+            `https://api.podscan.fm/podcasts/${podcastId}`,
+            {
+              headers: {
+                'X-API-KEY': podscanApiKey,
+              },
+            }
+          )
+
+          if (!response.ok) {
+            console.warn('[Get Outreach Podcasts] Failed to fetch podcast:', podcastId)
+            return null
+          }
+
+          const podcast = await response.json()
+          return {
+            podcast_id: podcastId,
+            podcast_name: podcast.name || 'Unknown Podcast',
+            podcast_description: podcast.description || null,
+            podcast_image_url: podcast.image_url || null,
+            podcast_url: podcast.website || podcast.listen_url || null,
+            publisher_name: podcast.publisher || null,
+            itunes_rating: podcast.itunes_rating || null,
+            episode_count: podcast.episode_count || null,
+            audience_size: podcast.audience_size || null,
+          }
+        } catch (error) {
+          console.error('[Get Outreach Podcasts] Error fetching podcast:', podcastId, error)
+          return null
+        }
+      })
+
+      const batchResults = await Promise.all(batchPromises)
+      podcasts.push(...batchResults.filter(p => p !== null))
+    }
+
+    console.log('[Get Outreach Podcasts] Successfully fetched', podcasts.length, 'podcasts')
+
     return new Response(
       JSON.stringify({
         success: true,
-        podcastIds,
-        total: podcastIds.length,
+        podcasts,
+        total: podcasts.length,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

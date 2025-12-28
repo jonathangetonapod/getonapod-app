@@ -122,8 +122,8 @@ serve(async (req) => {
       throw new Error('clientId is required')
     }
 
-    console.log('[Get Outreach Podcasts] Starting for client:', clientId)
-    console.log('[Get Outreach Podcasts] Version: 2.0 with debug info')
+    console.log('[READ-OUTREACH-LIST] Starting for client:', clientId)
+    console.log('[READ-OUTREACH-LIST] Version: FRESH-V1 - NEW FUNCTION')
 
     // Get client's Google Sheet URL from database
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -137,7 +137,7 @@ serve(async (req) => {
       .single()
 
     if (clientError || !client?.google_sheet_url) {
-      console.log('[Get Outreach Podcasts] No Google Sheet found for client')
+      console.log('[READ-OUTREACH-LIST] No Google Sheet found for client')
       return new Response(
         JSON.stringify({ success: true, podcasts: [] }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -152,7 +152,7 @@ serve(async (req) => {
     }
     const spreadsheetId = spreadsheetIdMatch[1]
 
-    console.log('[Get Outreach Podcasts] Reading from spreadsheet:', spreadsheetId)
+    console.log('[READ-OUTREACH-LIST] Reading from spreadsheet:', spreadsheetId)
 
     // Get Google access token
     const accessToken = await getGoogleAccessToken()
@@ -175,11 +175,11 @@ serve(async (req) => {
     const metadata = await metadataResponse.json()
     const firstSheetName = metadata.sheets[0]?.properties?.title || 'Sheet1'
 
-    console.log('[Get Outreach Podcasts] First sheet name:', firstSheetName)
+    console.log('[READ-OUTREACH-LIST] First sheet name:', firstSheetName)
 
     // Read column E (Podscan Podcast ID) - assuming data starts at row 2 (skip header)
     const range = `${firstSheetName}!E2:E1000` // Read up to 1000 rows
-    console.log('[Get Outreach Podcasts] Reading range:', range)
+    console.log('[READ-OUTREACH-LIST] Reading range:', range)
 
     const sheetsResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
@@ -198,29 +198,95 @@ serve(async (req) => {
     const sheetsData = await sheetsResponse.json()
     const rows = sheetsData.values || []
 
-    console.log('[Get Outreach Podcasts] Raw rows returned:', rows.length)
-    console.log('[Get Outreach Podcasts] First few rows:', JSON.stringify(rows.slice(0, 5)))
+    console.log('[READ-OUTREACH-LIST] Raw rows returned:', rows.length)
+    console.log('[READ-OUTREACH-LIST] First few rows:', JSON.stringify(rows.slice(0, 5)))
 
     // Extract podcast IDs (column E), filter out empty values
     const podcastIds = rows
       .map((row: string[]) => row[0]) // Column E is index 0 in our range
       .filter((id: string) => id && id.trim() !== '')
 
-    console.log('[Get Outreach Podcasts] Found', podcastIds.length, 'podcast IDs')
-    console.log('[Get Outreach Podcasts] Sample IDs:', JSON.stringify(podcastIds.slice(0, 3)))
+    console.log('[READ-OUTREACH-LIST] Found', podcastIds.length, 'podcast IDs')
+    console.log('[READ-OUTREACH-LIST] Sample IDs:', JSON.stringify(podcastIds.slice(0, 3)))
 
-    // Return podcast IDs for frontend to fetch details
-    // (Supabase Edge Functions have DNS issues reaching api.podscan.fm)
+    if (podcastIds.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          podcasts: [],
+          total: 0,
+          version: 'v4.0-deployed',
+          spreadsheetId,
+          sheetName: firstSheetName,
+          range,
+          rowsCount: rows.length
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch podcast details from Podscan API
+    const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
+    if (!podscanApiKey) {
+      throw new Error('PODSCAN_API_KEY not configured')
+    }
+
+    const podcasts = []
+
+    // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
+    const batchSize = 5
+    for (let i = 0; i < podcastIds.length; i += batchSize) {
+      const batch = podcastIds.slice(i, i + batchSize)
+      const batchPromises = batch.map(async (podcastId: string) => {
+        try {
+          const response = await fetch(
+            `https://api.podscan.fm/podcasts/${podcastId}`,
+            {
+              headers: {
+                'X-API-KEY': podscanApiKey,
+              },
+            }
+          )
+
+          if (!response.ok) {
+            console.warn('[READ-OUTREACH-LIST] Failed to fetch podcast:', podcastId)
+            return null
+          }
+
+          const podcast = await response.json()
+          return {
+            podcast_id: podcastId,
+            podcast_name: podcast.name || 'Unknown Podcast',
+            podcast_description: podcast.description || null,
+            podcast_image_url: podcast.image_url || null,
+            podcast_url: podcast.website || podcast.listen_url || null,
+            publisher_name: podcast.publisher || null,
+            itunes_rating: podcast.itunes_rating || null,
+            episode_count: podcast.episode_count || null,
+            audience_size: podcast.audience_size || null,
+          }
+        } catch (error) {
+          console.error('[READ-OUTREACH-LIST] Error fetching podcast:', podcastId, error)
+          return null
+        }
+      })
+
+      const batchResults = await Promise.all(batchPromises)
+      podcasts.push(...batchResults.filter(p => p !== null))
+    }
+
+    console.log('[READ-OUTREACH-LIST] Successfully fetched', podcasts.length, 'podcasts')
+
     return new Response(
       JSON.stringify({
         success: true,
-        podcastIds,
-        total: podcastIds.length,
+        podcasts,
+        total: podcasts.length,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('[Get Outreach Podcasts] Error:', error)
+    console.error('[READ-OUTREACH-LIST] Error:', error)
     return new Response(
       JSON.stringify({
         success: false,
