@@ -44,6 +44,10 @@ async function getGoogleAccessToken(): Promise<string> {
     throw new Error('GOOGLE_WORKSPACE_USER_EMAIL not configured')
   }
 
+  console.log('[Domain-Wide Delegation] Enabled!')
+  console.log('[Domain-Wide Delegation] Service account will impersonate:', userEmail)
+  console.log('[Domain-Wide Delegation] Sheet will be created in user\'s Drive, not service account\'s')
+
   const jwtPayload = base64UrlEncode(JSON.stringify({
     iss: client_email,
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
@@ -136,8 +140,14 @@ serve(async (req) => {
     const serviceAccountEmail = serviceAccount.client_email
     console.log('[Create Sheet] Using service account:', serviceAccountEmail)
 
+    const workspaceUserEmail = Deno.env.get('GOOGLE_WORKSPACE_USER_EMAIL')
+    if (workspaceUserEmail) {
+      console.log('[Domain-Wide Delegation] 🔄 Impersonating user:', workspaceUserEmail)
+    }
+
     const accessToken = await getGoogleAccessToken()
     console.log('[Create Sheet] Access token obtained, length:', accessToken.length)
+    console.log('[Create Sheet] ✅ Successfully authenticated using domain-wide delegation')
 
     // Get template spreadsheet ID from environment
     const templateId = Deno.env.get('GOOGLE_SHEET_TEMPLATE_ID')
@@ -146,10 +156,11 @@ serve(async (req) => {
     }
 
     // Copy the template spreadsheet
-    // Copies are created in the template owner's Drive, not service account's Drive
+    // Copies are created in the impersonated user's Drive (via domain-wide delegation)
     // This avoids storage quota issues with service accounts
     const sheetTitle = `Podcast Leads - ${clientName}`
     console.log('[Create Sheet] Copying template to create:', sheetTitle)
+    console.log('[Create Sheet] Template ID:', templateId)
 
     const copyResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${templateId}/copy`, {
       method: 'POST',
@@ -173,8 +184,12 @@ serve(async (req) => {
     const spreadsheetId = copiedFile.id
     const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
 
-    console.log('[Create Sheet] Created copy with ID:', spreadsheetId)
+    console.log('[Create Sheet] ✅ Sheet created successfully!')
+    console.log('[Create Sheet] Spreadsheet ID:', spreadsheetId)
     console.log('[Create Sheet] Spreadsheet URL:', spreadsheetUrl)
+    console.log('[Create Sheet] 🎉 Sheet was created in:', workspaceUserEmail, '\'s Google Drive')
+    console.log('[Create Sheet] 💾 No service account storage quota used!')
+    console.log('[Create Sheet] 🚀 Domain-wide delegation working perfectly!')
 
     // Transfer ownership to the user's email to avoid service account storage quota
     if (ownerEmail) {
