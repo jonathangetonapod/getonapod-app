@@ -96,8 +96,16 @@ serve(async (req) => {
 
     // Generate JWT for Google API authentication
     const now = Math.floor(Date.now() / 1000)
-    const jwtHeader = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
-    const jwtClaim = btoa(JSON.stringify({
+
+    // Base64 URL encode helper
+    const base64UrlEncode = (data: string) =>
+      btoa(data)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
+
+    const jwtHeader = base64UrlEncode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+    const jwtClaim = base64UrlEncode(JSON.stringify({
       iss: credentials.client_email,
       scope: 'https://www.googleapis.com/auth/spreadsheets',
       aud: 'https://oauth2.googleapis.com/token',
@@ -105,21 +113,17 @@ serve(async (req) => {
       iat: now,
     }))
 
-    // Import private key for signing
+    // Import private key for signing (same approach as submit-to-indexing function)
     const privateKeyPem = credentials.private_key
     const pemHeader = '-----BEGIN PRIVATE KEY-----'
     const pemFooter = '-----END PRIVATE KEY-----'
-    const pemContents = privateKeyPem.substring(
-      pemHeader.length,
-      privateKeyPem.length - pemFooter.length
-    ).replace(/\\n/g, '')
+    const pemContents = privateKeyPem
+      .replace(pemHeader, '')
+      .replace(pemFooter, '')
+      .replace(/\s/g, '')
 
     // Decode base64 private key
-    const binaryDerString = atob(pemContents)
-    const binaryDer = new Uint8Array(binaryDerString.length)
-    for (let i = 0; i < binaryDerString.length; i++) {
-      binaryDer[i] = binaryDerString.charCodeAt(i)
-    }
+    const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0))
 
     // Import the key
     const cryptoKey = await crypto.subtle.importKey(
@@ -134,20 +138,30 @@ serve(async (req) => {
     )
 
     // Sign the JWT
-    const dataToSign = new TextEncoder().encode(`${jwtHeader}.${jwtClaim}`)
-    const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, dataToSign)
-    const jwtSignature = btoa(String.fromCharCode(...new Uint8Array(signature)))
-      .replace(/=/g, '')
-      .replace(/\\+/g, '-')
-      .replace(/\\//g, '_')
+    const encoder = new TextEncoder()
+    const signatureInput = `${jwtHeader}.${jwtClaim}`
+    const signature = await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5',
+      cryptoKey,
+      encoder.encode(signatureInput)
+    )
 
-    const jwt = `${jwtHeader}.${jwtClaim}.${jwtSignature}`
+    const jwtSignature = base64UrlEncode(
+      String.fromCharCode(...new Uint8Array(signature))
+    )
+
+    const jwt = `${signatureInput}.${jwtSignature}`
 
     // Exchange JWT for access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: jwt,
+      }),
     })
 
     if (!tokenResponse.ok) {
