@@ -139,7 +139,7 @@ serve(async (req) => {
     if (clientError || !client?.google_sheet_url) {
       console.log('[Get Outreach Podcasts] No Google Sheet found for client')
       return new Response(
-        JSON.stringify({ success: true, podcasts: [] }),
+        JSON.stringify({ success: true, podcastIds: [], total: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
