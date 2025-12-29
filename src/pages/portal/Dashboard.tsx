@@ -64,7 +64,7 @@ import { CartButton } from '@/components/CartButton'
 import { CartDrawer } from '@/components/CartDrawer'
 import { PODCAST_CATEGORIES } from '@/lib/categories'
 
-type TimeRange = 'all' | 'month' | 'quarter' | 'year'
+type TimeRange = 7 | 14 | 30 | 60 | 90 | 'all'
 
 const AUDIENCE_TIERS = [
   { label: "All Sizes", value: "all", min: 0, max: Infinity },
@@ -94,7 +94,7 @@ export default function PortalDashboard() {
   const [sortBy, setSortBy] = useState<'date' | 'audience' | 'rating' | 'name'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showCharts, setShowCharts] = useState(true)
-  const [timeRange, setTimeRange] = useState<TimeRange>('all')
+  const [timeRange, setTimeRange] = useState<TimeRange>(30)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [completedActions, setCompletedActions] = useState<Set<string>>(new Set())
@@ -171,26 +171,13 @@ export default function PortalDashboard() {
 
   // Helper functions for date filtering
   const getDateRange = () => {
-    const start = new Date(selectedDate)
-    const end = new Date(selectedDate)
+    const end = new Date()
+    end.setHours(23, 59, 59, 999)
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
 
-    if (timeRange === 'month') {
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
-      end.setMonth(end.getMonth() + 1)
-      end.setDate(0)
-      end.setHours(23, 59, 59, 999)
-    } else if (timeRange === 'quarter') {
-      const quarter = Math.floor(selectedDate.getMonth() / 3)
-      start.setMonth(quarter * 3, 1)
-      start.setHours(0, 0, 0, 0)
-      end.setMonth(quarter * 3 + 3, 0)
-      end.setHours(23, 59, 59, 999)
-    } else if (timeRange === 'year') {
-      start.setMonth(0, 1)
-      start.setHours(0, 0, 0, 0)
-      end.setMonth(11, 31)
-      end.setHours(23, 59, 59, 999)
+    if (timeRange !== 'all') {
+      start.setDate(start.getDate() - timeRange)
     }
 
     return { start, end }
@@ -220,32 +207,11 @@ export default function PortalDashboard() {
   const filteredByTimeRange = useMemo(() => {
     if (!bookings) return []
     return bookings.filter(isBookingInRange)
-  }, [bookings, timeRange, selectedDate])
-
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    const newDate = new Date(selectedDate)
-    if (timeRange === 'month') {
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
-    } else if (timeRange === 'quarter') {
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 3 : -3))
-    } else if (timeRange === 'year') {
-      newDate.setFullYear(newDate.getFullYear() + (direction === 'next' ? 1 : -1))
-    }
-    setSelectedDate(newDate)
-  }
+  }, [bookings, timeRange])
 
   const getDisplayDate = () => {
     if (timeRange === 'all') return 'All Time'
-    if (timeRange === 'month') {
-      return selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    }
-    if (timeRange === 'quarter') {
-      const quarter = Math.floor(selectedDate.getMonth() / 3) + 1
-      return `Q${quarter} ${selectedDate.getFullYear()}`
-    }
-    if (timeRange === 'year') {
-      return selectedDate.getFullYear().toString()
-    }
+    return `Last ${timeRange} Days`
   }
 
   // Enhanced stats and data calculations
@@ -1133,56 +1099,52 @@ export default function PortalDashboard() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
+                  variant={timeRange === 7 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(7)}
+                  size="sm"
+                >
+                  7 Days
+                </Button>
+                <Button
+                  variant={timeRange === 14 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(14)}
+                  size="sm"
+                >
+                  14 Days
+                </Button>
+                <Button
+                  variant={timeRange === 30 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(30)}
+                  size="sm"
+                >
+                  30 Days
+                </Button>
+                <Button
+                  variant={timeRange === 60 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(60)}
+                  size="sm"
+                >
+                  60 Days
+                </Button>
+                <Button
+                  variant={timeRange === 90 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(90)}
+                  size="sm"
+                >
+                  90 Days
+                </Button>
+                <Button
                   variant={timeRange === 'all' ? 'default' : 'outline'}
                   onClick={() => setTimeRange('all')}
                   size="sm"
                 >
                   All Time
                 </Button>
-                <Button
-                  variant={timeRange === 'month' ? 'default' : 'outline'}
-                  onClick={() => setTimeRange('month')}
-                  size="sm"
-                >
-                  Month
-                </Button>
-                <Button
-                  variant={timeRange === 'quarter' ? 'default' : 'outline'}
-                  onClick={() => setTimeRange('quarter')}
-                  size="sm"
-                >
-                  Quarter
-                </Button>
-                <Button
-                  variant={timeRange === 'year' ? 'default' : 'outline'}
-                  onClick={() => setTimeRange('year')}
-                  size="sm"
-                >
-                  Year
-                </Button>
               </div>
 
-              {timeRange !== 'all' && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => navigateMonth('prev')}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <div className="min-w-[150px] text-center font-semibold">
-                    {getDisplayDate()}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => navigateMonth('next')}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+              <div className="min-w-[150px] text-center font-semibold">
+                {getDisplayDate()}
+              </div>
 
               <div className="text-sm text-muted-foreground">
                 Showing {stats.total} {stats.total === 1 ? 'booking' : 'bookings'}
