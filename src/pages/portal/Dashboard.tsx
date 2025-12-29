@@ -279,10 +279,10 @@ export default function PortalDashboard() {
       .slice(0, 5)
 
     const statusDistribution = [
+      { name: 'In Progress', value: filteredByTimeRange.filter(b => b.status === 'in_progress').length, color: '#eab308' },
       { name: 'Booked', value: filteredByTimeRange.filter(b => b.status === 'booked').length, color: '#10b981' },
       { name: 'Recorded', value: filteredByTimeRange.filter(b => b.status === 'recorded').length, color: '#3b82f6' },
       { name: 'Published', value: filteredByTimeRange.filter(b => b.status === 'published').length, color: '#8b5cf6' },
-      { name: 'In Progress', value: filteredByTimeRange.filter(b => b.status === 'in_progress').length, color: '#eab308' },
       { name: 'Other', value: filteredByTimeRange.filter(b => !['booked', 'recorded', 'published', 'in_progress'].includes(b.status)).length, color: '#6b7280' }
     ].filter(item => item.value > 0)
 
