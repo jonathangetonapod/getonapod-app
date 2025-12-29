@@ -189,7 +189,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Status Breakdown */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 pt-2">
+                <div className="grid grid-cols-4 gap-2 sm:gap-3 pt-2">
                   <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
                     <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
                       <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
