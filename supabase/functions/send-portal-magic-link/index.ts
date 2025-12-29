@@ -104,7 +104,7 @@ serve(async (req) => {
       )
     }
 
-    // 3. Rate limiting - check last 3 requests in past 15 minutes
+    // 3. Rate limiting - check last 15 requests in past 15 minutes
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
     const { data: recentRequests, error: rateLimitError } = await supabase
       .from('client_portal_activity_log')
@@ -118,7 +118,7 @@ serve(async (req) => {
       console.error('[Magic Link] Rate limit check error:', rateLimitError)
     }
 
-    if (recentRequests && recentRequests.length >= 3) {
+    if (recentRequests && recentRequests.length >= 15) {
       console.log(`[Magic Link] Rate limit exceeded for client: ${client.id}`)
       await supabase.from('client_portal_activity_log').insert({
         client_id: client.id,
