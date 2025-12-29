@@ -52,6 +52,11 @@ export default function Dashboard() {
     return (booking.status === 'booked' || booking.status === 'in_progress') && !booking.recording_date
   })
 
+  // Bookings that need attention - recorded but missing publish date
+  const needsPublishDate = allBookings.filter(booking => {
+    return booking.status === 'recorded' && !booking.publish_date
+  })
+
   // Upcoming recordings (filtered by time range)
   const futureDateFromNow = new Date()
   futureDateFromNow.setDate(futureDateFromNow.getDate() + upcomingTimeRange)
@@ -230,7 +235,7 @@ export default function Dashboard() {
         </div>
 
         {/* Attention Needed Alert */}
-        {needsRecordingDate.length > 0 && (
+        {(needsRecordingDate.length > 0 || needsPublishDate.length > 0) && (
           <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700">
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -239,36 +244,76 @@ export default function Dashboard() {
                   Attention Needed
                 </CardTitle>
                 <Badge variant="destructive" className="ml-auto">
-                  {needsRecordingDate.length}
+                  {needsRecordingDate.length + needsPublishDate.length}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-amber-800 dark:text-amber-200 mb-3">
-                {needsRecordingDate.length} booking{needsRecordingDate.length === 1 ? '' : 's'} scheduled but missing recording date
-              </p>
-              <div className="space-y-2">
-                {needsRecordingDate.slice(0, 3).map(booking => (
-                  <Link
-                    key={booking.id}
-                    to={`/admin/bookings/${booking.id}`}
-                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{booking.podcast_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Client: {booking.client_name} • Status: {booking.status.replace('_', ' ')}
-                      </p>
+              <div className="space-y-4">
+                {/* Missing Recording Date */}
+                {needsRecordingDate.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
+                      Missing Recording Date ({needsRecordingDate.length})
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200 mb-2">
+                      Scheduled bookings need recording dates set
+                    </p>
+                    <div className="space-y-2">
+                      {needsRecordingDate.slice(0, 3).map(booking => (
+                        <Link
+                          key={booking.id}
+                          to={`/admin/clients/${booking.client_id}`}
+                          className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{booking.podcast_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Client: {booking.client_name}
+                            </p>
+                          </div>
+                          <Badge variant={booking.status === 'booked' ? 'default' : 'secondary'}>
+                            {booking.status === 'booked' ? 'Booked' : 'In Progress'}
+                          </Badge>
+                        </Link>
+                      ))}
                     </div>
-                    <Badge variant={booking.status === 'booked' ? 'default' : 'secondary'}>
-                      {booking.status === 'booked' ? 'Booked' : 'In Progress'}
-                    </Badge>
-                  </Link>
-                ))}
-                {needsRecordingDate.length > 3 && (
+                  </div>
+                )}
+
+                {/* Missing Publish Date */}
+                {needsPublishDate.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-amber-900 dark:text-amber-100 mb-2">
+                      Missing Publish Date ({needsPublishDate.length})
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200 mb-2">
+                      Recorded episodes need publish dates set
+                    </p>
+                    <div className="space-y-2">
+                      {needsPublishDate.slice(0, 3).map(booking => (
+                        <Link
+                          key={booking.id}
+                          to={`/admin/clients/${booking.client_id}`}
+                          className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{booking.podcast_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Client: {booking.client_name}
+                            </p>
+                          </div>
+                          <Badge variant="secondary">Recorded</Badge>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(needsRecordingDate.length > 3 || needsPublishDate.length > 3) && (
                   <Button variant="outline" size="sm" asChild className="w-full">
-                    <Link to="/admin/bookings">
-                      View all {needsRecordingDate.length} bookings
+                    <Link to="/admin/calendar">
+                      View all in calendar
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Link>
                   </Button>
