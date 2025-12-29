@@ -154,18 +154,12 @@ export async function getClientOutreachPodcasts(
   }
 
   try {
-    // Get the authenticated user's JWT token
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      throw new Error('You must be logged in to view outreach podcasts')
-    }
-
-    // Fetch podcast IDs from Edge Function
+    // Fetch podcast IDs from Edge Function (no auth required - Edge Function validates internally)
     const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-outreach-podcasts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
         clientId,
