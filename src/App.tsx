@@ -31,6 +31,7 @@ import BlogManagement from "./pages/admin/BlogManagement";
 import BlogEditor from "./pages/admin/BlogEditor";
 import VideoManagement from "./pages/admin/VideoManagement";
 import PremiumPlacementsManagement from "./pages/admin/PremiumPlacementsManagement";
+import GuestResourcesManagement from "./pages/admin/GuestResourcesManagement";
 import CustomersManagement from "./pages/admin/CustomersManagement";
 import LeadsManagement from "./pages/admin/LeadsManagement";
 import Settings from "./pages/admin/Settings";
@@ -39,6 +40,7 @@ import AnalyticsTest from "./pages/AnalyticsTest";
 import PortalLogin from "./pages/portal/Login";
 import PortalAuth from "./pages/portal/Auth";
 import PortalDashboard from "./pages/portal/Dashboard";
+import PortalResources from "./pages/portal/Resources";
 
 const queryClient = new QueryClient();
 
@@ -75,6 +77,14 @@ const App = () => (
               element={
                 <ClientProtectedRoute>
                   <PortalDashboard />
+                </ClientProtectedRoute>
+              }
+            />
+            <Route
+              path="/portal/resources"
+              element={
+                <ClientProtectedRoute>
+                  <PortalResources />
                 </ClientProtectedRoute>
               }
             />
@@ -216,6 +226,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Analytics />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/guest-resources"
+              element={
+                <ProtectedRoute>
+                  <GuestResourcesManagement />
                 </ProtectedRoute>
               }
             />

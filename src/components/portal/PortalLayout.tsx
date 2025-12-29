@@ -1,7 +1,7 @@
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { LogOut, User } from 'lucide-react'
+import { LogOut, User, LayoutDashboard, BookOpen } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { cn } from '@/lib/utils'
 
 interface PortalLayoutProps {
   children: React.ReactNode
@@ -19,11 +20,25 @@ interface PortalLayoutProps {
 export function PortalLayout({ children }: PortalLayoutProps) {
   const { client, logout } = useClientPortal()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleLogout = async () => {
     await logout()
     navigate('/portal/login')
   }
+
+  const navItems = [
+    {
+      path: '/portal/dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+    },
+    {
+      path: '/portal/resources',
+      label: 'Resources',
+      icon: BookOpen,
+    },
+  ]
 
   const getInitials = (name: string) => {
     return name
@@ -83,6 +98,33 @@ export function PortalLayout({ children }: PortalLayoutProps) {
           </div>
         </div>
       </header>
+
+      {/* Navigation Tabs */}
+      <div className="border-b bg-background">
+        <div className="container mx-auto px-4">
+          <nav className="flex gap-1 overflow-x-auto">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = location.pathname === item.path
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                    isActive
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/50'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              )
+            })}
+          </nav>
+        </div>
+      </div>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 md:py-8">
