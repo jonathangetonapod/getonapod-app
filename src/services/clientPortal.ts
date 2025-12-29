@@ -95,17 +95,26 @@ export async function logout(sessionToken: string): Promise<void> {
  * Get all bookings for the authenticated client
  */
 export async function getClientBookings(clientId: string): Promise<Booking[]> {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('scheduled_date', { ascending: false, nullsFirst: false })
+  // Get session token if exists
+  const { session } = sessionStorage.get()
+
+  const { data, error } = await supabase.functions.invoke('get-client-bookings', {
+    body: {
+      clientId,
+      sessionToken: session?.session_token
+    }
+  })
 
   if (error) {
-    throw new Error(`Failed to fetch bookings: ${error.message}`)
+    console.error('Failed to fetch bookings:', error)
+    throw new Error(error.message || 'Failed to fetch bookings')
   }
 
-  return data as Booking[]
+  if (!data.bookings) {
+    throw new Error(data.error || 'Failed to fetch bookings')
+  }
+
+  return data.bookings as Booking[]
 }
 
 /**
