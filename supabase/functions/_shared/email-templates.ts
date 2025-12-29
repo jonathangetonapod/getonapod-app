@@ -96,7 +96,7 @@ This link will remain active. Bookmark it for easy access!
  * Magic link authentication email template
  */
 export function getMagicLinkEmail(clientName: string, magicLink: string): EmailTemplate {
-  const subject = 'Your login link'
+  const subject = 'Your Get On A Pod Portal Access Link'
 
   const html = `
 <!DOCTYPE html>

@@ -171,6 +171,7 @@ serve(async (req) => {
         from: 'Jonathan from Get On A Pod <jonathan@getonapod.com>',
         to: [email],
         subject: emailTemplate.subject,
+        html: emailTemplate.html,
         text: emailTemplate.text,
       }),
     })
