@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -11,10 +11,11 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Plus, Users, TrendingUp, CheckCircle2, Clock, Loader2, ChevronLeft, ChevronRight, Unlock, Lock } from 'lucide-react'
+import { Search, Plus, Users, TrendingUp, CheckCircle2, Clock, Loader2, ChevronLeft, ChevronRight, Unlock, Lock, BarChart3, UserPlus, UserX, PauseCircle } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getClients, createClient } from '@/services/clients'
 import { getBookings, getClientBookingStats } from '@/services/bookings'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 export default function ClientsManagement() {
   const navigate = useNavigate()
@@ -23,6 +24,7 @@ export default function ClientsManagement() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [activeTab, setActiveTab] = useState('all')
+  const [analyticsTimeRange, setAnalyticsTimeRange] = useState<30 | 60 | 90 | 180 | 365 | 'all'>(90)
   const [newClientForm, setNewClientForm] = useState({
     name: '',
     email: '',
@@ -206,6 +208,99 @@ export default function ClientsManagement() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
+  // Analytics calculations
+  const analyticsData = useMemo(() => {
+    const now = new Date()
+    const cutoffDate = new Date()
+
+    if (analyticsTimeRange !== 'all') {
+      cutoffDate.setDate(cutoffDate.getDate() - analyticsTimeRange)
+    } else {
+      cutoffDate.setFullYear(2000) // Far past for "all time"
+    }
+
+    // Filter clients within time range
+    const clientsInRange = clients.filter(client => {
+      if (!client.created_at) return false
+      const createdDate = new Date(client.created_at)
+      return createdDate >= cutoffDate
+    })
+
+    // Current status counts
+    const activeCount = clients.filter(c => c.status === 'active').length
+    const pausedCount = clients.filter(c => c.status === 'paused').length
+    const churnedCount = clients.filter(c => c.status === 'churned').length
+
+    // New clients in time range
+    const newClientsCount = clientsInRange.length
+
+    // Growth over time data (for line chart)
+    // Group clients by month
+    const clientsByMonth: Record<string, number> = {}
+    const sortedClients = [...clients]
+      .filter(c => c.created_at)
+      .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
+
+    sortedClients.forEach((client, index) => {
+      const date = new Date(client.created_at!)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      clientsByMonth[monthKey] = (index + 1) // Cumulative count
+    })
+
+    // Convert to array for chart (last 12 months or based on time range)
+    const monthsToShow = analyticsTimeRange === 'all' ? 12 : Math.ceil(analyticsTimeRange / 30)
+    const growthData = []
+    for (let i = monthsToShow - 1; i >= 0; i--) {
+      const date = new Date()
+      date.setMonth(date.getMonth() - i)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+
+      // Get cumulative count up to this month
+      const clientsUpToMonth = sortedClients.filter(c => {
+        const clientDate = new Date(c.created_at!)
+        const clientMonthKey = `${clientDate.getFullYear()}-${String(clientDate.getMonth() + 1).padStart(2, '0')}`
+        return clientMonthKey <= monthKey
+      }).length
+
+      growthData.push({
+        month: monthName,
+        clients: clientsUpToMonth
+      })
+    }
+
+    // New clients by month (for bar chart)
+    const newClientsByMonth: Record<string, number> = {}
+    clientsInRange.forEach(client => {
+      const date = new Date(client.created_at!)
+      const monthKey = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+      newClientsByMonth[monthKey] = (newClientsByMonth[monthKey] || 0) + 1
+    })
+
+    const newClientsChartData = Object.entries(newClientsByMonth).map(([month, count]) => ({
+      month,
+      count
+    }))
+
+    // Status breakdown for bar chart
+    const statusBreakdown = [
+      { status: 'Active', count: activeCount, fill: '#10b981' },
+      { status: 'Paused', count: pausedCount, fill: '#f59e0b' },
+      { status: 'Churned', count: churnedCount, fill: '#6b7280' }
+    ]
+
+    return {
+      totalClients: clients.length,
+      newClientsCount,
+      activeCount,
+      pausedCount,
+      churnedCount,
+      growthData,
+      newClientsChartData,
+      statusBreakdown
+    }
+  }, [clients, analyticsTimeRange])
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -298,9 +393,10 @@ export default function ClientsManagement() {
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+              <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-6">
                 <TabsTrigger value="all">All Clients</TabsTrigger>
                 <TabsTrigger value="monthly">Monthly View</TabsTrigger>
+                <TabsTrigger value="analytics">Analytics</TabsTrigger>
               </TabsList>
 
               {/* All Clients Tab */}
@@ -544,6 +640,205 @@ export default function ClientsManagement() {
                   <div className="text-center py-12">
                     <p className="text-muted-foreground">No clients found in {monthNames[selectedMonth]} {selectedYear}</p>
                   </div>
+                )}
+              </TabsContent>
+
+              {/* Analytics Tab */}
+              <TabsContent value="analytics" className="space-y-6">
+                {/* Time Range Selector */}
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Client Analytics</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Showing data for the last {analyticsTimeRange === 'all' ? 'all time' : `${analyticsTimeRange} days`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      variant={analyticsTimeRange === 30 ? 'default' : 'outline'}
+                      onClick={() => setAnalyticsTimeRange(30)}
+                      size="sm"
+                    >
+                      30d
+                    </Button>
+                    <Button
+                      variant={analyticsTimeRange === 60 ? 'default' : 'outline'}
+                      onClick={() => setAnalyticsTimeRange(60)}
+                      size="sm"
+                    >
+                      60d
+                    </Button>
+                    <Button
+                      variant={analyticsTimeRange === 90 ? 'default' : 'outline'}
+                      onClick={() => setAnalyticsTimeRange(90)}
+                      size="sm"
+                    >
+                      90d
+                    </Button>
+                    <Button
+                      variant={analyticsTimeRange === 180 ? 'default' : 'outline'}
+                      onClick={() => setAnalyticsTimeRange(180)}
+                      size="sm"
+                    >
+                      6mo
+                    </Button>
+                    <Button
+                      variant={analyticsTimeRange === 365 ? 'default' : 'outline'}
+                      onClick={() => setAnalyticsTimeRange(365)}
+                      size="sm"
+                    >
+                      1yr
+                    </Button>
+                    <Button
+                      variant={analyticsTimeRange === 'all' ? 'default' : 'outline'}
+                      onClick={() => setAnalyticsTimeRange('all')}
+                      size="sm"
+                    >
+                      All
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Key Metrics Cards */}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
+                      <Users className="h-4 w-4 text-blue-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-blue-600">{analyticsData.totalClients}</div>
+                      <p className="text-xs text-muted-foreground">All time</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">New Clients</CardTitle>
+                      <UserPlus className="h-4 w-4 text-green-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">{analyticsData.newClientsCount}</div>
+                      <p className="text-xs text-muted-foreground">In selected period</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Active</CardTitle>
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">{analyticsData.activeCount}</div>
+                      <p className="text-xs text-muted-foreground">Currently active</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Paused</CardTitle>
+                      <PauseCircle className="h-4 w-4 text-yellow-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-yellow-600">{analyticsData.pausedCount}</div>
+                      <p className="text-xs text-muted-foreground">On pause</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Churned</CardTitle>
+                      <UserX className="h-4 w-4 text-gray-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-gray-600">{analyticsData.churnedCount}</div>
+                      <p className="text-xs text-muted-foreground">Churned</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Charts */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Client Growth Chart */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5" />
+                        Client Growth Over Time
+                      </CardTitle>
+                      <CardDescription>Cumulative client count by month</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={analyticsData.growthData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="clients"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            name="Total Clients"
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+
+                  {/* Status Breakdown Chart */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5" />
+                        Client Status Breakdown
+                      </CardTitle>
+                      <CardDescription>Distribution by status</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={analyticsData.statusBreakdown}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="status" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="count" name="Clients">
+                            {analyticsData.statusBreakdown.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* New Clients by Month */}
+                {analyticsData.newClientsChartData.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <UserPlus className="h-5 w-5" />
+                        New Clients by Month
+                      </CardTitle>
+                      <CardDescription>New client acquisitions in selected period</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={analyticsData.newClientsChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="count" fill="#10b981" name="New Clients" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
                 )}
               </TabsContent>
             </Tabs>
