@@ -1,192 +1,226 @@
-# Get On A Pod - Podcast Placement + PR for Founders
+# Get On A Pod - Complete Podcast Placement Platform
 
-A modern, conversion-focused landing page for Get On A Pod, offering done-for-you podcast placement and PR services.
+A comprehensive SaaS platform for managing podcast placement services, client relationships, and sales operations.
 
 ## 🚀 Project Overview
 
-Get On A Pod helps founders and financial professionals build authority through podcast appearances and press features. This site implements a complete revenue ladder architecture based on the Matt Larsson flywheel framework, capturing leads from free resources to premium $4K/month services.
+Get On A Pod is a full-stack application that helps founders and financial professionals build authority through podcast appearances. This platform includes client management, booking tracking, sales analytics, a secure client portal, premium podcast marketplace, and AI-powered sales call analysis.
 
-## 📁 Site Structure
+## 🎯 Core Features
 
-### Pages
+### Admin Dashboard
+- **Client Management** - Complete CRM with client profiles, contact info, notes, and bio
+- **Booking Tracking** - Track podcast bookings through full lifecycle (conversation → booked → recorded → published)
+- **Calendar View** - Visual calendar for managing scheduled recordings and publish dates
+- **Sales Analytics** - AI-powered analysis of sales calls with actionable recommendations
+- **Campaign Management** - Email campaigns with reply tracking via Bison
+- **Blog System** - Built-in content management for SEO and marketing
 
-- **Homepage (`/`)** - Main landing page with 15 sections
-- **Resources (`/resources`)** - Lead Magnet Hub with 6 free downloads
-- **Premium Placements (`/premium-placements`)** - Exclusive podcast placement menu
-- **Course (`/course`)** - Coming soon page for DIY course with waitlist
+### Client Portal (Magic Link Auth)
+- **Secure Access** - Passwordless authentication via email magic links (15-min expiry)
+- **Dashboard** - View all podcast bookings with status, dates, and episode URLs
+- **Analytics Tab** - Month-over-month growth metrics (bookings, reach, quality improvements)
+- **Calendar View** - See scheduled recordings and publish dates
+- **Attention Needed** - Alerts for bookings missing scheduled/recording/publish dates
+- **Outreach List** - View podcasts in the outreach pipeline from Google Sheets
+- **Premium Placements** - Browse and add guaranteed podcast spots to cart
 
-### Homepage Sections (in order)
+### Premium Podcast Marketplace
+- **Public Storefront** - Browse 150+ premium podcast placement opportunities
+- **Advanced Filters** - Filter by category, audience size, price range
+- **Shopping Cart** - Add multiple placements and checkout
+- **Featured Listings** - Highlight top-tier opportunities
 
-1. **Hero** - Main value proposition with CTAs
-2. **Problem** - 5 pain points prospects face
-3. **Solution** - "What if someone did it for you?"
-4. **How It Works** - 4-step process
-5. **What You Get** - 4 key features/deliverables
-6. **Podcast Showcase** - Visual display of 150+ placements across 16+ shows
-7. **Pricing** - 3 tiers (Starter $1K, Growth $2K, Pro $4K)
-8. **Why Pro** - Explains premium tier (podcasts + PR)
-9. **Who It's For** - Target audience definition
-10. **Case Studies** - 3 detailed results with metrics
-11. **Social Proof** - Testimonials
-12. **Lead Magnet** - Email capture
-13. **FAQ** - Accordion-based Q&A
-14. **Final CTA** - "Ready to stop being a secret?"
-15. **Footer** - Navigation and legal
+### Integrations
+- **Google Sheets** - Automated podcast export and outreach tracking per client
+- **Podscan API** - Real-time podcast metadata (audience size, ratings, episode count)
+- **Resend** - Transactional emails (magic links, notifications)
+- **Bison** - Email campaign management and reply tracking
+- **Supabase** - Database, authentication, storage, edge functions
+
+### Sales & Analytics
+- **Call Recording Analysis** - AI-powered insights using Corey Jackson sales framework
+- **Recommendations Engine** - Context-aware next steps for each sales call
+- **Text Analysis** - Extract pain points, goals, and key metrics from transcripts
+- **Performance Tracking** - Monitor booking trends, revenue, and conversion rates
 
 ## 🛠️ Tech Stack
 
+### Frontend
 - **Framework:** React 18 + TypeScript
 - **Build Tool:** Vite 5.4
 - **Styling:** Tailwind CSS 3.4 with custom theme
-- **UI Components:** shadcn/ui (51 components)
-- **Routing:** React Router DOM
+- **UI Components:** shadcn/ui (60+ components)
+- **Routing:** React Router DOM 7
+- **State Management:** React Query (TanStack Query), Zustand
 - **Forms:** React Hook Form + Zod validation
+- **Charts:** Recharts
 - **Icons:** Lucide React
-- **Animations:** Intersection Observer via custom hook
+
+### Backend
+- **Database:** PostgreSQL (Supabase)
+- **Auth:** Custom magic link system + Supabase Auth
+- **Edge Functions:** Deno (Supabase Functions)
+- **Storage:** Supabase Storage (client assets, resources)
+- **APIs:** REST + Supabase Realtime
+
+### Infrastructure
+- **Hosting:** Railway
+- **Database:** Supabase (PostgreSQL with RLS)
+- **Email:** Resend
+- **DNS:** Cloudflare
+- **Version Control:** GitHub
 
 ## 📦 Installation & Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/jonathangetonapod/authority-built
-
-# Navigate to project
 cd authority-built
 
 # Install dependencies
 npm install
 
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local with your Supabase and API keys
+
 # Start development server
 npm run dev
 ```
 
-The site will be available at `http://localhost:8080`
+The site will be available at `http://localhost:5173`
 
-## 🎨 Customization Guide
+### Environment Variables
 
-### Priority 1: Replace Placeholder Content
+```env
+# Supabase
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
-#### 1. Podcast Showcase
-**File:** `src/components/PodcastShowcaseSection.tsx` (line 7)
-- Replace placeholder podcast names with real shows
-- Update stats (Total Placements, Combined Reach, Shows Partnered)
-- Add real logos if available
+# Podscan API
+VITE_PODSCAN_API_KEY=your_podscan_api_key
 
-#### 2. Case Studies
-**File:** `src/components/CaseStudiesSection.tsx` (line 7)
-- Replace with actual client results
-- Update names, titles, industries, metrics
-- Use real testimonial quotes
+# Resend (for email)
+RESEND_API_KEY=your_resend_api_key
 
-#### 3. Premium Placements
-**File:** `src/pages/PremiumPlacements.tsx` (line 11)
-- Update with your actual guaranteed shows
-- Set real pricing, audience sizes, features
-- Add podcast logos/images
+# Portal
+PORTAL_BASE_URL=https://yourdomain.com
+```
 
-#### 4. Lead Magnets
-**File:** `src/pages/Resources.tsx` (line 10)
-- Connect to email service (ConvertKit, Mailchimp, etc.)
-- Add real download links when files are ready
-- Update descriptions as needed
+## 🗄️ Database Schema
 
-#### 5. Course Page
-**File:** `src/pages/Course.tsx`
-- Update course title and timeline
-- Modify module content
-- Set real launch date
+### Core Tables
+- `clients` - Client profiles and metadata
+- `bookings` - Podcast bookings with status tracking
+- `premium_podcasts` - Marketplace inventory
+- `sales_calls` - Call recordings and AI analysis
+- `campaigns` - Email campaign tracking
+- `campaign_replies` - Bison reply integration
+- `blog_posts` - Content management
 
-### Priority 2: Email Integration
+### Portal System
+- `client_portal_tokens` - Magic link tokens (15-min expiry)
+- `client_portal_sessions` - Active sessions (24-hour expiry)
+- `client_portal_activity_log` - Audit trail for security
 
-Currently, all forms show toast notifications. To connect to your email service:
-
-1. Install email service SDK (e.g., `@convertkit/convertkit-react`)
-2. Update form handlers in:
-   - `src/pages/Resources.tsx` (handleDownload function)
-   - `src/pages/Course.tsx` (handleJoinWaitlist function)
-   - `src/components/LeadMagnetSection.tsx`
-
-### Priority 3: Analytics & Tracking
-
-Add tracking to:
-- Button clicks ("Book a Call", downloads)
-- Page views
-- Form submissions
-
-## 🎯 Revenue Ladder Architecture
-
-This site implements a complete funnel:
-
-1. **Free ($0)** - 6 lead magnets on `/resources`
-2. **Course ($497)** - Coming soon on `/course`
-3. **One-time ($1,500)** - Podcast Launch Sprint (to be added)
-4. **Starter ($1K/mo)** - 2 podcasts/month
-5. **Growth ($2K/mo)** - 4 podcasts/month
-6. **Pro ($4K/mo)** - 4 podcasts + done-for-you PR
-7. **Premium Placements** - À la carte guaranteed spots
-
-## 📊 Key Features
-
-- ✅ Fully responsive design (mobile-first)
-- ✅ Scroll-based animations (Intersection Observer)
-- ✅ SEO-friendly structure
-- ✅ Fast performance (Vite + React SWC)
-- ✅ Type-safe (TypeScript)
-- ✅ Accessible (shadcn/ui components)
-- ✅ Dark mode ready (theme system in place)
+### Features
+- **Row Level Security (RLS)** - Clients can only access their own data
+- **Automatic Timestamps** - created_at, updated_at via triggers
+- **Soft Deletes** - Archived flag instead of deletion
+- **Foreign Key Constraints** - Data integrity enforcement
 
 ## 🚀 Deployment
 
-### Option 1: Vercel (Recommended)
-```bash
-# Install Vercel CLI
-npm i -g vercel
+### Railway (Production)
 
-# Deploy
-vercel
+```bash
+# Deploy to Railway
+railway up
+
+# View logs
+railway logs
 ```
 
-### Option 2: Netlify
-```bash
-# Build
-npm run build
+### Supabase Functions
 
-# Deploy dist/ folder to Netlify
+```bash
+# Deploy edge functions
+npx supabase functions deploy send-portal-magic-link
+npx supabase functions deploy verify-portal-token
+npx supabase functions deploy create-client-google-sheet
+npx supabase functions deploy export-to-google-sheets
+npx supabase functions deploy get-client-outreach-podcasts
 ```
 
-### Option 3: Manual
-```bash
-# Build production bundle
-npm run build
+## 📝 Recent Updates (December 2025)
 
-# Upload dist/ folder to your hosting
-```
+### Client Portal Enhancements
+- ✅ Added analytics tab with month-over-month growth charts
+- ✅ Implemented attention needed alerts for missing dates
+- ✅ Added collapsible analytics sections
+- ✅ Bar chart visualizations for bookings and quality metrics
 
-## 📝 Available Scripts
+### Bug Fixes
+- ✅ Fixed booking update not refreshing UI (query cache invalidation)
+- ✅ Fixed clearing dates not saving to database (null vs undefined)
+- ✅ Fixed scheduled date detection in attention needed alerts
+- ✅ Removed non-existent go_live_date field references
 
-- `npm run dev` - Start development server (port 8080)
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
+### Sales Analytics
+- ✅ AI-powered call analysis with Corey Jackson framework
+- ✅ Actionable recommendations with priority scoring
+- ✅ Text analysis for pain points and goals
+- ✅ Re-analyze functionality for updated insights
 
-## 🔧 Configuration Files
+## 🔐 Security Features
 
-- `vite.config.ts` - Vite configuration
-- `tailwind.config.ts` - Tailwind theme customization
-- `tsconfig.json` - TypeScript configuration
-- `components.json` - shadcn/ui configuration
+### Client Portal
+- **Passwordless Auth** - Magic links via email (no password vulnerabilities)
+- **Token Expiry** - 15-minute tokens, 24-hour sessions
+- **Rate Limiting** - 15 magic link requests per 15 minutes
+- **IP Tracking** - Audit log with IP addresses and user agents
+- **RLS Policies** - Database-level access control
+- **Generic Error Messages** - Prevents email enumeration
+
+### Admin
+- **Supabase Auth** - Industry-standard authentication
+- **RLS Enforcement** - All queries filtered by permissions
+- **Secure Edge Functions** - Server-side validation
+
+## 📊 Key Metrics
+
+The platform tracks:
+- Total bookings and conversion rates
+- Audience reach per booking (quality metric)
+- Month-over-month growth in bookings secured
+- Episode publish rates and timelines
+- Sales call performance and recommendations
+- Client engagement and portal activity
+
+## 🎨 UI/UX Features
+
+- ✅ Fully responsive design (mobile-first)
+- ✅ Dark mode support throughout
+- ✅ Accessible components (WCAG compliant)
+- ✅ Loading states and optimistic updates
+- ✅ Toast notifications for user feedback
+- ✅ Modal dialogs and slide-out sheets
+- ✅ Interactive charts and data visualizations
+- ✅ Search, filter, and sort functionality
 
 ## 📚 Documentation
 
 - [React Documentation](https://react.dev)
+- [Supabase Documentation](https://supabase.com/docs)
 - [Tailwind CSS](https://tailwindcss.com/docs)
 - [shadcn/ui](https://ui.shadcn.com)
-- [Vite](https://vitejs.dev)
+- [TanStack Query](https://tanstack.com/query)
 
-## 🤝 Contributing
+## 🤝 Support
 
-This is a private project for Get On A Pod. For questions or support:
-- Email: support@authoritylab.com
+For questions or issues:
+- Email: jonathan@getonapod.com
 - GitHub Issues: [Report an issue](https://github.com/jonathangetonapod/authority-built/issues)
 
 ## 📄 License
@@ -195,4 +229,4 @@ Private - All Rights Reserved
 
 ---
 
-Built with [Claude Code](https://claude.com/claude-code) and [Lovable](https://lovable.dev)
+Built with [Claude Code](https://claude.com/claude-code) 🤖
