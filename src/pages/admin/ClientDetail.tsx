@@ -179,6 +179,8 @@ export default function ClientDetail() {
   const updateBookingMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string, updates: any }) => updateBooking(id, updates),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings', 'client', id] })
+      queryClient.invalidateQueries({ queryKey: ['bookings', 'all'] })
       queryClient.invalidateQueries({ queryKey: ['bookings'] })
       toast({
         title: 'Booking Updated',
