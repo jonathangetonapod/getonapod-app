@@ -47,6 +47,11 @@ export default function Dashboard() {
   const publishedThisMonth = thisMonthBookings.filter(b => b.status === 'published').length
   const completionRate = totalThisMonth > 0 ? (publishedThisMonth / totalThisMonth) * 100 : 0
 
+  // Bookings that need attention - scheduled but missing recording date
+  const needsRecordingDate = allBookings.filter(booking => {
+    return (booking.status === 'booked' || booking.status === 'in_progress') && !booking.recording_date
+  })
+
   // Upcoming recordings (filtered by time range)
   const futureDateFromNow = new Date()
   futureDateFromNow.setDate(futureDateFromNow.getDate() + upcomingTimeRange)
@@ -223,6 +228,55 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Attention Needed Alert */}
+        {needsRecordingDate.length > 0 && (
+          <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+                <CardTitle className="text-amber-900 dark:text-amber-100">
+                  Attention Needed
+                </CardTitle>
+                <Badge variant="destructive" className="ml-auto">
+                  {needsRecordingDate.length}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-amber-800 dark:text-amber-200 mb-3">
+                {needsRecordingDate.length} booking{needsRecordingDate.length === 1 ? '' : 's'} scheduled but missing recording date
+              </p>
+              <div className="space-y-2">
+                {needsRecordingDate.slice(0, 3).map(booking => (
+                  <Link
+                    key={booking.id}
+                    to={`/admin/bookings/${booking.id}`}
+                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{booking.podcast_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Client: {booking.client_name} • Status: {booking.status.replace('_', ' ')}
+                      </p>
+                    </div>
+                    <Badge variant={booking.status === 'booked' ? 'default' : 'secondary'}>
+                      {booking.status === 'booked' ? 'Booked' : 'In Progress'}
+                    </Badge>
+                  </Link>
+                ))}
+                {needsRecordingDate.length > 3 && (
+                  <Button variant="outline" size="sm" asChild className="w-full">
+                    <Link to="/admin/bookings">
+                      View all {needsRecordingDate.length} bookings
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Main Content Grid */}
         <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
