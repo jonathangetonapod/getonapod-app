@@ -15,7 +15,7 @@ import { Search, Plus, Users, TrendingUp, CheckCircle2, Clock, Loader2, ChevronL
 import { Link, useNavigate } from 'react-router-dom'
 import { getClients, createClient } from '@/services/clients'
 import { getBookings, getClientBookingStats } from '@/services/bookings'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 
 export default function ClientsManagement() {
   const navigate = useNavigate()
@@ -73,6 +73,99 @@ export default function ClientsManagement() {
 
   const clients = clientsData?.clients || []
   const allBookings = bookingsData?.bookings || []
+
+  // Analytics calculations (must be before early return to follow Rules of Hooks)
+  const analyticsData = useMemo(() => {
+    const now = new Date()
+    const cutoffDate = new Date()
+
+    if (analyticsTimeRange !== 'all') {
+      cutoffDate.setDate(cutoffDate.getDate() - analyticsTimeRange)
+    } else {
+      cutoffDate.setFullYear(2000) // Far past for "all time"
+    }
+
+    // Filter clients within time range
+    const clientsInRange = clients.filter(client => {
+      if (!client.created_at) return false
+      const createdDate = new Date(client.created_at)
+      return createdDate >= cutoffDate
+    })
+
+    // Current status counts
+    const activeCount = clients.filter(c => c.status === 'active').length
+    const pausedCount = clients.filter(c => c.status === 'paused').length
+    const churnedCount = clients.filter(c => c.status === 'churned').length
+
+    // New clients in time range
+    const newClientsCount = clientsInRange.length
+
+    // Growth over time data (for line chart)
+    // Group clients by month
+    const clientsByMonth: Record<string, number> = {}
+    const sortedClients = [...clients]
+      .filter(c => c.created_at)
+      .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
+
+    sortedClients.forEach((client, index) => {
+      const date = new Date(client.created_at!)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      clientsByMonth[monthKey] = (index + 1) // Cumulative count
+    })
+
+    // Convert to array for chart (last 12 months or based on time range)
+    const monthsToShow = analyticsTimeRange === 'all' ? 12 : Math.ceil(analyticsTimeRange / 30)
+    const growthData = []
+    for (let i = monthsToShow - 1; i >= 0; i--) {
+      const date = new Date()
+      date.setMonth(date.getMonth() - i)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+
+      // Get cumulative count up to this month
+      const clientsUpToMonth = sortedClients.filter(c => {
+        const clientDate = new Date(c.created_at!)
+        const clientMonthKey = `${clientDate.getFullYear()}-${String(clientDate.getMonth() + 1).padStart(2, '0')}`
+        return clientMonthKey <= monthKey
+      }).length
+
+      growthData.push({
+        month: monthName,
+        clients: clientsUpToMonth
+      })
+    }
+
+    // New clients by month (for bar chart)
+    const newClientsByMonth: Record<string, number> = {}
+    clientsInRange.forEach(client => {
+      const date = new Date(client.created_at!)
+      const monthKey = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+      newClientsByMonth[monthKey] = (newClientsByMonth[monthKey] || 0) + 1
+    })
+
+    const newClientsChartData = Object.entries(newClientsByMonth).map(([month, count]) => ({
+      month,
+      count
+    }))
+
+    // Status breakdown for bar chart
+    const statusBreakdown = [
+      { status: 'Active', count: activeCount, fill: '#10b981' },
+      { status: 'Paused', count: pausedCount, fill: '#f59e0b' },
+      { status: 'Churned', count: churnedCount, fill: '#6b7280' }
+    ]
+
+    return {
+      totalClients: clients.length,
+      newClientsCount,
+      activeCount,
+      pausedCount,
+      churnedCount,
+      growthData,
+      newClientsChartData,
+      statusBreakdown
+    }
+  }, [clients, analyticsTimeRange])
 
   // Filter bookings by selected month
   const bookingsInSelectedMonth = allBookings.filter(booking => {
@@ -207,99 +300,6 @@ export default function ClientsManagement() {
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
-
-  // Analytics calculations
-  const analyticsData = useMemo(() => {
-    const now = new Date()
-    const cutoffDate = new Date()
-
-    if (analyticsTimeRange !== 'all') {
-      cutoffDate.setDate(cutoffDate.getDate() - analyticsTimeRange)
-    } else {
-      cutoffDate.setFullYear(2000) // Far past for "all time"
-    }
-
-    // Filter clients within time range
-    const clientsInRange = clients.filter(client => {
-      if (!client.created_at) return false
-      const createdDate = new Date(client.created_at)
-      return createdDate >= cutoffDate
-    })
-
-    // Current status counts
-    const activeCount = clients.filter(c => c.status === 'active').length
-    const pausedCount = clients.filter(c => c.status === 'paused').length
-    const churnedCount = clients.filter(c => c.status === 'churned').length
-
-    // New clients in time range
-    const newClientsCount = clientsInRange.length
-
-    // Growth over time data (for line chart)
-    // Group clients by month
-    const clientsByMonth: Record<string, number> = {}
-    const sortedClients = [...clients]
-      .filter(c => c.created_at)
-      .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
-
-    sortedClients.forEach((client, index) => {
-      const date = new Date(client.created_at!)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      clientsByMonth[monthKey] = (index + 1) // Cumulative count
-    })
-
-    // Convert to array for chart (last 12 months or based on time range)
-    const monthsToShow = analyticsTimeRange === 'all' ? 12 : Math.ceil(analyticsTimeRange / 30)
-    const growthData = []
-    for (let i = monthsToShow - 1; i >= 0; i--) {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-
-      // Get cumulative count up to this month
-      const clientsUpToMonth = sortedClients.filter(c => {
-        const clientDate = new Date(c.created_at!)
-        const clientMonthKey = `${clientDate.getFullYear()}-${String(clientDate.getMonth() + 1).padStart(2, '0')}`
-        return clientMonthKey <= monthKey
-      }).length
-
-      growthData.push({
-        month: monthName,
-        clients: clientsUpToMonth
-      })
-    }
-
-    // New clients by month (for bar chart)
-    const newClientsByMonth: Record<string, number> = {}
-    clientsInRange.forEach(client => {
-      const date = new Date(client.created_at!)
-      const monthKey = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-      newClientsByMonth[monthKey] = (newClientsByMonth[monthKey] || 0) + 1
-    })
-
-    const newClientsChartData = Object.entries(newClientsByMonth).map(([month, count]) => ({
-      month,
-      count
-    }))
-
-    // Status breakdown for bar chart
-    const statusBreakdown = [
-      { status: 'Active', count: activeCount, fill: '#10b981' },
-      { status: 'Paused', count: pausedCount, fill: '#f59e0b' },
-      { status: 'Churned', count: churnedCount, fill: '#6b7280' }
-    ]
-
-    return {
-      totalClients: clients.length,
-      newClientsCount,
-      activeCount,
-      pausedCount,
-      churnedCount,
-      growthData,
-      newClientsChartData,
-      statusBreakdown
-    }
-  }, [clients, analyticsTimeRange])
 
   return (
     <DashboardLayout>
