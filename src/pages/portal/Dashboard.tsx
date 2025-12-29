@@ -1889,9 +1889,12 @@ export default function PortalDashboard() {
                                 <p className="text-sm font-medium text-muted-foreground">Average Rating</p>
                                 <p className="text-3xl font-bold text-amber-600">
                                   {(() => {
-                                    const rated = outreachData.podcasts.filter(p => p.itunes_rating)
+                                    const rated = outreachData.podcasts.filter(p => {
+                                      const rating = Number(p.itunes_rating)
+                                      return !isNaN(rating) && rating > 0
+                                    })
                                     if (rated.length === 0) return 'N/A'
-                                    const avg = rated.reduce((sum, p) => sum + (p.itunes_rating || 0), 0) / rated.length
+                                    const avg = rated.reduce((sum, p) => sum + Number(p.itunes_rating), 0) / rated.length
                                     return `⭐ ${avg.toFixed(1)}`
                                   })()}
                                 </p>
