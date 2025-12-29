@@ -96,7 +96,7 @@ This link will remain active. Bookmark it for easy access!
  * Magic link authentication email template
  */
 export function getMagicLinkEmail(clientName: string, magicLink: string): EmailTemplate {
-  const subject = 'Your Get On A Pod Portal Login Link'
+  const subject = 'Your login link'
 
   const html = `
 <!DOCTYPE html>
@@ -143,26 +143,16 @@ export function getMagicLinkEmail(clientName: string, magicLink: string): EmailT
   const text = `
 Hi ${clientName},
 
-Here's your secure login link to access your Get On A Pod client portal:
+Click here to access your portal:
 
 ${magicLink}
 
-This link expires in 15 minutes for your security.
+This link expires in 15 minutes.
 
-Once you're in, you'll be able to view:
-- All your podcast bookings and their status
-- Recording and publish dates
-- Episode links once they go live
-- Your complete outreach list
+If you didn't request this, you can ignore this email.
 
-If you didn't request this login link, you can safely ignore this email.
-
-Best regards,
-The Get On A Pod Team
-
----
-Get On A Pod - Your Podcast Booking Portal
-getonapod.com
+Thanks,
+Get On A Pod Team
   `.trim()
 
   return { subject, html, text }
