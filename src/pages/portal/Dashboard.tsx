@@ -1955,11 +1955,11 @@ export default function PortalDashboard() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Episodes & Reach Over Time</CardTitle>
-                    <CardDescription>Monthly performance trends showing episodes, reach, and ratings</CardDescription>
+                    <CardDescription>Monthly performance showing episodes published and total reach</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={400}>
-                      <LineChart data={analyticsData.monthlyData}>
+                      <BarChart data={analyticsData.monthlyData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           dataKey="month"
@@ -1971,7 +1971,13 @@ export default function PortalDashboard() {
                         />
                         <YAxis
                           yAxisId="left"
-                          label={{ value: 'Reach & Episodes', angle: -90, position: 'insideLeft' }}
+                          label={{ value: 'Count', angle: -90, position: 'insideLeft' }}
+                          tick={{ fontSize: 12 }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          label={{ value: 'Reach', angle: 90, position: 'insideRight' }}
                           tick={{ fontSize: 12 }}
                           tickFormatter={(value) => {
                             if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
@@ -1979,19 +1985,11 @@ export default function PortalDashboard() {
                             return value
                           }}
                         />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          label={{ value: 'Rating (0-5)', angle: 90, position: 'insideRight' }}
-                          tick={{ fontSize: 12 }}
-                          domain={[0, 5]}
-                        />
                         <Tooltip
                           contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc' }}
                           formatter={(value: any, name: string) => {
                             if (name === 'totalReach') return [value.toLocaleString(), 'Total Reach']
                             if (name === 'episodes') return [value, 'Episodes']
-                            if (name === 'avgRating') return [Number(value).toFixed(1), 'Avg Rating']
                             if (name === 'totalBookings') return [value, 'Total Bookings']
                             return value
                           }}
@@ -2004,11 +2002,10 @@ export default function PortalDashboard() {
                           }}
                         />
                         <Legend />
-                        <Line yAxisId="left" type="monotone" dataKey="totalReach" stroke="#3b82f6" strokeWidth={3} name="Total Reach" dot={{ fill: '#3b82f6', r: 4 }} />
-                        <Line yAxisId="left" type="monotone" dataKey="episodes" stroke="#8b5cf6" strokeWidth={3} name="Episodes Published" dot={{ fill: '#8b5cf6', r: 4 }} />
-                        <Line yAxisId="left" type="monotone" dataKey="totalBookings" stroke="#10b981" strokeWidth={3} name="Total Bookings" dot={{ fill: '#10b981', r: 4 }} />
-                        <Line yAxisId="right" type="monotone" dataKey="avgRating" stroke="#f59e0b" strokeWidth={3} name="Avg Rating" dot={{ fill: '#f59e0b', r: 4 }} />
-                      </LineChart>
+                        <Bar yAxisId="left" dataKey="episodes" fill="#8b5cf6" name="Episodes Published" radius={[8, 8, 0, 0]} />
+                        <Bar yAxisId="left" dataKey="totalBookings" fill="#10b981" name="Total Bookings" radius={[8, 8, 0, 0]} />
+                        <Bar yAxisId="right" dataKey="totalReach" fill="#3b82f6" name="Total Reach" radius={[8, 8, 0, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
@@ -2085,7 +2082,7 @@ export default function PortalDashboard() {
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={350}>
-                      <LineChart data={analyticsData.monthlyData}>
+                      <BarChart data={analyticsData.monthlyData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                           dataKey="month"
@@ -2096,7 +2093,6 @@ export default function PortalDashboard() {
                           }}
                         />
                         <YAxis
-                          yAxisId="left"
                           label={{ value: 'Avg Audience Size', angle: -90, position: 'insideLeft' }}
                           tick={{ fontSize: 12 }}
                           tickFormatter={(value) => {
@@ -2105,17 +2101,10 @@ export default function PortalDashboard() {
                             return value
                           }}
                         />
-                        <YAxis
-                          yAxisId="right"
-                          orientation="right"
-                          label={{ value: 'Bookings', angle: 90, position: 'insideRight' }}
-                          tick={{ fontSize: 12 }}
-                        />
                         <Tooltip
                           contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc' }}
                           formatter={(value: any, name: string) => {
                             if (name === 'avgAudiencePerBooking') return [Math.round(value).toLocaleString(), 'Avg Audience per Booking']
-                            if (name === 'totalBookings') return [value, 'Total Bookings']
                             return value
                           }}
                           labelFormatter={(label, payload) => {
@@ -2127,31 +2116,18 @@ export default function PortalDashboard() {
                           }}
                         />
                         <Legend />
-                        <Line
-                          yAxisId="left"
-                          type="monotone"
+                        <Bar
                           dataKey="avgAudiencePerBooking"
-                          stroke="#059669"
-                          strokeWidth={4}
+                          fill="#059669"
                           name="Avg Audience per Booking"
-                          dot={{ fill: '#059669', r: 5 }}
+                          radius={[8, 8, 0, 0]}
                         />
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="totalBookings"
-                          stroke="#10b981"
-                          strokeWidth={3}
-                          name="Total Bookings"
-                          dot={{ fill: '#10b981', r: 4 }}
-                          strokeDasharray="5 5"
-                        />
-                      </LineChart>
+                      </BarChart>
                     </ResponsiveContainer>
                     <div className="mt-4 p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
                       <p className="text-sm text-emerald-900 dark:text-emerald-100 font-medium">
-                        📊 <strong>What this shows:</strong> The solid line shows average audience size per booking - an upward trend means we're securing higher-quality placements!
-                        The dashed line shows booking volume over time.
+                        📊 <strong>What this shows:</strong> Each bar shows the average audience size per booking for that month.
+                        Growing bars mean we're securing higher-quality placements over time!
                       </p>
                     </div>
                   </CardContent>
