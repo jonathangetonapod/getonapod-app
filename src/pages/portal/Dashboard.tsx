@@ -838,6 +838,22 @@ export default function PortalDashboard() {
     published: filteredByTimeRange?.filter(b => b.status === 'published').length || 0,
   }
 
+  // Bookings that need attention - scheduled but missing recording date
+  const needsRecordingDate = useMemo(() => {
+    if (!bookings) return []
+    return bookings.filter(booking => {
+      return (booking.status === 'booked' || booking.status === 'in_progress') && !booking.recording_date
+    })
+  }, [bookings])
+
+  // Bookings that need attention - recorded but missing publish date
+  const needsPublishDate = useMemo(() => {
+    if (!bookings) return []
+    return bookings.filter(booking => {
+      return booking.status === 'recorded' && !booking.publish_date
+    })
+  }, [bookings])
+
   return (
     <PortalLayout>
       <div className="space-y-6">
@@ -1118,6 +1134,114 @@ export default function PortalDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Attention Needed Alert */}
+        <Card className={
+          needsRecordingDate.length > 0 || needsPublishDate.length > 0
+            ? "border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700"
+            : "border-2 border-green-300 bg-green-50 dark:bg-green-950/20 dark:border-green-700"
+        }>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              {needsRecordingDate.length > 0 || needsPublishDate.length > 0 ? (
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+              ) : (
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              )}
+              <CardTitle className={
+                needsRecordingDate.length > 0 || needsPublishDate.length > 0
+                  ? "text-amber-900 dark:text-amber-100"
+                  : "text-green-900 dark:text-green-100"
+              }>
+                Attention Needed
+              </CardTitle>
+              {needsRecordingDate.length > 0 || needsPublishDate.length > 0 ? (
+                <Badge variant="destructive" className="ml-auto">
+                  {needsRecordingDate.length + needsPublishDate.length}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="ml-auto bg-green-100 text-green-800 border-green-300">
+                  All Clear ✓
+                </Badge>
+              )}
+            </div>
+            <CardDescription className={
+              needsRecordingDate.length > 0 || needsPublishDate.length > 0
+                ? "text-amber-800 dark:text-amber-200"
+                : "text-green-800 dark:text-green-200"
+            }>
+              {needsRecordingDate.length > 0 || needsPublishDate.length > 0
+                ? "Some of your bookings need scheduling information"
+                : "All your bookings are up to date!"
+              }
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {needsRecordingDate.length > 0 || needsPublishDate.length > 0 ? (
+              <>
+                {needsRecordingDate.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                      📅 Missing Recording Date ({needsRecordingDate.length})
+                    </p>
+                    <div className="space-y-1 pl-4">
+                      {needsRecordingDate.map(booking => (
+                        <div key={booking.id} className="flex items-center gap-2 text-sm">
+                          <div className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                          <button
+                            onClick={() => setViewingBooking(booking)}
+                            className="text-amber-900 dark:text-amber-100 hover:underline cursor-pointer"
+                          >
+                            {booking.podcast_name}
+                          </button>
+                          <Badge variant="outline" className="text-xs">
+                            {booking.status === 'booked' ? 'Booked' : 'In Progress'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {needsPublishDate.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                      📺 Missing Publish Date ({needsPublishDate.length})
+                    </p>
+                    <div className="space-y-1 pl-4">
+                      {needsPublishDate.map(booking => (
+                        <div key={booking.id} className="flex items-center gap-2 text-sm">
+                          <div className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                          <button
+                            onClick={() => setViewingBooking(booking)}
+                            className="text-amber-900 dark:text-amber-100 hover:underline cursor-pointer"
+                          >
+                            {booking.podcast_name}
+                          </button>
+                          <Badge variant="outline" className="text-xs">
+                            Recorded
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-amber-200 dark:border-amber-700">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    💡 <strong>Tip:</strong> Click on a podcast name to view full details. Reach out to your account manager if you need help scheduling these episodes.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-sm text-green-800 dark:text-green-200">
+                  🎉 Great work! All your bookings have the necessary scheduling information. We'll keep you updated as things progress.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Value Highlights Section */}
         {enhancedStats && enhancedStats.topPodcasts.length > 0 && (
