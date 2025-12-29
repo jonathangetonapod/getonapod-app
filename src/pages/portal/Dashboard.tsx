@@ -859,11 +859,6 @@ export default function PortalDashboard() {
   const analyticsData = useMemo(() => {
     if (!bookings || bookings.length === 0) return null
 
-    // Filter published bookings with publish_date
-    const publishedBookings = bookings.filter(b => b.status === 'published' && b.publish_date)
-
-    if (publishedBookings.length === 0) return null
-
     // Filter by analytics time range
     const now = new Date()
     const cutoffDate = new Date()
@@ -879,25 +874,67 @@ export default function PortalDashboard() {
       cutoffDate.setFullYear(2000) // far past
     }
 
-    const filteredBookings = publishedBookings.filter(b => {
+    // Filter ALL bookings by created_at (to show booking trends)
+    const allFilteredBookings = bookings.filter(b => {
+      if (!b.created_at) return false
+      const createdDate = new Date(b.created_at)
+      return createdDate >= cutoffDate
+    })
+
+    // Filter published bookings with publish_date
+    const publishedBookings = bookings.filter(b => b.status === 'published' && b.publish_date)
+    const filteredPublishedBookings = publishedBookings.filter(b => {
       const publishDate = new Date(b.publish_date!)
       return publishDate >= cutoffDate
     })
 
-    if (filteredBookings.length === 0) return null
+    if (allFilteredBookings.length === 0) return null
 
-    // Group by month
+    // Group by month - tracking BOTH all bookings and published episodes
     const monthlyData: Record<string, {
       month: string
       year: number
       monthNum: number
+      totalBookings: number
       episodes: number
       totalReach: number
       ratings: number[]
       bookings: Booking[]
+      allBookingsThisMonth: Booking[]
+      audienceSizes: number[]
     }> = {}
 
-    filteredBookings.forEach(booking => {
+    // First pass: track ALL bookings by created_at (for booking trends)
+    allFilteredBookings.forEach(booking => {
+      const createdDate = new Date(booking.created_at!)
+      const monthKey = `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, '0')}`
+
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = {
+          month: monthNames[createdDate.getMonth()],
+          year: createdDate.getFullYear(),
+          monthNum: createdDate.getMonth(),
+          totalBookings: 0,
+          episodes: 0,
+          totalReach: 0,
+          ratings: [],
+          bookings: [],
+          allBookingsThisMonth: [],
+          audienceSizes: []
+        }
+      }
+
+      monthlyData[monthKey].totalBookings++
+      monthlyData[monthKey].allBookingsThisMonth.push(booking)
+
+      // Track audience size for quality metrics
+      if (booking.audience_size && booking.audience_size > 0) {
+        monthlyData[monthKey].audienceSizes.push(booking.audience_size)
+      }
+    })
+
+    // Second pass: track published episodes by publish_date
+    filteredPublishedBookings.forEach(booking => {
       const publishDate = new Date(booking.publish_date!)
       const monthKey = `${publishDate.getFullYear()}-${String(publishDate.getMonth() + 1).padStart(2, '0')}`
 
@@ -906,10 +943,13 @@ export default function PortalDashboard() {
           month: monthNames[publishDate.getMonth()],
           year: publishDate.getFullYear(),
           monthNum: publishDate.getMonth(),
+          totalBookings: 0,
           episodes: 0,
           totalReach: 0,
           ratings: [],
-          bookings: []
+          bookings: [],
+          allBookingsThisMonth: [],
+          audienceSizes: []
         }
       }
 
@@ -928,6 +968,9 @@ export default function PortalDashboard() {
         ...data,
         avgRating: data.ratings.length > 0
           ? data.ratings.reduce((sum, r) => sum + r, 0) / data.ratings.length
+          : 0,
+        avgAudiencePerBooking: data.audienceSizes.length > 0
+          ? data.audienceSizes.reduce((sum, size) => sum + size, 0) / data.audienceSizes.length
           : 0
       }))
       .sort((a, b) => {
@@ -971,20 +1014,29 @@ export default function PortalDashboard() {
       const secondHalf = monthlyArray.slice(halfPoint)
 
       const firstHalfStats = {
+        bookings: firstHalf.reduce((sum, m) => sum + m.totalBookings, 0),
         episodes: firstHalf.reduce((sum, m) => sum + m.episodes, 0),
         reach: firstHalf.reduce((sum, m) => sum + m.totalReach, 0),
         avgRating: firstHalf.reduce((sum, m) => sum + m.avgRating, 0) / firstHalf.length,
-        avgAudience: firstHalf.reduce((sum, m) => sum + m.totalReach, 0) / firstHalf.reduce((sum, m) => sum + m.episodes, 0)
+        avgAudience: firstHalf.reduce((sum, m) => sum + m.totalReach, 0) / firstHalf.reduce((sum, m) => sum + m.episodes, 0),
+        avgAudiencePerBooking: firstHalf.reduce((sum, m) => sum + m.avgAudiencePerBooking, 0) / firstHalf.length
       }
 
       const secondHalfStats = {
+        bookings: secondHalf.reduce((sum, m) => sum + m.totalBookings, 0),
         episodes: secondHalf.reduce((sum, m) => sum + m.episodes, 0),
         reach: secondHalf.reduce((sum, m) => sum + m.totalReach, 0),
         avgRating: secondHalf.reduce((sum, m) => sum + m.avgRating, 0) / secondHalf.length,
-        avgAudience: secondHalf.reduce((sum, m) => sum + m.totalReach, 0) / secondHalf.reduce((sum, m) => sum + m.episodes, 0)
+        avgAudience: secondHalf.reduce((sum, m) => sum + m.totalReach, 0) / secondHalf.reduce((sum, m) => sum + m.episodes, 0),
+        avgAudiencePerBooking: secondHalf.reduce((sum, m) => sum + m.avgAudiencePerBooking, 0) / secondHalf.length
       }
 
       periodComparison = {
+        bookings: {
+          before: firstHalfStats.bookings,
+          after: secondHalfStats.bookings,
+          growth: firstHalfStats.bookings > 0 ? ((secondHalfStats.bookings - firstHalfStats.bookings) / firstHalfStats.bookings) * 100 : 0
+        },
         episodes: {
           before: firstHalfStats.episodes,
           after: secondHalfStats.episodes,
@@ -1004,6 +1056,11 @@ export default function PortalDashboard() {
           before: firstHalfStats.avgAudience,
           after: secondHalfStats.avgAudience,
           growth: firstHalfStats.avgAudience > 0 ? ((secondHalfStats.avgAudience - firstHalfStats.avgAudience) / firstHalfStats.avgAudience) * 100 : 0
+        },
+        avgAudiencePerBooking: {
+          before: firstHalfStats.avgAudiencePerBooking,
+          after: secondHalfStats.avgAudiencePerBooking,
+          growth: firstHalfStats.avgAudiencePerBooking > 0 ? ((secondHalfStats.avgAudiencePerBooking - firstHalfStats.avgAudiencePerBooking) / firstHalfStats.avgAudiencePerBooking) * 100 : 0
         }
       }
     }
@@ -1012,9 +1069,11 @@ export default function PortalDashboard() {
       monthlyData: monthlyWithGrowth,
       bestMonth,
       overallGrowth,
-      totalEpisodes: filteredBookings.length,
-      totalReach: filteredBookings.reduce((sum, b) => sum + (b.audience_size || 0), 0),
+      totalBookings: allFilteredBookings.length,
+      totalEpisodes: filteredPublishedBookings.length,
+      totalReach: filteredPublishedBookings.reduce((sum, b) => sum + (b.audience_size || 0), 0),
       avgRating: monthlyArray.reduce((sum, m) => sum + m.avgRating, 0) / monthlyArray.length,
+      avgAudiencePerBooking: monthlyArray.reduce((sum, m) => sum + m.avgAudiencePerBooking, 0) / monthlyArray.length,
       avgMonthlyReach,
       projectedYearEndReach,
       periodComparison,
@@ -1778,7 +1837,24 @@ export default function PortalDashboard() {
             {analyticsData ? (
               <>
                 {/* Top Stats Row */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Bookings</CardTitle>
+                      <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData.totalBookings}</div>
+                      {analyticsData.periodComparison && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          <span className={analyticsData.periodComparison.bookings.growth >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            {analyticsData.periodComparison.bookings.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.bookings.growth).toFixed(0)}%
+                          </span> vs earlier period
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Episodes Published</CardTitle>
@@ -1852,6 +1928,27 @@ export default function PortalDashboard() {
                       </p>
                     </CardContent>
                   </Card>
+
+                  <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900 dark:to-teal-900 border-emerald-200">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium text-emerald-900 dark:text-emerald-100">Avg Audience / Booking</CardTitle>
+                      <Award className="h-4 w-4 text-emerald-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
+                        {analyticsData.avgAudiencePerBooking >= 1000
+                          ? `${(analyticsData.avgAudiencePerBooking / 1000).toFixed(0)}K`
+                          : Math.round(analyticsData.avgAudiencePerBooking).toLocaleString()}
+                      </div>
+                      {analyticsData.periodComparison && analyticsData.periodComparison.avgAudiencePerBooking.before > 0 && (
+                        <p className="text-xs text-emerald-800 dark:text-emerald-200 mt-1">
+                          <span className={analyticsData.periodComparison.avgAudiencePerBooking.growth >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                            {analyticsData.periodComparison.avgAudiencePerBooking.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.avgAudiencePerBooking.growth).toFixed(0)}%
+                          </span> Quality improvement
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
 
                 {/* Main Chart */}
@@ -1910,6 +2007,82 @@ export default function PortalDashboard() {
                         <Line yAxisId="left" type="monotone" dataKey="avgRating" stroke="#f59e0b" strokeWidth={2} name="Avg Rating (0-5)" />
                       </ComposedChart>
                     </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Quality Improvement Chart */}
+                <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/20 dark:to-teal-950/20">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Award className="h-5 w-5 text-emerald-600" />
+                      Quality Improvement Over Time
+                    </CardTitle>
+                    <CardDescription>
+                      Average audience size per booking showing how we're getting you on bigger, better podcasts
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <ComposedChart data={analyticsData.monthlyData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fontSize: 12 }}
+                          tickFormatter={(value, index) => {
+                            const item = analyticsData.monthlyData[index]
+                            return `${value.substring(0, 3)} '${item.year.toString().substring(2)}`
+                          }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          label={{ value: 'Avg Audience Size', angle: -90, position: 'insideLeft' }}
+                          tick={{ fontSize: 12 }}
+                          tickFormatter={(value) => {
+                            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+                            if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
+                            return value
+                          }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          label={{ value: 'Bookings', angle: 90, position: 'insideRight' }}
+                          tick={{ fontSize: 12 }}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #ccc' }}
+                          formatter={(value: any, name: string) => {
+                            if (name === 'avgAudiencePerBooking') return [Math.round(value).toLocaleString(), 'Avg Audience']
+                            if (name === 'totalBookings') return [value, 'Total Bookings']
+                            return value
+                          }}
+                          labelFormatter={(label, payload) => {
+                            if (payload && payload[0]) {
+                              const data = payload[0].payload
+                              return `${data.month} ${data.year}`
+                            }
+                            return label
+                          }}
+                        />
+                        <Legend />
+                        <Bar yAxisId="right" dataKey="totalBookings" fill="#10b981" name="Total Bookings" />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="avgAudiencePerBooking"
+                          stroke="#059669"
+                          strokeWidth={3}
+                          name="Avg Audience per Booking"
+                          dot={{ fill: '#059669', r: 4 }}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                      <p className="text-sm text-emerald-900 dark:text-emerald-100 font-medium">
+                        📊 <strong>What this shows:</strong> This graph demonstrates how we're consistently getting you on podcasts with larger audiences.
+                        An upward trend means we're securing higher-quality placements over time!
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -2055,7 +2228,18 @@ export default function PortalDashboard() {
                       <CardDescription>Earlier vs later half of selected time range</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Total Bookings</p>
+                          <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-bold">{analyticsData.periodComparison.bookings.after}</p>
+                            <span className="text-xs text-muted-foreground">from {analyticsData.periodComparison.bookings.before}</span>
+                          </div>
+                          <p className={`text-sm mt-1 ${analyticsData.periodComparison.bookings.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {analyticsData.periodComparison.bookings.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.bookings.growth).toFixed(0)}%
+                          </p>
+                        </div>
+
                         <div>
                           <p className="text-sm font-medium text-muted-foreground mb-2">Episodes</p>
                           <div className="flex items-baseline gap-2">
@@ -2096,7 +2280,7 @@ export default function PortalDashboard() {
                         </div>
 
                         <div>
-                          <p className="text-sm font-medium text-muted-foreground mb-2">Avg Audience</p>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Avg Audience / Episode</p>
                           <div className="flex items-baseline gap-2">
                             <p className="text-2xl font-bold">
                               {analyticsData.periodComparison.avgAudience.after >= 1000
@@ -2107,6 +2291,50 @@ export default function PortalDashboard() {
                           <p className={`text-sm mt-1 ${analyticsData.periodComparison.avgAudience.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {analyticsData.periodComparison.avgAudience.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.avgAudience.growth).toFixed(0)}%
                           </p>
+                        </div>
+
+                        <div className="md:col-span-2 lg:col-span-1">
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Avg Audience / Booking</p>
+                          <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-bold text-emerald-600">
+                              {analyticsData.periodComparison.avgAudiencePerBooking.after >= 1000
+                                ? `${(analyticsData.periodComparison.avgAudiencePerBooking.after / 1000).toFixed(0)}K`
+                                : Math.round(analyticsData.periodComparison.avgAudiencePerBooking.after).toLocaleString()}
+                            </p>
+                          </div>
+                          {analyticsData.periodComparison.avgAudiencePerBooking.before > 0 && (
+                            <p className={`text-sm mt-1 ${analyticsData.periodComparison.avgAudiencePerBooking.growth >= 0 ? 'text-green-600 font-semibold' : 'text-red-600'}`}>
+                              {analyticsData.periodComparison.avgAudiencePerBooking.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.avgAudiencePerBooking.growth).toFixed(0)}% Quality Improvement!
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Total Reach</p>
+                          <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-bold">
+                              {analyticsData.periodComparison.reach.after >= 1000000
+                                ? `${(analyticsData.periodComparison.reach.after / 1000000).toFixed(1)}M`
+                                : analyticsData.periodComparison.reach.after >= 1000
+                                ? `${(analyticsData.periodComparison.reach.after / 1000).toFixed(0)}K`
+                                : analyticsData.periodComparison.reach.after.toLocaleString()}
+                            </p>
+                          </div>
+                          <p className={`text-sm mt-1 ${analyticsData.periodComparison.reach.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {analyticsData.periodComparison.reach.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.reach.growth).toFixed(0)}%
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground mb-2">Avg Rating</p>
+                          <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-bold">⭐ {analyticsData.periodComparison.avgRating.after.toFixed(1)}</p>
+                          </div>
+                          {analyticsData.periodComparison.avgRating.before > 0 && (
+                            <p className={`text-sm mt-1 ${analyticsData.periodComparison.avgRating.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {analyticsData.periodComparison.avgRating.growth >= 0 ? '↑' : '↓'} {Math.abs(analyticsData.periodComparison.avgRating.growth).toFixed(1)}%
+                            </p>
+                          )}
                         </div>
                       </div>
                     </CardContent>
