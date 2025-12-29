@@ -19,7 +19,8 @@ import {
   BarChart3,
   Brain,
   Calendar,
-  Search
+  Search,
+  BookOpen
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -59,6 +60,7 @@ const defaultNavItems: NavItem[] = [
   { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
   { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
   { id: 'blog', name: 'Blog Posts', href: '/admin/blog', icon: FileText },
+  { id: 'guest-resources', name: 'Guest Resources', href: '/admin/guest-resources', icon: BookOpen },
   { id: 'videos', name: 'Video Testimonials', href: '/admin/videos', icon: Video },
   { id: 'premium', name: 'Premium Placements', href: '/admin/premium-placements', icon: Sparkles },
   { id: 'customers', name: 'Premium Placement Orders', href: '/admin/customers', icon: ShoppingBag },
