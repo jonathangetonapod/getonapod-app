@@ -13,8 +13,11 @@ interface ClientPortalContextType {
   client: Client | null
   session: ClientPortalSession | null
   loading: boolean
+  isImpersonating: boolean
   requestMagicLink: (email: string) => Promise<void>
   loginWithToken: (token: string) => Promise<void>
+  impersonateClient: (client: Client) => void
+  exitImpersonation: () => void
   logout: () => Promise<void>
 }
 
@@ -24,10 +27,26 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
   const [client, setClient] = useState<Client | null>(null)
   const [session, setSession] = useState<ClientPortalSession | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isImpersonating, setIsImpersonating] = useState(false)
 
   useEffect(() => {
     // Restore session from localStorage on mount
     const restoreSession = async () => {
+      // Check for impersonation mode
+      const impersonatingData = localStorage.getItem('admin-impersonating-client')
+      if (impersonatingData) {
+        try {
+          const impersonatedClient = JSON.parse(impersonatingData)
+          setClient(impersonatedClient)
+          setIsImpersonating(true)
+          setLoading(false)
+          return
+        } catch (error) {
+          console.error('[ClientPortal] Failed to restore impersonation:', error)
+          localStorage.removeItem('admin-impersonating-client')
+        }
+      }
+
       const { session: storedSession, client: storedClient } = sessionStorage.get()
 
       if (!storedSession || !storedClient) {
@@ -126,14 +145,37 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     setClient(null)
   }
 
+  const impersonateClient = (clientToImpersonate: Client) => {
+    // Store impersonation data in localStorage
+    localStorage.setItem('admin-impersonating-client', JSON.stringify(clientToImpersonate))
+
+    // Set state
+    setClient(clientToImpersonate)
+    setIsImpersonating(true)
+    setSession(null) // No real session when impersonating
+  }
+
+  const exitImpersonation = () => {
+    // Clear impersonation data
+    localStorage.removeItem('admin-impersonating-client')
+
+    // Clear state
+    setClient(null)
+    setIsImpersonating(false)
+    setSession(null)
+  }
+
   return (
     <ClientPortalContext.Provider
       value={{
         client,
         session,
         loading,
+        isImpersonating,
         requestMagicLink,
         loginWithToken,
+        impersonateClient,
+        exitImpersonation,
         logout
       }}
     >

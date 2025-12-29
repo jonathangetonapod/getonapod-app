@@ -9,7 +9,7 @@ interface ClientProtectedRouteProps {
 }
 
 export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) => {
-  const { client, loading } = useClientPortal()
+  const { client, loading, isImpersonating } = useClientPortal()
   const location = useLocation()
 
   if (loading) {
@@ -23,6 +23,7 @@ export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) =>
     )
   }
 
+  // Allow access if client exists (either authenticated or admin impersonating)
   if (!client) {
     // Redirect to portal login, preserving the attempted URL
     return <Navigate to="/portal/login" state={{ from: location }} replace />

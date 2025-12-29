@@ -1,7 +1,8 @@
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { LogOut, User, LayoutDashboard, BookOpen } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { LogOut, User, LayoutDashboard, BookOpen, Eye, X } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,13 +19,18 @@ interface PortalLayoutProps {
 }
 
 export function PortalLayout({ children }: PortalLayoutProps) {
-  const { client, logout } = useClientPortal()
+  const { client, logout, isImpersonating, exitImpersonation } = useClientPortal()
   const navigate = useNavigate()
   const location = useLocation()
 
   const handleLogout = async () => {
     await logout()
     navigate('/portal/login')
+  }
+
+  const handleExitImpersonation = () => {
+    exitImpersonation()
+    navigate('/admin/clients')
   }
 
   const navItems = [
@@ -98,6 +104,29 @@ export function PortalLayout({ children }: PortalLayoutProps) {
           </div>
         </div>
       </header>
+
+      {/* Impersonation Banner */}
+      {isImpersonating && (
+        <Alert className="rounded-none border-x-0 border-t-0 bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700">
+          <AlertDescription className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                Admin View: You are viewing the portal as {client?.name}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExitImpersonation}
+              className="bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Exit Admin View
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Navigation Tabs */}
       <div className="border-b bg-background">

@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -43,7 +44,8 @@ import {
   Image,
   X,
   FileText,
-  Sparkles
+  Sparkles,
+  Eye
 } from 'lucide-react'
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
@@ -56,6 +58,8 @@ type TimeRange = 30 | 60 | 90 | 180
 
 export default function ClientDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const { impersonateClient } = useClientPortal()
   const { toast } = useToast()
   const [isAddBookingModalOpen, setIsAddBookingModalOpen] = useState(false)
   const [isEditClientModalOpen, setIsEditClientModalOpen] = useState(false)
@@ -630,6 +634,13 @@ export default function ClientDetail() {
     })
   }
 
+  const handleViewPortalAsClient = () => {
+    if (client) {
+      impersonateClient(client)
+      navigate('/portal/dashboard')
+    }
+  }
+
   if (clientLoading || bookingsLoading) {
     return (
       <DashboardLayout>
@@ -1006,6 +1017,15 @@ export default function ClientDetail() {
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     Copy Portal URL
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={handleViewPortalAsClient}
+                    className="w-full bg-primary/5 hover:bg-primary/10"
+                  >
+                    <Eye className="mr-2 h-4 w-4" />
+                    View Portal as Client
                   </Button>
 
                   {/* Portal Info */}
