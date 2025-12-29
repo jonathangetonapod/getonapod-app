@@ -1518,13 +1518,59 @@ export default function PortalDashboard() {
         {/* Next Steps / Action Items */}
         <Card className="border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950 dark:to-teal-950">
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Target className="h-6 w-6 text-emerald-600" />
-              <div>
-                <CardTitle className="text-2xl text-emerald-900 dark:text-emerald-100">Next Steps</CardTitle>
-                <CardDescription className="text-emerald-800 dark:text-emerald-200">
-                  Action items to maximize your podcast impact
-                </CardDescription>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Target className="h-6 w-6 text-emerald-600" />
+                <div>
+                  <CardTitle className="text-2xl text-emerald-900 dark:text-emerald-100">Next Steps</CardTitle>
+                  <CardDescription className="text-emerald-800 dark:text-emerald-200">
+                    Action items for the next {timeRange === 'all' ? 'all time' : `${timeRange} days`}
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant={timeRange === 7 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(7)}
+                  size="sm"
+                >
+                  7d
+                </Button>
+                <Button
+                  variant={timeRange === 14 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(14)}
+                  size="sm"
+                >
+                  14d
+                </Button>
+                <Button
+                  variant={timeRange === 30 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(30)}
+                  size="sm"
+                >
+                  30d
+                </Button>
+                <Button
+                  variant={timeRange === 60 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(60)}
+                  size="sm"
+                >
+                  60d
+                </Button>
+                <Button
+                  variant={timeRange === 90 ? 'default' : 'outline'}
+                  onClick={() => setTimeRange(90)}
+                  size="sm"
+                >
+                  90d
+                </Button>
+                <Button
+                  variant={timeRange === 'all' ? 'default' : 'outline'}
+                  onClick={() => setTimeRange('all')}
+                  size="sm"
+                >
+                  All
+                </Button>
               </div>
             </div>
           </CardHeader>
