@@ -13,6 +13,7 @@ import PremiumPlacements from "./pages/PremiumPlacements";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import Course from "./pages/Course";
+import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
 import CheckoutSuccess from "./pages/CheckoutSuccess";
@@ -60,6 +61,7 @@ const App = () => (
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/course" element={<Course />} />
+            <Route path="/onboarding" element={<Onboarding />} />
 
             {/* Checkout routes */}
             <Route path="/checkout" element={<Checkout />} />
