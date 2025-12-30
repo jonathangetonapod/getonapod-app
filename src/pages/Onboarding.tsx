@@ -18,7 +18,6 @@ import {
   Upload,
   Mail,
   Calendar,
-  Sheet,
   Key,
   ExternalLink,
   Loader2,
@@ -461,40 +460,6 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </Button>
               </CardContent>
             </Card>
-
-            {/* Google Sheet */}
-            {accountDetails.google_sheet_url && (
-              <Card className="border-2 border-green-200 dark:border-green-800">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sheet className="h-5 w-5 text-green-600" />
-                    Your Outreach Tracker
-                  </CardTitle>
-                  <CardDescription>
-                    Track all podcast outreach and opportunities in one place
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={accountDetails.google_sheet_url}
-                      readOnly
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(accountDetails.google_sheet_url, '_blank')}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-3">
-                    We'll populate this sheet with podcast opportunities tailored to your expertise
-                  </p>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Next Steps */}
             <Card>
