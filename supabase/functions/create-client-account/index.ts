@@ -192,9 +192,11 @@ serve(async (req) => {
     // Create Google Sheet if requested
     let googleSheetUrl: string | undefined
     let googleSheetCreated = false
+    let googleSheetError: string | undefined
     if (create_google_sheet) {
       try {
         console.log(`[Create Client] Creating Google Sheet for ${client.name}`)
+        console.log(`[Create Client] Supabase URL: ${supabaseUrl}`)
 
         // Call the create-client-google-sheet edge function
         const sheetResponse = await fetch(`${supabaseUrl}/functions/v1/create-client-google-sheet`, {
@@ -209,6 +211,8 @@ serve(async (req) => {
           }),
         })
 
+        console.log(`[Create Client] Sheet response status: ${sheetResponse.status}`)
+
         if (sheetResponse.ok) {
           const sheetData = await sheetResponse.json()
           googleSheetUrl = sheetData.spreadsheetUrl
@@ -222,9 +226,11 @@ serve(async (req) => {
             .eq('id', client.id)
         } else {
           const errorText = await sheetResponse.text()
-          console.error('[Create Client] Failed to create Google Sheet:', errorText)
+          googleSheetError = `Status ${sheetResponse.status}: ${errorText}`
+          console.error('[Create Client] Failed to create Google Sheet:', googleSheetError)
         }
       } catch (sheetError) {
+        googleSheetError = sheetError.message || 'Unknown error'
         console.error('[Create Client] Error creating Google Sheet:', sheetError)
         // Don't fail the whole request if sheet creation fails
       }
@@ -317,12 +323,20 @@ serve(async (req) => {
       response.google_sheet_url = googleSheetUrl
     }
 
+    const responsePayload: any = {
+      success: true,
+      message: 'Client account created successfully',
+      client: response,
+    }
+
+    // Include Google Sheet error in response for debugging
+    if (googleSheetError) {
+      responsePayload.google_sheet_error = googleSheetError
+      responsePayload.message = 'Client account created successfully, but Google Sheet creation failed'
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Client account created successfully',
-        client: response,
-      }),
+      JSON.stringify(responsePayload),
       { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

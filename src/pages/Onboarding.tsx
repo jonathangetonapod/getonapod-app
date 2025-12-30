@@ -329,6 +329,12 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
       setAccountCreated(true)
       toast.success('Your account has been created!')
 
+      // Show warning if Google Sheet creation failed
+      if (result.google_sheet_error) {
+        console.error('Google Sheet creation error:', result.google_sheet_error)
+        toast.error(`Google Sheet creation failed: ${result.google_sheet_error}`)
+      }
+
       // TODO: Upload headshot if provided
       // This would require a separate endpoint or storage bucket access
 
