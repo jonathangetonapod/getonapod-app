@@ -104,7 +104,30 @@ serve(async (req) => {
       )
     }
 
-    // 3. Rate limiting - check last 15 requests in past 15 minutes
+    // 3. Check if email is suppressed due to bounces/complaints
+    const { data: isSuppressed } = await supabase
+      .rpc('is_email_suppressed', { email })
+
+    if (isSuppressed) {
+      console.log(`[Magic Link] Email suppressed due to bounces: ${email}`)
+      await supabase.from('client_portal_activity_log').insert({
+        client_id: client.id,
+        action: 'request_magic_link_denied',
+        metadata: { reason: 'email_suppressed' },
+        ip_address,
+        user_agent
+      })
+      // Return generic success message to avoid revealing suppression
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'If an account exists with this email, you will receive a login link shortly.'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 4. Rate limiting - check last 15 requests in past 15 minutes
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
     const { data: recentRequests, error: rateLimitError } = await supabase
       .from('client_portal_activity_log')
@@ -168,11 +191,12 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Jonathan from Get On A Pod <jonathan@getonapod.com>',
+        from: 'Get On A Pod Portal <portal@mail.getonapod.com>',
         to: [email],
         subject: emailTemplate.subject,
         html: emailTemplate.html,
         text: emailTemplate.text,
+        reply_to: 'jonathan@getonapod.com',
       }),
     })
 
@@ -185,7 +209,21 @@ serve(async (req) => {
     const emailData = await emailResponse.json()
     console.log(`[Magic Link] Email sent successfully to ${email} (ID: ${emailData.id})`)
 
-    // 8. Log activity
+    // 8. Log email in delivery tracking
+    await supabase.from('email_logs').insert({
+      resend_email_id: emailData.id,
+      email_type: 'portal_magic_link',
+      from_address: 'portal@mail.getonapod.com',
+      to_address: email,
+      subject: emailTemplate.subject,
+      status: 'sent',
+      client_id: client.id,
+      metadata: {
+        token_expires_at: expiresAt.toISOString()
+      }
+    })
+
+    // 9. Log activity
     await supabase.from('client_portal_activity_log').insert({
       client_id: client.id,
       action: 'request_magic_link',
