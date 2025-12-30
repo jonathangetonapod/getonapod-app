@@ -95,8 +95,8 @@ This link will remain active. Bookmark it for easy access!
 /**
  * Magic link authentication email template
  */
-export function getMagicLinkEmail(clientName: string, magicLink: string): EmailTemplate {
-  const subject = 'Your Get On A Pod Portal Access Link'
+export function getMagicLinkEmail(clientFirstName: string, magicLink: string): EmailTemplate {
+  const subject = 'Your Portal Login Link'
 
   const html = `
 <!DOCTYPE html>
@@ -107,33 +107,35 @@ export function getMagicLinkEmail(clientName: string, magicLink: string): EmailT
   <title>${subject}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff;">
-  <p>Hi ${clientName},</p>
+  <p style="font-size: 16px; margin-bottom: 20px;">Hi ${clientFirstName},</p>
 
-  <p>Here's your secure login link to access your Get On A Pod client portal:</p>
+  <p style="font-size: 16px; margin-bottom: 20px;">Click the button below to access your client portal:</p>
 
-  <p><a href="${magicLink}" style="color: #667eea; text-decoration: none; font-weight: 500;">${magicLink}</a></p>
+  <div style="text-align: center; margin: 30px 0;">
+    <a href="${magicLink}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; font-size: 16px;">Access Your Portal</a>
+  </div>
 
-  <p><strong>This link expires in 15 minutes</strong> for your security.</p>
+  <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px;">This link expires in 15 minutes for your security.</p>
 
-  <p>Once you're in, you'll be able to view:</p>
-  <ul style="line-height: 1.8;">
-    <li>All your podcast bookings and their status</li>
-    <li>Recording and publish dates</li>
-    <li>Episode links once they go live</li>
-    <li>Your complete outreach list</li>
+  <p style="font-size: 16px; margin-bottom: 10px;">Once you're in, you can:</p>
+  <ul style="font-size: 15px; line-height: 1.8; color: #4b5563;">
+    <li>View all your podcast bookings</li>
+    <li>Track recording and publish dates</li>
+    <li>Access episode links once live</li>
+    <li>Browse your outreach list</li>
   </ul>
 
-  <p>If you didn't request this login link, you can safely ignore this email.</p>
+  <p style="font-size: 14px; color: #6b7280; margin-top: 30px;">If you didn't request this, you can safely ignore this email.</p>
 
-  <p style="margin-top: 30px;">
-    Best regards,<br>
-    The Get On A Pod Team
+  <p style="margin-top: 30px; font-size: 16px;">
+    Best,<br>
+    <strong>Jonathan Garces</strong><br>
+    <span style="color: #6b7280; font-size: 14px;">Get On A Pod</span>
   </p>
 
   <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
 
-  <p style="color: #6b7280; font-size: 13px; margin: 0;">
-    Get On A Pod - Your Podcast Booking Portal<br>
+  <p style="color: #9ca3af; font-size: 12px; text-align: center;">
     <a href="https://getonapod.com" style="color: #667eea; text-decoration: none;">getonapod.com</a>
   </p>
 </body>
@@ -141,7 +143,7 @@ export function getMagicLinkEmail(clientName: string, magicLink: string): EmailT
   `.trim()
 
   const text = `
-Hi ${clientName},
+Hi ${clientFirstName},
 
 Click here to access your portal:
 
@@ -151,8 +153,9 @@ This link expires in 15 minutes.
 
 If you didn't request this, you can ignore this email.
 
-Thanks,
-Get On A Pod Team
+Best,
+Jonathan Garces
+Get On A Pod
   `.trim()
 
   return { subject, html, text }

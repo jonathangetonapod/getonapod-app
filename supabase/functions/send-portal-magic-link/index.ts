@@ -181,8 +181,11 @@ serve(async (req) => {
     // 6. Construct magic link
     const magicLink = `${portalBaseUrl}/portal/auth?token=${encodeURIComponent(token)}`
 
-    // 7. Send email via Resend
-    const emailTemplate = getMagicLinkEmail(client.name, magicLink)
+    // 7. Extract first name from full name
+    const firstName = client.name.split(' ')[0]
+
+    // 8. Send email via Resend
+    const emailTemplate = getMagicLinkEmail(firstName, magicLink)
 
     const emailResponse = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -191,12 +194,16 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Get On A Pod Portal <portal@mail.getonapod.com>',
+        from: 'Jonathan Garces <portal@mail.getonapod.com>',
         to: [email],
         subject: emailTemplate.subject,
         html: emailTemplate.html,
         text: emailTemplate.text,
         reply_to: 'jonathan@getonapod.com',
+        headers: {
+          'List-Unsubscribe': '<https://getonapod.com/unsubscribe>',
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
       }),
     })
 
@@ -209,11 +216,11 @@ serve(async (req) => {
     const emailData = await emailResponse.json()
     console.log(`[Magic Link] Email sent successfully to ${email} (ID: ${emailData.id})`)
 
-    // 8. Log email in delivery tracking
+    // 9. Log email in delivery tracking
     await supabase.from('email_logs').insert({
       resend_email_id: emailData.id,
       email_type: 'portal_magic_link',
-      from_address: 'portal@mail.getonapod.com',
+      from_address: 'Jonathan Garces <portal@mail.getonapod.com>',
       to_address: email,
       subject: emailTemplate.subject,
       status: 'sent',
@@ -223,7 +230,7 @@ serve(async (req) => {
       }
     })
 
-    // 9. Log activity
+    // 10. Log activity
     await supabase.from('client_portal_activity_log').insert({
       client_id: client.id,
       action: 'request_magic_link',
