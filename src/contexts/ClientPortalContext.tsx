@@ -5,6 +5,7 @@ import {
   requestMagicLink as apiRequestMagicLink,
   verifyToken as apiVerifyToken,
   validateSession as apiValidateSession,
+  loginWithPassword as apiLoginWithPassword,
   logout as apiLogout,
   sessionStorage
 } from '@/services/clientPortal'
@@ -16,6 +17,7 @@ interface ClientPortalContextType {
   isImpersonating: boolean
   requestMagicLink: (email: string) => Promise<void>
   loginWithToken: (token: string) => Promise<void>
+  loginWithPassword: (email: string, password: string) => Promise<void>
   impersonateClient: (client: Client) => void
   exitImpersonation: () => void
   logout: () => Promise<void>
@@ -129,6 +131,30 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     }
   }
 
+  const loginWithPassword = async (email: string, password: string) => {
+    // Clear any existing session first to avoid race conditions
+    sessionStorage.clear()
+    setSession(null)
+    setClient(null)
+
+    setLoading(true)
+    try {
+      const { session: newSession, client: newClient } = await apiLoginWithPassword(email, password)
+
+      // Store in localStorage
+      sessionStorage.save(newSession, newClient)
+
+      // Update state
+      setSession(newSession)
+      setClient(newClient)
+    } catch (error) {
+      console.error('[ClientPortal] Password login failed:', error)
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const logout = async () => {
     if (session) {
       try {
@@ -174,6 +200,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
         isImpersonating,
         requestMagicLink,
         loginWithToken,
+        loginWithPassword,
         impersonateClient,
         exitImpersonation,
         logout

@@ -32,6 +32,33 @@ export async function requestMagicLink(email: string): Promise<void> {
 }
 
 /**
+ * Login with email and password
+ */
+export async function loginWithPassword(email: string, password: string): Promise<ClientPortalAuthResponse> {
+  const { data, error } = await supabase.functions.invoke('login-with-password', {
+    body: { email, password }
+  })
+
+  if (error) {
+    console.error('Failed to login with password:', error)
+    throw new Error(error.message || 'Login failed')
+  }
+
+  if (data.error) {
+    throw new Error(data.error)
+  }
+
+  return {
+    session: {
+      session_token: data.session_token,
+      expires_at: data.expires_at,
+      client_id: data.client.id
+    },
+    client: data.client
+  }
+}
+
+/**
  * Verify a magic link token and create a session
  */
 export async function verifyToken(token: string): Promise<ClientPortalAuthResponse> {

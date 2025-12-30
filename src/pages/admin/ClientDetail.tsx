@@ -47,9 +47,12 @@ import {
   X,
   FileText,
   Sparkles,
-  Eye
+  Eye,
+  Key,
+  EyeOff,
+  RefreshCw
 } from 'lucide-react'
-import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient } from '@/services/clients'
+import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient, setClientPassword, clearClientPassword, generatePassword } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
 import { getPodcastById } from '@/services/podscan'
 import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPortal'
@@ -77,6 +80,9 @@ export default function ClientDetail() {
   const [fetchingPodcast, setFetchingPodcast] = useState(false)
   const [sendingInvitation, setSendingInvitation] = useState(false)
   const [togglingPortalAccess, setTogglingPortalAccess] = useState(false)
+  const [settingPassword, setSettingPassword] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
@@ -677,6 +683,65 @@ export default function ClientDetail() {
     }
   }
 
+  const handleGeneratePassword = () => {
+    const generated = generatePassword(12)
+    setNewPassword(generated)
+    setShowPassword(true)
+  }
+
+  const handleSetPassword = async () => {
+    if (!client || !newPassword) return
+
+    setSettingPassword(true)
+    try {
+      await setClientPassword(client.id, newPassword, 'Admin')
+      toast({
+        title: 'Password Set',
+        description: 'Portal password has been set successfully'
+      })
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+      setNewPassword('')
+      setShowPassword(false)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to set password',
+        variant: 'destructive'
+      })
+    } finally {
+      setSettingPassword(false)
+    }
+  }
+
+  const handleClearPassword = async () => {
+    if (!client) return
+
+    try {
+      await clearClientPassword(client.id)
+      toast({
+        title: 'Password Cleared',
+        description: 'Portal password has been removed'
+      })
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to clear password',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const handleCopyPassword = () => {
+    if (client?.portal_password) {
+      navigator.clipboard.writeText(client.portal_password)
+      toast({
+        title: 'Copied!',
+        description: 'Password copied to clipboard'
+      })
+    }
+  }
+
   if (clientLoading || bookingsLoading) {
     return (
       <DashboardLayout>
@@ -1070,6 +1135,137 @@ export default function ClientDetail() {
                     <Eye className="mr-2 h-4 w-4" />
                     View Portal as Client
                   </Button>
+
+                  {/* Password Management */}
+                  <div className="space-y-3 pt-3 border-t">
+                    <div className="space-y-0.5">
+                      <Label className="flex items-center gap-2">
+                        <Key className="h-4 w-4" />
+                        Portal Password
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Set a password for traditional login
+                      </p>
+                    </div>
+
+                    {client.portal_password ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          <Input
+                            type={showPassword ? 'text' : 'password'}
+                            value={client.portal_password}
+                            readOnly
+                            className="flex-1"
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={handleCopyPassword}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {client.password_set_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Set {new Date(client.password_set_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                            {client.password_set_by && ` by ${client.password_set_by}`}
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setNewPassword(client.portal_password || '')
+                              setShowPassword(true)
+                            }}
+                            className="flex-1"
+                          >
+                            <RefreshCw className="mr-2 h-3 w-3" />
+                            Change
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleClearPassword}
+                            className="flex-1"
+                          >
+                            Clear Password
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Enter password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="flex-1"
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleGeneratePassword}
+                            className="flex-1"
+                          >
+                            <RefreshCw className="mr-2 h-3 w-3" />
+                            Generate
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={handleSetPassword}
+                            disabled={!newPassword || settingPassword}
+                            className="flex-1"
+                          >
+                            {settingPassword ? (
+                              <>
+                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                Setting...
+                              </>
+                            ) : (
+                              <>
+                                <Key className="mr-2 h-3 w-3" />
+                                Set Password
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Password allows client to login without magic link
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Portal Info */}
                   <div className="space-y-2 text-xs text-muted-foreground pt-2">

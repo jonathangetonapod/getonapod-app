@@ -16,6 +16,13 @@ export interface Client {
   google_sheet_url: string | null
   created_at: string
   updated_at: string
+  // Portal access fields
+  portal_access_enabled?: boolean
+  portal_last_login_at?: string | null
+  portal_invitation_sent_at?: string | null
+  portal_password?: string | null
+  password_set_at?: string | null
+  password_set_by?: string | null
 }
 
 export interface ClientWithStats extends Client {
@@ -143,6 +150,58 @@ export async function deleteClient(clientId: string) {
   if (error) {
     throw new Error(`Failed to delete client: ${error.message}`)
   }
+}
+
+/**
+ * Set or update client portal password
+ */
+export async function setClientPassword(clientId: string, password: string, setBy: string = 'Admin') {
+  const { error } = await supabase
+    .from('clients')
+    .update({
+      portal_password: password,
+      password_set_at: new Date().toISOString(),
+      password_set_by: setBy
+    })
+    .eq('id', clientId)
+
+  if (error) {
+    throw new Error(`Failed to set password: ${error.message}`)
+  }
+}
+
+/**
+ * Clear client portal password
+ */
+export async function clearClientPassword(clientId: string) {
+  const { error } = await supabase
+    .from('clients')
+    .update({
+      portal_password: null,
+      password_set_at: null,
+      password_set_by: null
+    })
+    .eq('id', clientId)
+
+  if (error) {
+    throw new Error(`Failed to clear password: ${error.message}`)
+  }
+}
+
+/**
+ * Generate a random password
+ */
+export function generatePassword(length: number = 12): string {
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
+  let password = ''
+  const array = new Uint8Array(length)
+  crypto.getRandomValues(array)
+
+  for (let i = 0; i < length; i++) {
+    password += charset[array[i] % charset.length]
+  }
+
+  return password
 }
 
 /**
