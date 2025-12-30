@@ -21,7 +21,8 @@ import {
   Sheet,
   Key,
   ExternalLink,
-  Loader2
+  Loader2,
+  Copy
 } from 'lucide-react'
 import { toast } from 'sonner'
 
