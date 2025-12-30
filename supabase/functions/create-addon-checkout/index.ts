@@ -7,9 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface RequestBody {
+interface AddonItem {
   bookingId: string
   serviceId: string
+}
+
+interface RequestBody {
+  addons: AddonItem[]
   clientId: string
 }
 
@@ -42,12 +46,12 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Parse request body
-    const { bookingId, serviceId, clientId }: RequestBody = await req.json()
+    const { addons, clientId }: RequestBody = await req.json()
 
     // Validate input
-    if (!bookingId || !serviceId || !clientId) {
+    if (!addons || !Array.isArray(addons) || addons.length === 0 || !clientId) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: bookingId, serviceId, clientId' }),
+        JSON.stringify({ error: 'Missing required fields: addons (array), clientId' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -55,41 +59,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('Creating addon checkout for client:', clientId, 'booking:', bookingId, 'service:', serviceId)
-
-    // Fetch service details
-    const { data: service, error: serviceError } = await supabase
-      .from('addon_services')
-      .select('*')
-      .eq('id', serviceId)
-      .single()
-
-    if (serviceError || !service) {
-      return new Response(
-        JSON.stringify({ error: 'Service not found' }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
-
-    // Fetch booking details
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .select('podcast_name, podcast_image_url')
-      .eq('id', bookingId)
-      .single()
-
-    if (bookingError || !booking) {
-      return new Response(
-        JSON.stringify({ error: 'Booking not found' }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
+    console.log(`Creating addon checkout for client: ${clientId} with ${addons.length} addons`)
 
     // Fetch client details
     const { data: client, error: clientError } = await supabase
@@ -108,34 +78,52 @@ serve(async (req) => {
       )
     }
 
-    // Check if this addon already exists
-    const { data: existingAddon } = await supabase
-      .from('booking_addons')
-      .select('id')
-      .eq('booking_id', bookingId)
-      .eq('service_id', serviceId)
-      .single()
+    // Process each addon and create line items
+    const lineItems = []
+    const addonMetadata = []
 
-    if (existingAddon) {
-      return new Response(
-        JSON.stringify({ error: 'This service has already been purchased for this episode' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
+    for (const addon of addons) {
+      const { bookingId, serviceId } = addon
 
-    // Get origin for redirect URLs
-    const origin = req.headers.get('origin') || 'http://localhost:8080'
+      // Fetch service details
+      const { data: service, error: serviceError } = await supabase
+        .from('addon_services')
+        .select('*')
+        .eq('id', serviceId)
+        .single()
 
-    console.log('Service:', service.name, 'Price:', service.price_cents, 'cents')
+      if (serviceError || !service) {
+        console.error(`Service not found: ${serviceId}`)
+        continue // Skip this addon
+      }
 
-    // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: client.email || undefined,
-      line_items: [{
+      // Fetch booking details
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select('podcast_name, podcast_image_url')
+        .eq('id', bookingId)
+        .single()
+
+      if (bookingError || !booking) {
+        console.error(`Booking not found: ${bookingId}`)
+        continue // Skip this addon
+      }
+
+      // Check if this addon already exists
+      const { data: existingAddon } = await supabase
+        .from('booking_addons')
+        .select('id')
+        .eq('booking_id', bookingId)
+        .eq('service_id', serviceId)
+        .single()
+
+      if (existingAddon) {
+        console.log(`Addon already exists for booking ${bookingId} and service ${serviceId}`)
+        continue // Skip this addon
+      }
+
+      // Add to line items
+      lineItems.push({
         price_data: {
           currency: 'usd',
           product_data: {
@@ -146,24 +134,53 @@ serve(async (req) => {
           unit_amount: service.price_cents,
         },
         quantity: 1,
-      }],
+      })
+
+      // Store addon metadata
+      addonMetadata.push({
+        bookingId,
+        serviceId,
+        podcastName: booking.podcast_name,
+      })
+
+      console.log(`Added addon: ${service.name} for ${booking.podcast_name}`)
+    }
+
+    // Ensure we have at least one valid addon
+    if (lineItems.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No valid addons to checkout. All may already be purchased.' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
+    // Get origin for redirect URLs
+    const origin = req.headers.get('origin') || 'http://localhost:8080'
+
+    console.log(`Creating Stripe session with ${lineItems.length} line items`)
+
+    // Create Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: client.email || undefined,
+      line_items: lineItems,
       success_url: `${origin}/portal/dashboard?addon_purchase=success`,
       cancel_url: `${origin}/portal/dashboard?addon_purchase=canceled`,
       metadata: {
         type: 'addon_order',
-        bookingId,
-        serviceId,
         clientId,
         clientName: client.name,
         clientEmail: client.email || '',
-        podcastName: booking.podcast_name,
+        addons: JSON.stringify(addonMetadata),
       },
       payment_intent_data: {
         metadata: {
           type: 'addon_order',
-          bookingId,
-          serviceId,
           clientId,
+          addons: JSON.stringify(addonMetadata),
         },
       },
     })

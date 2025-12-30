@@ -84,18 +84,22 @@ export default function Checkout() {
           return
         }
 
-        // Process only the first addon (can enhance later to handle multiple)
-        const addon = addonServices[0]
+        // Validate all addons have required data
+        const validAddons = addonServices.filter(
+          addon => addon.bookingId && addon.serviceId
+        )
 
-        if (!addon.bookingId || !addon.serviceId) {
+        if (validAddons.length === 0) {
           throw new Error('Invalid addon service data')
         }
 
-        const response = await createAddonCheckoutSession(
-          addon.bookingId,
-          addon.serviceId,
-          client.id
-        )
+        // Map to the format expected by the edge function
+        const addonsData = validAddons.map(addon => ({
+          bookingId: addon.bookingId!,
+          serviceId: addon.serviceId!,
+        }))
+
+        const response = await createAddonCheckoutSession(addonsData, client.id)
         url = response.url
       }
       // Handle premium podcast checkout
@@ -176,16 +180,6 @@ export default function Checkout() {
                   </Alert>
                 )}
 
-                {/* Multiple Addons Warning */}
-                {addonServices.length > 1 && (
-                  <Alert className="mb-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Currently checking out 1 of {addonServices.length} addon services.
-                      Additional items will remain in your cart.
-                    </AlertDescription>
-                  </Alert>
-                )}
 
                 {/* Items List */}
                 <div className="space-y-4 mb-6">

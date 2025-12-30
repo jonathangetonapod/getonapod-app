@@ -76,49 +76,82 @@ serve(async (req) => {
 
         // Check if this is an addon order
         if (session.metadata?.type === 'addon_order') {
-          console.log('🎁 Processing addon order')
+          console.log('🎁 Processing addon order(s)')
 
-          const { bookingId, serviceId, clientId } = session.metadata
+          const { clientId, addons } = session.metadata
 
-          if (!bookingId || !serviceId || !clientId) {
+          if (!clientId || !addons) {
             console.error('❌ Missing addon order metadata')
             break
           }
 
-          // Check if addon already exists (idempotency)
-          const { data: existingAddon } = await supabase
-            .from('booking_addons')
-            .select('id')
-            .eq('booking_id', bookingId)
-            .eq('service_id', serviceId)
-            .single()
-
-          if (existingAddon) {
-            console.log('♻️ Addon order already exists:', existingAddon.id)
+          // Parse addons array from metadata
+          let addonItems
+          try {
+            addonItems = JSON.parse(addons)
+          } catch (error) {
+            console.error('❌ Failed to parse addons metadata:', error)
             break
           }
 
-          // Create addon order
-          const { data: addonOrder, error: addonError } = await supabase
-            .from('booking_addons')
-            .insert({
-              booking_id: bookingId,
-              service_id: serviceId,
-              client_id: clientId,
-              stripe_payment_intent_id: session.payment_intent as string,
-              amount_paid_cents: session.amount_total || 0,
-              status: 'pending',
-              purchased_at: new Date().toISOString(),
-            })
-            .select()
-            .single()
-
-          if (addonError) {
-            console.error('❌ Error creating addon order:', addonError)
-            throw addonError
+          if (!Array.isArray(addonItems) || addonItems.length === 0) {
+            console.error('❌ Invalid addons metadata')
+            break
           }
 
-          console.log('✅ Addon order created:', addonOrder.id)
+          console.log(`Processing ${addonItems.length} addon(s)`)
+
+          // Get line items to calculate individual amounts
+          const lineItems = await stripe.checkout.sessions.listLineItems(session.id)
+
+          // Process each addon
+          const createdAddons = []
+          for (let i = 0; i < addonItems.length; i++) {
+            const addon = addonItems[i]
+            const { bookingId, serviceId } = addon
+
+            // Check if addon already exists (idempotency)
+            const { data: existingAddon } = await supabase
+              .from('booking_addons')
+              .select('id')
+              .eq('booking_id', bookingId)
+              .eq('service_id', serviceId)
+              .single()
+
+            if (existingAddon) {
+              console.log(`♻️ Addon already exists for booking ${bookingId}, service ${serviceId}`)
+              continue
+            }
+
+            // Get the amount for this specific line item
+            const lineItem = lineItems.data[i]
+            const amountPaidCents = lineItem?.amount_total || 0
+
+            // Create addon order
+            const { data: addonOrder, error: addonError } = await supabase
+              .from('booking_addons')
+              .insert({
+                booking_id: bookingId,
+                service_id: serviceId,
+                client_id: clientId,
+                stripe_payment_intent_id: session.payment_intent as string,
+                amount_paid_cents: amountPaidCents,
+                status: 'pending',
+                purchased_at: new Date().toISOString(),
+              })
+              .select()
+              .single()
+
+            if (addonError) {
+              console.error(`❌ Error creating addon order for booking ${bookingId}:`, addonError)
+              continue
+            }
+
+            createdAddons.push(addonOrder.id)
+            console.log(`✅ Addon order created: ${addonOrder.id}`)
+          }
+
+          console.log(`✅ Successfully created ${createdAddons.length} addon order(s)`)
           break
         }
 

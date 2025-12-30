@@ -85,21 +85,19 @@ export const getCheckoutSession = async (sessionId: string) => {
 }
 
 /**
- * Create a Stripe Checkout Session for addon service purchase
+ * Create a Stripe Checkout Session for addon service purchase(s)
  */
 export const createAddonCheckoutSession = async (
-  bookingId: string,
-  serviceId: string,
+  addons: Array<{ bookingId: string; serviceId: string }>,
   clientId: string
 ): Promise<{ sessionId: string; url: string }> => {
   try {
-    console.log('🛒 Creating addon checkout session for booking:', bookingId, 'service:', serviceId)
+    console.log(`🛒 Creating addon checkout session for ${addons.length} addon(s)`)
 
     // Call Supabase Edge Function
     const { data, error } = await supabase.functions.invoke('create-addon-checkout', {
       body: {
-        bookingId,
-        serviceId,
+        addons,
         clientId,
       },
     })
