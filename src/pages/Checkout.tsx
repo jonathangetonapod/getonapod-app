@@ -341,6 +341,7 @@ export default function Checkout() {
                     disabled={
                       hasMultipleTypes ||
                       (premiumPodcasts.length > 0 && !isFormValid()) ||
+                      (addonServices.length > 0 && !client) ||
                       isProcessing
                     }
                   >
@@ -353,6 +354,18 @@ export default function Checkout() {
                       <>Continue to Payment</>
                     )}
                   </Button>
+
+                  {/* Disabled Button Feedback */}
+                  {hasMultipleTypes && (
+                    <p className="text-center text-xs text-destructive">
+                      Please remove either premium podcasts or addon services to continue
+                    </p>
+                  )}
+                  {addonServices.length > 0 && !client && (
+                    <p className="text-center text-xs text-destructive">
+                      Please log in to purchase addon services
+                    </p>
+                  )}
 
                   {/* Security Badge */}
                   <p className="text-center text-xs text-muted-foreground">

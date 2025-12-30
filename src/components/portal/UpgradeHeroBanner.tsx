@@ -120,7 +120,7 @@ export function UpgradeHeroBanner({
                     size="sm"
                     className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white h-8 text-xs`}
                   >
-                    {availableForService.length === 0 ? 'No Episodes' : 'Select'}
+                    {availableForService.length === 0 ? 'Sold Out' : 'Add to Cart'}
                   </Button>
                 </Card>
               )
