@@ -1154,19 +1154,11 @@ export default function PortalDashboard() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6">
-        {/* Upgrade Hero Banner */}
-        {addonServices && addonServices.length > 0 && publishedBookings.length > 0 && client && (
-          <UpgradeHeroBanner
-            publishedBookings={publishedBookings}
-            services={addonServices}
-            existingAddons={clientAddons || []}
-            clientId={client.id}
-          />
-        )}
-
-        {/* Welcome Header */}
-        <div className="flex items-center gap-4">
+      <div className="flex gap-6">
+        {/* Main Content */}
+        <div className="flex-1 space-y-6">
+          {/* Welcome Header */}
+          <div className="flex items-center gap-4">
           {client?.photo_url ? (
             <img
               src={client.photo_url}
@@ -4204,11 +4196,26 @@ export default function PortalDashboard() {
           )}
         </DialogContent>
       </Dialog>
+        </div>
 
-        {/* Cart Components */}
-        <CartButton />
-        <CartDrawer />
+        {/* Sidebar - Upsells */}
+        {addonServices && addonServices.length > 0 && publishedBookings.length > 0 && client && (
+          <div className="hidden lg:block w-80 flex-shrink-0">
+            <div className="sticky top-6">
+              <UpgradeHeroBanner
+                publishedBookings={publishedBookings}
+                services={addonServices}
+                existingAddons={clientAddons || []}
+                clientId={client.id}
+              />
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Cart Components */}
+      <CartButton />
+      <CartDrawer />
     </PortalLayout>
   )
 }
