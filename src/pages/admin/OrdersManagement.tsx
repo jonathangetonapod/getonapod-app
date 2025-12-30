@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 import {
   Package,
@@ -21,12 +22,14 @@ import {
   Loader2,
   TrendingUp,
   DollarSign,
-  Users
+  Users,
+  Trash2
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   getAllBookingAddons,
   updateBookingAddonStatus,
+  deleteBookingAddon,
   formatPrice,
   getAddonStatusColor,
   getAddonStatusText,
@@ -40,6 +43,7 @@ export default function OrdersManagement() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [serviceFilter, setServiceFilter] = useState<string>('all')
   const [selectedOrder, setSelectedOrder] = useState<BookingAddon | null>(null)
+  const [orderToDelete, setOrderToDelete] = useState<BookingAddon | null>(null)
 
   // Fetch all orders
   const { data: orders, isLoading } = useQuery({
@@ -73,6 +77,27 @@ export default function OrdersManagement() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to update order',
+        variant: 'destructive',
+      })
+    }
+  })
+
+  // Delete order mutation
+  const deleteOrderMutation = useMutation({
+    mutationFn: deleteBookingAddon,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-booking-addons'] })
+      queryClient.invalidateQueries({ queryKey: ['client-addons'] })
+      toast({
+        title: 'Order Deleted',
+        description: 'Order has been successfully deleted',
+      })
+      setOrderToDelete(null)
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete order',
         variant: 'destructive',
       })
     }
@@ -383,13 +408,23 @@ export default function OrdersManagement() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedOrder(order)}
-                          >
-                            View Details
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setSelectedOrder(order)}
+                            >
+                              View Details
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setOrderToDelete(order)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -556,6 +591,49 @@ export default function OrdersManagement() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!orderToDelete} onOpenChange={() => setOrderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this order? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {orderToDelete && (
+            <div className="my-4 p-4 rounded-lg bg-muted">
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="font-semibold">Service:</span> {orderToDelete.service?.name}
+                </div>
+                <div>
+                  <span className="font-semibold">Client:</span> {orderToDelete.client?.name}
+                </div>
+                <div>
+                  <span className="font-semibold">Podcast:</span> {orderToDelete.booking?.podcast_name}
+                </div>
+                <div>
+                  <span className="font-semibold">Amount:</span> {formatPrice(orderToDelete.amount_paid_cents)}
+                </div>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (orderToDelete) {
+                  deleteOrderMutation.mutate(orderToDelete.id)
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   )
 }

@@ -58,7 +58,7 @@ import { getBookings, createBooking, updateBooking, deleteBooking } from '@/serv
 import { getPodcastById } from '@/services/podscan'
 import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPortal'
 import { createClientGoogleSheet } from '@/services/googleSheets'
-import { getClientAddons, updateBookingAddonStatus, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
+import { getClientAddons, updateBookingAddonStatus, deleteBookingAddon, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
 import type { BookingAddon } from '@/services/addonServices'
 import { useToast } from '@/hooks/use-toast'
 
@@ -79,6 +79,7 @@ export default function ClientDetail() {
   const [goingLiveTimeRange, setGoingLiveTimeRange] = useState<TimeRange>(30)
   const [editingBooking, setEditingBooking] = useState<any>(null)
   const [deletingBooking, setDeletingBooking] = useState<any>(null)
+  const [orderToDelete, setOrderToDelete] = useState<BookingAddon | null>(null)
   const [isDeleteClientDialogOpen, setIsDeleteClientDialogOpen] = useState(false)
   const [fetchingPodcast, setFetchingPodcast] = useState(false)
   const [sendingInvitation, setSendingInvitation] = useState(false)
@@ -236,6 +237,26 @@ export default function ClientDetail() {
         variant: 'destructive'
       })
       setDeletingBooking(null)
+    }
+  })
+
+  const deleteOrderMutation = useMutation({
+    mutationFn: deleteBookingAddon,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
+      queryClient.invalidateQueries({ queryKey: ['all-booking-addons'] })
+      toast({
+        title: 'Order Deleted',
+        description: 'Add-on order has been successfully deleted',
+      })
+      setOrderToDelete(null)
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete order',
+        variant: 'destructive',
+      })
     }
   })
 
@@ -1451,6 +1472,19 @@ export default function ClientDetail() {
                         />
                       </div>
 
+                      {/* Delete Order Button */}
+                      <div className="pt-2 border-t">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderToDelete(addon)}
+                          className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Order
+                        </Button>
+                      </div>
+
                       {/* Delivered Info */}
                       {addon.delivered_at && (
                         <div className="text-xs text-muted-foreground flex items-center gap-1 pt-1">
@@ -2527,6 +2561,57 @@ export default function ClientDetail() {
                 </>
               ) : (
                 'Delete Client'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Order Confirmation Dialog */}
+      <AlertDialog open={!!orderToDelete} onOpenChange={() => setOrderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Add-on Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this add-on service order? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {orderToDelete && (
+            <div className="my-4 p-4 rounded-lg bg-muted">
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="font-semibold">Service:</span> {orderToDelete.service?.name}
+                </div>
+                <div>
+                  <span className="font-semibold">Podcast:</span> {orderToDelete.booking?.podcast_name}
+                </div>
+                <div>
+                  <span className="font-semibold">Amount:</span> {formatPrice(orderToDelete.amount_paid_cents)}
+                </div>
+                <div>
+                  <span className="font-semibold">Status:</span> {getAddonStatusText(orderToDelete.status)}
+                </div>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteOrderMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (orderToDelete) {
+                  deleteOrderMutation.mutate(orderToDelete.id)
+                }
+              }}
+              disabled={deleteOrderMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteOrderMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Order'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -206,6 +206,20 @@ export async function updateBookingAddonStatus(
 }
 
 /**
+ * Delete booking addon (Admin only)
+ */
+export async function deleteBookingAddon(addonId: string): Promise<void> {
+  const { error } = await supabase
+    .from('booking_addons')
+    .delete()
+    .eq('id', addonId)
+
+  if (error) {
+    throw new Error(`Failed to delete booking addon: ${error.message}`)
+  }
+}
+
+/**
  * Get all booking addons (Admin only)
  */
 export async function getAllBookingAddons(): Promise<BookingAddon[]> {
