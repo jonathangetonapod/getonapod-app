@@ -135,8 +135,12 @@ export function getMagicLinkEmail(clientFirstName: string, magicLink: string): E
 
   <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
 
-  <p style="color: #9ca3af; font-size: 12px; text-align: center;">
+  <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-bottom: 10px;">
     <a href="https://getonapod.com" style="color: #667eea; text-decoration: none;">getonapod.com</a>
+  </p>
+
+  <p style="color: #9ca3af; font-size: 11px; text-align: center; margin-top: 10px;">
+    <a href="https://getonapod.com/unsubscribe" style="color: #9ca3af; text-decoration: underline;">Unsubscribe</a> from portal login emails
   </p>
 </body>
 </html>
@@ -156,6 +160,10 @@ If you didn't request this, you can ignore this email.
 Best,
 Jonathan Garces
 Get On A Pod
+
+---
+getonapod.com
+Unsubscribe: https://getonapod.com/unsubscribe
   `.trim()
 
   return { subject, html, text }
