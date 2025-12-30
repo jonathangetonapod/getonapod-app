@@ -17,7 +17,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { createCalendarEventFromBooking, openGoogleCalendar } from '@/lib/googleCalendar'
-import { createAddonCheckoutSession } from '@/services/stripe'
 import { toast } from 'sonner'
 import {
   Calendar,
@@ -96,7 +95,6 @@ export default function PortalDashboard() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null)
-  const [purchasingAddon, setPurchasingAddon] = useState(false)
   const [sortBy, setSortBy] = useState<'date' | 'audience' | 'rating' | 'name'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showCharts, setShowCharts] = useState(true)
@@ -1112,40 +1110,12 @@ export default function PortalDashboard() {
     <PortalLayout>
       <div className="space-y-6">
         {/* Upgrade Hero Banner */}
-        {addonServices && addonServices.length > 0 && publishedBookings.length > 0 && (
+        {addonServices && addonServices.length > 0 && publishedBookings.length > 0 && client && (
           <UpgradeHeroBanner
             publishedBookings={publishedBookings}
             services={addonServices}
             existingAddons={clientAddons || []}
-            onPurchaseClick={async (booking, service) => {
-              if (!client) {
-                toast.error('Please log in to purchase')
-                return
-              }
-
-              if (purchasingAddon) {
-                return // Prevent double-click
-              }
-
-              setPurchasingAddon(true)
-              toast.loading('Redirecting to checkout...')
-
-              try {
-                const { url } = await createAddonCheckoutSession(
-                  booking.id,
-                  service.id,
-                  client.id
-                )
-
-                // Redirect to Stripe Checkout
-                window.location.href = url
-              } catch (error) {
-                console.error('Failed to create checkout:', error)
-                toast.dismiss()
-                toast.error(error instanceof Error ? error.message : 'Failed to start checkout')
-                setPurchasingAddon(false)
-              }
-            }}
+            clientId={client.id}
           />
         )}
 

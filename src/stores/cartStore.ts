@@ -1,16 +1,31 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PremiumPodcast } from '@/services/premiumPodcasts'
+import type { AddonService } from '@/services/addonServices'
+import type { Booking } from '@/services/bookings'
 
 // Cart item interface
 export interface CartItem {
   id: string // Unique cart item ID
-  podcastId: string // premium_podcast.id
-  podcastName: string
+  type: 'premium_podcast' | 'addon_service' // Type of item
+
+  // Premium podcast fields
+  podcastId?: string // premium_podcast.id
+  podcastName?: string
   podcastImage?: string
-  price: number // Parsed numeric price (e.g., 3500 from "$3,500")
-  priceDisplay: string // Formatted price string (e.g., "$3,500")
-  quantity: number // Always 1 for podcasts, but kept for extensibility
+
+  // Addon service fields
+  bookingId?: string // booking.id (episode to add service to)
+  serviceId?: string // addon_service.id
+  serviceName?: string
+  episodeName?: string // podcast episode name
+  episodeImage?: string
+  clientId?: string // Required for addon checkout
+
+  // Common fields
+  price: number // Price in dollars (e.g., 3500 or 149)
+  priceDisplay: string // Formatted price string (e.g., "$3,500" or "$149")
+  quantity: number // Always 1, but kept for extensibility
 }
 
 // Cart store interface
@@ -20,6 +35,7 @@ interface CartStore {
 
   // Actions
   addItem: (podcast: PremiumPodcast) => void
+  addAddonItem: (booking: Booking, service: AddonService, clientId: string) => void
   removeItem: (id: string) => void
   clearCart: () => void
   toggleCart: () => void
@@ -31,6 +47,7 @@ interface CartStore {
   getTotalPrice: () => number
   getTotalPriceDisplay: () => string
   isInCart: (podcastId: string) => boolean
+  isAddonInCart: (bookingId: string, serviceId: string) => boolean
 }
 
 /**
@@ -69,12 +86,12 @@ export const useCartStore = create<CartStore>()(
       items: [],
       isOpen: false,
 
-      // Add item to cart
+      // Add premium podcast to cart
       addItem: (podcast: PremiumPodcast) => {
         const { items } = get()
 
         // Check if already in cart
-        const existingItem = items.find((item) => item.podcastId === podcast.id)
+        const existingItem = items.find((item) => item.type === 'premium_podcast' && item.podcastId === podcast.id)
         if (existingItem) {
           // Already in cart, don't add duplicate
           console.log('Item already in cart:', podcast.podcast_name)
@@ -87,6 +104,7 @@ export const useCartStore = create<CartStore>()(
         // Create cart item
         const cartItem: CartItem = {
           id: `cart-${Date.now()}-${podcast.id}`,
+          type: 'premium_podcast',
           podcastId: podcast.id,
           podcastName: podcast.podcast_name,
           podcastImage: podcast.podcast_image_url,
@@ -98,6 +116,42 @@ export const useCartStore = create<CartStore>()(
         // Add to cart
         set({ items: [...items, cartItem] })
         console.log('Added to cart:', podcast.podcast_name, price)
+      },
+
+      // Add addon service to cart
+      addAddonItem: (booking: Booking, service: AddonService, clientId: string) => {
+        const { items } = get()
+
+        // Check if already in cart
+        const existingItem = items.find(
+          (item) => item.type === 'addon_service' && item.bookingId === booking.id && item.serviceId === service.id
+        )
+        if (existingItem) {
+          console.log('Addon already in cart:', service.name, 'for', booking.podcast_name)
+          return
+        }
+
+        // Convert price from cents to dollars
+        const price = service.price_cents / 100
+
+        // Create cart item
+        const cartItem: CartItem = {
+          id: `cart-addon-${Date.now()}-${booking.id}-${service.id}`,
+          type: 'addon_service',
+          bookingId: booking.id,
+          serviceId: service.id,
+          serviceName: service.name,
+          episodeName: booking.podcast_name,
+          episodeImage: booking.podcast_image_url || undefined,
+          clientId,
+          price,
+          priceDisplay: formatPrice(price),
+          quantity: 1,
+        }
+
+        // Add to cart
+        set({ items: [...items, cartItem] })
+        console.log('Added addon to cart:', service.name, 'for', booking.podcast_name, price)
       },
 
       // Remove item from cart
@@ -151,6 +205,14 @@ export const useCartStore = create<CartStore>()(
       isInCart: (podcastId: string) => {
         const { items } = get()
         return items.some((item) => item.podcastId === podcastId)
+      },
+
+      // Check if addon service is in cart
+      isAddonInCart: (bookingId: string, serviceId: string) => {
+        const { items } = get()
+        return items.some(
+          (item) => item.type === 'addon_service' && item.bookingId === bookingId && item.serviceId === serviceId
+        )
       },
     }),
     {

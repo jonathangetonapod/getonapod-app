@@ -9,25 +9,28 @@ import {
 } from '@/components/ui/sheet'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Sparkles, Video, FileText, Package, Users, ExternalLink, Check } from 'lucide-react'
+import { Sparkles, Video, FileText, Package, Users, ExternalLink, Check, ShoppingCart } from 'lucide-react'
 import type { Booking } from '@/services/bookings'
 import type { AddonService, BookingAddon } from '@/services/addonServices'
 import { formatPrice } from '@/services/addonServices'
+import { useCartStore } from '@/stores/cartStore'
+import { toast } from 'sonner'
 
 interface UpgradeHeroBannerProps {
   publishedBookings: Booking[]
   services: AddonService[]
   existingAddons: BookingAddon[]
-  onPurchaseClick: (booking: Booking, service: AddonService) => void
+  clientId: string
 }
 
 export function UpgradeHeroBanner({
   publishedBookings,
   services,
   existingAddons,
-  onPurchaseClick
+  clientId
 }: UpgradeHeroBannerProps) {
   const [selectedService, setSelectedService] = useState<AddonService | null>(null)
+  const { addAddonItem, openCart, isAddonInCart } = useCartStore()
 
   // Count unique episodes that have at least one addon purchased
   const episodesWithAddons = new Set(existingAddons.map(addon => addon.booking_id))
@@ -196,13 +199,24 @@ export function UpgradeHeroBanner({
 
                         <Button
                           onClick={() => {
-                            onPurchaseClick(booking, selectedService)
+                            // Check if already in cart
+                            if (isAddonInCart(booking.id, selectedService.id)) {
+                              toast.info('Already in cart')
+                              openCart()
+                              setSelectedService(null)
+                              return
+                            }
+
+                            // Add to cart
+                            addAddonItem(booking, selectedService, clientId)
+                            toast.success('Added to cart!')
+                            openCart()
                             setSelectedService(null)
                           }}
                           className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                         >
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Purchase {selectedService.name} - {formatPrice(selectedService.price_cents)}
+                          <ShoppingCart className="mr-2 h-4 w-4" />
+                          Add to Cart - {formatPrice(selectedService.price_cents)}
                         </Button>
                       </div>
                     </div>

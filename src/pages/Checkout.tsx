@@ -1,24 +1,32 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, ShoppingBag, ArrowLeft } from 'lucide-react'
+import { Loader2, ShoppingBag, ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
-import { useCartStore } from '@/stores/cartStore'
-import { createCheckoutSession, redirectToCheckout } from '@/services/stripe'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useCartStore, type CartItem } from '@/stores/cartStore'
+import { createCheckoutSession, createAddonCheckoutSession } from '@/services/stripe'
+import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { toast } from 'sonner'
 
 export default function Checkout() {
   const navigate = useNavigate()
   const { items, getTotalPriceDisplay, getTotalItems, clearCart } = useCartStore()
+  const { client } = useClientPortal()
 
   const [isProcessing, setIsProcessing] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
     fullName: '',
   })
+
+  // Separate items by type
+  const premiumPodcasts = items.filter(item => item.type === 'premium_podcast')
+  const addonServices = items.filter(item => item.type === 'addon_service')
+  const hasMultipleTypes = premiumPodcasts.length > 0 && addonServices.length > 0
 
   // Redirect if cart is empty
   useEffect(() => {
@@ -44,6 +52,14 @@ export default function Checkout() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Check for mixed cart
+    if (hasMultipleTypes) {
+      toast.error('Mixed cart detected', {
+        description: 'Please checkout premium podcasts and addon services separately',
+      })
+      return
+    }
+
     if (!isFormValid()) {
       toast.error('Please fill in all required fields correctly')
       return
@@ -57,14 +73,42 @@ export default function Checkout() {
       setIsProcessing(true)
       toast.info('Creating checkout session...')
 
-      // Create Stripe Checkout Session
-      const { sessionId, url } = await createCheckoutSession(
-        items,
-        formData.email,
-        formData.fullName
-      )
+      let url: string
 
-      console.log('✅ Session created, redirecting to Stripe:', sessionId)
+      // Handle addon services checkout
+      if (addonServices.length > 0) {
+        // For addon services, we need the client to be logged in
+        if (!client) {
+          toast.error('Please log in to purchase addon services')
+          setIsProcessing(false)
+          return
+        }
+
+        // Process only the first addon (can enhance later to handle multiple)
+        const addon = addonServices[0]
+
+        if (!addon.bookingId || !addon.serviceId) {
+          throw new Error('Invalid addon service data')
+        }
+
+        const response = await createAddonCheckoutSession(
+          addon.bookingId,
+          addon.serviceId,
+          client.id
+        )
+        url = response.url
+      }
+      // Handle premium podcast checkout
+      else {
+        const response = await createCheckoutSession(
+          items,
+          formData.email,
+          formData.fullName
+        )
+        url = response.url
+      }
+
+      console.log('✅ Session created, redirecting to Stripe')
 
       // Redirect to Stripe Checkout
       window.location.href = url
@@ -117,43 +161,73 @@ export default function Checkout() {
                   Order Summary
                 </CardTitle>
                 <CardDescription>
-                  {totalItems} {totalItems === 1 ? 'podcast' : 'podcasts'} in your order
+                  {totalItems} {totalItems === 1 ? 'item' : 'items'} in your order
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Mixed Cart Warning */}
+                {hasMultipleTypes && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Your cart contains both podcast placements and addon services.
+                      Please checkout these separately.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Multiple Addons Warning */}
+                {addonServices.length > 1 && (
+                  <Alert className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      Currently checking out 1 of {addonServices.length} addon services.
+                      Additional items will remain in your cart.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Items List */}
                 <div className="space-y-4 mb-6">
-                  {items.map((item) => (
-                    <div key={item.id} className="flex gap-4">
-                      {/* Podcast Image */}
-                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                        {item.podcastImage ? (
-                          <img
-                            src={item.podcastImage}
-                            alt={item.podcastName}
-                            className="w-full h-full object-contain"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <ShoppingBag className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                        )}
-                      </div>
+                  {items.map((item) => {
+                    const isAddon = item.type === 'addon_service'
+                    const image = isAddon ? item.episodeImage : item.podcastImage
+                    const title = isAddon
+                      ? `${item.serviceName} for ${item.episodeName}`
+                      : item.podcastName
 
-                      {/* Item Details */}
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-sm leading-tight line-clamp-2 mb-1">
-                          {item.podcastName}
-                        </h4>
-                        <p className="text-sm text-muted-foreground">Qty: 1</p>
-                      </div>
+                    return (
+                      <div key={item.id} className="flex gap-4">
+                        {/* Image */}
+                        <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                          {image ? (
+                            <img
+                              src={image}
+                              alt={title || 'Item'}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                          )}
+                        </div>
 
-                      {/* Price */}
-                      <div className="text-right flex-shrink-0">
-                        <p className="font-semibold">{item.priceDisplay}</p>
+                        {/* Item Details */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm leading-tight line-clamp-2 mb-1">
+                            {title}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">Qty: 1</p>
+                        </div>
+
+                        {/* Price */}
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-semibold">{item.priceDisplay}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
 
                 <Separator className="my-6" />
@@ -192,44 +266,62 @@ export default function Checkout() {
           <div className="order-1 lg:order-2">
             <Card>
               <CardHeader>
-                <CardTitle>Contact Information</CardTitle>
+                <CardTitle>
+                  {addonServices.length > 0 ? 'Confirm Purchase' : 'Contact Information'}
+                </CardTitle>
                 <CardDescription>
-                  We'll send your order confirmation to this email
+                  {addonServices.length > 0
+                    ? 'Review your addon service purchase'
+                    : "We'll send your order confirmation to this email"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Email Field */}
-                  <div className="space-y-2">
-                    <Label htmlFor="email">
-                      Email Address <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="sarah@example.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                      disabled={isProcessing}
-                    />
-                  </div>
+                  {/* Only show contact form for premium podcasts */}
+                  {premiumPodcasts.length > 0 && (
+                    <>
+                      {/* Email Field */}
+                      <div className="space-y-2">
+                        <Label htmlFor="email">
+                          Email Address <span className="text-destructive">*</span>
+                        </Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="sarah@example.com"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          required
+                          disabled={isProcessing}
+                        />
+                      </div>
 
-                  {/* Full Name Field */}
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">
-                      Full Name <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="fullName"
-                      type="text"
-                      placeholder="Sarah Johnson"
-                      value={formData.fullName}
-                      onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                      required
-                      disabled={isProcessing}
-                    />
-                  </div>
+                      {/* Full Name Field */}
+                      <div className="space-y-2">
+                        <Label htmlFor="fullName">
+                          Full Name <span className="text-destructive">*</span>
+                        </Label>
+                        <Input
+                          id="fullName"
+                          type="text"
+                          placeholder="Sarah Johnson"
+                          value={formData.fullName}
+                          onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                          required
+                          disabled={isProcessing}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Show client info for addon services */}
+                  {addonServices.length > 0 && client && (
+                    <div className="p-4 bg-muted rounded-lg">
+                      <p className="text-sm font-medium mb-1">Purchasing as:</p>
+                      <p className="text-sm text-muted-foreground">{client.name}</p>
+                      <p className="text-sm text-muted-foreground">{client.email}</p>
+                    </div>
+                  )}
 
                   <Separator className="my-6" />
 
@@ -246,7 +338,11 @@ export default function Checkout() {
                     type="submit"
                     size="lg"
                     className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
-                    disabled={!isFormValid() || isProcessing}
+                    disabled={
+                      hasMultipleTypes ||
+                      (premiumPodcasts.length > 0 && !isFormValid()) ||
+                      isProcessing
+                    }
                   >
                     {isProcessing ? (
                       <>

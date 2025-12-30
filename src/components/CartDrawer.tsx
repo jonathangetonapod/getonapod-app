@@ -34,7 +34,7 @@ export const CartDrawer = () => {
           <SheetDescription>
             {totalItems === 0
               ? 'Your cart is empty'
-              : `${totalItems} ${totalItems === 1 ? 'podcast' : 'podcasts'} in your cart`}
+              : `${totalItems} ${totalItems === 1 ? 'item' : 'items'} in your cart`}
           </SheetDescription>
         </SheetHeader>
 
@@ -46,57 +46,64 @@ export const CartDrawer = () => {
               <ShoppingBag className="h-16 w-16 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">Your cart is empty</h3>
               <p className="text-muted-foreground mb-6">
-                Add some premium podcast placements to get started
+                Add podcast placements or addon services to get started
               </p>
-              <Button asChild>
-                <Link to="/premium-placements" onClick={closeCart}>
-                  Browse Podcasts
-                </Link>
+              <Button onClick={closeCart}>
+                Continue Browsing
               </Button>
             </div>
           ) : (
             // Cart items list
             <div className="space-y-4">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex gap-4 p-4 rounded-lg border bg-card hover:shadow-md transition-shadow"
-                >
-                  {/* Podcast Image */}
-                  <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                    {item.podcastImage ? (
-                      <img
-                        src={item.podcastImage}
-                        alt={item.podcastName}
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <ShoppingBag className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
+              {items.map((item) => {
+                const isAddon = item.type === 'addon_service'
+                const image = isAddon ? item.episodeImage : item.podcastImage
+                const title = isAddon
+                  ? `${item.serviceName} for ${item.episodeName}`
+                  : item.podcastName
+                const displayName = isAddon ? item.podcastName : item.podcastName
 
-                  {/* Item Details */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-sm leading-tight mb-1 line-clamp-2">
-                      {item.podcastName}
-                    </h4>
-                    <p className="text-lg font-bold text-primary">{item.priceDisplay}</p>
-                  </div>
-
-                  {/* Remove Button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeItem(item.id)}
-                    className="flex-shrink-0 h-10 w-10 hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={`Remove ${item.podcastName} from cart`}
+                return (
+                  <div
+                    key={item.id}
+                    className="flex gap-4 p-4 rounded-lg border bg-card hover:shadow-md transition-shadow"
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                    {/* Image */}
+                    <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                      {image ? (
+                        <img
+                          src={image}
+                          alt={displayName || 'Item'}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ShoppingBag className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Item Details */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm leading-tight mb-1 line-clamp-2">
+                        {title}
+                      </h4>
+                      <p className="text-lg font-bold text-primary">{item.priceDisplay}</p>
+                    </div>
+
+                    {/* Remove Button */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeItem(item.id)}
+                      className="flex-shrink-0 h-10 w-10 hover:bg-destructive/10 hover:text-destructive"
+                      aria-label={`Remove ${title} from cart`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -120,11 +127,9 @@ export const CartDrawer = () => {
                 </Link>
               </Button>
 
-              {/* Continue Shopping Link */}
-              <Button variant="outline" size="lg" className="w-full" asChild>
-                <Link to="/premium-placements" onClick={closeCart}>
-                  Continue Shopping
-                </Link>
+              {/* Continue Browsing Button */}
+              <Button variant="outline" size="lg" className="w-full" onClick={closeCart}>
+                Continue Browsing
               </Button>
             </div>
           </>
