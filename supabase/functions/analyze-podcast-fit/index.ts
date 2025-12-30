@@ -85,6 +85,7 @@ Example format:
 ⭐ [Authority or quality signal]
 🚀 [Opportunity value]`
 
+    console.log('[Podcast Fit] Calling Claude API with model: claude-sonnet-4-5-20250929')
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -93,8 +94,9 @@ Example format:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 500,
+        temperature: 0.7,
         messages: [
           {
             role: 'user',
@@ -106,8 +108,15 @@ Example format:
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('[Podcast Fit] Claude API error:', errorText)
-      throw new Error('Failed to analyze podcast fit')
+      console.error('[Podcast Fit] Claude API error:', response.status, errorText)
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to analyze podcast fit',
+          details: `API returned ${response.status}`,
+          apiError: errorText
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const data = await response.json()
