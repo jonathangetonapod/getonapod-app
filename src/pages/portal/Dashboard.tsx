@@ -4,7 +4,7 @@ import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { PortalLayout } from '@/components/portal/PortalLayout'
 import { AddonUpsellBanner } from '@/components/portal/AddonUpsellBanner'
 import { UpgradeHeroBanner } from '@/components/portal/UpgradeHeroBanner'
-import { getActiveAddonServices, getBookingAddons } from '@/services/addonServices'
+import { getActiveAddonServices, getBookingAddons, formatPrice, getAddonStatusColor, getAddonStatusText, type BookingAddon } from '@/services/addonServices'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -54,7 +54,8 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
-  RefreshCw
+  RefreshCw,
+  Package
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -1145,13 +1146,14 @@ export default function PortalDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full max-w-4xl grid-cols-6">
+          <TabsList className="grid w-full max-w-4xl grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="podcast-list">Outreach List</TabsTrigger>
             <TabsTrigger value="premium">Premium Placements</TabsTrigger>
+            <TabsTrigger value="orders">My Orders</TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW TAB */}
@@ -3505,6 +3507,165 @@ export default function PortalDashboard() {
                             <ShoppingCart className="mr-2 h-5 w-5" />
                             Add to Cart
                           </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* MY ORDERS TAB */}
+          <TabsContent value="orders" className="space-y-6">
+            {/* Header */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  My Add-on Service Orders
+                </CardTitle>
+                <CardDescription>
+                  View all your purchased add-on services and track their delivery status
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            {/* Orders List */}
+            {!clientAddons || clientAddons.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-center py-12">
+                    <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Orders Yet</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      You haven't purchased any add-on services yet. Check out the upgrade banner on the Overview tab to see available services for your published episodes.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {clientAddons.map((addon: BookingAddon) => (
+                  <Card key={addon.id} className="hover:shadow-lg transition-shadow">
+                    <CardContent className="pt-6">
+                      <div className="space-y-4">
+                        {/* Header Row */}
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-lg font-semibold">{addon.service?.name}</h3>
+                              <Badge className={getAddonStatusColor(addon.status)}>
+                                {getAddonStatusText(addon.status)}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {addon.booking?.podcast_name || 'Unknown Podcast'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-bold">{formatPrice(addon.amount_paid_cents)}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Purchased {new Date(addon.purchased_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Podcast Info */}
+                        {addon.booking && (
+                          <div className="flex gap-4 p-3 rounded-lg bg-muted/50">
+                            {addon.booking.podcast_image_url && (
+                              <img
+                                src={addon.booking.podcast_image_url}
+                                alt={addon.booking.podcast_name}
+                                className="w-16 h-16 rounded-md object-cover flex-shrink-0"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium truncate">{addon.booking.podcast_name}</h4>
+                              {addon.booking.host_name && (
+                                <p className="text-sm text-muted-foreground">Host: {addon.booking.host_name}</p>
+                              )}
+                              {addon.booking.publish_date && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Published: {new Date(addon.booking.publish_date).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Service Description */}
+                        {addon.service?.short_description && (
+                          <p className="text-sm text-muted-foreground">
+                            {addon.service.short_description}
+                          </p>
+                        )}
+
+                        {/* Delivery Info */}
+                        <div className="flex items-center gap-4 text-sm">
+                          {addon.service?.delivery_days && (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              <span>{addon.service.delivery_days} day delivery</span>
+                            </div>
+                          )}
+                          {addon.delivered_at && (
+                            <div className="flex items-center gap-1 text-green-600">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span>
+                                Delivered on {new Date(addon.delivered_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Download Link */}
+                        {addon.google_drive_url && addon.status === 'delivered' && (
+                          <Button
+                            onClick={() => window.open(addon.google_drive_url!, '_blank')}
+                            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download Your Content
+                          </Button>
+                        )}
+
+                        {/* Status Messages */}
+                        {addon.status === 'pending' && (
+                          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-100">
+                            <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm">
+                              <p className="font-medium">Order Received</p>
+                              <p className="text-blue-700 dark:text-blue-300">
+                                We've received your order and will begin working on it soon. You'll receive an email once it's in progress.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {addon.status === 'in_progress' && (
+                          <div className="flex items-start gap-2 p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 text-purple-900 dark:text-purple-100">
+                            <Loader2 className="h-5 w-5 flex-shrink-0 mt-0.5 animate-spin" />
+                            <div className="text-sm">
+                              <p className="font-medium">Work In Progress</p>
+                              <p className="text-purple-700 dark:text-purple-300">
+                                Our team is currently working on your content. Expected delivery: {addon.service?.delivery_days} business days from order date.
+                              </p>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </CardContent>
