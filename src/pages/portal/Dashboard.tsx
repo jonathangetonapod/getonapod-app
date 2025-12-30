@@ -95,6 +95,8 @@ export default function PortalDashboard() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null)
+  const [podcastFitAnalysis, setPodcastFitAnalysis] = useState<string | null>(null)
+  const [analyzingFit, setAnalyzingFit] = useState(false)
   const [sortBy, setSortBy] = useState<'date' | 'audience' | 'rating' | 'name'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showCharts, setShowCharts] = useState(true)
@@ -163,6 +165,48 @@ export default function PortalDashboard() {
     enabled: !!viewingBooking,
     staleTime: 0,
   })
+
+  // Analyze podcast fit when viewing a booking
+  useEffect(() => {
+    const analyzePodcastFit = async () => {
+      if (!viewingBooking || !client?.bio) {
+        setPodcastFitAnalysis(null)
+        return
+      }
+
+      setAnalyzingFit(true)
+      setPodcastFitAnalysis(null)
+
+      try {
+        const { supabase } = await import('@/lib/supabase')
+        const { data, error } = await supabase.functions.invoke('analyze-podcast-fit', {
+          body: {
+            clientBio: client.bio,
+            podcastName: viewingBooking.podcast_name,
+            podcastDescription: viewingBooking.podcast_description || '',
+            hostName: viewingBooking.host_name || undefined,
+            audienceSize: viewingBooking.audience_size || undefined,
+            itunesRating: viewingBooking.itunes_rating || undefined,
+            episodeCount: viewingBooking.episode_count || undefined,
+          }
+        })
+
+        if (error) {
+          console.error('Failed to analyze podcast fit:', error)
+          setPodcastFitAnalysis(null)
+        } else if (data?.analysis) {
+          setPodcastFitAnalysis(data.analysis)
+        }
+      } catch (error) {
+        console.error('Error analyzing podcast fit:', error)
+        setPodcastFitAnalysis(null)
+      } finally {
+        setAnalyzingFit(false)
+      }
+    }
+
+    analyzePodcastFit()
+  }, [viewingBooking, client?.bio])
 
   // Fetch premium podcasts
   const { data: premiumPodcasts, isLoading: premiumLoading } = useQuery({
@@ -3866,7 +3910,7 @@ export default function PortalDashboard() {
                 </div>
               )}
 
-              {/* Why This is a Great Fit */}
+              {/* Why This is a Great Fit - AI Generated */}
               {client?.bio && (
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4">
                   <div className="flex items-start gap-3">
@@ -3877,67 +3921,20 @@ export default function PortalDashboard() {
                     </div>
                     <div className="flex-1">
                       <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-2">Why This Podcast is Perfect for You</h4>
-                      <div className="text-sm text-purple-800 dark:text-purple-200 space-y-2">
-                        {(() => {
-                          const reasons = []
-
-                          // Check audience size alignment
-                          if (viewingBooking.audience_size) {
-                            const audienceSize = viewingBooking.audience_size
-                            if (audienceSize >= 10000) {
-                              reasons.push(`🎯 Large, engaged audience of ${audienceSize.toLocaleString()}+ listeners for maximum reach`)
-                            } else if (audienceSize >= 5000) {
-                              reasons.push(`🎯 Established audience of ${audienceSize.toLocaleString()}+ listeners in your niche`)
-                            } else {
-                              reasons.push(`🎯 Targeted audience of ${audienceSize.toLocaleString()}+ highly engaged listeners`)
-                            }
-                          }
-
-                          // Check rating
-                          if (viewingBooking.itunes_rating && viewingBooking.itunes_rating >= 4.5) {
-                            reasons.push(`⭐ Top-rated podcast (${viewingBooking.itunes_rating.toFixed(1)}/5.0) with loyal, satisfied listeners`)
-                          }
-
-                          // Check bio keywords against podcast description
-                          if (viewingBooking.podcast_description && client.bio) {
-                            const bioLower = client.bio.toLowerCase()
-                            const podcastLower = viewingBooking.podcast_description.toLowerCase()
-
-                            // Common business/expertise keywords
-                            const keywords = ['business', 'entrepreneur', 'startup', 'founder', 'CEO', 'marketing', 'sales', 'leadership', 'growth', 'technology', 'innovation', 'strategy', 'consulting', 'coach', 'expert', 'author', 'speaker']
-
-                            const matches = keywords.filter(keyword =>
-                              bioLower.includes(keyword.toLowerCase()) && podcastLower.includes(keyword.toLowerCase())
-                            )
-
-                            if (matches.length > 0) {
-                              reasons.push(`🤝 Perfect audience alignment - this podcast covers ${matches.slice(0, 2).join(' and ')} topics that match your expertise`)
-                            }
-                          }
-
-                          // Check episode count for authority
-                          if (viewingBooking.episode_count && viewingBooking.episode_count >= 100) {
-                            reasons.push(`📚 Established show with ${viewingBooking.episode_count}+ episodes, demonstrating consistency and audience trust`)
-                          }
-
-                          // Default reason if no specific matches
-                          if (reasons.length === 0) {
-                            reasons.push(`✨ Hand-picked by our team to match your background and expertise`)
-                            reasons.push(`🎙️ Great opportunity to share your story and insights with an engaged audience`)
-                          }
-
-                          // Add a personal touch based on status
-                          if (viewingBooking.status === 'published' && viewingBooking.episode_url) {
-                            reasons.push(`🎉 Your episode is now live! Share it to amplify your reach`)
-                          } else if (viewingBooking.status === 'booked' || viewingBooking.status === 'in_progress') {
-                            reasons.push(`🚀 Exciting opportunity ahead - prepare to share your unique insights`)
-                          }
-
-                          return reasons.map((reason, idx) => (
-                            <p key={idx} className="leading-relaxed">{reason}</p>
-                          ))
-                        })()}
-                      </div>
+                      {analyzingFit ? (
+                        <div className="flex items-center gap-2 text-sm text-purple-700 dark:text-purple-300">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Analyzing podcast fit...</span>
+                        </div>
+                      ) : podcastFitAnalysis ? (
+                        <div className="text-sm text-purple-800 dark:text-purple-200 space-y-2 whitespace-pre-line leading-relaxed">
+                          {podcastFitAnalysis}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-purple-700 dark:text-purple-300 italic">
+                          Unable to generate analysis at this time.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
