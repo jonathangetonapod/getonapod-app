@@ -125,9 +125,12 @@ export async function getClientBookings(clientId: string): Promise<Booking[]> {
   // Get session token if exists
   const { session } = sessionStorage.get()
 
+  // Use client ID from session if available (to ensure it matches the session token)
+  const effectiveClientId = session?.client_id || clientId
+
   const { data, error } = await supabase.functions.invoke('get-client-bookings', {
     body: {
-      clientId,
+      clientId: effectiveClientId,
       sessionToken: session?.session_token
     }
   })
