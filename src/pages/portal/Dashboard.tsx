@@ -641,10 +641,13 @@ export default function PortalDashboard() {
   const getBookingsForDate = (date: Date) => {
     if (!bookings) return []
     const dateStr = date.toISOString().split('T')[0]
-    return bookings.filter(b => {
+    const matchingBookings = bookings.filter(b => {
       const dates = [b.scheduled_date, b.recording_date, b.publish_date].filter(Boolean)
       return dates.some(d => d?.split('T')[0] === dateStr)
     })
+    // Deduplicate by booking ID to prevent the same booking appearing multiple times
+    const uniqueBookings = Array.from(new Map(matchingBookings.map(b => [b.id, b])).values())
+    return uniqueBookings
   }
 
   const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay()
