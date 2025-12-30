@@ -50,13 +50,16 @@ import {
   Eye,
   Key,
   EyeOff,
-  RefreshCw
+  RefreshCw,
+  Package
 } from 'lucide-react'
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient, setClientPassword, clearClientPassword, generatePassword } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
 import { getPodcastById } from '@/services/podscan'
 import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPortal'
 import { createClientGoogleSheet } from '@/services/googleSheets'
+import { getClientAddons, updateBookingAddonStatus, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
+import type { BookingAddon } from '@/services/addonServices'
 import { useToast } from '@/hooks/use-toast'
 
 type TimeRange = 30 | 60 | 90 | 180
@@ -144,6 +147,13 @@ export default function ClientDetail() {
   const { data: bookingsData, isLoading: bookingsLoading } = useQuery({
     queryKey: ['bookings', 'client', id],
     queryFn: () => getBookings({ client_id: id }),
+    enabled: !!id
+  })
+
+  // Fetch addon orders for this client
+  const { data: clientAddons, isLoading: addonsLoading } = useQuery({
+    queryKey: ['client-addons', id],
+    queryFn: () => getClientAddons(id!),
     enabled: !!id
   })
 
@@ -1302,6 +1312,162 @@ export default function ClientDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Addon Orders Management */}
+          {clientAddons && clientAddons.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Add-on Services ({clientAddons.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {clientAddons.map((addon: BookingAddon) => (
+                    <div key={addon.id} className="p-4 border rounded-lg space-y-3">
+                      {/* Header */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold">{addon.service?.name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {addon.booking?.podcast_name || 'Unknown Podcast'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">{formatPrice(addon.amount_paid_cents)}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(addon.purchased_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status & Actions */}
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {/* Status Dropdown */}
+                        <div className="space-y-1.5">
+                          <Label htmlFor={`status-${addon.id}`} className="text-xs">Status</Label>
+                          <Select
+                            value={addon.status}
+                            onValueChange={(value) => {
+                              updateBookingAddonStatus(
+                                addon.id,
+                                value as BookingAddon['status'],
+                                addon.google_drive_url || undefined,
+                                addon.admin_notes || undefined
+                              ).then(() => {
+                                toast({
+                                  title: 'Status Updated',
+                                  description: `Order status changed to ${getAddonStatusText(value as BookingAddon['status'])}`
+                                })
+                                queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
+                              }).catch(error => {
+                                toast({
+                                  title: 'Error',
+                                  description: error.message,
+                                  variant: 'destructive'
+                                })
+                              })
+                            }}
+                          >
+                            <SelectTrigger id={`status-${addon.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="in_progress">In Progress</SelectItem>
+                              <SelectItem value="delivered">Delivered</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Google Drive URL */}
+                        <div className="space-y-1.5">
+                          <Label htmlFor={`drive-${addon.id}`} className="text-xs">Google Drive URL</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id={`drive-${addon.id}`}
+                              placeholder="https://drive.google.com/..."
+                              defaultValue={addon.google_drive_url || ''}
+                              onBlur={(e) => {
+                                const newUrl = e.target.value
+                                if (newUrl !== (addon.google_drive_url || '')) {
+                                  updateBookingAddonStatus(
+                                    addon.id,
+                                    addon.status,
+                                    newUrl || undefined,
+                                    addon.admin_notes || undefined
+                                  ).then(() => {
+                                    toast({
+                                      title: 'Drive URL Updated'
+                                    })
+                                    queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
+                                  })
+                                }
+                              }}
+                            />
+                            {addon.google_drive_url && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={() => window.open(addon.google_drive_url!, '_blank')}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Admin Notes */}
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`notes-${addon.id}`} className="text-xs">Admin Notes</Label>
+                        <textarea
+                          id={`notes-${addon.id}`}
+                          className="w-full min-h-[60px] px-3 py-2 text-sm border rounded-md"
+                          placeholder="Internal notes about this order..."
+                          defaultValue={addon.admin_notes || ''}
+                          onBlur={(e) => {
+                            const newNotes = e.target.value
+                            if (newNotes !== (addon.admin_notes || '')) {
+                              updateBookingAddonStatus(
+                                addon.id,
+                                addon.status,
+                                addon.google_drive_url || undefined,
+                                newNotes || undefined
+                              ).then(() => {
+                                toast({
+                                  title: 'Notes Updated'
+                                })
+                                queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
+                              })
+                            }
+                          }}
+                        />
+                      </div>
+
+                      {/* Delivered Info */}
+                      {addon.delivered_at && (
+                        <div className="text-xs text-muted-foreground flex items-center gap-1 pt-1">
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          Delivered on {new Date(addon.delivered_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Progress Stats */}
           <Card>
