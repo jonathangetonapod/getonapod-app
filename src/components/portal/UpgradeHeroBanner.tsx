@@ -67,29 +67,25 @@ export function UpgradeHeroBanner({
   return (
     <>
       {/* Hero Banner */}
-      <div className="mb-6 rounded-xl border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 p-8 shadow-2xl">
-        <div className="max-w-6xl mx-auto">
+      <div className="mb-6 rounded-lg border border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 p-6 shadow-lg">
+        <div className="max-w-5xl mx-auto">
           {/* Hero Header */}
-          <div className="text-center text-white mb-8">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Sparkles className="h-10 w-10 animate-pulse" />
-              <h2 className="text-4xl font-bold tracking-tight">
+          <div className="text-center text-white mb-5">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Sparkles className="h-6 w-6" />
+              <h2 className="text-2xl font-bold tracking-tight">
                 MAXIMIZE YOUR REACH
               </h2>
-              <Sparkles className="h-10 w-10 animate-pulse" />
+              <Sparkles className="h-6 w-6" />
             </div>
 
-            <p className="text-xl mb-2 text-white/90">
-              Transform {availableEpisodesCount} published {availableEpisodesCount === 1 ? 'episode' : 'episodes'} into high-performing content
-            </p>
-
-            <p className="text-lg text-white/80">
-              Choose the perfect package for your goals
+            <p className="text-sm text-white/90">
+              {availableEpisodesCount} {availableEpisodesCount === 1 ? 'episode' : 'episodes'} ready for upgrade
             </p>
           </div>
 
           {/* Service Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {services.map((service, index) => {
               const Icon = getServiceIcon(service.name)
               const gradient = getServiceGradient(index)
@@ -97,58 +93,59 @@ export function UpgradeHeroBanner({
               const isBestValue = service.name.toLowerCase().includes('bundle')
 
               return (
-                <Card key={service.id} className="relative overflow-hidden hover:shadow-2xl transition-all hover:scale-105">
+                <Card key={service.id} className="relative overflow-hidden hover:shadow-lg transition-all">
                   {isBestValue && (
-                    <div className="absolute top-4 right-4 z-10">
-                      <Badge className="bg-green-600 text-white border-0">
+                    <div className="absolute top-2 right-2 z-10">
+                      <Badge className="bg-green-600 text-white border-0 text-xs">
                         Best Value
                       </Badge>
                     </div>
                   )}
 
-                  <CardHeader className="pb-4">
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-r ${gradient} flex items-center justify-center mb-3`}>
-                      <Icon className="h-6 w-6 text-white" />
+                  <CardHeader className="pb-3 pt-4">
+                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-r ${gradient} flex items-center justify-center mb-2`}>
+                      <Icon className="h-5 w-5 text-white" />
                     </div>
-                    <CardTitle className="text-xl">{service.name}</CardTitle>
-                    <CardDescription className="text-sm">
+                    <CardTitle className="text-base">{service.name}</CardTitle>
+                    <CardDescription className="text-xs">
                       {service.short_description}
                     </CardDescription>
                   </CardHeader>
 
-                  <CardContent className="pb-4">
-                    <div className="mb-4">
-                      <div className="text-3xl font-bold text-foreground">
+                  <CardContent className="pb-3">
+                    <div className="mb-3">
+                      <div className="text-2xl font-bold text-foreground">
                         {formatPrice(service.price_cents)}
                       </div>
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-xs text-muted-foreground">
                         {service.delivery_days} day delivery
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      {service.features.slice(0, 4).map((feature, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-sm">
-                          <Check className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-1.5">
+                      {service.features.slice(0, 3).map((feature, idx) => (
+                        <div key={idx} className="flex items-start gap-1.5 text-xs">
+                          <Check className="h-3 w-3 text-green-600 mt-0.5 flex-shrink-0" />
                           <span className="text-muted-foreground">{feature}</span>
                         </div>
                       ))}
-                      {service.features.length > 4 && (
+                      {service.features.length > 3 && (
                         <div className="text-xs text-muted-foreground italic">
-                          +{service.features.length - 4} more features
+                          +{service.features.length - 3} more
                         </div>
                       )}
                     </div>
                   </CardContent>
 
-                  <CardFooter>
+                  <CardFooter className="pt-3">
                     <Button
                       onClick={() => setSelectedService(service)}
                       disabled={availableForService.length === 0}
-                      className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white font-semibold`}
+                      size="sm"
+                      className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white`}
                     >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      {availableForService.length === 0 ? 'No Episodes Available' : 'Select Episodes'}
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      {availableForService.length === 0 ? 'No Episodes' : 'Select'}
                     </Button>
                   </CardFooter>
                 </Card>
