@@ -7,9 +7,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Sparkles, Video, FileText, Package, Users, ExternalLink, Check, ShoppingCart } from 'lucide-react'
+import { Sparkles, Video, FileText, Package, Users, ExternalLink, Check, ShoppingCart, Info } from 'lucide-react'
 import type { Booking } from '@/services/bookings'
 import type { AddonService, BookingAddon } from '@/services/addonServices'
 import { formatPrice } from '@/services/addonServices'
@@ -30,6 +37,7 @@ export function UpgradeHeroBanner({
   clientId
 }: UpgradeHeroBannerProps) {
   const [selectedService, setSelectedService] = useState<AddonService | null>(null)
+  const [serviceDetailsModal, setServiceDetailsModal] = useState<AddonService | null>(null)
   const { addAddonItem, openCart, isAddonInCart } = useCartStore()
 
   // Count unique episodes that have at least one addon purchased
@@ -104,7 +112,20 @@ export function UpgradeHeroBanner({
                       <Icon className="h-4 w-4 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-semibold truncate">{service.name}</h4>
+                      <div className="flex items-center gap-1">
+                        <h4 className="text-sm font-semibold truncate">{service.name}</h4>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 p-0 hover:bg-transparent"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setServiceDetailsModal(service)
+                          }}
+                        >
+                          <Info className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                        </Button>
+                      </div>
                       <p className="text-[10px] text-muted-foreground">{service.short_description}</p>
                     </div>
                   </div>
@@ -227,6 +248,88 @@ export function UpgradeHeroBanner({
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Service Details Modal */}
+      <Dialog open={!!serviceDetailsModal} onOpenChange={() => setServiceDetailsModal(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {serviceDetailsModal && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const Icon = getServiceIcon(serviceDetailsModal.name)
+                    const index = services.findIndex(s => s.id === serviceDetailsModal.id)
+                    const gradient = getServiceGradient(index)
+                    return (
+                      <div className={`w-12 h-12 rounded-lg bg-gradient-to-r ${gradient} flex items-center justify-center flex-shrink-0`}>
+                        <Icon className="h-6 w-6 text-white" />
+                      </div>
+                    )
+                  })()}
+                  <div>
+                    <DialogTitle className="text-2xl">{serviceDetailsModal.name}</DialogTitle>
+                    <DialogDescription className="text-base">
+                      {serviceDetailsModal.short_description}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6 pt-4">
+                {/* Price and Delivery */}
+                <div className="flex items-center gap-6">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Price</p>
+                    <p className="text-3xl font-bold text-primary">{formatPrice(serviceDetailsModal.price_cents)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Delivery Time</p>
+                    <p className="text-2xl font-semibold">{serviceDetailsModal.delivery_days} days</p>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">About This Service</h3>
+                  <p className="text-muted-foreground leading-relaxed">{serviceDetailsModal.description}</p>
+                </div>
+
+                {/* Features */}
+                {serviceDetailsModal.features && serviceDetailsModal.features.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">What's Included</h3>
+                    <div className="grid gap-2">
+                      {serviceDetailsModal.features.map((feature, idx) => (
+                        <div key={idx} className="flex items-start gap-2">
+                          <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                          <span className="text-muted-foreground">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* CTA Button */}
+                <Button
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  onClick={() => {
+                    setServiceDetailsModal(null)
+                    setSelectedService(serviceDetailsModal)
+                  }}
+                >
+                  <ShoppingCart className="mr-2 h-5 w-5" />
+                  Add to Cart - {formatPrice(serviceDetailsModal.price_cents)}
+                </Button>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  Select an episode to add this service to your cart
+                </p>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
