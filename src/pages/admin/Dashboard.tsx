@@ -393,126 +393,6 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Add-on Service Orders Overview */}
-        {allOrders.length > 0 && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  <CardTitle>Add-on Service Orders</CardTitle>
-                </div>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/admin/orders">
-                    View All
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
-                      <Package className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <div className="text-xl font-bold">{orderStats.total}</div>
-                      <div className="text-xs text-muted-foreground">Total Orders</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="h-5 w-5 text-yellow-600" />
-                    </div>
-                    <div>
-                      <div className="text-xl font-bold">{orderStats.pending}</div>
-                      <div className="text-xs text-muted-foreground">Pending</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center flex-shrink-0">
-                      <Loader2 className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <div className="text-xl font-bold">{orderStats.inProgress}</div>
-                      <div className="text-xs text-muted-foreground">In Progress</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <div className="text-xl font-bold">{orderStats.delivered}</div>
-                      <div className="text-xs text-muted-foreground">Delivered</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 rounded-lg border">
-                    <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center flex-shrink-0">
-                      <DollarSign className="h-5 w-5 text-emerald-600" />
-                    </div>
-                    <div>
-                      <div className="text-xl font-bold">{formatPrice(orderStats.revenue)}</div>
-                      <div className="text-xs text-muted-foreground">Revenue</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Recent Orders */}
-                {recentOrders.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold mb-3">Recent Orders</h4>
-                    <div className="space-y-2">
-                      {recentOrders.map(order => (
-                        <Link
-                          key={order.id}
-                          to={`/admin/clients/${order.client_id}`}
-                          className="flex items-center gap-3 p-3 rounded-lg border hover:shadow-md transition-shadow"
-                        >
-                          {order.booking?.podcast_image_url && (
-                            <img
-                              src={order.booking.podcast_image_url}
-                              alt={order.booking.podcast_name}
-                              className="w-10 h-10 rounded object-cover flex-shrink-0"
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-medium text-sm truncate">{order.service?.name}</p>
-                              <Badge className={getAddonStatusColor(order.status)}>
-                                {getAddonStatusText(order.status)}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {order.client?.name} • {order.booking?.podcast_name}
-                            </p>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="font-semibold text-sm">{formatPrice(order.amount_paid_cents)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {new Date(order.purchased_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric'
-                              })}
-                            </div>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Main Content Grid */}
         <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
           {/* Left Column */}
@@ -632,6 +512,135 @@ export default function Dashboard() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Add-on Service Orders Overview */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    <CardTitle>Add-on Service Orders</CardTitle>
+                  </div>
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link to="/admin/orders">
+                      View All
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-3 p-3 rounded-lg border">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                        <Package className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold">{orderStats.total}</div>
+                        <div className="text-xs text-muted-foreground">Total Orders</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 rounded-lg border">
+                      <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center flex-shrink-0">
+                        <AlertCircle className="h-5 w-5 text-yellow-600" />
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold">{orderStats.pending}</div>
+                        <div className="text-xs text-muted-foreground">Pending</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 rounded-lg border">
+                      <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center flex-shrink-0">
+                        <Loader2 className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold">{orderStats.inProgress}</div>
+                        <div className="text-xs text-muted-foreground">In Progress</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 rounded-lg border">
+                      <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold">{orderStats.delivered}</div>
+                        <div className="text-xs text-muted-foreground">Delivered</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Revenue */}
+                  <div className="p-4 rounded-lg border bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950 dark:to-green-950">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center flex-shrink-0">
+                        <DollarSign className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{formatPrice(orderStats.revenue)}</div>
+                        <div className="text-sm text-emerald-700 dark:text-emerald-300">Total Revenue</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Orders */}
+                  {recentOrders.length > 0 ? (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Recent Orders</h4>
+                      <div className="space-y-2">
+                        {recentOrders.map(order => (
+                          <Link
+                            key={order.id}
+                            to={`/admin/clients/${order.client_id}`}
+                            className="flex items-center gap-3 p-3 rounded-lg border hover:shadow-md transition-shadow"
+                          >
+                            {order.booking?.podcast_image_url && (
+                              <img
+                                src={order.booking.podcast_image_url}
+                                alt={order.booking.podcast_name}
+                                className="w-10 h-10 rounded object-cover flex-shrink-0"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-medium text-sm truncate">{order.service?.name}</p>
+                                <Badge className={getAddonStatusColor(order.status)}>
+                                  {getAddonStatusText(order.status)}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {order.client?.name} • {order.booking?.podcast_name}
+                              </p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="font-semibold text-sm">{formatPrice(order.amount_paid_cents)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(order.purchased_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </div>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Package className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+                      <p className="text-sm font-medium text-muted-foreground mb-1">No orders yet</p>
+                      <p className="text-xs text-muted-foreground">
+                        Orders will appear here once clients purchase addon services
+                      </p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
