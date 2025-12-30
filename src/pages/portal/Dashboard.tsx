@@ -1706,6 +1706,97 @@ export default function PortalDashboard() {
           </CardContent>
         </Card>
 
+        {/* My Recent Orders Section */}
+        <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-purple-600" />
+                <CardTitle className="text-purple-900 dark:text-purple-100">My Recent Orders</CardTitle>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const tabsList = document.querySelector('[role="tablist"]')
+                  const ordersTab = document.querySelector('[value="orders"]') as HTMLButtonElement
+                  if (ordersTab) ordersTab.click()
+                }}
+                className="text-purple-600 hover:text-purple-700 hover:bg-purple-100"
+              >
+                View All →
+              </Button>
+            </div>
+            <CardDescription className="text-purple-800 dark:text-purple-200">
+              Your add-on service purchases and delivery status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!clientAddons || clientAddons.length === 0 ? (
+              <div className="text-center py-8">
+                <Package className="h-12 w-12 mx-auto text-purple-300 mb-3" />
+                <p className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">No orders yet</p>
+                <p className="text-xs text-purple-700 dark:text-purple-300">
+                  Check out the upgrade banner above to add services to your published episodes
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {clientAddons.slice(0, 3).map((addon: BookingAddon) => (
+                  <div
+                    key={addon.id}
+                    className="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border hover:shadow-md transition-shadow"
+                  >
+                    {addon.booking?.podcast_image_url && (
+                      <img
+                        src={addon.booking.podcast_image_url}
+                        alt={addon.booking.podcast_name}
+                        className="w-12 h-12 rounded object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-semibold text-sm truncate">{addon.service?.name}</p>
+                        <Badge className={getAddonStatusColor(addon.status)}>
+                          {getAddonStatusText(addon.status)}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {addon.booking?.podcast_name || 'Unknown Podcast'}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-bold text-sm">{formatPrice(addon.amount_paid_cents)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(addon.purchased_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {clientAddons.length > 3 && (
+                  <div className="text-center pt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const tabsList = document.querySelector('[role="tablist"]')
+                        const ordersTab = document.querySelector('[value="orders"]') as HTMLButtonElement
+                        if (ordersTab) ordersTab.click()
+                      }}
+                      className="text-purple-600 hover:text-purple-700"
+                    >
+                      View {clientAddons.length - 3} more orders →
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Bookings Table - Overview */}
         <Card>
           <CardHeader>
