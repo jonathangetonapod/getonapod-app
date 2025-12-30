@@ -310,7 +310,7 @@ const data = await response.json()`
 
             {/* Response Example */}
             <div className="space-y-2">
-              <Label>Example Response</Label>
+              <Label>Example Response (All Fields)</Label>
               <pre className="bg-muted p-4 rounded-lg overflow-x-auto">
                 <code className="text-sm font-mono text-muted-foreground">
 {`{
@@ -320,15 +320,24 @@ const data = await response.json()`
     "client_id": "uuid-here",
     "name": "John Doe",
     "email": "john@example.com",
+    "bio": "Marketing expert",
+    "linkedin_url": "https://linkedin.com/in/johndoe",
+    "website": "https://johndoe.com",
+    "status": "active",
     "portal_access_enabled": true,
     "portal_url": "https://getonapod.com/portal/login",
+    "password": "SecurePass123",
     "invitation_sent": true,
     "google_sheet_created": true,
-    "google_sheet_url": "https://docs.google.com/..."
+    "google_sheet_url": "https://docs.google.com/...",
+    "created_at": "2025-01-31T10:30:00Z"
   }
 }`}
                 </code>
               </pre>
+              <p className="text-xs text-muted-foreground">
+                Response includes all provided fields plus generated credentials and URLs
+              </p>
             </div>
 
             {/* Use Cases */}

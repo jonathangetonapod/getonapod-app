@@ -66,9 +66,17 @@ Optional: Include `api_key` in the request body if you've set an `API_KEY` envir
     "client_id": "uuid-string",
     "name": "John Doe",
     "email": "john@example.com",
+    "bio": "Marketing expert and podcast guest",
+    "linkedin_url": "https://linkedin.com/in/johndoe",
+    "website": "https://johndoe.com",
+    "calendar_link": "https://calendly.com/johndoe",
+    "contact_person": "Jane Smith",
+    "first_invoice_paid_date": "2025-01-15T00:00:00Z",
+    "status": "active",
+    "notes": "Interested in tech podcasts",
     "portal_access_enabled": true,
     "portal_url": "https://getonapod.com/portal/login",
-    "password": "SecurePass123" // Only included if password was set
+    "password": "SecurePass123", // Only included if password was set
     "invitation_sent": true,
     "google_sheet_created": true,
     "google_sheet_url": "https://docs.google.com/spreadsheets/d/...", // Only if created
@@ -76,6 +84,8 @@ Optional: Include `api_key` in the request body if you've set an `API_KEY` envir
   }
 }
 ```
+
+**Note**: The response includes ALL fields that were provided in the request, plus the generated credentials and URLs.
 
 ### Error Responses
 

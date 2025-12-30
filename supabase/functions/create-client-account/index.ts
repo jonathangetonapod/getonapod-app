@@ -38,6 +38,14 @@ interface ClientAccount {
   client_id: string
   name: string
   email: string
+  bio?: string
+  linkedin_url?: string
+  website?: string
+  calendar_link?: string
+  contact_person?: string
+  first_invoice_paid_date?: string
+  status: string
+  notes?: string
   portal_access_enabled: boolean
   portal_url: string
   password?: string
@@ -277,17 +285,27 @@ serve(async (req) => {
       }
     }
 
-    // Prepare response
+    // Prepare response with all client details
     const response: ClientAccount = {
       client_id: client.id,
       name: client.name,
       email: client.email,
+      status: client.status,
       portal_access_enabled: client.portal_access_enabled,
       portal_url: `${portalBaseUrl}/portal/login`,
       invitation_sent: invitationSent,
       google_sheet_created: googleSheetCreated,
       created_at: client.created_at,
     }
+
+    // Include all optional fields that were provided
+    if (client.bio) response.bio = client.bio
+    if (client.linkedin_url) response.linkedin_url = client.linkedin_url
+    if (client.website) response.website = client.website
+    if (client.calendar_link) response.calendar_link = client.calendar_link
+    if (client.contact_person) response.contact_person = client.contact_person
+    if (client.first_invoice_paid_date) response.first_invoice_paid_date = client.first_invoice_paid_date
+    if (client.notes) response.notes = client.notes
 
     // Only include password in response if it was set
     if (password && enable_portal_access) {
