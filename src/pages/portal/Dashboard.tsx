@@ -120,6 +120,10 @@ export default function PortalDashboard() {
   const [analyticsTimeRange, setAnalyticsTimeRange] = useState<'3months' | '6months' | '1year' | 'all'>('6months')
   const { addItem, isInCart, addAddonItem, openCart, isAddonInCart } = useCartStore()
 
+  // Episode selection for addon services
+  const [selectedService, setSelectedService] = useState<typeof addonServices extends (infer T)[] ? T : never | null>(null)
+  const [showEpisodeSelector, setShowEpisodeSelector] = useState(false)
+
   // Fetch bookings
   const { data: bookings, isLoading } = useQuery({
     queryKey: ['client-bookings', client?.id],
@@ -4287,8 +4291,8 @@ export default function PortalDashboard() {
                       </div>
                       <Button
                         onClick={() => {
-                          // Add logic to open episode selection
-                          toast.info('Select an episode to add this service')
+                          setSelectedService(service)
+                          setShowEpisodeSelector(true)
                         }}
                         disabled={availableEpisodes.length === 0}
                         className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white`}
@@ -4308,6 +4312,94 @@ export default function PortalDashboard() {
           </div>
         )}
       </div>
+
+      {/* Episode Selection Dialog for Addon Services */}
+      <Dialog open={showEpisodeSelector} onOpenChange={setShowEpisodeSelector}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Select an Episode</DialogTitle>
+            <DialogDescription>
+              {selectedService && (
+                <>
+                  Choose which podcast episode to apply <strong>{selectedService.name}</strong> to ({formatPrice(selectedService.price_cents)})
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 mt-4">
+            {selectedService && publishedBookings
+              .filter(booking =>
+                !(clientAddons || []).some(addon =>
+                  addon.booking_id === booking.id && addon.service_id === selectedService.id
+                )
+              )
+              .map(booking => (
+                <Card
+                  key={booking.id}
+                  className="cursor-pointer hover:border-primary transition-all hover:shadow-md"
+                  onClick={() => {
+                    if (client) {
+                      addAddonItem(booking, selectedService, client.id)
+                      sonnerToast.success(`${selectedService.name} added to cart!`, {
+                        description: `For episode: ${booking.podcast_name}`,
+                        action: {
+                          label: 'View Cart',
+                          onClick: () => openCart()
+                        }
+                      })
+                      setShowEpisodeSelector(false)
+                      openCart()
+                    }
+                  }}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex gap-4">
+                      {booking.podcast_image_url && (
+                        <img
+                          src={booking.podcast_image_url}
+                          alt={booking.podcast_name}
+                          className="w-16 h-16 rounded object-cover flex-shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-sm mb-1 truncate">
+                          {booking.podcast_name}
+                        </h4>
+                        {booking.host_name && (
+                          <p className="text-xs text-muted-foreground mb-1">
+                            Host: {booking.host_name}
+                          </p>
+                        )}
+                        {booking.publish_date && (
+                          <p className="text-xs text-muted-foreground">
+                            Published: {formatDate(booking.publish_date)}
+                          </p>
+                        )}
+                        {booking.episode_url && (
+                          <a
+                            href={booking.episode_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-1"
+                          >
+                            Listen <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex items-center">
+                        <Button size="sm" variant="outline">
+                          Select
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Cart Components */}
       <CartButton />
