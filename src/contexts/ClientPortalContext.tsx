@@ -9,6 +9,7 @@ import {
   logout as apiLogout,
   sessionStorage
 } from '@/services/clientPortal'
+import { setUser as setSentryUser } from '@/lib/sentry'
 
 interface ClientPortalContextType {
   client: Client | null
@@ -69,6 +70,13 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
         const validatedClient = await apiValidateSession(storedSession.session_token)
         setSession(storedSession)
         setClient(validatedClient)
+
+        // Set user in Sentry
+        setSentryUser({
+          id: validatedClient.id,
+          email: validatedClient.email || undefined,
+          name: validatedClient.name
+        })
       } catch (error) {
         console.error('[ClientPortal] Session validation failed:', error)
         sessionStorage.clear()
@@ -123,6 +131,13 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
       // Update state
       setSession(newSession)
       setClient(newClient)
+
+      // Set user in Sentry
+      setSentryUser({
+        id: newClient.id,
+        email: newClient.email || undefined,
+        name: newClient.name
+      })
     } catch (error) {
       console.error('[ClientPortal] Login failed:', error)
       throw error
@@ -147,6 +162,13 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
       // Update state
       setSession(newSession)
       setClient(newClient)
+
+      // Set user in Sentry
+      setSentryUser({
+        id: newClient.id,
+        email: newClient.email || undefined,
+        name: newClient.name
+      })
     } catch (error) {
       console.error('[ClientPortal] Password login failed:', error)
       throw error
@@ -169,6 +191,9 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     sessionStorage.clear()
     setSession(null)
     setClient(null)
+
+    // Clear user from Sentry
+    setSentryUser(null)
   }
 
   const impersonateClient = (clientToImpersonate: Client) => {
