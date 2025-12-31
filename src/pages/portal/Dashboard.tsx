@@ -555,7 +555,7 @@ export default function PortalDashboard() {
 
     const actions: Array<{
       id: string
-      type: 'recording-prep' | 'going-live' | 'share-episode' | 'follow-up'
+      type: 'recording-prep' | 'going-live' | 'share-episode' | 'follow-up' | 'schedule-recording' | 'get-episode-url'
       booking: Booking
       date: Date
       title: string
@@ -637,6 +637,45 @@ export default function PortalDashboard() {
               ? `Recording was ${daysSinceRecording} days ago - check on publish date`
               : `Ask host when episode will be published`,
             urgent: daysSinceRecording > 30
+          })
+        }
+      }
+
+      // Booked but no recording date scheduled yet
+      if ((booking.status === 'booked' || booking.status === 'conversation_started' || booking.status === 'in_progress') && !booking.recording_date) {
+        const createdDate = booking.created_at ? new Date(booking.created_at) : now
+        const daysSinceBooked = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
+
+        actions.push({
+          id: `schedule-recording-${booking.id}`,
+          type: 'schedule-recording',
+          booking,
+          date: createdDate,
+          title: `Schedule recording for ${booking.podcast_name}`,
+          description: daysSinceBooked > 7
+            ? `Booked ${daysSinceBooked} days ago - reach out to schedule recording`
+            : `Connect with host to schedule recording date`,
+          urgent: daysSinceBooked > 14
+        })
+      }
+
+      // Published but no episode URL - need to get it
+      if (booking.status === 'published' && !booking.episode_url) {
+        const publishDate = booking.publish_date ? new Date(booking.publish_date) : now
+        const daysSincePublished = Math.floor((now.getTime() - publishDate.getTime()) / (1000 * 60 * 60 * 24))
+
+        // Show if published recently or if it's been a while
+        if (daysSincePublished >= 0) {
+          actions.push({
+            id: `get-episode-url-${booking.id}`,
+            type: 'get-episode-url',
+            booking,
+            date: publishDate,
+            title: `Get episode link for ${booking.podcast_name}`,
+            description: daysSincePublished > 7
+              ? `Published ${daysSincePublished} days ago - request episode URL to share`
+              : `Ask host for episode URL to share with your audience`,
+            urgent: daysSincePublished > 14
           })
         }
       }
@@ -1710,9 +1749,11 @@ export default function PortalDashboard() {
                 {nextSteps.map((action) => {
                   const iconConfig = {
                     'recording-prep': { icon: FileText, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900' },
+                    'schedule-recording': { icon: Calendar, color: 'text-cyan-600 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-900' },
+                    'follow-up': { icon: MessageSquare, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900' },
                     'going-live': { icon: Bell, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900' },
-                    'share-episode': { icon: Share2, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900' },
-                    'follow-up': { icon: MessageSquare, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900' }
+                    'get-episode-url': { icon: ExternalLink, color: 'text-pink-600 dark:text-pink-400', bg: 'bg-pink-100 dark:bg-pink-900' },
+                    'share-episode': { icon: Share2, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900' }
                   }
                   const config = iconConfig[action.type]
                   const Icon = config.icon
@@ -1769,12 +1810,14 @@ export default function PortalDashboard() {
               <div className="text-center py-12 text-muted-foreground">
                 <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-medium mb-2">You're all caught up! 🎉</p>
-                <p className="text-sm">No action items for the selected time range. New tasks appear when:</p>
+                <p className="text-sm">No action items for the selected time range. New tasks appear for:</p>
                 <ul className="text-sm mt-3 space-y-2 max-w-md mx-auto text-left">
-                  <li>• <strong>Recording Prep:</strong> You have a recording scheduled (status: booked/in progress)</li>
-                  <li>• <strong>Follow Up:</strong> Episode was recorded but no publish date set yet</li>
-                  <li>• <strong>Going Live:</strong> An episode publish date is upcoming (status: recorded/published)</li>
-                  <li>• <strong>Share Episode:</strong> Episode was recently published with an episode URL added</li>
+                  <li>• <strong>Schedule Recording:</strong> Booked but no recording date set</li>
+                  <li>• <strong>Recording Prep:</strong> Recording scheduled in the future</li>
+                  <li>• <strong>Follow Up:</strong> Recorded but no publish date set</li>
+                  <li>• <strong>Going Live:</strong> Episode publish date is upcoming</li>
+                  <li>• <strong>Get Episode URL:</strong> Published but missing episode link</li>
+                  <li>• <strong>Share Episode:</strong> Recently published with URL to promote</li>
                 </ul>
                 {bookings && bookings.length > 0 && (
                   <p className="text-xs mt-4 text-muted-foreground/70">
