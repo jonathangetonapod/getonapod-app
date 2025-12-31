@@ -1,7 +1,8 @@
 import * as Sentry from '@sentry/react'
 
 export function initSentry() {
-  const sentryDsn = import.meta.env.VITE_SENTRY_DSN
+  // Temporary: Hardcoded DSN until Railway environment variable issue is resolved
+  const sentryDsn = import.meta.env.VITE_SENTRY_DSN || 'https://8afda039e36f8ba008a91b0069894718@o4510627480731648.ingest.us.sentry.io/4510627502096384'
 
   if (!sentryDsn) {
     console.warn('[Sentry] DSN not configured - error tracking disabled')
