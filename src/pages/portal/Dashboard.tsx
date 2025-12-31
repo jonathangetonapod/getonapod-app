@@ -555,7 +555,7 @@ export default function PortalDashboard() {
 
     const actions: Array<{
       id: string
-      type: 'recording-prep' | 'going-live' | 'share-episode'
+      type: 'recording-prep' | 'going-live' | 'share-episode' | 'follow-up'
       booking: Booking
       date: Date
       title: string
@@ -616,6 +616,27 @@ export default function PortalDashboard() {
             title: `Share your episode on ${booking.podcast_name}`,
             description: 'Post to LinkedIn, Twitter, and your email list',
             urgent: false
+          })
+        }
+      }
+
+      // Recorded but no publish date - follow up with host
+      if (booking.status === 'recorded' && !booking.publish_date && booking.recording_date) {
+        const recordingDate = new Date(booking.recording_date)
+        const daysSinceRecording = Math.floor((now.getTime() - recordingDate.getTime()) / (1000 * 60 * 60 * 24))
+
+        // Only show if recording was recent (within time range) or if it's been a while
+        if (daysSinceRecording >= 0) {
+          actions.push({
+            id: `follow-up-${booking.id}`,
+            type: 'follow-up',
+            booking,
+            date: recordingDate,
+            title: `Follow up on ${booking.podcast_name} episode`,
+            description: daysSinceRecording > 14
+              ? `Recording was ${daysSinceRecording} days ago - check on publish date`
+              : `Ask host when episode will be published`,
+            urgent: daysSinceRecording > 30
           })
         }
       }
@@ -1690,7 +1711,8 @@ export default function PortalDashboard() {
                   const iconConfig = {
                     'recording-prep': { icon: FileText, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900' },
                     'going-live': { icon: Bell, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900' },
-                    'share-episode': { icon: Share2, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900' }
+                    'share-episode': { icon: Share2, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900' },
+                    'follow-up': { icon: MessageSquare, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900' }
                   }
                   const config = iconConfig[action.type]
                   const Icon = config.icon
@@ -1750,6 +1772,7 @@ export default function PortalDashboard() {
                 <p className="text-sm">No action items for the selected time range. New tasks appear when:</p>
                 <ul className="text-sm mt-3 space-y-2 max-w-md mx-auto text-left">
                   <li>• <strong>Recording Prep:</strong> You have a recording scheduled (status: booked/in progress)</li>
+                  <li>• <strong>Follow Up:</strong> Episode was recorded but no publish date set yet</li>
                   <li>• <strong>Going Live:</strong> An episode publish date is upcoming (status: recorded/published)</li>
                   <li>• <strong>Share Episode:</strong> Episode was recently published with an episode URL added</li>
                 </ul>
