@@ -10,11 +10,12 @@ CREATE TABLE IF NOT EXISTS podcast_fit_analyses (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
   -- Ensure one analysis per client+booking combo
-  UNIQUE(client_id, booking_id),
-
-  -- Index for fast lookups
-  INDEX idx_podcast_fit_client_booking (client_id, booking_id)
+  UNIQUE(client_id, booking_id)
 );
+
+-- Create index for fast lookups
+CREATE INDEX IF NOT EXISTS idx_podcast_fit_client_booking
+  ON podcast_fit_analyses(client_id, booking_id);
 
 -- Enable RLS
 ALTER TABLE podcast_fit_analyses ENABLE ROW LEVEL SECURITY;
