@@ -4252,11 +4252,16 @@ export default function PortalDashboard() {
                 const isBestValue = service.name.toLowerCase().includes('bundle')
 
                 return (
-                  <Card key={service.id} className="overflow-hidden">
+                  <Card key={service.id} className="overflow-hidden relative">
                     {isBestValue && (
                       <div className="bg-green-600 text-white text-xs font-semibold text-center py-1">
                         Best Value
                       </div>
+                    )}
+                    {availableEpisodes.length > 0 && (
+                      <Badge className="absolute top-2 right-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white border-0 shadow-lg z-10">
+                        {availableEpisodes.length} Available
+                      </Badge>
                     )}
                     <CardHeader className="pb-3">
                       <div className="flex items-center gap-3">
@@ -4295,11 +4300,6 @@ export default function PortalDashboard() {
                           </>
                         )}
                       </Button>
-                      {availableEpisodes.length > 0 && (
-                        <p className="text-xs text-center text-muted-foreground mt-2">
-                          {availableEpisodes.length} {availableEpisodes.length === 1 ? 'episode' : 'episodes'} available
-                        </p>
-                      )}
                     </CardContent>
                   </Card>
                 )
