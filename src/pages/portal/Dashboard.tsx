@@ -119,7 +119,47 @@ export default function PortalDashboard() {
   const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
   const [preloadedAnalyses, setPreloadedAnalyses] = useState<Map<string, PodcastFitAnalysis>>(new Map())
   const [preloadProgress, setPreloadProgress] = useState<{ loaded: number; total: number; isLoading: boolean }>({ loaded: 0, total: 0, isLoading: false })
+  const [localStorageLoaded, setLocalStorageLoaded] = useState(false)
   const outreachPerPage = 12
+
+  // Load cached analyses from localStorage on mount
+  useEffect(() => {
+    if (!client?.id) return
+
+    try {
+      const cacheKey = `podcast-analyses-${client.id}`
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        // Check if cache is less than 24 hours old
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+          const map = new Map<string, PodcastFitAnalysis>(Object.entries(parsed.data))
+          setPreloadedAnalyses(map)
+          setPreloadProgress({ loaded: map.size, total: map.size, isLoading: false })
+          console.log('[Dashboard] Loaded', map.size, 'analyses from localStorage')
+        } else {
+          localStorage.removeItem(cacheKey)
+        }
+      }
+    } catch (error) {
+      console.error('[Dashboard] Error loading from localStorage:', error)
+    }
+    setLocalStorageLoaded(true)
+  }, [client?.id])
+
+  // Save analyses to localStorage when they change
+  useEffect(() => {
+    if (!client?.id || preloadedAnalyses.size === 0 || !localStorageLoaded) return
+
+    try {
+      const cacheKey = `podcast-analyses-${client.id}`
+      const data = Object.fromEntries(preloadedAnalyses)
+      localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: Date.now() }))
+      console.log('[Dashboard] Saved', preloadedAnalyses.size, 'analyses to localStorage')
+    } catch (error) {
+      console.error('[Dashboard] Error saving to localStorage:', error)
+    }
+  }, [preloadedAnalyses, client?.id, localStorageLoaded])
 
   // Premium Placements state
   const [premiumSearchQuery, setPremiumSearchQuery] = useState('')
@@ -255,6 +295,9 @@ export default function PortalDashboard() {
     const preloadAllAnalyses = async () => {
       if (!outreachData?.podcasts?.length || !client?.id || !client?.bio) return
 
+      // Wait for localStorage to be checked first
+      if (!localStorageLoaded) return
+
       // Don't re-run if already loading or if we have all analyses
       if (preloadProgress.isLoading) return
       if (preloadedAnalyses.size >= outreachData.podcasts.length) return
@@ -324,7 +367,7 @@ export default function PortalDashboard() {
     }
 
     preloadAllAnalyses()
-  }, [outreachData?.podcasts, client?.id, client?.bio, client?.name])
+  }, [outreachData?.podcasts, client?.id, client?.bio, client?.name, localStorageLoaded])
 
   // When viewing an outreach podcast, use preloaded data if available
   useEffect(() => {
