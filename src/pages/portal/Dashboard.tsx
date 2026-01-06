@@ -3311,7 +3311,7 @@ export default function PortalDashboard() {
                             <Table>
                               <TableHeader>
                                 <TableRow className="bg-muted/50">
-                                  <TableHead className="w-[60px]"></TableHead>
+                                  <TableHead className="w-[80px]"></TableHead>
                                   <TableHead>Podcast</TableHead>
                                   <TableHead className="hidden sm:table-cell">Publisher</TableHead>
                                   <TableHead className="text-right">Audience</TableHead>
@@ -3334,11 +3334,11 @@ export default function PortalDashboard() {
                                         <img
                                           src={podcast.podcast_image_url}
                                           alt={podcast.podcast_name}
-                                          className="w-12 h-12 rounded-md object-cover"
+                                          className="w-16 h-16 rounded-lg object-cover shadow-sm"
                                         />
                                       ) : (
-                                        <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center">
-                                          <Mic className="h-5 w-5 text-muted-foreground" />
+                                        <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                                          <Mic className="h-6 w-6 text-muted-foreground" />
                                         </div>
                                       )}
                                     </TableCell>
