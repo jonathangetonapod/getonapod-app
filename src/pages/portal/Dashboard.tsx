@@ -56,7 +56,9 @@ import {
   SlidersHorizontal,
   RefreshCw,
   Package,
-  Sparkles
+  Sparkles,
+  LayoutGrid,
+  List
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -108,6 +110,7 @@ export default function PortalDashboard() {
   const [viewingDayBookings, setViewingDayBookings] = useState<{ date: Date; bookings: Array<{ booking: Booking; dateType: 'scheduled' | 'recording' | 'publish' }> } | null>(null)
   const [viewingOutreachPodcast, setViewingOutreachPodcast] = useState<OutreachPodcast | null>(null)
   const [outreachPage, setOutreachPage] = useState(1)
+  const [outreachViewMode, setOutreachViewMode] = useState<'grid' | 'list'>('grid')
   const outreachPerPage = 12
 
   // Premium Placements state
@@ -3095,6 +3098,27 @@ export default function PortalDashboard() {
                         </CardDescription>
                       </div>
                       <div className="flex gap-2 flex-wrap">
+                        {/* View Toggle */}
+                        <div className="flex border rounded-md overflow-hidden">
+                          <Button
+                            variant={outreachViewMode === 'grid' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setOutreachViewMode('grid')}
+                            className="rounded-none px-3"
+                            title="Grid view"
+                          >
+                            <LayoutGrid className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant={outreachViewMode === 'list' ? 'default' : 'ghost'}
+                            size="sm"
+                            onClick={() => setOutreachViewMode('list')}
+                            className="rounded-none px-3"
+                            title="List view"
+                          >
+                            <List className="h-4 w-4" />
+                          </Button>
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
@@ -3210,73 +3234,160 @@ export default function PortalDashboard() {
                           </Card>
                         </div>
 
-                        <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                          {outreachData.podcasts
-                            .slice((outreachPage - 1) * outreachPerPage, outreachPage * outreachPerPage)
-                            .map((podcast) => (
-                          <div
-                            key={podcast.podcast_id}
-                            className="flex flex-col gap-3 p-3 sm:p-4 sm:gap-4 rounded-lg border bg-card hover:shadow-lg transition-shadow cursor-pointer"
-                            onClick={() => setViewingOutreachPodcast(podcast)}
-                          >
-                            {podcast.podcast_image_url && (
-                              <img
-                                src={podcast.podcast_image_url}
-                                alt={podcast.podcast_name}
-                                className="w-full h-40 sm:h-48 object-cover rounded-md"
-                              />
-                            )}
-                            <div className="flex-1 space-y-2">
-                              <h3 className="font-semibold text-lg line-clamp-2">{podcast.podcast_name}</h3>
-
-                              {podcast.podcast_description && (
-                                <p className="text-sm text-muted-foreground line-clamp-3">
-                                  {podcast.podcast_description}
-                                </p>
+                        {/* Grid View */}
+                        {outreachViewMode === 'grid' && (
+                          <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                            {outreachData.podcasts
+                              .slice((outreachPage - 1) * outreachPerPage, outreachPage * outreachPerPage)
+                              .map((podcast) => (
+                            <div
+                              key={podcast.podcast_id}
+                              className="flex flex-col gap-3 p-3 sm:p-4 sm:gap-4 rounded-lg border bg-card hover:shadow-lg transition-shadow cursor-pointer"
+                              onClick={() => setViewingOutreachPodcast(podcast)}
+                            >
+                              {podcast.podcast_image_url && (
+                                <img
+                                  src={podcast.podcast_image_url}
+                                  alt={podcast.podcast_name}
+                                  className="w-full h-40 sm:h-48 object-cover rounded-md"
+                                />
                               )}
+                              <div className="flex-1 space-y-2">
+                                <h3 className="font-semibold text-lg line-clamp-2">{podcast.podcast_name}</h3>
 
-                              <div className="flex flex-wrap gap-2 pt-2">
-                                {podcast.audience_size && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    👥 {podcast.audience_size.toLocaleString()}
-                                  </Badge>
+                                {podcast.podcast_description && (
+                                  <p className="text-sm text-muted-foreground line-clamp-3">
+                                    {podcast.podcast_description}
+                                  </p>
                                 )}
-                                {podcast.itunes_rating && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    ⭐ {Number(podcast.itunes_rating).toFixed(1)}
-                                  </Badge>
-                                )}
-                                {podcast.episode_count && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    🎙️ {podcast.episode_count} eps
-                                  </Badge>
+
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                  {podcast.audience_size && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      👥 {podcast.audience_size.toLocaleString()}
+                                    </Badge>
+                                  )}
+                                  {podcast.itunes_rating && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      ⭐ {Number(podcast.itunes_rating).toFixed(1)}
+                                    </Badge>
+                                  )}
+                                  {podcast.episode_count && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      🎙️ {podcast.episode_count} eps
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                {podcast.publisher_name && (
+                                  <p className="text-xs text-muted-foreground">
+                                    By {podcast.publisher_name}
+                                  </p>
                                 )}
                               </div>
 
-                              {podcast.publisher_name && (
-                                <p className="text-xs text-muted-foreground">
-                                  By {podcast.publisher_name}
-                                </p>
+                              {podcast.podcast_url && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')
+                                  }}
+                                >
+                                  <ExternalLink className="h-4 w-4 mr-2" />
+                                  Visit Podcast
+                                </Button>
                               )}
                             </div>
-
-                            {podcast.podcast_url && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')
-                                }}
-                              >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                Visit Podcast
-                              </Button>
-                            )}
+                              ))}
                           </div>
-                            ))}
-                        </div>
+                        )}
+
+                        {/* List View */}
+                        {outreachViewMode === 'list' && (
+                          <div className="border rounded-lg overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-muted/50">
+                                  <TableHead className="w-[60px]"></TableHead>
+                                  <TableHead>Podcast</TableHead>
+                                  <TableHead className="hidden sm:table-cell">Publisher</TableHead>
+                                  <TableHead className="text-right">Audience</TableHead>
+                                  <TableHead className="text-right hidden md:table-cell">Episodes</TableHead>
+                                  <TableHead className="text-right hidden md:table-cell">Rating</TableHead>
+                                  <TableHead className="w-[100px]"></TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {outreachData.podcasts
+                                  .slice((outreachPage - 1) * outreachPerPage, outreachPage * outreachPerPage)
+                                  .map((podcast) => (
+                                  <TableRow
+                                    key={podcast.podcast_id}
+                                    className="cursor-pointer hover:bg-muted/50"
+                                    onClick={() => setViewingOutreachPodcast(podcast)}
+                                  >
+                                    <TableCell className="py-3">
+                                      {podcast.podcast_image_url ? (
+                                        <img
+                                          src={podcast.podcast_image_url}
+                                          alt={podcast.podcast_name}
+                                          className="w-12 h-12 rounded-md object-cover"
+                                        />
+                                      ) : (
+                                        <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center">
+                                          <Mic className="h-5 w-5 text-muted-foreground" />
+                                        </div>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      <div className="space-y-1">
+                                        <p className="font-medium line-clamp-1">{podcast.podcast_name}</p>
+                                        {podcast.podcast_description && (
+                                          <p className="text-xs text-muted-foreground line-clamp-1 max-w-md">
+                                            {podcast.podcast_description}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                                      {podcast.publisher_name || '-'}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <span className="font-medium">
+                                        {podcast.audience_size ? podcast.audience_size.toLocaleString() : '-'}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right hidden md:table-cell">
+                                      {podcast.episode_count || '-'}
+                                    </TableCell>
+                                    <TableCell className="text-right hidden md:table-cell">
+                                      {podcast.itunes_rating ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                          {Number(podcast.itunes_rating).toFixed(1)}
+                                        </span>
+                                      ) : '-'}
+                                    </TableCell>
+                                    <TableCell onClick={(e) => e.stopPropagation()}>
+                                      {podcast.podcast_url && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')}
+                                        >
+                                          <ExternalLink className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
 
                         {/* Pagination */}
                         {outreachData.podcasts.length > outreachPerPage && (

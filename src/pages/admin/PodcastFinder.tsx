@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -67,6 +67,9 @@ export default function PodcastFinder() {
   // Google Sheets Export
   const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set())
   const [isExporting, setIsExporting] = useState(false)
+
+  // Ref to track regeneration attempts (avoids stale closure issues)
+  const regenerateAttemptsRef = useRef<Record<string, number>>({})
 
   // Filters
   const [minAudience, setMinAudience] = useState('')
@@ -164,6 +167,9 @@ export default function PodcastFinder() {
         regenerateAttempts: 0
       }))
 
+      // Reset regeneration attempt tracking for new queries
+      regenerateAttemptsRef.current = {}
+
       setQueries(queries)
       toast.success('Generated 5 AI-powered search queries!')
     } catch (error) {
@@ -180,12 +186,23 @@ export default function PodcastFinder() {
     const query = queries.find(q => q.id === queryId)
     if (!query) return
 
-    console.log(`handleRegenerateQuery called: queryId=${queryId}, isAutomatic=${isAutomatic}, currentAttempts=${query.regenerateAttempts}`)
+    // Use ref for attempt tracking to avoid stale closure issues
+    const currentAttempts = regenerateAttemptsRef.current[queryId] || 0
+    console.log(`handleRegenerateQuery called: queryId=${queryId}, isAutomatic=${isAutomatic}, currentAttempts=${currentAttempts}`)
 
     // Limit automatic regenerations to 1 attempt per query (2 total searches)
-    if (isAutomatic && query.regenerateAttempts >= 1) {
-      console.log(`Query ${queryId} has reached max regeneration attempts (${query.regenerateAttempts}), STOPPING`)
+    if (isAutomatic && currentAttempts >= 1) {
+      console.log(`Query ${queryId} has reached max regeneration attempts (${currentAttempts}), STOPPING`)
+      toast.error(`No podcasts found after retrying. Try adjusting filters or editing the query manually.`)
       return
+    }
+
+    // Increment ref immediately (synchronous, no closure issues)
+    if (isAutomatic) {
+      regenerateAttemptsRef.current[queryId] = currentAttempts + 1
+    } else {
+      // Manual regenerate resets the counter
+      regenerateAttemptsRef.current[queryId] = 0
     }
 
     try {
@@ -213,7 +230,7 @@ export default function PodcastFinder() {
                 results: [],
                 compatibilityScores: {},
                 scoreReasonings: {},
-                regenerateAttempts: isAutomatic ? q.regenerateAttempts + 1 : 0
+                regenerateAttempts: regenerateAttemptsRef.current[queryId] || 0
               }
             : q
         )
@@ -245,9 +262,12 @@ export default function PodcastFinder() {
     const query = queries.find(q => q.id === queryId)
     if (!query) return
 
+    // Use ref for attempt tracking (avoids stale closure issues)
+    const currentAttempts = regenerateAttemptsRef.current[queryId] || 0
+
     // HARD STOP: Prevent infinite loops - max 2 total searches per query
-    if (query.regenerateAttempts >= 2) {
-      console.log(`STOPPED: Query ${queryId} has already been regenerated ${query.regenerateAttempts} times`)
+    if (currentAttempts >= 2) {
+      console.log(`STOPPED: Query ${queryId} has already been regenerated ${currentAttempts} times`)
       toast.error(`Query has reached maximum retry limit`)
       return
     }
@@ -264,7 +284,7 @@ export default function PodcastFinder() {
         order_by: 'audience_size',
         order_dir: 'desc',
         language: 'en',
-        search_fields: searchFields, // New: Limit search to specific fields
+        search_fields: searchFields,
       }
 
       // Apply optional filters
@@ -275,11 +295,11 @@ export default function PodcastFinder() {
       if (hasGuests === 'true') filters.has_guests = true
       else if (hasGuests === 'false') filters.has_guests = false
 
-      // New: Filter for podcasts with sponsors (professional/monetized)
+      // Filter for podcasts with sponsors (professional/monetized)
       if (hasSponsors === 'true') filters.has_sponsors = true
       else if (hasSponsors === 'false') filters.has_sponsors = false
 
-      // New: Filter for active podcasts only (posted in last 6 months)
+      // Filter for active podcasts only (posted in last 6 months)
       if (activeOnly) {
         const sixMonthsAgo = new Date()
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
@@ -289,23 +309,21 @@ export default function PodcastFinder() {
       const response = await searchPodcasts(filters)
       const results = response.podcasts || []
 
-      // Get the current regenerate attempts from state BEFORE updating
-      const currentQuery = queries.find(q => q.id === queryId)
-      const currentAttempts = currentQuery?.regenerateAttempts || 0
+      // Re-check ref for current attempts (in case of concurrent calls)
+      const attemptsNow = regenerateAttemptsRef.current[queryId] || 0
 
       setQueries(prev => prev.map(q =>
         q.id === queryId
-          ? { ...q, results, isSearching: false }
+          ? { ...q, results, isSearching: false, regenerateAttempts: attemptsNow }
           : q
       ))
 
       setExpandedQueryId(queryId)
 
-      // Check if we should auto-regenerate due to zero results
-      // Use the attempts value we captured BEFORE the state update
-      console.log(`Query ${queryId}: Found ${results.length} results, currentAttempts=${currentAttempts}`)
+      console.log(`Query ${queryId}: Found ${results.length} results, currentAttempts=${attemptsNow}`)
 
-      if (results.length === 0 && currentAttempts < 1) {
+      // Check if we should auto-regenerate due to zero results
+      if (results.length === 0 && attemptsNow < 1) {
         console.log(`Query ${queryId}: Triggering auto-regeneration`)
         toast.warning(`No podcasts found. Trying a different query...`)
         // Add delay to respect rate limits (120/min = ~500ms between requests)
@@ -315,7 +333,7 @@ export default function PodcastFinder() {
       } else {
         if (results.length === 0) {
           console.log(`Query ${queryId}: Max attempts reached, stopping`)
-          toast.error(`No podcasts found after ${currentAttempts + 1} attempts`)
+          // Message already shown by handleRegenerateQuery when it stops
         } else {
           toast.success(`Found ${results.length} podcasts!`)
         }
@@ -468,6 +486,7 @@ export default function PodcastFinder() {
     setQueries([])
     setExpandedQueryId(null)
     setSelectedPodcasts(new Set())
+    regenerateAttemptsRef.current = {} // Clear regeneration tracking
     localStorage.removeItem('podcast-finder-state') // Clear persisted state
     toast.success('Queries cleared')
   }
