@@ -3432,9 +3432,9 @@ export default function PortalDashboard() {
                               <div className="flex-1 space-y-2">
                                 <h3 className="font-semibold text-lg line-clamp-2">{podcast.podcast_name}</h3>
 
-                                {podcast.podcast_description && (
+                                {(preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description) && (
                                   <p className="text-sm text-muted-foreground line-clamp-3">
-                                    {podcast.podcast_description}
+                                    {preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description}
                                   </p>
                                 )}
 
@@ -3535,9 +3535,9 @@ export default function PortalDashboard() {
                                     <TableCell>
                                       <div className="space-y-1">
                                         <p className="font-medium line-clamp-1">{podcast.podcast_name}</p>
-                                        {podcast.podcast_description && (
+                                        {(preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description) && (
                                           <p className="text-xs text-muted-foreground line-clamp-1 max-w-md">
-                                            {podcast.podcast_description}
+                                            {preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description}
                                           </p>
                                         )}
                                       </div>
