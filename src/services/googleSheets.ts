@@ -315,20 +315,29 @@ export interface AnalyzePodcastFitResult {
   analysis: PodcastFitAnalysis
 }
 
+export interface PodcastDataForAnalysis {
+  podcast_id: string
+  podcast_name: string
+  podcast_description: string | null
+  podcast_url: string | null
+  publisher_name: string | null
+  itunes_rating: number | null
+  episode_count: number | null
+  audience_size: number | null
+}
+
 /**
  * Analyze podcast fit for a client using AI with web search
  * Returns enriched description, fit reasons, and pitch angles
  */
 export async function analyzePodcastFit(
-  podcastId: string,
-  podcastName: string,
-  podcastDescription: string | null,
+  podcast: PodcastDataForAnalysis,
   clientId: string,
   clientName: string,
   clientBio: string
 ): Promise<AnalyzePodcastFitResult> {
-  if (!podcastId || !podcastName || !clientId || !clientBio) {
-    throw new Error('podcastId, podcastName, clientId, and clientBio are required')
+  if (!podcast.podcast_id || !podcast.podcast_name || !clientId || !clientBio) {
+    throw new Error('podcast data, clientId, and clientBio are required')
   }
 
   try {
@@ -339,9 +348,14 @@ export async function analyzePodcastFit(
         'apikey': SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({
-        podcastId,
-        podcastName,
-        podcastDescription,
+        podcastId: podcast.podcast_id,
+        podcastName: podcast.podcast_name,
+        podcastDescription: podcast.podcast_description,
+        podcastUrl: podcast.podcast_url,
+        publisherName: podcast.publisher_name,
+        itunesRating: podcast.itunes_rating,
+        episodeCount: podcast.episode_count,
+        audienceSize: podcast.audience_size,
         clientId,
         clientName,
         clientBio,

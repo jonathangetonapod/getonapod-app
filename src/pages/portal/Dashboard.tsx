@@ -260,9 +260,16 @@ export default function PortalDashboard() {
 
       try {
         const result = await analyzePodcastFit(
-          viewingOutreachPodcast.podcast_id,
-          viewingOutreachPodcast.podcast_name,
-          viewingOutreachPodcast.podcast_description,
+          {
+            podcast_id: viewingOutreachPodcast.podcast_id,
+            podcast_name: viewingOutreachPodcast.podcast_name,
+            podcast_description: viewingOutreachPodcast.podcast_description,
+            podcast_url: viewingOutreachPodcast.podcast_url,
+            publisher_name: viewingOutreachPodcast.publisher_name,
+            itunes_rating: viewingOutreachPodcast.itunes_rating,
+            episode_count: viewingOutreachPodcast.episode_count,
+            audience_size: viewingOutreachPodcast.audience_size,
+          },
           client.id,
           client.name,
           client.bio

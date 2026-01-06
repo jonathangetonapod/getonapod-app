@@ -22,13 +22,26 @@ serve(async (req) => {
   }
 
   try {
-    const { podcastId, podcastName, podcastDescription, clientId, clientName, clientBio } = await req.json()
+    const {
+      podcastId,
+      podcastName,
+      podcastDescription,
+      podcastUrl,
+      publisherName,
+      itunesRating,
+      episodeCount,
+      audienceSize,
+      clientId,
+      clientName,
+      clientBio
+    } = await req.json()
 
     if (!podcastId || !podcastName || !clientId || !clientBio) {
       throw new Error('podcastId, podcastName, clientId, and clientBio are required')
     }
 
     console.log('[Analyze Podcast Fit] Starting analysis for:', podcastName, 'and client:', clientName)
+    console.log('[Analyze Podcast Fit] Podcast data:', { podcastUrl, publisherName, itunesRating, episodeCount, audienceSize })
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -71,11 +84,21 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
+    // Build podcast context with all available data
+    const podcastContext = [
+      `- **Name**: ${podcastName}`,
+      podcastDescription ? `- **Raw Description** (may contain HTML): ${podcastDescription}` : null,
+      podcastUrl ? `- **Website/URL**: ${podcastUrl}` : null,
+      publisherName ? `- **Publisher/Host**: ${publisherName}` : null,
+      itunesRating ? `- **iTunes Rating**: ${itunesRating}/5` : null,
+      episodeCount ? `- **Episode Count**: ${episodeCount} episodes` : null,
+      audienceSize ? `- **Estimated Audience Size**: ${audienceSize.toLocaleString()}` : null,
+    ].filter(Boolean).join('\n')
+
     const prompt = `You are a podcast booking strategist. I need you to analyze a podcast and determine why it would be a great fit for a specific client.
 
-## Podcast Information
-- **Name**: ${podcastName}
-- **Current Description**: ${podcastDescription || 'Not available'}
+## Podcast Information (from Podscan database)
+${podcastContext}
 
 ## Client Information
 - **Name**: ${clientName || 'Client'}
@@ -83,26 +106,30 @@ serve(async (req) => {
 
 ## Your Tasks
 
-1. **Research the podcast** using web search to understand:
+1. **Research the podcast** using web search to learn more about:
    - What topics they typically cover
-   - Their audience demographics
-   - Notable past guests
-   - The host's interview style and interests
+   - Their target audience
+   - Notable past guests (if any)
+   - The host's background and interview style
 
-2. **Generate a clean description** of the podcast (2-3 sentences, no HTML, professional tone)
+2. **Generate a clean, compelling description** of the podcast:
+   - 2-3 sentences, professional tone
+   - NO HTML tags - clean plain text only
+   - Capture the essence and appeal of the show
+   - Include what makes it unique or notable
 
-3. **Analyze the fit** between this client and podcast. Provide 3-4 specific reasons why this is a great match.
+3. **Analyze the fit** between this client and podcast. Provide 3-4 specific, concrete reasons why this is a great match based on your research.
 
 4. **Generate 3 pitch angles** - specific episode topic ideas that would appeal to this podcast's audience while showcasing the client's expertise.
 
 ## Response Format
-Respond with ONLY valid JSON in this exact format:
+Respond with ONLY valid JSON in this exact format (no markdown code blocks):
 {
-  "clean_description": "A 2-3 sentence description of the podcast without any HTML tags",
+  "clean_description": "A compelling 2-3 sentence description of the podcast without any HTML tags",
   "fit_reasons": [
-    "First reason why this is a great fit",
-    "Second reason why this is a great fit",
-    "Third reason why this is a great fit"
+    "First specific reason why this is a great fit",
+    "Second specific reason why this is a great fit",
+    "Third specific reason why this is a great fit"
   ],
   "pitch_angles": [
     {
@@ -130,7 +157,7 @@ Respond with ONLY valid JSON in this exact format:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250514',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 2048,
         messages: [
           {
@@ -155,24 +182,44 @@ Respond with ONLY valid JSON in this exact format:
     }
 
     const claudeData = await claudeResponse.json()
-    console.log('[Analyze Podcast Fit] Claude response received')
+    console.log('[Analyze Podcast Fit] Claude response received, content blocks:', claudeData.content?.length)
 
-    // Extract text content from response
+    // Extract text content from response (web search responses have multiple block types)
     let analysisText = ''
     for (const block of claudeData.content) {
       if (block.type === 'text') {
         analysisText += block.text
+        console.log('[Analyze Podcast Fit] Found text block, length:', block.text?.length)
       }
     }
 
-    // Parse JSON from response
-    const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
+    console.log('[Analyze Podcast Fit] Combined text length:', analysisText.length)
+    console.log('[Analyze Podcast Fit] Text preview:', analysisText.substring(0, 500))
+
+    // Parse JSON from response - try multiple patterns
+    // First try to find JSON in code blocks
+    let jsonMatch = analysisText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+    let jsonStr = jsonMatch ? jsonMatch[1] : null
+
+    // If not in code blocks, try to find raw JSON
+    if (!jsonStr) {
+      jsonMatch = analysisText.match(/(\{[\s\S]*"clean_description"[\s\S]*"fit_reasons"[\s\S]*"pitch_angles"[\s\S]*\})/)
+      jsonStr = jsonMatch ? jsonMatch[1] : null
+    }
+
+    // Last resort: find any JSON object
+    if (!jsonStr) {
+      jsonMatch = analysisText.match(/\{[\s\S]*\}/)
+      jsonStr = jsonMatch ? jsonMatch[0] : null
+    }
+
+    if (!jsonStr) {
       console.error('[Analyze Podcast Fit] Failed to parse JSON from:', analysisText)
       throw new Error('Failed to parse analysis from Claude response')
     }
 
-    const analysis: FitAnalysis = JSON.parse(jsonMatch[0])
+    console.log('[Analyze Podcast Fit] Found JSON, parsing...')
+    const analysis: FitAnalysis = JSON.parse(jsonStr)
 
     console.log('[Analyze Podcast Fit] Analysis parsed successfully')
 
