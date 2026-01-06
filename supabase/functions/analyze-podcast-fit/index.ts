@@ -95,9 +95,9 @@ serve(async (req) => {
       audienceSize ? `- **Estimated Audience Size**: ${audienceSize.toLocaleString()}` : null,
     ].filter(Boolean).join('\n')
 
-    const prompt = `You are a podcast booking strategist. I need you to analyze a podcast and determine why it would be a great fit for a specific client.
+    const prompt = `You are a podcast booking strategist. Analyze this podcast and determine why it would be a great fit for a specific client.
 
-## Podcast Information (from Podscan database)
+## Podcast Information
 ${podcastContext}
 
 ## Client Information
@@ -106,21 +106,15 @@ ${podcastContext}
 
 ## Your Tasks
 
-1. **Research the podcast** using web search to learn more about:
-   - What topics they typically cover
-   - Their target audience
-   - Notable past guests (if any)
-   - The host's background and interview style
-
-2. **Generate a clean, compelling description** of the podcast:
+1. **Generate a clean, compelling description** of the podcast:
    - 2-3 sentences, professional tone
    - NO HTML tags - clean plain text only
-   - Capture the essence and appeal of the show
-   - Include what makes it unique or notable
+   - Based on the podcast name, description, and other data provided
+   - Capture what the show is about and who it's for
 
-3. **Analyze the fit** between this client and podcast. Provide 3-4 specific, concrete reasons why this is a great match based on your research.
+2. **Analyze the fit** between this client and podcast. Provide 3 specific reasons why this is a great match based on the client's expertise and the podcast's focus.
 
-4. **Generate 3 pitch angles** - specific episode topic ideas that would appeal to this podcast's audience while showcasing the client's expertise.
+3. **Generate 3 pitch angles** - specific episode topic ideas that would appeal to this podcast's audience while showcasing the client's expertise.
 
 ## Response Format
 Respond with ONLY valid JSON in this exact format (no markdown code blocks):
@@ -147,7 +141,7 @@ Respond with ONLY valid JSON in this exact format (no markdown code blocks):
   ]
 }`
 
-    console.log('[Analyze Podcast Fit] Calling Claude API with web search...')
+    console.log('[Analyze Podcast Fit] Calling Claude API...')
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -163,13 +157,6 @@ Respond with ONLY valid JSON in this exact format (no markdown code blocks):
           {
             role: 'user',
             content: prompt,
-          },
-        ],
-        tools: [
-          {
-            type: 'web_search_20250305',
-            name: 'web_search',
-            max_uses: 5,
           },
         ],
       }),

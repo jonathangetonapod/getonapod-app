@@ -261,7 +261,7 @@ export default function PortalDashboard() {
       console.log('[Dashboard] Starting background preload of', outreachData.podcasts.length, 'podcast analyses')
       setPreloadProgress({ loaded: 0, total: outreachData.podcasts.length, isLoading: true })
 
-      const BATCH_SIZE = 3 // Process 3 at a time to avoid rate limits
+      const BATCH_SIZE = 5 // Process 5 at a time (fast without web search)
       const podcasts = outreachData.podcasts
       const newAnalyses = new Map(preloadedAnalyses)
 
