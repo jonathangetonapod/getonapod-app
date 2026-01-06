@@ -65,7 +65,7 @@ import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAx
 import { getClientBookings } from '@/services/clientPortal'
 import type { Booking } from '@/services/bookings'
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
-import { getClientOutreachPodcasts, deleteOutreachPodcast, type OutreachPodcast } from '@/services/googleSheets'
+import { getClientOutreachPodcasts, deleteOutreachPodcast, analyzePodcastFit, type OutreachPodcast, type PodcastFitAnalysis } from '@/services/googleSheets'
 import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
 import { CartButton } from '@/components/CartButton'
@@ -114,6 +114,8 @@ export default function PortalDashboard() {
   const [outreachViewMode, setOutreachViewMode] = useState<'grid' | 'list'>('grid')
   const [deletingOutreachPodcast, setDeletingOutreachPodcast] = useState<OutreachPodcast | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [outreachFitAnalysis, setOutreachFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
+  const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
   const outreachPerPage = 12
 
   // Premium Placements state
@@ -244,6 +246,38 @@ export default function PortalDashboard() {
       setOutreachPage(1)
     }
   }, [outreachData?.total])
+
+  // Analyze podcast fit when viewing an outreach podcast
+  useEffect(() => {
+    const analyzeOutreachPodcast = async () => {
+      if (!viewingOutreachPodcast || !client?.id || !client?.bio) {
+        setOutreachFitAnalysis(null)
+        return
+      }
+
+      setIsAnalyzingOutreachFit(true)
+      setOutreachFitAnalysis(null)
+
+      try {
+        const result = await analyzePodcastFit(
+          viewingOutreachPodcast.podcast_id,
+          viewingOutreachPodcast.podcast_name,
+          viewingOutreachPodcast.podcast_description,
+          client.id,
+          client.name,
+          client.bio
+        )
+        setOutreachFitAnalysis(result.analysis)
+      } catch (error) {
+        console.error('Error analyzing podcast fit:', error)
+        // Don't show toast - just fail silently and show fallback UI
+      } finally {
+        setIsAnalyzingOutreachFit(false)
+      }
+    }
+
+    analyzeOutreachPodcast()
+  }, [viewingOutreachPodcast, client?.id, client?.bio, client?.name])
 
   // Handle deleting an outreach podcast
   const handleDeleteOutreachPodcast = async () => {
@@ -4227,91 +4261,146 @@ export default function PortalDashboard() {
 
       {/* Outreach Podcast Detail Modal */}
       <Dialog open={!!viewingOutreachPodcast} onOpenChange={() => setViewingOutreachPodcast(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Podcast Details</DialogTitle>
             <DialogDescription>
-              Detailed information about this outreach podcast
+              AI-powered analysis for your outreach strategy
             </DialogDescription>
           </DialogHeader>
           {viewingOutreachPodcast && (
             <div className="space-y-6">
               {/* Podcast Header */}
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col sm:flex-row gap-4 p-4 bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-lg border">
                 {viewingOutreachPodcast.podcast_image_url && (
                   <img
                     src={viewingOutreachPodcast.podcast_image_url}
                     alt={viewingOutreachPodcast.podcast_name}
-                    className="w-24 h-24 sm:w-24 sm:h-24 rounded-lg object-cover shadow-md mx-auto sm:mx-0"
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover shadow-md mx-auto sm:mx-0"
                   />
                 )}
                 <div className="flex-1 space-y-2 text-center sm:text-left">
                   <h3 className="text-xl font-bold">{viewingOutreachPodcast.podcast_name}</h3>
                   {viewingOutreachPodcast.publisher_name && (
-                    <div className="flex items-center justify-center sm:justify-start gap-2 text-muted-foreground">
-                      <User className="h-4 w-4" />
-                      <span className="text-sm">Publisher: {viewingOutreachPodcast.publisher_name}</span>
-                    </div>
+                    <p className="text-sm text-muted-foreground">by {viewingOutreachPodcast.publisher_name}</p>
                   )}
-                  {viewingOutreachPodcast.podcast_url && (
-                    <a
-                      href={viewingOutreachPodcast.podcast_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      <Globe className="h-4 w-4" />
-                      Visit Podcast
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
+                    {viewingOutreachPodcast.itunes_rating && (
+                      <span className="inline-flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        {Number(viewingOutreachPodcast.itunes_rating).toFixed(1)}
+                      </span>
+                    )}
+                    {viewingOutreachPodcast.audience_size && (
+                      <span className="inline-flex items-center gap-1">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        {viewingOutreachPodcast.audience_size.toLocaleString()}
+                      </span>
+                    )}
+                    {viewingOutreachPodcast.episode_count && (
+                      <span className="inline-flex items-center gap-1">
+                        <Mic className="h-4 w-4 text-muted-foreground" />
+                        {viewingOutreachPodcast.episode_count} episodes
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Stats */}
-              {(viewingOutreachPodcast.audience_size || viewingOutreachPodcast.episode_count || viewingOutreachPodcast.itunes_rating) && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {viewingOutreachPodcast.audience_size && (
-                    <div className="p-4 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">Audience Size</p>
-                      <p className="text-xl font-bold">{viewingOutreachPodcast.audience_size.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {viewingOutreachPodcast.episode_count && (
-                    <div className="p-4 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">Episodes</p>
-                      <p className="text-xl font-bold">{viewingOutreachPodcast.episode_count}</p>
-                    </div>
-                  )}
-                  {viewingOutreachPodcast.itunes_rating && (
-                    <div className="p-4 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground mb-1">Rating</p>
-                      <p className="text-xl font-bold">{Number(viewingOutreachPodcast.itunes_rating).toFixed(1)} ⭐</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Description */}
-              {viewingOutreachPodcast.podcast_description && (
-                <div>
-                  <h4 className="font-semibold mb-2">About the Podcast</h4>
+              {/* About Section */}
+              <div className="space-y-2">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  About This Podcast
+                </h4>
+                {isAnalyzingOutreachFit ? (
+                  <div className="space-y-2">
+                    <div className="h-4 bg-muted rounded animate-pulse w-full" />
+                    <div className="h-4 bg-muted rounded animate-pulse w-5/6" />
+                    <div className="h-4 bg-muted rounded animate-pulse w-4/6" />
+                  </div>
+                ) : (
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    {viewingOutreachPodcast.podcast_description}
+                    {outreachFitAnalysis?.clean_description || viewingOutreachPodcast.podcast_description || 'No description available'}
                   </p>
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Podcast ID */}
-              <div>
-                <h4 className="font-semibold mb-2">Podcast ID</h4>
-                <div className="p-3 bg-muted rounded-lg">
-                  <code className="text-xs">{viewingOutreachPodcast.podcast_id}</code>
-                </div>
+              {/* Why This Is a Great Fit */}
+              <div className="space-y-3">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  Why This Is a Great Fit for {client?.name || 'You'}
+                </h4>
+                {isAnalyzingOutreachFit ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <div className="h-5 w-5 bg-muted rounded-full animate-pulse shrink-0 mt-0.5" />
+                        <div className="flex-1 space-y-1">
+                          <div className="h-4 bg-muted rounded animate-pulse w-full" />
+                          <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : outreachFitAnalysis?.fit_reasons && outreachFitAnalysis.fit_reasons.length > 0 ? (
+                  <ul className="space-y-2">
+                    {outreachFitAnalysis.fit_reasons.map((reason, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                        <span className="text-sm">{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    {client?.bio ? 'Analysis in progress...' : 'Add a bio to your profile to see personalized fit analysis'}
+                  </p>
+                )}
+              </div>
+
+              {/* Potential Pitch Angles */}
+              <div className="space-y-3">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Target className="h-4 w-4 text-purple-500" />
+                  Potential Pitch Angles
+                </h4>
+                {isAnalyzingOutreachFit ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="p-4 border rounded-lg space-y-2">
+                        <div className="h-5 bg-muted rounded animate-pulse w-2/3" />
+                        <div className="h-4 bg-muted rounded animate-pulse w-full" />
+                        <div className="h-4 bg-muted rounded animate-pulse w-5/6" />
+                      </div>
+                    ))}
+                  </div>
+                ) : outreachFitAnalysis?.pitch_angles && outreachFitAnalysis.pitch_angles.length > 0 ? (
+                  <div className="space-y-3">
+                    {outreachFitAnalysis.pitch_angles.map((angle, idx) => (
+                      <div key={idx} className="p-4 border rounded-lg bg-gradient-to-r from-purple-500/5 to-transparent hover:from-purple-500/10 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-purple-500/10 text-purple-600 text-sm font-bold shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="space-y-1">
+                            <h5 className="font-medium">{angle.title}</h5>
+                            <p className="text-sm text-muted-foreground">{angle.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    {client?.bio ? 'Generating pitch ideas...' : 'Add a bio to your profile to see personalized pitch angles'}
+                  </p>
+                )}
               </div>
 
               {/* Actions */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
                 {viewingOutreachPodcast.podcast_url && (
                   <Button
                     variant="default"
@@ -4319,10 +4408,21 @@ export default function PortalDashboard() {
                     className="flex-1"
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    Visit Podcast Website
+                    Visit Podcast
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => setViewingOutreachPodcast(null)} className="sm:w-auto">
+                <Button
+                  variant="outline"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    setViewingOutreachPodcast(null)
+                    setDeletingOutreachPodcast(viewingOutreachPodcast)
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Remove
+                </Button>
+                <Button variant="outline" onClick={() => setViewingOutreachPodcast(null)}>
                   Close
                 </Button>
               </div>

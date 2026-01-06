@@ -297,3 +297,66 @@ export async function deleteOutreachPodcast(
     throw new Error(`Failed to delete podcast: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
+
+export interface PitchAngle {
+  title: string
+  description: string
+}
+
+export interface PodcastFitAnalysis {
+  clean_description: string
+  fit_reasons: string[]
+  pitch_angles: PitchAngle[]
+}
+
+export interface AnalyzePodcastFitResult {
+  success: boolean
+  cached: boolean
+  analysis: PodcastFitAnalysis
+}
+
+/**
+ * Analyze podcast fit for a client using AI with web search
+ * Returns enriched description, fit reasons, and pitch angles
+ */
+export async function analyzePodcastFit(
+  podcastId: string,
+  podcastName: string,
+  podcastDescription: string | null,
+  clientId: string,
+  clientName: string,
+  clientBio: string
+): Promise<AnalyzePodcastFitResult> {
+  if (!podcastId || !podcastName || !clientId || !clientBio) {
+    throw new Error('podcastId, podcastName, clientId, and clientBio are required')
+  }
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        podcastId,
+        podcastName,
+        podcastDescription,
+        clientId,
+        clientName,
+        clientBio,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to analyze podcast fit')
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error analyzing podcast fit:', error)
+    throw new Error(`Failed to analyze podcast: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
