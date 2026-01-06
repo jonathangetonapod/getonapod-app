@@ -179,13 +179,16 @@ export async function getClientOutreachPodcasts(
       return { success: true, podcasts: [], total: 0 }
     }
 
-    console.log('[getClientOutreachPodcasts] Fetching details for', data.podcastIds.length, 'podcasts from frontend')
+    console.log('[getClientOutreachPodcasts] Fetching details for', data.podcastIds.length, 'podcasts from frontend (parallel)')
 
     // Fetch podcast details from Podscan API (from frontend where DNS works)
-    const podcasts: OutreachPodcast[] = []
+    // Using batched parallel processing for speed while respecting rate limits
     const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
+    const BATCH_SIZE = 10 // Fetch 10 at a time
+    const podcasts: OutreachPodcast[] = []
 
-    for (const podcastId of data.podcastIds) {
+    // Helper function to fetch a single podcast
+    const fetchPodcast = async (podcastId: string): Promise<OutreachPodcast | null> => {
       try {
         const podcastResponse = await fetch(
           `https://podscan.fm/api/v1/podcasts/${podcastId}`,
@@ -200,9 +203,8 @@ export async function getClientOutreachPodcasts(
           const data = await podcastResponse.json()
           // API returns { podcast: { ... } }, extract the podcast object
           const podcast = data.podcast || data
-          console.log('[getClientOutreachPodcasts] Podcast data:', podcastId, podcast)
 
-          podcasts.push({
+          return {
             podcast_id: podcastId,
             podcast_name: podcast.podcast_name || 'Unknown Podcast',
             podcast_description: podcast.podcast_description || null,
@@ -212,10 +214,30 @@ export async function getClientOutreachPodcasts(
             itunes_rating: podcast.reach?.itunes?.itunes_rating_average || null,
             episode_count: podcast.episode_count || null,
             audience_size: podcast.reach?.audience_size || null,
-          })
+          }
         }
+        return null
       } catch (error) {
         console.error('[getClientOutreachPodcasts] Error fetching podcast:', podcastId, error)
+        return null
+      }
+    }
+
+    // Process in batches of BATCH_SIZE for parallel fetching
+    const podcastIds = data.podcastIds as string[]
+    for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
+      const batch = podcastIds.slice(i, i + BATCH_SIZE)
+      console.log(`[getClientOutreachPodcasts] Fetching batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(podcastIds.length / BATCH_SIZE)} (${batch.length} podcasts)`)
+
+      // Fetch batch in parallel
+      const batchResults = await Promise.all(batch.map(fetchPodcast))
+
+      // Filter out nulls and add to results
+      podcasts.push(...batchResults.filter((p): p is OutreachPodcast => p !== null))
+
+      // Small delay between batches to respect rate limits (only if more batches remain)
+      if (i + BATCH_SIZE < podcastIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
     }
 
