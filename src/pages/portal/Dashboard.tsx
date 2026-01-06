@@ -116,6 +116,8 @@ export default function PortalDashboard() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [outreachFitAnalysis, setOutreachFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
+  const [preloadedAnalyses, setPreloadedAnalyses] = useState<Map<string, PodcastFitAnalysis>>(new Map())
+  const [preloadProgress, setPreloadProgress] = useState<{ loaded: number; total: number; isLoading: boolean }>({ loaded: 0, total: 0, isLoading: false })
   const outreachPerPage = 12
 
   // Premium Placements state
@@ -247,10 +249,101 @@ export default function PortalDashboard() {
     }
   }, [outreachData?.total])
 
-  // Analyze podcast fit when viewing an outreach podcast
+  // Pre-load all podcast analyses in background when outreach data loads
   useEffect(() => {
+    const preloadAllAnalyses = async () => {
+      if (!outreachData?.podcasts?.length || !client?.id || !client?.bio) return
+
+      // Don't re-run if already loading or if we have all analyses
+      if (preloadProgress.isLoading) return
+      if (preloadedAnalyses.size >= outreachData.podcasts.length) return
+
+      console.log('[Dashboard] Starting background preload of', outreachData.podcasts.length, 'podcast analyses')
+      setPreloadProgress({ loaded: 0, total: outreachData.podcasts.length, isLoading: true })
+
+      const BATCH_SIZE = 3 // Process 3 at a time to avoid rate limits
+      const podcasts = outreachData.podcasts
+      const newAnalyses = new Map(preloadedAnalyses)
+
+      for (let i = 0; i < podcasts.length; i += BATCH_SIZE) {
+        const batch = podcasts.slice(i, i + BATCH_SIZE)
+
+        // Process batch in parallel
+        const results = await Promise.allSettled(
+          batch.map(async (podcast) => {
+            // Skip if already loaded
+            if (newAnalyses.has(podcast.podcast_id)) {
+              return { podcastId: podcast.podcast_id, analysis: newAnalyses.get(podcast.podcast_id)!, cached: true }
+            }
+
+            try {
+              const result = await analyzePodcastFit(
+                {
+                  podcast_id: podcast.podcast_id,
+                  podcast_name: podcast.podcast_name,
+                  podcast_description: podcast.podcast_description,
+                  podcast_url: podcast.podcast_url,
+                  publisher_name: podcast.publisher_name,
+                  itunes_rating: podcast.itunes_rating,
+                  episode_count: podcast.episode_count,
+                  audience_size: podcast.audience_size,
+                },
+                client!.id,
+                client!.name,
+                client!.bio
+              )
+              return { podcastId: podcast.podcast_id, analysis: result.analysis, cached: result.cached }
+            } catch (error) {
+              console.error('[Dashboard] Failed to preload analysis for:', podcast.podcast_name, error)
+              return null
+            }
+          })
+        )
+
+        // Store successful results
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value) {
+            newAnalyses.set(result.value.podcastId, result.value.analysis)
+          }
+        }
+
+        // Update progress
+        const loadedCount = Math.min(i + BATCH_SIZE, podcasts.length)
+        setPreloadProgress({ loaded: loadedCount, total: podcasts.length, isLoading: true })
+        setPreloadedAnalyses(new Map(newAnalyses))
+
+        // Small delay between batches
+        if (i + BATCH_SIZE < podcasts.length) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+
+      console.log('[Dashboard] Finished preloading', newAnalyses.size, 'analyses')
+      setPreloadProgress({ loaded: newAnalyses.size, total: podcasts.length, isLoading: false })
+    }
+
+    preloadAllAnalyses()
+  }, [outreachData?.podcasts, client?.id, client?.bio, client?.name])
+
+  // When viewing an outreach podcast, use preloaded data if available
+  useEffect(() => {
+    if (!viewingOutreachPodcast) {
+      setOutreachFitAnalysis(null)
+      return
+    }
+
+    // Check if we have preloaded data
+    const preloaded = preloadedAnalyses.get(viewingOutreachPodcast.podcast_id)
+    if (preloaded) {
+      console.log('[Dashboard] Using preloaded analysis for:', viewingOutreachPodcast.podcast_name)
+      setOutreachFitAnalysis(preloaded)
+      setIsAnalyzingOutreachFit(false)
+      return
+    }
+
+    // If not preloaded, fetch on demand (fallback)
     const analyzeOutreachPodcast = async () => {
-      if (!viewingOutreachPodcast || !client?.id || !client?.bio) {
+      if (!client?.id || !client?.bio) {
         setOutreachFitAnalysis(null)
         return
       }
@@ -275,16 +368,18 @@ export default function PortalDashboard() {
           client.bio
         )
         setOutreachFitAnalysis(result.analysis)
+
+        // Also store in preloaded map
+        setPreloadedAnalyses(prev => new Map(prev).set(viewingOutreachPodcast.podcast_id, result.analysis))
       } catch (error) {
         console.error('Error analyzing podcast fit:', error)
-        // Don't show toast - just fail silently and show fallback UI
       } finally {
         setIsAnalyzingOutreachFit(false)
       }
     }
 
     analyzeOutreachPodcast()
-  }, [viewingOutreachPodcast, client?.id, client?.bio, client?.name])
+  }, [viewingOutreachPodcast, client?.id, client?.bio, client?.name, preloadedAnalyses])
 
   // Handle deleting an outreach podcast
   const handleDeleteOutreachPodcast = async () => {
@@ -3150,13 +3245,34 @@ export default function PortalDashboard() {
                 <Card>
                   <CardHeader>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
+                      <div className="flex-1">
                         <CardTitle>Your Outreach Podcasts</CardTitle>
                         <CardDescription>
                           {outreachLoading ? 'Loading podcasts...' :
                            outreachData?.total ? `${outreachData.total} podcast${outreachData.total === 1 ? '' : 's'} in your outreach list` :
                            'Podcasts from your Google Sheet'}
                         </CardDescription>
+                        {/* AI Analysis Preloading Progress */}
+                        {preloadProgress.isLoading && preloadProgress.total > 0 && (
+                          <div className="mt-3">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                              <div className="h-2 w-2 bg-primary rounded-full animate-pulse" />
+                              <span>Loading AI insights... {preloadProgress.loaded}/{preloadProgress.total}</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="h-full bg-primary transition-all duration-300 ease-out"
+                                style={{ width: `${(preloadProgress.loaded / preloadProgress.total) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {!preloadProgress.isLoading && preloadProgress.loaded > 0 && preloadProgress.loaded === preloadProgress.total && (
+                          <div className="mt-2 flex items-center gap-1.5 text-sm text-green-600">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>AI insights ready</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         {/* View Toggle */}

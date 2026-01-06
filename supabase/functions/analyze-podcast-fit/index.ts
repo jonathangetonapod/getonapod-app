@@ -219,7 +219,49 @@ Respond with ONLY valid JSON in this exact format (no markdown code blocks):
     }
 
     console.log('[Analyze Podcast Fit] Found JSON, parsing...')
-    const analysis: FitAnalysis = JSON.parse(jsonStr)
+    console.log('[Analyze Podcast Fit] JSON string length:', jsonStr.length)
+
+    // Try to parse, with fallback cleanup for common issues
+    let analysis: FitAnalysis
+    try {
+      analysis = JSON.parse(jsonStr)
+    } catch (parseError) {
+      console.log('[Analyze Podcast Fit] Initial parse failed, attempting cleanup...')
+
+      // Try to fix common JSON issues
+      let cleanedJson = jsonStr
+        // Remove any trailing commas before closing brackets
+        .replace(/,\s*}/g, '}')
+        .replace(/,\s*]/g, ']')
+        // Fix unescaped newlines in strings
+        .replace(/([^\\])\n/g, '$1\\n')
+        // Fix unescaped tabs
+        .replace(/([^\\])\t/g, '$1\\t')
+
+      try {
+        analysis = JSON.parse(cleanedJson)
+        console.log('[Analyze Podcast Fit] Cleaned JSON parsed successfully')
+      } catch (secondError) {
+        // Last resort: try to extract fields manually
+        console.error('[Analyze Podcast Fit] JSON parse error:', parseError)
+        console.error('[Analyze Podcast Fit] Failed JSON string:', jsonStr.substring(0, 1000))
+
+        // Create a fallback response
+        const descMatch = jsonStr.match(/"clean_description"\s*:\s*"([^"]*(?:\\"[^"]*)*)"/)
+        const fitMatch = jsonStr.match(/"fit_reasons"\s*:\s*\[([\s\S]*?)\]/)
+
+        if (descMatch) {
+          analysis = {
+            clean_description: descMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'),
+            fit_reasons: ['Analysis partially completed - please try again for full results'],
+            pitch_angles: []
+          }
+          console.log('[Analyze Podcast Fit] Created fallback response from partial data')
+        } else {
+          throw new Error(`Failed to parse analysis: ${parseError.message}`)
+        }
+      }
+    }
 
     console.log('[Analyze Podcast Fit] Analysis parsed successfully')
 
