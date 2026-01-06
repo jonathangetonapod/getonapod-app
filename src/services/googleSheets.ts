@@ -253,3 +253,47 @@ export async function getClientOutreachPodcasts(
     throw new Error(`Failed to fetch outreach podcasts: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
+
+export interface DeleteOutreachPodcastResult {
+  success: boolean
+  message: string
+  deletedRow: number
+}
+
+/**
+ * Delete a podcast from a client's Google Sheet outreach list
+ * Finds the row with the podcast ID in column E and deletes it
+ */
+export async function deleteOutreachPodcast(
+  clientId: string,
+  podcastId: string
+): Promise<DeleteOutreachPodcastResult> {
+  if (!clientId || !podcastId) {
+    throw new Error('Client ID and podcast ID are required')
+  }
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-outreach-podcast`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        clientId,
+        podcastId,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to delete podcast from outreach list')
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error deleting outreach podcast:', error)
+    throw new Error(`Failed to delete podcast: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}

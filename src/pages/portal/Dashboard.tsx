@@ -58,13 +58,14 @@ import {
   Package,
   Sparkles,
   LayoutGrid,
-  List
+  List,
+  Trash2
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
 import type { Booking } from '@/services/bookings'
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
-import { getClientOutreachPodcasts, type OutreachPodcast } from '@/services/googleSheets'
+import { getClientOutreachPodcasts, deleteOutreachPodcast, type OutreachPodcast } from '@/services/googleSheets'
 import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
 import { CartButton } from '@/components/CartButton'
@@ -111,6 +112,8 @@ export default function PortalDashboard() {
   const [viewingOutreachPodcast, setViewingOutreachPodcast] = useState<OutreachPodcast | null>(null)
   const [outreachPage, setOutreachPage] = useState(1)
   const [outreachViewMode, setOutreachViewMode] = useState<'grid' | 'list'>('grid')
+  const [deletingOutreachPodcast, setDeletingOutreachPodcast] = useState<OutreachPodcast | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const outreachPerPage = 12
 
   // Premium Placements state
@@ -241,6 +244,23 @@ export default function PortalDashboard() {
       setOutreachPage(1)
     }
   }, [outreachData?.total])
+
+  // Handle deleting an outreach podcast
+  const handleDeleteOutreachPodcast = async () => {
+    if (!deletingOutreachPodcast || !client?.id) return
+
+    setIsDeleting(true)
+    try {
+      await deleteOutreachPodcast(client.id, deletingOutreachPodcast.podcast_id)
+      toast.success(`"${deletingOutreachPodcast.podcast_name}" removed from your outreach list`)
+      setDeletingOutreachPodcast(null)
+      refetchOutreach()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete podcast')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   // Debug logging
   console.log('[Dashboard] Client object:', client)
@@ -3286,20 +3306,33 @@ export default function PortalDashboard() {
                                 )}
                               </div>
 
-                              {podcast.podcast_url && (
+                              <div className="flex gap-2">
+                                {podcast.podcast_url && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')
+                                    }}
+                                  >
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    Visit
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="w-full"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')
+                                    setDeletingOutreachPodcast(podcast)
                                   }}
                                 >
-                                  <ExternalLink className="h-4 w-4 mr-2" />
-                                  Visit Podcast
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
-                              )}
+                              </div>
                             </div>
                               ))}
                           </div>
@@ -3372,15 +3405,25 @@ export default function PortalDashboard() {
                                       ) : '-'}
                                     </TableCell>
                                     <TableCell onClick={(e) => e.stopPropagation()}>
-                                      {podcast.podcast_url && (
+                                      <div className="flex items-center gap-1">
+                                        {podcast.podcast_url && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')}
+                                          >
+                                            <ExternalLink className="h-4 w-4" />
+                                          </Button>
+                                        )}
                                         <Button
                                           variant="ghost"
                                           size="sm"
-                                          onClick={() => window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')}
+                                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => setDeletingOutreachPodcast(podcast)}
                                         >
-                                          <ExternalLink className="h-4 w-4" />
+                                          <Trash2 className="h-4 w-4" />
                                         </Button>
-                                      )}
+                                      </div>
                                     </TableCell>
                                   </TableRow>
                                 ))}
@@ -4281,6 +4324,71 @@ export default function PortalDashboard() {
                 )}
                 <Button variant="outline" onClick={() => setViewingOutreachPodcast(null)} className="sm:w-auto">
                   Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Outreach Podcast Confirmation */}
+      <Dialog open={!!deletingOutreachPodcast} onOpenChange={() => setDeletingOutreachPodcast(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Remove Podcast
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this podcast from your outreach list?
+            </DialogDescription>
+          </DialogHeader>
+          {deletingOutreachPodcast && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                {deletingOutreachPodcast.podcast_image_url && (
+                  <img
+                    src={deletingOutreachPodcast.podcast_image_url}
+                    alt={deletingOutreachPodcast.podcast_name}
+                    className="w-12 h-12 rounded-md object-cover"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{deletingOutreachPodcast.podcast_name}</p>
+                  {deletingOutreachPodcast.publisher_name && (
+                    <p className="text-sm text-muted-foreground truncate">
+                      by {deletingOutreachPodcast.publisher_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This will delete the row from your Google Sheet. This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeletingOutreachPodcast(null)}
+                  disabled={isDeleting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteOutreachPodcast}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Removing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Remove
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
