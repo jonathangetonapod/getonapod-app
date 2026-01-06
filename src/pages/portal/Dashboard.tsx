@@ -59,7 +59,8 @@ import {
   Sparkles,
   LayoutGrid,
   List,
-  Trash2
+  Trash2,
+  Eye
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -3464,20 +3465,17 @@ export default function PortalDashboard() {
                               </div>
 
                               <div className="flex gap-2">
-                                {podcast.podcast_url && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-1"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')
-                                    }}
-                                  >
-                                    <ExternalLink className="h-4 w-4 mr-2" />
-                                    Visit
-                                  </Button>
-                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="flex-1"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setViewingOutreachPodcast(podcast)
+                                  }}
+                                >
+                                  Learn more
+                                </Button>
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -3563,15 +3561,13 @@ export default function PortalDashboard() {
                                     </TableCell>
                                     <TableCell onClick={(e) => e.stopPropagation()}>
                                       <div className="flex items-center gap-1">
-                                        {podcast.podcast_url && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => window.open(podcast.podcast_url!, '_blank', 'noopener,noreferrer')}
-                                          >
-                                            <ExternalLink className="h-4 w-4" />
-                                          </Button>
-                                        )}
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setViewingOutreachPodcast(podcast)}
+                                        >
+                                          <Eye className="h-4 w-4" />
+                                        </Button>
                                         <Button
                                           variant="ghost"
                                           size="sm"
