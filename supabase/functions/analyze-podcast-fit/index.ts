@@ -107,7 +107,7 @@ serve(async (req) => {
       audienceSize ? `- **Estimated Audience Size**: ${audienceSize.toLocaleString()}` : null,
     ].filter(Boolean).join('\n')
 
-    const prompt = `You are a podcast booking strategist. Analyze this podcast and determine why it would be a great fit for a specific client.
+    const prompt = `You are a podcast booking strategist. Analyze why this podcast is a good fit for a client. BE CONCISE.
 
 ## Podcast Information
 ${podcastContext}
@@ -116,40 +116,27 @@ ${podcastContext}
 - **Name**: ${clientName || 'Client'}
 - **Bio**: ${effectiveBio}
 
-## Your Tasks
+## Instructions - KEEP IT SHORT
 
-1. **Generate a clean, compelling description** of the podcast:
-   - 2-3 sentences, professional tone
-   - NO HTML tags - clean plain text only
-   - Based on the podcast name, description, and other data provided
-   - Capture what the show is about and who it's for
+1. **clean_description**: 1-2 sentences MAX. What the podcast is about. Plain text, no HTML.
 
-2. **Analyze the fit** between this client and podcast. Provide 3 specific reasons why this is a great match based on the client's expertise and the podcast's focus.
+2. **fit_reasons**: 3 bullet points. Each ONE SHORT SENTENCE (under 15 words). Why this client fits this show.
 
-3. **Generate 3 pitch angles** - specific episode topic ideas that would appeal to this podcast's audience while showcasing the client's expertise.
+3. **pitch_angles**: 3 episode ideas. Short title + ONE sentence description each.
 
 ## Response Format
-Respond with ONLY valid JSON in this exact format (no markdown code blocks):
+Respond with ONLY valid JSON (no markdown):
 {
-  "clean_description": "A compelling 2-3 sentence description of the podcast without any HTML tags",
+  "clean_description": "Brief 1-2 sentence podcast description",
   "fit_reasons": [
-    "First specific reason why this is a great fit",
-    "Second specific reason why this is a great fit",
-    "Third specific reason why this is a great fit"
+    "Short reason 1 (under 15 words)",
+    "Short reason 2 (under 15 words)",
+    "Short reason 3 (under 15 words)"
   ],
   "pitch_angles": [
-    {
-      "title": "Catchy Episode Title Idea",
-      "description": "2-3 sentences explaining this angle and why it would resonate with the podcast's audience"
-    },
-    {
-      "title": "Second Episode Title Idea",
-      "description": "2-3 sentences explaining this angle"
-    },
-    {
-      "title": "Third Episode Title Idea",
-      "description": "2-3 sentences explaining this angle"
-    }
+    {"title": "Episode Title", "description": "One sentence pitch"},
+    {"title": "Episode Title", "description": "One sentence pitch"},
+    {"title": "Episode Title", "description": "One sentence pitch"}
   ]
 }`
 
