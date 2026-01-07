@@ -293,7 +293,7 @@ export default function PortalDashboard() {
   // Pre-load all podcast analyses in background when outreach data loads
   useEffect(() => {
     const preloadAllAnalyses = async () => {
-      if (!outreachData?.podcasts?.length || !client?.id || !client?.bio) return
+      if (!outreachData?.podcasts?.length || !client?.id) return
 
       // Wait for localStorage to be checked first
       if (!localStorageLoaded) return
@@ -334,7 +334,7 @@ export default function PortalDashboard() {
                 },
                 client!.id,
                 client!.name,
-                client!.bio
+                client!.bio || ''
               )
               return { podcastId: podcast.podcast_id, analysis: result.analysis, cached: result.cached }
             } catch (error) {
@@ -387,7 +387,7 @@ export default function PortalDashboard() {
 
     // If not preloaded, fetch on demand (fallback)
     const analyzeOutreachPodcast = async () => {
-      if (!client?.id || !client?.bio) {
+      if (!client?.id) {
         setOutreachFitAnalysis(null)
         return
       }
@@ -409,7 +409,7 @@ export default function PortalDashboard() {
           },
           client.id,
           client.name,
-          client.bio
+          client.bio || ''
         )
         setOutreachFitAnalysis(result.analysis)
 

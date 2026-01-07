@@ -36,9 +36,20 @@ serve(async (req) => {
       clientBio
     } = await req.json()
 
-    if (!podcastId || !podcastName || !clientId || !clientBio) {
-      throw new Error('podcastId, podcastName, clientId, and clientBio are required')
+    console.log('[Analyze Podcast Fit] Received params:', {
+      podcastId,
+      podcastName,
+      clientId,
+      clientBio: clientBio ? `${clientBio.substring(0, 100)}...` : 'EMPTY',
+      hasBio: !!clientBio
+    })
+
+    if (!podcastId || !podcastName || !clientId) {
+      throw new Error('podcastId, podcastName, and clientId are required')
     }
+
+    // Use a default bio if none provided
+    const effectiveBio = clientBio || 'Business professional and thought leader seeking to share expertise with podcast audiences.'
 
     console.log('[Analyze Podcast Fit] Starting analysis for:', podcastName, 'and client:', clientName)
     console.log('[Analyze Podcast Fit] Podcast data:', { podcastUrl, publisherName, itunesRating, episodeCount, audienceSize })
@@ -102,7 +113,7 @@ ${podcastContext}
 
 ## Client Information
 - **Name**: ${clientName || 'Client'}
-- **Bio**: ${clientBio}
+- **Bio**: ${effectiveBio}
 
 ## Your Tasks
 

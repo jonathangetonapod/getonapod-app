@@ -336,8 +336,8 @@ export async function analyzePodcastFit(
   clientName: string,
   clientBio: string
 ): Promise<AnalyzePodcastFitResult> {
-  if (!podcast.podcast_id || !podcast.podcast_name || !clientId || !clientBio) {
-    throw new Error('podcast data, clientId, and clientBio are required')
+  if (!podcast.podcast_id || !podcast.podcast_name || !clientId) {
+    throw new Error('podcast data and clientId are required')
   }
 
   try {
