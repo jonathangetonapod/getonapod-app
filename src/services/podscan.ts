@@ -277,6 +277,90 @@ export interface PodcastAnalytics {
   audience_size: number;
 }
 
+/**
+ * Podcast demographics data from Podscan
+ */
+export interface PodcastDemographics {
+  episodes_analyzed: number
+  total_episodes: number
+  age: string
+  gender_skew: string
+  purchasing_power: string
+  education_level: string
+  engagement_level: string
+  age_distribution: Array<{ age: string; percentage: number }>
+  geographic_distribution: Array<{ region: string; percentage: number }>
+  professional_industry: Array<{ industry: string; percentage: number }>
+  family_status_distribution: Array<{ status: string; percentage: number }>
+  technology_adoption?: {
+    profile: string
+    confidence_score: number
+    reasoning: string
+  }
+  content_habits?: {
+    primary_platforms: string[]
+    content_frequency: string
+    preferred_formats: string[]
+    consumption_context: string[]
+  }
+  ideological_leaning?: {
+    spectrum: string
+    confidence_score: number
+    polarization_level: string
+    reasoning: string
+  }
+  living_environment?: {
+    urban: number
+    suburban: number
+    rural: number
+    confidence_score: number
+    reasoning: string
+  }
+  brand_relationship?: {
+    loyalty_level: string
+    price_sensitivity: string
+    brand_switching_frequency: string
+    advocacy_potential: string
+    reasoning: string
+  }
+}
+
+/**
+ * Get podcast demographics data (only available for some podcasts)
+ */
+export async function getPodcastDemographics(podcastId: string): Promise<PodcastDemographics | null> {
+  const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}/demographics`
+  console.log('📊 Fetching podcast demographics:', podcastId)
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      console.log('📊 No demographics available for this podcast')
+      return null
+    }
+
+    const data = await response.json()
+
+    // Check if we got an error response
+    if (data.error || !data.episodes_analyzed) {
+      console.log('📊 No demographics data:', data.error || 'No episodes analyzed')
+      return null
+    }
+
+    console.log('✅ Demographics fetched:', data.episodes_analyzed, 'episodes analyzed')
+    return data
+  } catch (error) {
+    console.error('❌ Error fetching demographics:', error)
+    return null
+  }
+}
+
 export function getPodcastAnalytics(podcast: PodcastData): PodcastAnalytics {
   const rating = podcast.reach?.itunes?.itunes_rating_average
     ? parseFloat(podcast.reach.itunes.itunes_rating_average)

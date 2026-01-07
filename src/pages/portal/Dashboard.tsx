@@ -66,6 +66,7 @@ import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAx
 import { getClientBookings } from '@/services/clientPortal'
 import type { Booking } from '@/services/bookings'
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
+import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { getClientOutreachPodcasts, deleteOutreachPodcast, analyzePodcastFit, type OutreachPodcast, type PodcastFitAnalysis } from '@/services/googleSheets'
 import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
@@ -117,6 +118,8 @@ export default function PortalDashboard() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [outreachFitAnalysis, setOutreachFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
+  const [podcastDemographics, setPodcastDemographics] = useState<PodcastDemographics | null>(null)
+  const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
   const [preloadedAnalyses, setPreloadedAnalyses] = useState<Map<string, PodcastFitAnalysis>>(new Map())
   const [preloadProgress, setPreloadProgress] = useState<{ loaded: number; total: number; isLoading: boolean }>({ loaded: 0, total: 0, isLoading: false })
   const [localStorageLoaded, setLocalStorageLoaded] = useState(false)
@@ -424,6 +427,29 @@ export default function PortalDashboard() {
 
     analyzeOutreachPodcast()
   }, [viewingOutreachPodcast, client?.id, client?.bio, client?.name, preloadedAnalyses])
+
+  // Fetch demographics when viewing an outreach podcast
+  useEffect(() => {
+    if (!viewingOutreachPodcast) {
+      setPodcastDemographics(null)
+      return
+    }
+
+    const fetchDemographics = async () => {
+      setIsLoadingDemographics(true)
+      try {
+        const demographics = await getPodcastDemographics(viewingOutreachPodcast.podcast_id)
+        setPodcastDemographics(demographics)
+      } catch (error) {
+        console.error('Error fetching demographics:', error)
+        setPodcastDemographics(null)
+      } finally {
+        setIsLoadingDemographics(false)
+      }
+    }
+
+    fetchDemographics()
+  }, [viewingOutreachPodcast])
 
   // Handle deleting an outreach podcast
   const handleDeleteOutreachPodcast = async () => {
@@ -4588,6 +4614,139 @@ export default function PortalDashboard() {
                   </p>
                 )}
               </div>
+
+              {/* Audience Demographics - Only show if available */}
+              {(isLoadingDemographics || podcastDemographics) && (
+                <div className="space-y-3">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <Users className="h-4 w-4 text-blue-500" />
+                    Audience Insights
+                  </h4>
+                  {isLoadingDemographics ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="p-3 border rounded-lg space-y-2">
+                          <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
+                          <div className="h-5 bg-muted rounded animate-pulse w-3/4" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : podcastDemographics && (
+                    <div className="space-y-4">
+                      {/* Key Metrics */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="p-3 border rounded-lg bg-gradient-to-br from-blue-500/5 to-transparent">
+                          <p className="text-xs text-muted-foreground">Primary Age</p>
+                          <p className="font-semibold">{podcastDemographics.age}</p>
+                        </div>
+                        <div className="p-3 border rounded-lg bg-gradient-to-br from-pink-500/5 to-transparent">
+                          <p className="text-xs text-muted-foreground">Gender</p>
+                          <p className="font-semibold capitalize">{podcastDemographics.gender_skew?.replace(/_/g, ' ')}</p>
+                        </div>
+                        <div className="p-3 border rounded-lg bg-gradient-to-br from-green-500/5 to-transparent">
+                          <p className="text-xs text-muted-foreground">Income Level</p>
+                          <p className="font-semibold capitalize">{podcastDemographics.purchasing_power}</p>
+                        </div>
+                        <div className="p-3 border rounded-lg bg-gradient-to-br from-amber-500/5 to-transparent">
+                          <p className="text-xs text-muted-foreground">Education</p>
+                          <p className="font-semibold capitalize">{podcastDemographics.education_level}</p>
+                        </div>
+                      </div>
+
+                      {/* Geographic Distribution */}
+                      {podcastDemographics.geographic_distribution && podcastDemographics.geographic_distribution.length > 0 && (
+                        <div className="p-3 border rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-2">🌎 Geographic Reach</p>
+                          <div className="flex flex-wrap gap-2">
+                            {podcastDemographics.geographic_distribution.slice(0, 4).map((geo, idx) => (
+                              <Badge key={idx} variant="secondary" className="text-xs">
+                                {geo.region}: {geo.percentage.toFixed(0)}%
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Top Industries */}
+                      {podcastDemographics.professional_industry && podcastDemographics.professional_industry.length > 0 && (
+                        <div className="p-3 border rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-2">💼 Top Industries</p>
+                          <div className="flex flex-wrap gap-2">
+                            {podcastDemographics.professional_industry
+                              .sort((a, b) => b.percentage - a.percentage)
+                              .slice(0, 5)
+                              .map((ind, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs">
+                                  {ind.industry}: {ind.percentage.toFixed(0)}%
+                                </Badge>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Additional Insights Row */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Living Environment */}
+                        {podcastDemographics.living_environment && (
+                          <div className="p-3 border rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">🏠 Living Environment</p>
+                            <div className="text-sm space-y-1">
+                              <div className="flex justify-between">
+                                <span>Urban</span>
+                                <span className="font-medium">{podcastDemographics.living_environment.urban}%</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Suburban</span>
+                                <span className="font-medium">{podcastDemographics.living_environment.suburban}%</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Rural</span>
+                                <span className="font-medium">{podcastDemographics.living_environment.rural}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Content Habits */}
+                        {podcastDemographics.content_habits && (
+                          <div className="p-3 border rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">📱 Content Habits</p>
+                            <p className="text-sm capitalize mb-1">{podcastDemographics.content_habits.content_frequency} listener</p>
+                            <div className="flex flex-wrap gap-1">
+                              {podcastDemographics.content_habits.primary_platforms?.slice(0, 3).map((platform, idx) => (
+                                <Badge key={idx} variant="secondary" className="text-xs py-0">
+                                  {platform}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Brand Relationship */}
+                        {podcastDemographics.brand_relationship && (
+                          <div className="p-3 border rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">🎯 Brand Affinity</p>
+                            <div className="text-sm space-y-1">
+                              <div className="flex justify-between">
+                                <span>Loyalty</span>
+                                <span className="font-medium capitalize">{podcastDemographics.brand_relationship.loyalty_level}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Price Sensitivity</span>
+                                <span className="font-medium capitalize">{podcastDemographics.brand_relationship.price_sensitivity}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-muted-foreground text-center">
+                        Based on analysis of {podcastDemographics.episodes_analyzed} episodes
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
