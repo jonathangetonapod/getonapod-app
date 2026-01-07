@@ -6,7 +6,8 @@ const corsHeaders = {
 }
 
 /**
- * Generate Google Access Token from Service Account with Domain-Wide Delegation
+ * Generate Google Access Token from Service Account (no domain-wide delegation needed)
+ * Works for public sheets or sheets shared with the service account
  */
 async function getGoogleAccessToken(): Promise<string> {
   const serviceAccountJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')
@@ -36,18 +37,14 @@ async function getGoogleAccessToken(): Promise<string> {
     typ: 'JWT',
   }))
 
-  const userEmail = Deno.env.get('GOOGLE_WORKSPACE_USER_EMAIL')
-  if (!userEmail) {
-    throw new Error('GOOGLE_WORKSPACE_USER_EMAIL not configured')
-  }
-
+  // No "sub" claim - service account authenticates as itself
+  // This works for public sheets or sheets shared with the service account
   const jwtPayload = base64UrlEncode(JSON.stringify({
     iss: client_email,
     scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
     aud: 'https://oauth2.googleapis.com/token',
     exp: expiry,
     iat: now,
-    sub: userEmail,
   }))
 
   const pemHeader = '-----BEGIN PRIVATE KEY-----'
