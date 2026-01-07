@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -81,6 +81,13 @@ export default function PodcastFinder() {
   const [chartScores, setChartScores] = useState<Record<string, number | null>>({})
   const [chartReasonings, setChartReasonings] = useState<Record<string, string | undefined>>({})
   const [isChartScoring, setIsChartScoring] = useState(false)
+
+  // Chart filters
+  const [chartShowFilters, setChartShowFilters] = useState(false)
+  const [chartMinAudience, setChartMinAudience] = useState('')
+  const [chartMaxAudience, setChartMaxAudience] = useState('')
+  const [chartMinRating, setChartMinRating] = useState('')
+  const [chartMinFitScore, setChartMinFitScore] = useState('')
 
   // Dynamic chart options from API
   const [chartCountries, setChartCountries] = useState<ChartCountry[]>([])
@@ -851,6 +858,73 @@ export default function PodcastFinder() {
 
     return query.results // Return unsorted if no scores
   }
+
+  // Filtered and sorted chart results
+  const filteredChartResults = useMemo(() => {
+    let results = [...chartResults]
+
+    // Filter by minimum audience
+    if (chartMinAudience) {
+      const minAud = parseInt(chartMinAudience)
+      if (!isNaN(minAud)) {
+        results = results.filter(p => {
+          const audience = p.reach?.audience_size || (p as any).audience_size || 0
+          return audience >= minAud
+        })
+      }
+    }
+
+    // Filter by maximum audience
+    if (chartMaxAudience) {
+      const maxAud = parseInt(chartMaxAudience)
+      if (!isNaN(maxAud)) {
+        results = results.filter(p => {
+          const audience = p.reach?.audience_size || (p as any).audience_size || 0
+          return audience <= maxAud
+        })
+      }
+    }
+
+    // Filter by minimum rating
+    if (chartMinRating) {
+      const minRate = parseFloat(chartMinRating)
+      if (!isNaN(minRate)) {
+        results = results.filter(p => {
+          const rating = parseFloat(p.reach?.itunes?.itunes_rating_average || (p as any).rating || '0')
+          return rating >= minRate
+        })
+      }
+    }
+
+    // Filter by minimum fit score (only if scores exist)
+    if (chartMinFitScore && Object.keys(chartScores).length > 0) {
+      const minFit = parseInt(chartMinFitScore)
+      if (!isNaN(minFit)) {
+        results = results.filter(p => {
+          const score = chartScores[p.podcast_id]
+          return score !== null && score !== undefined && score >= minFit
+        })
+      }
+    }
+
+    // Sort by fit score if available, then by audience
+    const hasScores = Object.keys(chartScores).length > 0
+    if (hasScores) {
+      results.sort((a, b) => {
+        const scoreA = chartScores[a.podcast_id] || 0
+        const scoreB = chartScores[b.podcast_id] || 0
+        if (scoreB !== scoreA) return scoreB - scoreA
+        const audA = a.reach?.audience_size || (a as any).audience_size || 0
+        const audB = b.reach?.audience_size || (b as any).audience_size || 0
+        return audB - audA
+      })
+    }
+
+    return results
+  }, [chartResults, chartMinAudience, chartMaxAudience, chartMinRating, chartMinFitScore, chartScores])
+
+  // Count active filters
+  const activeChartFilters = [chartMinAudience, chartMaxAudience, chartMinRating, chartMinFitScore].filter(Boolean).length
 
   return (
     <DashboardLayout>
@@ -1753,28 +1827,118 @@ export default function PodcastFinder() {
                       <div>
                         <CardTitle className="text-xl">Chart Results</CardTitle>
                         <CardDescription className="text-base mt-1">
-                          {chartResults.length} top podcasts from {chartPlatform === 'apple' ? 'Apple Podcasts' : 'Spotify'}
+                          {filteredChartResults.length === chartResults.length
+                            ? `${chartResults.length} top podcasts`
+                            : `${filteredChartResults.length} of ${chartResults.length} podcasts (filtered)`
+                          } from {chartPlatform === 'apple' ? 'Apple Podcasts' : 'Spotify'}
                         </CardDescription>
                       </div>
                     </div>
-                    <Button
-                      onClick={handleScanChartCompatibility}
-                      disabled={isChartScoring || !selectedClientData?.bio}
-                      variant="secondary"
-                    >
-                      {isChartScoring ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Scoring...
-                        </>
-                      ) : (
-                        <>
-                          <Star className="h-4 w-4 mr-2" />
-                          Scan Compatibility
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setChartShowFilters(!chartShowFilters)}
+                      >
+                        <Filter className="h-4 w-4 mr-2" />
+                        Filters
+                        {activeChartFilters > 0 && (
+                          <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                            {activeChartFilters}
+                          </Badge>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={handleScanChartCompatibility}
+                        disabled={isChartScoring || !selectedClientData?.bio}
+                        variant="secondary"
+                      >
+                        {isChartScoring ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Scoring...
+                          </>
+                        ) : (
+                          <>
+                            <Star className="h-4 w-4 mr-2" />
+                            Scan Compatibility
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
+
+                  {/* Collapsible Filters */}
+                  {chartShowFilters && (
+                    <div className="mt-4 p-4 bg-muted/30 rounded-lg border space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Min Audience</Label>
+                          <Input
+                            type="number"
+                            placeholder="e.g., 5000"
+                            value={chartMinAudience}
+                            onChange={(e) => setChartMinAudience(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Max Audience</Label>
+                          <Input
+                            type="number"
+                            placeholder="e.g., 100000"
+                            value={chartMaxAudience}
+                            onChange={(e) => setChartMaxAudience(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Min Rating</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="5"
+                            placeholder="e.g., 4.0"
+                            value={chartMinRating}
+                            onChange={(e) => setChartMinRating(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">
+                            Min Fit Score
+                            {Object.keys(chartScores).length === 0 && (
+                              <span className="text-xs text-muted-foreground ml-1">(scan first)</span>
+                            )}
+                          </Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="10"
+                            placeholder="e.g., 7"
+                            value={chartMinFitScore}
+                            onChange={(e) => setChartMinFitScore(e.target.value)}
+                            disabled={Object.keys(chartScores).length === 0}
+                          />
+                        </div>
+                      </div>
+                      {activeChartFilters > 0 && (
+                        <div className="flex justify-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setChartMinAudience('')
+                              setChartMaxAudience('')
+                              setChartMinRating('')
+                              setChartMinFitScore('')
+                            }}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Clear Filters
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="border-2 rounded-xl overflow-hidden shadow-sm">
@@ -1785,15 +1949,15 @@ export default function PodcastFinder() {
                             <input
                               type="checkbox"
                               className="w-4 h-4 cursor-pointer"
-                              checked={chartResults.length > 0 && chartResults.every(p => selectedPodcasts.has(p.podcast_id))}
+                              checked={filteredChartResults.length > 0 && filteredChartResults.every(p => selectedPodcasts.has(p.podcast_id))}
                               onChange={() => {
-                                const allSelected = chartResults.every(p => selectedPodcasts.has(p.podcast_id))
+                                const allSelected = filteredChartResults.every(p => selectedPodcasts.has(p.podcast_id))
                                 setSelectedPodcasts(prev => {
                                   const newSet = new Set(prev)
                                   if (allSelected) {
-                                    chartResults.forEach(p => newSet.delete(p.podcast_id))
+                                    filteredChartResults.forEach(p => newSet.delete(p.podcast_id))
                                   } else {
-                                    chartResults.forEach(p => newSet.add(p.podcast_id))
+                                    filteredChartResults.forEach(p => newSet.add(p.podcast_id))
                                   }
                                   return newSet
                                 })
@@ -1810,7 +1974,7 @@ export default function PodcastFinder() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {chartResults.map((podcast, index) => (
+                        {filteredChartResults.map((podcast, index) => (
                           <TableRow
                             key={podcast.podcast_id}
                             className="hover:bg-muted/30 transition-colors cursor-pointer"
