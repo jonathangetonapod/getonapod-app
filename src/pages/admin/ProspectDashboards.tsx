@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -49,7 +49,8 @@ import {
   X,
   ImageIcon,
   Save,
-  Loader2
+  Loader2,
+  Upload
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -77,6 +78,8 @@ export default function ProspectDashboards() {
   const [selectedDashboard, setSelectedDashboard] = useState<ProspectDashboard | null>(null)
   const [editImageUrl, setEditImageUrl] = useState('')
   const [savingImage, setSavingImage] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const appUrl = window.location.origin
 
@@ -196,6 +199,79 @@ export default function ProspectDashboards() {
       toast.error('Failed to save profile picture')
     } finally {
       setSavingImage(false)
+    }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !selectedDashboard) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB')
+      return
+    }
+
+    setUploadingImage(true)
+    try {
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${selectedDashboard.id}-${Date.now()}.${fileExt}`
+
+      // Upload to Supabase Storage
+      const { data, error: uploadError } = await supabase.storage
+        .from('prospect-images')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('prospect-images')
+        .getPublicUrl(fileName)
+
+      // Update the image URL
+      setEditImageUrl(publicUrl)
+
+      // Save to database
+      const { error: dbError } = await supabase
+        .from('prospect_dashboards')
+        .update({ prospect_image_url: publicUrl })
+        .eq('id', selectedDashboard.id)
+
+      if (dbError) throw dbError
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, prospect_image_url: publicUrl }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, prospect_image_url: publicUrl } : null
+      )
+
+      toast.success('Profile picture uploaded!')
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      toast.error('Failed to upload image')
+    } finally {
+      setUploadingImage(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
@@ -545,6 +621,38 @@ export default function ProspectDashboards() {
                         </div>
                       </div>
                     )}
+
+                    {/* Upload Button */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage}
+                    >
+                      {uploadingImage ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-2" />
+                      )}
+                      {uploadingImage ? 'Uploading...' : 'Upload from Desktop'}
+                    </Button>
+
+                    {/* Or use URL */}
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">Or paste URL</span>
+                      </div>
+                    </div>
 
                     <div className="flex gap-2">
                       <Input
