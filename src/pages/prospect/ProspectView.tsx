@@ -37,6 +37,7 @@ interface ProspectDashboard {
   slug: string
   prospect_name: string
   prospect_bio: string | null
+  prospect_image_url: string | null
   spreadsheet_id: string
   spreadsheet_url: string
   is_active: boolean
@@ -320,6 +321,19 @@ export default function ProspectView() {
               <Radio className="h-4 w-4" />
               Curated Podcast Opportunities
             </div>
+
+            {/* Prospect Profile Picture */}
+            {dashboard.prospect_image_url && (
+              <div className="flex justify-center">
+                <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-xl">
+                  <img
+                    src={dashboard.prospect_image_url}
+                    alt={dashboard.prospect_name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
               Hi, <span className="text-primary">{dashboard.prospect_name}</span>

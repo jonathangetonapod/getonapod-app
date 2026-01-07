@@ -161,7 +161,8 @@ export interface CreateProspectSheetResult {
 export async function createProspectSheet(
   prospectName: string,
   prospectBio: string | undefined,
-  podcasts: PodcastExportData[]
+  podcasts: PodcastExportData[],
+  prospectImageUrl?: string
 ): Promise<CreateProspectSheetResult> {
   if (!prospectName) {
     throw new Error('Prospect name is required')
@@ -187,6 +188,7 @@ export async function createProspectSheet(
       body: JSON.stringify({
         prospectName,
         prospectBio,
+        prospectImageUrl,
         podcasts,
       }),
     })

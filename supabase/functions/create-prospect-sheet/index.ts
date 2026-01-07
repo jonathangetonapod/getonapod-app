@@ -137,9 +137,10 @@ serve(async (req) => {
   }
 
   try {
-    const { prospectName, prospectBio, podcasts } = await req.json() as {
+    const { prospectName, prospectBio, prospectImageUrl, podcasts } = await req.json() as {
       prospectName: string
       prospectBio?: string
+      prospectImageUrl?: string
       podcasts: PodcastExportData[]
     }
 
@@ -293,6 +294,7 @@ serve(async (req) => {
         slug,
         prospect_name: prospectName,
         prospect_bio: prospectBio || null,
+        prospect_image_url: prospectImageUrl || null,
         spreadsheet_id: spreadsheetId,
         spreadsheet_url: spreadsheetUrl,
       })

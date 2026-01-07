@@ -54,6 +54,7 @@ export default function PodcastFinder() {
   // Prospect mode
   const [prospectName, setProspectName] = useState('')
   const [prospectBio, setProspectBio] = useState('')
+  const [prospectImageUrl, setProspectImageUrl] = useState('')
   const [lastProspectSheet, setLastProspectSheet] = useState<{ url: string; title: string; dashboardUrl: string } | null>(null)
   const isProspectMode = selectedClient === '__prospect__'
   const [isGenerating, setIsGenerating] = useState(false)
@@ -827,7 +828,7 @@ export default function PodcastFinder() {
 
       // Use different export based on mode
       if (isProspectMode) {
-        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport)
+        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, prospectImageUrl.trim() || undefined)
         // Save sheet info for persistent display
         setLastProspectSheet({
           url: result.spreadsheetUrl,
@@ -1195,6 +1196,21 @@ export default function PodcastFinder() {
                     />
                     <p className="text-xs text-muted-foreground">
                       The more details you provide, the better the AI can score podcast compatibility.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="prospect-image" className="text-sm font-medium">
+                      Profile Picture URL <span className="text-muted-foreground">(optional)</span>
+                    </Label>
+                    <Input
+                      id="prospect-image"
+                      type="url"
+                      placeholder="https://example.com/profile-picture.jpg"
+                      value={prospectImageUrl}
+                      onChange={(e) => setProspectImageUrl(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Add a profile picture or company logo to personalize the prospect's dashboard.
                     </p>
                   </div>
                 </div>
