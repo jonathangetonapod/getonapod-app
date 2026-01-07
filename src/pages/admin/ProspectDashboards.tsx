@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -165,9 +166,10 @@ export default function ProspectDashboards() {
   }).length
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Prospect Dashboards</h1>
           <p className="text-muted-foreground mt-1">
@@ -592,6 +594,7 @@ export default function ProspectDashboards() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </div>
+    </DashboardLayout>
   )
 }
