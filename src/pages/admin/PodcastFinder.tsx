@@ -64,6 +64,43 @@ export default function PodcastFinder() {
   const [selectedPodcastDetails, setSelectedPodcastDetails] = useState<PodcastData | null>(null)
   const [loadingPodcastDetails, setLoadingPodcastDetails] = useState(false)
 
+  // Mode toggle (search vs charts)
+  const [finderMode, setFinderMode] = useState<'search' | 'charts'>('search')
+
+  // Charts mode state
+  const [chartPlatform, setChartPlatform] = useState<'apple' | 'spotify'>('apple')
+  const [chartCountry, setChartCountry] = useState('us')
+  const [chartCategory, setChartCategory] = useState('')
+  const [chartResults, setChartResults] = useState<PodcastData[]>([])
+  const [chartLimit, setChartLimit] = useState(50)
+  const [loadingCharts, setLoadingCharts] = useState(false)
+
+  // Scoring for chart results
+  const [chartScores, setChartScores] = useState<Record<string, number | null>>({})
+  const [chartReasonings, setChartReasonings] = useState<Record<string, string | undefined>>({})
+  const [isChartScoring, setIsChartScoring] = useState(false)
+
+  // Hardcoded chart options (will be replaced with API calls later)
+  const chartCountries = [
+    { code: 'us', name: 'United States' },
+    { code: 'gb', name: 'United Kingdom' },
+    { code: 'ca', name: 'Canada' },
+    { code: 'au', name: 'Australia' },
+  ]
+
+  const chartCategories = [
+    { id: 'business', name: 'Business' },
+    { id: 'technology', name: 'Technology' },
+    { id: 'society-culture', name: 'Society & Culture' },
+    { id: 'news', name: 'News' },
+    { id: 'comedy', name: 'Comedy' },
+    { id: 'health-fitness', name: 'Health & Fitness' },
+    { id: 'education', name: 'Education' },
+    { id: 'arts', name: 'Arts' },
+    { id: 'sports', name: 'Sports' },
+    { id: 'true-crime', name: 'True Crime' },
+  ]
+
   // Google Sheets Export
   const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set())
   const [isExporting, setIsExporting] = useState(false)
@@ -110,6 +147,15 @@ export default function PodcastFinder() {
           if (parsed.filters.searchFields !== undefined) setSearchFields(parsed.filters.searchFields)
           if (parsed.filters.activeOnly !== undefined) setActiveOnly(parsed.filters.activeOnly)
         }
+        // Load chart state
+        if (parsed.finderMode) setFinderMode(parsed.finderMode)
+        if (parsed.chartPlatform) setChartPlatform(parsed.chartPlatform)
+        if (parsed.chartCountry) setChartCountry(parsed.chartCountry)
+        if (parsed.chartCategory) setChartCategory(parsed.chartCategory)
+        if (parsed.chartLimit) setChartLimit(parsed.chartLimit)
+        if (parsed.chartResults) setChartResults(parsed.chartResults)
+        if (parsed.chartScores) setChartScores(parsed.chartScores)
+        if (parsed.chartReasonings) setChartReasonings(parsed.chartReasonings)
       } catch (e) {
         console.error('Failed to load saved state:', e)
       }
@@ -132,9 +178,18 @@ export default function PodcastFinder() {
         searchFields,
         activeOnly,
       },
+      // Chart state
+      finderMode,
+      chartPlatform,
+      chartCountry,
+      chartCategory,
+      chartLimit,
+      chartResults,
+      chartScores,
+      chartReasonings,
     }
     localStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
-  }, [selectedClient, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly])
+  }, [selectedClient, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly, finderMode, chartPlatform, chartCountry, chartCategory, chartLimit, chartResults, chartScores, chartReasonings])
 
   const handleGenerateQueries = async () => {
     if (!selectedClient || !selectedClientData) {
@@ -418,6 +473,68 @@ export default function PodcastFinder() {
     }
   }
 
+  const handleScanChartCompatibility = async () => {
+    if (!chartResults.length || !selectedClientData) return
+
+    if (!selectedClientData.bio) {
+      toast.error('Client bio is required for compatibility scoring')
+      return
+    }
+
+    setIsChartScoring(true)
+
+    try {
+      // Map PodcastData to PodcastForScoring format
+      const podcastsForScoring = chartResults.map(p => ({
+        podcast_id: p.podcast_id,
+        podcast_name: p.podcast_name,
+        podcast_description: p.podcast_description,
+        publisher_name: p.publisher_name,
+        podcast_categories: p.podcast_categories,
+        audience_size: p.reach?.audience_size,
+        episode_count: p.episode_count,
+      }))
+
+      // Score with progress callback
+      const scores = await scoreCompatibilityBatch(
+        selectedClientData.bio,
+        podcastsForScoring,
+        10,
+        (completed, total) => {
+          console.log(`Chart scoring progress: ${completed}/${total}`)
+        }
+      )
+
+      // Build score and reasoning maps
+      const scoreMap: Record<string, number | null> = {}
+      const reasoningMap: Record<string, string | undefined> = {}
+      scores.forEach(s => {
+        scoreMap[s.podcast_id] = s.score
+        reasoningMap[s.podcast_id] = s.reasoning
+      })
+
+      setChartScores(scoreMap)
+      setChartReasonings(reasoningMap)
+
+      // Calculate average score
+      const validScores = scores.filter(s => s.score !== null).map(s => s.score!)
+      const avgScore = validScores.length > 0
+        ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        : 0
+
+      const highScoreCount = validScores.filter(s => s >= 8).length
+
+      toast.success(
+        `Scored ${scores.length} podcasts! Average: ${avgScore.toFixed(1)}/10 • ${highScoreCount} highly compatible (8+)`
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to calculate compatibility scores')
+      console.error(error)
+    } finally {
+      setIsChartScoring(false)
+    }
+  }
+
   const handleEditQuery = (queryId: string, newText: string) => {
     setQueries(prev => prev.map(q =>
       q.id === queryId ? { ...q, text: newText } : q
@@ -536,30 +653,52 @@ export default function PodcastFinder() {
     setIsExporting(true)
 
     try {
-      // Collect all selected podcasts from all queries
       const podcastsToExport: PodcastExportData[] = []
 
-      queries.forEach(query => {
-        query.results.forEach(podcast => {
+      if (finderMode === 'search') {
+        // Collect all selected podcasts from all queries (search mode)
+        queries.forEach(query => {
+          query.results.forEach(podcast => {
+            if (selectedPodcasts.has(podcast.podcast_id)) {
+              podcastsToExport.push({
+                podcast_name: podcast.podcast_name,
+                podcast_description: podcast.podcast_description,
+                itunes_rating: podcast.itunes_rating,
+                episode_count: podcast.episode_count,
+                podscan_podcast_id: podcast.podcast_id,
+                // Legacy fields kept for backward compatibility:
+                publisher_name: podcast.publisher_name,
+                audience_size: podcast.reach?.audience_size,
+                podcast_url: podcast.podcast_url,
+                podcast_email: podcast.podcast_email,
+                rss_feed: podcast.rss_url,
+                compatibility_score: query.compatibilityScores[podcast.podcast_id],
+                compatibility_reasoning: query.scoreReasonings[podcast.podcast_id],
+              })
+            }
+          })
+        })
+      } else {
+        // Collect selected podcasts from chart results (charts mode)
+        chartResults.forEach(podcast => {
           if (selectedPodcasts.has(podcast.podcast_id)) {
             podcastsToExport.push({
               podcast_name: podcast.podcast_name,
               podcast_description: podcast.podcast_description,
-              itunes_rating: podcast.itunes_rating,
+              itunes_rating: podcast.reach?.itunes?.itunes_rating_average,
               episode_count: podcast.episode_count,
               podscan_podcast_id: podcast.podcast_id,
-              // Legacy fields kept for backward compatibility:
               publisher_name: podcast.publisher_name,
               audience_size: podcast.reach?.audience_size,
               podcast_url: podcast.podcast_url,
               podcast_email: podcast.podcast_email,
               rss_feed: podcast.rss_url,
-              compatibility_score: query.compatibilityScores[podcast.podcast_id],
-              compatibility_reasoning: query.scoreReasonings[podcast.podcast_id],
+              compatibility_score: chartScores[podcast.podcast_id],
+              compatibility_reasoning: chartReasonings[podcast.podcast_id],
             })
           }
         })
-      })
+      }
 
       const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
 
@@ -665,6 +804,28 @@ export default function PodcastFinder() {
           </div>
         </div>
 
+        {/* Mode Toggle */}
+        <div className="flex items-center justify-center gap-2 p-4 bg-muted/50 rounded-lg">
+          <Button
+            variant={finderMode === 'search' ? 'default' : 'outline'}
+            onClick={() => setFinderMode('search')}
+            size="lg"
+            className="min-w-[160px]"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            AI Search Mode
+          </Button>
+          <Button
+            variant={finderMode === 'charts' ? 'default' : 'outline'}
+            onClick={() => setFinderMode('charts')}
+            size="lg"
+            className="min-w-[160px]"
+          >
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Charts Mode
+          </Button>
+        </div>
+
         {/* Export to Google Sheets */}
         {selectedPodcasts.size > 0 && (
           <Card className="border-2 border-green-200 dark:border-green-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 shadow-md">
@@ -715,7 +876,7 @@ export default function PodcastFinder() {
           </Card>
         )}
 
-        {/* Client Selection & Query Generation */}
+        {/* Client Selection */}
         <Card className="border-2 shadow-sm">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
@@ -723,9 +884,12 @@ export default function PodcastFinder() {
                 1
               </div>
               <div>
-                <CardTitle className="text-xl">Select Client & Generate Queries</CardTitle>
+                <CardTitle className="text-xl">Select Client</CardTitle>
                 <CardDescription className="text-base mt-1">
-                  Choose a client and let AI generate optimized podcast search queries
+                  {finderMode === 'search'
+                    ? 'Choose a client and generate AI-powered podcast search queries'
+                    : 'Choose a client to find podcasts for and score compatibility'
+                  }
                 </CardDescription>
               </div>
             </div>
@@ -748,36 +912,39 @@ export default function PodcastFinder() {
                 </Select>
               </div>
 
-              <div className="flex items-end gap-2">
-                <Button
-                  onClick={handleGenerateQueries}
-                  disabled={!selectedClient || isGenerating}
-                  className="flex-1"
-                  size="lg"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-5 w-5 mr-2" />
-                      Generate 5 AI Queries
-                    </>
-                  )}
-                </Button>
-                {queries.length > 0 && (
+              {/* Search mode: Generate Queries button */}
+              {finderMode === 'search' && (
+                <div className="flex items-end gap-2">
                   <Button
-                    onClick={handleReset}
-                    variant="outline"
+                    onClick={handleGenerateQueries}
+                    disabled={!selectedClient || isGenerating}
+                    className="flex-1"
                     size="lg"
-                    title="Clear all queries and start over"
                   >
-                    <X className="h-5 w-5" />
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-5 w-5 mr-2" />
+                        Generate 5 AI Queries
+                      </>
+                    )}
                   </Button>
-                )}
-              </div>
+                  {queries.length > 0 && (
+                    <Button
+                      onClick={handleReset}
+                      variant="outline"
+                      size="lg"
+                      title="Clear all queries and start over"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {selectedClientData && (
@@ -840,8 +1007,11 @@ export default function PodcastFinder() {
           </CardContent>
         </Card>
 
-        {/* Search Filters */}
-        {queries.length > 0 && (
+        {/* Search Mode Content */}
+        {finderMode === 'search' && (
+          <>
+            {/* Search Filters */}
+            {queries.length > 0 && (
           <Card className="border-2 shadow-sm">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
@@ -1346,33 +1516,352 @@ export default function PodcastFinder() {
           </Card>
         )}
 
-        {/* Empty State */}
-        {queries.length === 0 && (
-          <Card className="border-2 shadow-sm">
-            <CardContent className="flex flex-col items-center justify-center py-20">
-              <div className="rounded-full bg-primary/10 p-6 mb-6">
-                <Sparkles className="h-16 w-16 text-primary" />
-              </div>
-              <h3 className="text-2xl font-bold mb-3">Ready to Find Podcasts</h3>
-              <p className="text-muted-foreground text-center max-w-lg text-base mb-8">
-                Select a client above and click "Generate 5 AI Queries" to get started with AI-powered podcast discovery
-              </p>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  <span>AI-Powered Queries</span>
+            {/* Empty State */}
+            {queries.length === 0 && (
+              <Card className="border-2 shadow-sm">
+                <CardContent className="flex flex-col items-center justify-center py-20">
+                  <div className="rounded-full bg-primary/10 p-6 mb-6">
+                    <Sparkles className="h-16 w-16 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3">Ready to Find Podcasts</h3>
+                  <p className="text-muted-foreground text-center max-w-lg text-base mb-8">
+                    Select a client above and click "Generate 5 AI Queries" to get started with AI-powered podcast discovery
+                  </p>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      <span>AI-Powered Queries</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Search className="h-4 w-4" />
+                      <span>Advanced Filters</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Star className="h-4 w-4" />
+                      <span>Compatibility Scoring</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
+
+        {/* Charts Mode Content */}
+        {finderMode === 'charts' && (
+          <>
+            {/* Chart Selection */}
+            <Card className="border-2 shadow-sm">
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
+                    2
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Browse Top Charts</CardTitle>
+                    <CardDescription className="text-base mt-1">
+                      Select platform, country, and category to browse top-ranked podcasts
+                    </CardDescription>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Search className="h-4 w-4" />
-                  <span>Advanced Filters</span>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Platform Selection */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Platform</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={chartPlatform === 'apple' ? 'default' : 'outline'}
+                      onClick={() => setChartPlatform('apple')}
+                      className="flex-1"
+                    >
+                      Apple Podcasts
+                    </Button>
+                    <Button
+                      variant={chartPlatform === 'spotify' ? 'default' : 'outline'}
+                      onClick={() => setChartPlatform('spotify')}
+                      className="flex-1"
+                    >
+                      Spotify
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {chartPlatform === 'apple' ? 'Returns up to 200 podcasts' : 'Returns up to 50 podcasts'}
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Star className="h-4 w-4" />
-                  <span>Compatibility Scoring</span>
+
+                {/* Country & Category Selection */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="chart-country" className="text-sm font-semibold flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      Country
+                    </Label>
+                    <Select value={chartCountry} onValueChange={setChartCountry}>
+                      <SelectTrigger id="chart-country">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {chartCountries.map((country) => (
+                          <SelectItem key={country.code} value={country.code}>
+                            {country.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="chart-category" className="text-sm font-semibold flex items-center gap-2">
+                      <Filter className="h-4 w-4" />
+                      Category
+                    </Label>
+                    <Select value={chartCategory} onValueChange={setChartCategory}>
+                      <SelectTrigger id="chart-category">
+                        <SelectValue placeholder="Select category..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {chartCategories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="chart-limit" className="text-sm font-semibold flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Limit
+                    </Label>
+                    <Select value={chartLimit.toString()} onValueChange={(v) => setChartLimit(parseInt(v))}>
+                      <SelectTrigger id="chart-limit">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10 podcasts</SelectItem>
+                        <SelectItem value="25">25 podcasts</SelectItem>
+                        <SelectItem value="50">50 podcasts</SelectItem>
+                        <SelectItem value="100">100 podcasts</SelectItem>
+                        <SelectItem value="200">200 podcasts</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+
+                {/* Get Top Podcasts Button */}
+                <Button
+                  onClick={() => toast.info('Charts API integration coming soon!')}
+                  disabled={!chartCategory || loadingCharts}
+                  size="lg"
+                  className="w-full"
+                >
+                  {loadingCharts ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Loading Charts...
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="h-5 w-5 mr-2" />
+                      Get Top Podcasts
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Chart Results */}
+            {chartResults.length > 0 && (
+              <Card className="border-2 shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
+                        3
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl">Chart Results</CardTitle>
+                        <CardDescription className="text-base mt-1">
+                          {chartResults.length} top podcasts from {chartPlatform === 'apple' ? 'Apple Podcasts' : 'Spotify'}
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleScanChartCompatibility}
+                      disabled={isChartScoring || !selectedClientData?.bio}
+                      variant="secondary"
+                    >
+                      {isChartScoring ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Scoring...
+                        </>
+                      ) : (
+                        <>
+                          <Star className="h-4 w-4 mr-2" />
+                          Scan Compatibility
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="border-2 rounded-xl overflow-hidden shadow-sm">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="w-[50px]">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 cursor-pointer"
+                              checked={chartResults.length > 0 && chartResults.every(p => selectedPodcasts.has(p.podcast_id))}
+                              onChange={() => {
+                                const allSelected = chartResults.every(p => selectedPodcasts.has(p.podcast_id))
+                                setSelectedPodcasts(prev => {
+                                  const newSet = new Set(prev)
+                                  if (allSelected) {
+                                    chartResults.forEach(p => newSet.delete(p.podcast_id))
+                                  } else {
+                                    chartResults.forEach(p => newSet.add(p.podcast_id))
+                                  }
+                                  return newSet
+                                })
+                              }}
+                            />
+                          </TableHead>
+                          <TableHead className="w-[60px] font-semibold">#</TableHead>
+                          <TableHead className="font-semibold">Podcast</TableHead>
+                          <TableHead className="font-semibold">Audience</TableHead>
+                          <TableHead className="font-semibold">Episodes</TableHead>
+                          <TableHead className="font-semibold">Rating</TableHead>
+                          <TableHead className="font-semibold">Fit Score</TableHead>
+                          <TableHead className="w-[80px] font-semibold">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {chartResults.map((podcast, index) => (
+                          <TableRow
+                            key={podcast.podcast_id}
+                            className="hover:bg-muted/30 transition-colors cursor-pointer"
+                            onClick={() => handlePodcastRowClick(podcast.podcast_id)}
+                          >
+                            <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 cursor-pointer"
+                                checked={selectedPodcasts.has(podcast.podcast_id)}
+                                onChange={() => handleTogglePodcastSelection(podcast.podcast_id)}
+                              />
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <Badge variant="outline" className="font-bold">
+                                {index + 1}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <div className="max-w-md">
+                                <p className="font-semibold text-base mb-1">{podcast.podcast_name}</p>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {podcast.podcast_description}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">
+                                  {podcast.reach?.audience_size?.toLocaleString() || 'N/A'}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <span className="font-medium">{podcast.episode_count}</span>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              <div className="flex items-center gap-1">
+                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                <span className="font-medium">
+                                  {podcast.reach?.itunes?.itunes_rating_average || 'N/A'}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-4">
+                              {chartScores[podcast.podcast_id] !== undefined ? (
+                                <Badge
+                                  variant="default"
+                                  className={`text-base px-3 py-1 cursor-pointer ${
+                                    (chartScores[podcast.podcast_id] || 0) >= 8
+                                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                                      : ''
+                                  }`}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedPodcastForScore({
+                                      podcast,
+                                      score: chartScores[podcast.podcast_id] || 0,
+                                      reasoning: chartReasonings[podcast.podcast_id]
+                                    })
+                                    setScoreModalOpen(true)
+                                  }}
+                                >
+                                  {chartScores[podcast.podcast_id]}/10
+                                </Badge>
+                              ) : (
+                                <span className="text-sm text-muted-foreground font-medium">Not scored</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                asChild
+                                title="View on Podscan"
+                              >
+                                <a href={podcast.podcast_url} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-5 w-5" />
+                                </a>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Charts Empty State */}
+            {chartResults.length === 0 && (
+              <Card className="border-2 shadow-sm">
+                <CardContent className="flex flex-col items-center justify-center py-20">
+                  <div className="rounded-full bg-primary/10 p-6 mb-6">
+                    <TrendingUp className="h-16 w-16 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3">Browse Top Charts</h3>
+                  <p className="text-muted-foreground text-center max-w-lg text-base mb-8">
+                    Select a platform, country, and category above, then click "Get Top Podcasts" to browse the top-ranked podcasts
+                  </p>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      <span>Chart Rankings</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      <span>Multiple Countries</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Star className="h-4 w-4" />
+                      <span>Compatibility Scoring</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
         )}
 
         {/* Score Details Modal */}
