@@ -120,6 +120,8 @@ export default function PortalDashboard() {
   const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
   const [podcastDemographics, setPodcastDemographics] = useState<PodcastDemographics | null>(null)
   const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
+  const [bookingDemographics, setBookingDemographics] = useState<PodcastDemographics | null>(null)
+  const [isLoadingBookingDemographics, setIsLoadingBookingDemographics] = useState(false)
   const [preloadedAnalyses, setPreloadedAnalyses] = useState<Map<string, PodcastFitAnalysis>>(new Map())
   const [preloadProgress, setPreloadProgress] = useState<{ loaded: number; total: number; isLoading: boolean }>({ loaded: 0, total: 0, isLoading: false })
   const [localStorageLoaded, setLocalStorageLoaded] = useState(false)
@@ -450,6 +452,35 @@ export default function PortalDashboard() {
 
     fetchDemographics()
   }, [viewingOutreachPodcast])
+
+  // Fetch demographics when viewing a booking
+  useEffect(() => {
+    if (!viewingBooking) {
+      setBookingDemographics(null)
+      return
+    }
+
+    // Only fetch if we have a podcast_id
+    if (!viewingBooking.podcast_id) {
+      setBookingDemographics(null)
+      return
+    }
+
+    const fetchBookingDemographics = async () => {
+      setIsLoadingBookingDemographics(true)
+      try {
+        const demographics = await getPodcastDemographics(viewingBooking.podcast_id!)
+        setBookingDemographics(demographics)
+      } catch (error) {
+        console.error('Error fetching booking demographics:', error)
+        setBookingDemographics(null)
+      } finally {
+        setIsLoadingBookingDemographics(false)
+      }
+    }
+
+    fetchBookingDemographics()
+  }, [viewingBooking])
 
   // Handle deleting an outreach podcast
   const handleDeleteOutreachPodcast = async () => {
@@ -4361,6 +4392,76 @@ export default function PortalDashboard() {
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     {viewingBooking.podcast_description}
                   </p>
+                </div>
+              )}
+
+              {/* Audience Demographics - Only shown if available */}
+              {(isLoadingBookingDemographics || bookingDemographics) && (
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Audience Insights
+                  </h4>
+                  {isLoadingBookingDemographics ? (
+                    <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Loading audience data...</span>
+                    </div>
+                  ) : bookingDemographics && (
+                    <div className="space-y-4">
+                      {/* Key Metrics */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
+                          <p className="text-xs text-muted-foreground">Age</p>
+                          <p className="font-semibold text-sm">{bookingDemographics.age}</p>
+                        </div>
+                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
+                          <p className="text-xs text-muted-foreground">Gender</p>
+                          <p className="font-semibold text-sm capitalize">{bookingDemographics.gender_skew?.replace(/_/g, ' ')}</p>
+                        </div>
+                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
+                          <p className="text-xs text-muted-foreground">Income</p>
+                          <p className="font-semibold text-sm capitalize">{bookingDemographics.purchasing_power}</p>
+                        </div>
+                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
+                          <p className="text-xs text-muted-foreground">Education</p>
+                          <p className="font-semibold text-sm capitalize">{bookingDemographics.education_level}</p>
+                        </div>
+                      </div>
+
+                      {/* Geographic & Industry */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {bookingDemographics.geographic_distribution && bookingDemographics.geographic_distribution.length > 0 && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Top Regions</p>
+                            <div className="flex flex-wrap gap-1">
+                              {bookingDemographics.geographic_distribution.slice(0, 3).map((geo, idx) => (
+                                <span key={idx} className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
+                                  {geo.region} ({geo.percentage}%)
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {bookingDemographics.professional_industry && bookingDemographics.professional_industry.length > 0 && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">Top Industries</p>
+                            <div className="flex flex-wrap gap-1">
+                              {bookingDemographics.professional_industry.slice(0, 3).map((ind, idx) => (
+                                <span key={idx} className="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-200 px-2 py-0.5 rounded">
+                                  {ind.industry}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Based on {bookingDemographics.episodes_analyzed} episodes analyzed
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
