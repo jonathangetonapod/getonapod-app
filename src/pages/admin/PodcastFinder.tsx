@@ -31,7 +31,7 @@ import {
 import { getClients } from '@/services/clients'
 import { generatePodcastQueries, regenerateQuery } from '@/services/queryGeneration'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
-import { searchPodcasts, getPodcastById, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type ChartCountry, type ChartCategory } from '@/services/podscan'
+import { searchPodcasts, getPodcastById, getPodcastDemographics, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type PodcastDemographics, type ChartCountry, type ChartCategory } from '@/services/podscan'
 import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
 import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
 import { toast } from 'sonner'
@@ -63,6 +63,8 @@ export default function PodcastFinder() {
   const [podcastDetailsModalOpen, setPodcastDetailsModalOpen] = useState(false)
   const [selectedPodcastDetails, setSelectedPodcastDetails] = useState<PodcastData | null>(null)
   const [loadingPodcastDetails, setLoadingPodcastDetails] = useState(false)
+  const [podcastDemographics, setPodcastDemographics] = useState<PodcastDemographics | null>(null)
+  const [loadingDemographics, setLoadingDemographics] = useState(false)
 
   // Mode toggle (search vs charts)
   const [finderMode, setFinderMode] = useState<'search' | 'charts'>('search')
@@ -638,17 +640,30 @@ export default function PodcastFinder() {
 
   const handlePodcastRowClick = async (podcastId: string) => {
     setLoadingPodcastDetails(true)
+    setLoadingDemographics(true)
+    setPodcastDemographics(null)
     setPodcastDetailsModalOpen(true)
 
     try {
+      // Fetch podcast details
       const details = await getPodcastById(podcastId)
       setSelectedPodcastDetails(details)
+      setLoadingPodcastDetails(false)
+
+      // Fetch demographics (non-blocking)
+      try {
+        const demographics = await getPodcastDemographics(podcastId)
+        setPodcastDemographics(demographics)
+      } catch (demoError) {
+        console.log('Demographics not available:', demoError)
+      }
     } catch (error) {
       console.error('Error fetching podcast details:', error)
       toast.error('Failed to load podcast details')
       setPodcastDetailsModalOpen(false)
     } finally {
       setLoadingPodcastDetails(false)
+      setLoadingDemographics(false)
     }
   }
 
@@ -1786,6 +1801,7 @@ export default function PodcastFinder() {
                             />
                           </TableHead>
                           <TableHead className="w-[60px] font-semibold">#</TableHead>
+                          <TableHead className="w-[60px] font-semibold"></TableHead>
                           <TableHead className="font-semibold">Podcast</TableHead>
                           <TableHead className="font-semibold">Audience</TableHead>
                           <TableHead className="font-semibold">Episodes</TableHead>
@@ -1811,13 +1827,27 @@ export default function PodcastFinder() {
                             </TableCell>
                             <TableCell className="py-4">
                               <Badge variant="outline" className="font-bold">
-                                {index + 1}
+                                {(podcast as any).rank || index + 1}
                               </Badge>
+                            </TableCell>
+                            <TableCell className="py-2">
+                              {podcast.podcast_image_url ? (
+                                <img
+                                  src={podcast.podcast_image_url}
+                                  alt={podcast.podcast_name}
+                                  className="w-12 h-12 rounded-lg object-cover"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
+                                  <span className="text-xs text-muted-foreground">No img</span>
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell className="py-4">
                               <div className="max-w-md">
                                 <p className="font-semibold text-base mb-1">{podcast.podcast_name}</p>
-                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                <p className="text-xs text-muted-foreground mb-1">{podcast.publisher_name}</p>
+                                <p className="text-sm text-muted-foreground line-clamp-1">
                                   {podcast.podcast_description}
                                 </p>
                               </div>
@@ -2199,6 +2229,49 @@ export default function PodcastFinder() {
                     </Badge>
                   )}
                 </div>
+
+                {/* Demographics Section */}
+                {loadingDemographics ? (
+                  <div className="p-4 bg-muted/30 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm text-muted-foreground">Loading demographics...</span>
+                    </div>
+                  </div>
+                ) : podcastDemographics ? (
+                  <div className="space-y-4 p-4 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-purple-600" />
+                      <h3 className="font-semibold text-lg">Audience Demographics</h3>
+                      <Badge variant="secondary" className="text-xs">Verified Data</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="p-3 bg-green-100/50 dark:bg-green-900/20 rounded-lg text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Buying Power</p>
+                        <p className="font-bold text-green-700 dark:text-green-400">{podcastDemographics.purchasing_power || 'N/A'}</p>
+                        <p className="text-[10px] text-muted-foreground">Can afford premium</p>
+                      </div>
+                      <div className="p-3 bg-purple-100/50 dark:bg-purple-900/20 rounded-lg text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Education</p>
+                        <p className="font-bold text-purple-700 dark:text-purple-400">{podcastDemographics.education_level || 'N/A'}</p>
+                        <p className="text-[10px] text-muted-foreground">Decision makers</p>
+                      </div>
+                      <div className="p-3 bg-blue-100/50 dark:bg-blue-900/20 rounded-lg text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Age Group</p>
+                        <p className="font-bold text-blue-700 dark:text-blue-400">{podcastDemographics.age || 'N/A'}</p>
+                        <p className="text-[10px] text-muted-foreground">Primary audience</p>
+                      </div>
+                      <div className="p-3 bg-orange-100/50 dark:bg-orange-900/20 rounded-lg text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Engagement</p>
+                        <p className="font-bold text-orange-700 dark:text-orange-400">{podcastDemographics.engagement_level || 'N/A'}</p>
+                        <p className="text-[10px] text-muted-foreground">Listener loyalty</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      Based on analysis of {podcastDemographics.episodes_analyzed} episodes
+                    </p>
+                  </div>
+                ) : null}
 
                 {/* Action Buttons */}
                 <div className="flex gap-2 pt-2">

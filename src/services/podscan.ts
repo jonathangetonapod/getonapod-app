@@ -397,6 +397,12 @@ export interface ChartCategory {
 
 export interface ChartPodcast extends PodcastData {
   rank?: number;
+  // Chart API specific fields (different from search API)
+  name?: string;
+  publisher?: string;
+  movement?: 'UP' | 'DOWN' | 'UNCHANGED';
+  artwork?: string;
+  image?: string;
 }
 
 /**
@@ -518,9 +524,16 @@ export async function getTopChartPodcasts(
     return [];
   }
 
-  // Add rank based on position in array if not already present
-  return podcasts.map((podcast: PodcastData, index: number) => ({
+  // Normalize field names and add rank
+  return podcasts.map((podcast: any, index: number) => ({
     ...podcast,
-    rank: (podcast as ChartPodcast).rank || index + 1,
+    // Normalize to standard field names
+    podcast_id: podcast.podcast_id || podcast.id || `chart-${index}`,
+    podcast_name: podcast.podcast_name || podcast.name,
+    podcast_description: podcast.podcast_description || podcast.description || '',
+    publisher_name: podcast.publisher_name || podcast.publisher,
+    podcast_image_url: podcast.podcast_image_url || podcast.artwork || podcast.image,
+    podcast_url: podcast.podcast_url || podcast.url,
+    rank: podcast.rank || index + 1,
   }));
 }
