@@ -380,3 +380,120 @@ export function getPodcastAnalytics(podcast: PodcastData): PodcastAnalytics {
     audience_size: podcast.reach?.audience_size || 0,
   };
 }
+
+// ============================================
+// CHARTS API
+// ============================================
+
+export interface ChartCountry {
+  code: string;
+  name: string;
+}
+
+export interface ChartCategory {
+  id: string;
+  name: string;
+}
+
+export interface ChartPodcast extends PodcastData {
+  rank?: number;
+}
+
+/**
+ * Get all supported countries for chart rankings
+ */
+export async function getChartCountries(): Promise<ChartCountry[]> {
+  const url = `${PODSCAN_API_BASE}/charts/countries/supported`;
+  console.log('🌍 Fetching chart countries');
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    console.error('❌ Podscan API error:', response.status, response.statusText);
+    throw new Error(`Failed to fetch chart countries: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log('✅ Chart countries fetched:', data);
+
+  // API returns { countries: [...] } or just an array
+  return data.countries || data;
+}
+
+/**
+ * Get categories for a specific platform and country
+ */
+export async function getChartCategories(
+  platform: 'apple' | 'spotify',
+  countryCode: string
+): Promise<ChartCategory[]> {
+  const url = `${PODSCAN_API_BASE}/charts/${platform}/${countryCode}/categories`;
+  console.log(`📂 Fetching chart categories for ${platform}/${countryCode}`);
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    console.error('❌ Podscan API error:', response.status, response.statusText);
+    throw new Error(`Failed to fetch chart categories: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log('✅ Chart categories fetched:', data);
+
+  // API returns { categories: [...] } or just an array
+  return data.categories || data;
+}
+
+/**
+ * Get top ranked podcasts from chart
+ * @param platform - 'apple' or 'spotify'
+ * @param countryCode - Country code (e.g., 'us', 'gb')
+ * @param category - Category ID
+ * @param limit - Max podcasts to return (default 10, max 200 for Apple, 50 for Spotify)
+ */
+export async function getTopChartPodcasts(
+  platform: 'apple' | 'spotify',
+  countryCode: string,
+  category: string,
+  limit: number = 10
+): Promise<ChartPodcast[]> {
+  const params = new URLSearchParams();
+  params.append('limit', String(limit));
+
+  const url = `${PODSCAN_API_BASE}/charts/${platform}/${countryCode}/${category}/top?${params}`;
+  console.log(`📊 Fetching top ${limit} podcasts from ${platform}/${countryCode}/${category}`);
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    console.error('❌ Podscan API error:', response.status, response.statusText);
+    throw new Error(`Failed to fetch chart podcasts: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log('✅ Chart podcasts fetched:', data);
+
+  // API returns { podcasts: [...] } or just an array
+  const podcasts = data.podcasts || data;
+
+  // Add rank based on position in array if not already present
+  return podcasts.map((podcast: PodcastData, index: number) => ({
+    ...podcast,
+    rank: (podcast as ChartPodcast).rank || index + 1,
+  }));
+}

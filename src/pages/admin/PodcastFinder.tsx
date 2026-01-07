@@ -31,7 +31,7 @@ import {
 import { getClients } from '@/services/clients'
 import { generatePodcastQueries, regenerateQuery } from '@/services/queryGeneration'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
-import { searchPodcasts, getPodcastById, type PodcastData } from '@/services/podscan'
+import { searchPodcasts, getPodcastById, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type ChartCountry, type ChartCategory } from '@/services/podscan'
 import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
 import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
 import { toast } from 'sonner'
@@ -80,26 +80,11 @@ export default function PodcastFinder() {
   const [chartReasonings, setChartReasonings] = useState<Record<string, string | undefined>>({})
   const [isChartScoring, setIsChartScoring] = useState(false)
 
-  // Hardcoded chart options (will be replaced with API calls later)
-  const chartCountries = [
-    { code: 'us', name: 'United States' },
-    { code: 'gb', name: 'United Kingdom' },
-    { code: 'ca', name: 'Canada' },
-    { code: 'au', name: 'Australia' },
-  ]
-
-  const chartCategories = [
-    { id: 'business', name: 'Business' },
-    { id: 'technology', name: 'Technology' },
-    { id: 'society-culture', name: 'Society & Culture' },
-    { id: 'news', name: 'News' },
-    { id: 'comedy', name: 'Comedy' },
-    { id: 'health-fitness', name: 'Health & Fitness' },
-    { id: 'education', name: 'Education' },
-    { id: 'arts', name: 'Arts' },
-    { id: 'sports', name: 'Sports' },
-    { id: 'true-crime', name: 'True Crime' },
-  ]
+  // Dynamic chart options from API
+  const [chartCountries, setChartCountries] = useState<ChartCountry[]>([])
+  const [chartCategories, setChartCategories] = useState<ChartCategory[]>([])
+  const [loadingCountries, setLoadingCountries] = useState(false)
+  const [loadingCategories, setLoadingCategories] = useState(false)
 
   // Google Sheets Export
   const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set())
@@ -190,6 +175,73 @@ export default function PodcastFinder() {
     }
     localStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
   }, [selectedClient, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly, finderMode, chartPlatform, chartCountry, chartCategory, chartLimit, chartResults, chartScores, chartReasonings])
+
+  // Fetch chart countries when entering charts mode
+  useEffect(() => {
+    if (finderMode === 'charts' && chartCountries.length === 0) {
+      const fetchCountries = async () => {
+        setLoadingCountries(true)
+        try {
+          const countries = await getChartCountries()
+          setChartCountries(countries)
+          // Set default country if not already set
+          if (!chartCountry && countries.length > 0) {
+            setChartCountry(countries[0].code)
+          }
+        } catch (error) {
+          console.error('Failed to fetch chart countries:', error)
+          toast.error('Failed to load countries')
+        } finally {
+          setLoadingCountries(false)
+        }
+      }
+      fetchCountries()
+    }
+  }, [finderMode, chartCountries.length, chartCountry])
+
+  // Fetch chart categories when platform or country changes
+  useEffect(() => {
+    if (finderMode === 'charts' && chartPlatform && chartCountry) {
+      const fetchCategories = async () => {
+        setLoadingCategories(true)
+        setChartCategory('') // Reset category when platform/country changes
+        try {
+          const categories = await getChartCategories(chartPlatform, chartCountry)
+          setChartCategories(categories)
+        } catch (error) {
+          console.error('Failed to fetch chart categories:', error)
+          toast.error('Failed to load categories')
+        } finally {
+          setLoadingCategories(false)
+        }
+      }
+      fetchCategories()
+    }
+  }, [finderMode, chartPlatform, chartCountry])
+
+  // Handle fetching top chart podcasts
+  const handleFetchCharts = async () => {
+    if (!chartCategory) {
+      toast.error('Please select a category')
+      return
+    }
+
+    setLoadingCharts(true)
+    setChartResults([])
+    setChartScores({})
+    setChartReasonings({})
+
+    try {
+      const podcasts = await getTopChartPodcasts(chartPlatform, chartCountry, chartCategory, chartLimit)
+      setChartResults(podcasts)
+      toast.success(`Found ${podcasts.length} top podcasts`)
+    } catch (error) {
+      console.error('Failed to fetch chart podcasts:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch chart podcasts')
+    } finally {
+      setLoadingCharts(false)
+    }
+  }
 
   const handleGenerateQueries = async () => {
     if (!selectedClient || !selectedClientData) {
@@ -1596,10 +1648,11 @@ export default function PodcastFinder() {
                     <Label htmlFor="chart-country" className="text-sm font-semibold flex items-center gap-2">
                       <Globe className="h-4 w-4" />
                       Country
+                      {loadingCountries && <Loader2 className="h-3 w-3 animate-spin" />}
                     </Label>
-                    <Select value={chartCountry} onValueChange={setChartCountry}>
+                    <Select value={chartCountry} onValueChange={setChartCountry} disabled={loadingCountries}>
                       <SelectTrigger id="chart-country">
-                        <SelectValue />
+                        <SelectValue placeholder={loadingCountries ? 'Loading...' : 'Select country...'} />
                       </SelectTrigger>
                       <SelectContent>
                         {chartCountries.map((country) => (
@@ -1615,10 +1668,11 @@ export default function PodcastFinder() {
                     <Label htmlFor="chart-category" className="text-sm font-semibold flex items-center gap-2">
                       <Filter className="h-4 w-4" />
                       Category
+                      {loadingCategories && <Loader2 className="h-3 w-3 animate-spin" />}
                     </Label>
-                    <Select value={chartCategory} onValueChange={setChartCategory}>
+                    <Select value={chartCategory} onValueChange={setChartCategory} disabled={loadingCategories || chartCategories.length === 0}>
                       <SelectTrigger id="chart-category">
-                        <SelectValue placeholder="Select category..." />
+                        <SelectValue placeholder={loadingCategories ? 'Loading...' : 'Select category...'} />
                       </SelectTrigger>
                       <SelectContent>
                         {chartCategories.map((cat) => (
@@ -1652,7 +1706,7 @@ export default function PodcastFinder() {
 
                 {/* Get Top Podcasts Button */}
                 <Button
-                  onClick={() => toast.info('Charts API integration coming soon!')}
+                  onClick={handleFetchCharts}
                   disabled={!chartCategory || loadingCharts}
                   size="lg"
                   className="w-full"
