@@ -315,17 +315,17 @@ export default function ProspectView() {
         <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-purple-500/5 to-pink-500/5" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-          <div className="text-center space-y-4">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
-              <Radio className="h-4 w-4" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
+          <div className="text-center space-y-3 sm:space-y-4">
+            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-medium">
+              <Radio className="h-3 w-3 sm:h-4 sm:w-4" />
               Curated Podcast Opportunities
             </div>
 
             {/* Prospect Profile Picture */}
             {dashboard.prospect_image_url && (
               <div className="flex justify-center">
-                <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-xl">
+                <div className="h-20 w-20 sm:h-24 sm:w-24 lg:h-28 lg:w-28 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-xl">
                   <img
                     src={dashboard.prospect_image_url}
                     alt={dashboard.prospect_name}
@@ -335,11 +335,11 @@ export default function ProspectView() {
               </div>
             )}
 
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+            <h1 className="text-2xl sm:text-3xl lg:text-5xl font-bold tracking-tight px-2">
               Hi, <span className="text-primary">{dashboard.prospect_name}</span>
             </h1>
 
-            <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg lg:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
               We've identified {podcasts.length} podcast{podcasts.length !== 1 ? 's' : ''} that {podcasts.length === 1 ? 'is' : 'are'} perfect for your expertise
             </p>
           </div>
@@ -348,68 +348,68 @@ export default function ProspectView() {
       </div>
 
       {/* Stats Cards Section */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 relative z-10">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-4 sm:-mt-6 relative z-10">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
           {/* Total Podcasts */}
           <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-4 sm:p-6 text-center">
-              <Headphones className="h-8 w-8 mx-auto mb-2 text-primary" />
-              <p className="text-3xl sm:text-4xl font-bold">{podcasts.length}</p>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Podcasts</p>
+            <CardContent className="p-3 sm:p-6 text-center">
+              <Headphones className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-primary" />
+              <p className="text-2xl sm:text-4xl font-bold">{podcasts.length}</p>
+              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Podcasts</p>
             </CardContent>
           </Card>
 
           {/* Total Potential Reach */}
           <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-4 sm:p-6 text-center">
-              <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-600" />
-              <p className="text-3xl sm:text-4xl font-bold text-green-600">{formatNumber(totalReach)}</p>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Total Reach</p>
+            <CardContent className="p-3 sm:p-6 text-center">
+              <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-green-600" />
+              <p className="text-2xl sm:text-4xl font-bold text-green-600">{formatNumber(totalReach)}</p>
+              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Total Reach</p>
             </CardContent>
           </Card>
 
           {/* Avg Listeners Per Episode */}
           <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-4 sm:p-6 text-center">
-              <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-              <p className="text-3xl sm:text-4xl font-bold text-blue-600">{formatNumber(avgListenersPerEpisode)}</p>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Avg Listeners</p>
+            <CardContent className="p-3 sm:p-6 text-center">
+              <Users className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-blue-600" />
+              <p className="text-2xl sm:text-4xl font-bold text-blue-600">{formatNumber(avgListenersPerEpisode)}</p>
+              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Avg Listeners</p>
             </CardContent>
           </Card>
 
           {/* Average Rating */}
           <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-4 sm:p-6 text-center">
-              <Star className="h-8 w-8 mx-auto mb-2 text-amber-500 fill-amber-500" />
-              <p className="text-3xl sm:text-4xl font-bold text-amber-600">{avgRating > 0 ? avgRating.toFixed(1) : '-'}</p>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Avg Rating</p>
+            <CardContent className="p-3 sm:p-6 text-center">
+              <Star className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-amber-500 fill-amber-500" />
+              <p className="text-2xl sm:text-4xl font-bold text-amber-600">{avgRating > 0 ? avgRating.toFixed(1) : '-'}</p>
+              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Avg Rating</p>
             </CardContent>
           </Card>
 
         </div>
 
         {/* Highlights Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
           {/* Highest Reach */}
           {highestReachPodcast && highestReachPodcast.audience_size && (
             <Card
-              className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 cursor-pointer hover:shadow-xl transition-shadow"
+              className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 cursor-pointer hover:shadow-xl transition-shadow active:scale-[0.98]"
               onClick={() => setSelectedPodcast(highestReachPodcast)}
             >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-14 w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
+              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {highestReachPodcast.podcast_image_url ? (
                     <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-green-200 flex items-center justify-center">
-                      <Mic className="h-6 w-6 text-green-600" />
+                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
                     </div>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-green-600 uppercase tracking-wide">Highest Reach</p>
-                  <p className="font-semibold truncate">{highestReachPodcast.podcast_name}</p>
-                  <p className="text-sm text-muted-foreground">{formatNumber(highestReachPodcast.audience_size)} listeners</p>
+                  <p className="text-[10px] sm:text-xs font-semibold text-green-600 uppercase tracking-wide">Highest Reach</p>
+                  <p className="font-semibold truncate text-sm sm:text-base">{highestReachPodcast.podcast_name}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{formatNumber(highestReachPodcast.audience_size)} listeners</p>
                 </div>
               </CardContent>
             </Card>
@@ -418,24 +418,24 @@ export default function ProspectView() {
           {/* Top Rated */}
           {topRatedPodcast && topRatedPodcast.itunes_rating && (
             <Card
-              className="border-0 shadow-lg bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 cursor-pointer hover:shadow-xl transition-shadow"
+              className="border-0 shadow-lg bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 cursor-pointer hover:shadow-xl transition-shadow active:scale-[0.98]"
               onClick={() => setSelectedPodcast(topRatedPodcast)}
             >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-14 w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
+              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {topRatedPodcast.podcast_image_url ? (
                     <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-amber-200 flex items-center justify-center">
-                      <Mic className="h-6 w-6 text-amber-600" />
+                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
                     </div>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Top Rated</p>
-                  <p className="font-semibold truncate">{topRatedPodcast.podcast_name}</p>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+                  <p className="text-[10px] sm:text-xs font-semibold text-amber-600 uppercase tracking-wide">Top Rated</p>
+                  <p className="font-semibold truncate text-sm sm:text-base">{topRatedPodcast.podcast_name}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-1">
+                    <Star className="h-3 w-3 sm:h-4 sm:w-4 fill-amber-500 text-amber-500" />
                     {Number(topRatedPodcast.itunes_rating).toFixed(1)} rating
                   </p>
                 </div>
@@ -446,23 +446,23 @@ export default function ProspectView() {
           {/* Most Established */}
           {mostEpisodesPodcast && mostEpisodesPodcast.episode_count && (
             <Card
-              className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 cursor-pointer hover:shadow-xl transition-shadow"
+              className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 cursor-pointer hover:shadow-xl transition-shadow active:scale-[0.98]"
               onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
             >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-14 w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
+              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {mostEpisodesPodcast.podcast_image_url ? (
                     <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-purple-200 flex items-center justify-center">
-                      <Mic className="h-6 w-6 text-purple-600" />
+                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
                     </div>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Most Established</p>
-                  <p className="font-semibold truncate">{mostEpisodesPodcast.podcast_name}</p>
-                  <p className="text-sm text-muted-foreground">{mostEpisodesPodcast.episode_count} episodes</p>
+                  <p className="text-[10px] sm:text-xs font-semibold text-purple-600 uppercase tracking-wide">Most Established</p>
+                  <p className="font-semibold truncate text-sm sm:text-base">{mostEpisodesPodcast.podcast_name}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{mostEpisodesPodcast.episode_count} episodes</p>
                 </div>
               </CardContent>
             </Card>
@@ -471,11 +471,11 @@ export default function ProspectView() {
       </div>
 
       {/* Podcast Grid */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-12">
         {/* Search and Info */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <p className="text-sm text-muted-foreground">
-            Click any podcast to see why it's a great fit
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
+            Tap any podcast to see why it's a great fit
           </p>
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -483,25 +483,25 @@ export default function ProspectView() {
               placeholder="Search podcasts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white dark:bg-slate-900"
+              className="pl-10 bg-white dark:bg-slate-900 h-10 sm:h-9 text-base sm:text-sm"
             />
           </div>
         </div>
 
         {/* Results count when searching */}
         {searchQuery && (
-          <p className="text-sm text-muted-foreground mb-4">
+          <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {podcasts.length} podcasts
           </p>
         )}
 
         {filteredPodcasts.length === 0 && searchQuery ? (
           <Card className="border-0 shadow-md">
-            <CardContent className="p-12 text-center">
-              <Search className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No podcasts found</h3>
-              <p className="text-muted-foreground">
-                Try a different search term or clear the search to see all podcasts.
+            <CardContent className="p-8 sm:p-12 text-center">
+              <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-base sm:text-lg font-semibold mb-2">No podcasts found</h3>
+              <p className="text-sm text-muted-foreground">
+                Try a different search term or clear the search.
               </p>
               <Button
                 variant="outline"
@@ -513,14 +513,14 @@ export default function ProspectView() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {filteredPodcasts.map((podcast) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
                 "group cursor-pointer border-0 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden",
-                "hover:-translate-y-1 bg-white dark:bg-slate-900",
-                selectedPodcast?.podcast_id === podcast.podcast_id && "ring-2 ring-primary shadow-xl -translate-y-1"
+                "active:scale-[0.98] bg-white dark:bg-slate-900",
+                selectedPodcast?.podcast_id === podcast.podcast_id && "ring-2 ring-primary shadow-xl"
               )}
               onClick={() => setSelectedPodcast(podcast)}
             >
@@ -531,26 +531,26 @@ export default function ProspectView() {
                     <img
                       src={podcast.podcast_image_url}
                       alt={podcast.podcast_name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-cover"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Mic className="h-12 w-12 text-muted-foreground/50" />
+                      <Mic className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50" />
                     </div>
                   )}
                   {/* Overlay gradient */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
                   {/* Badges on image */}
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
+                  <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center gap-1.5 sm:gap-2">
                     {podcast.itunes_rating && (
-                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm">
+                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
                         <Star className="h-3 w-3 mr-1 fill-yellow-400 text-yellow-400" />
                         {Number(podcast.itunes_rating).toFixed(1)}
                       </Badge>
                     )}
                     {podcast.audience_size && (
-                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm">
+                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
                         <Users className="h-3 w-3 mr-1" />
                         {formatNumber(podcast.audience_size)}
                       </Badge>
@@ -559,24 +559,24 @@ export default function ProspectView() {
                 </div>
 
                 {/* Content */}
-                <div className="p-4 space-y-2">
-                  <h3 className="font-semibold text-base line-clamp-2 group-hover:text-primary transition-colors">
+                <div className="p-3 sm:p-4 space-y-1.5 sm:space-y-2">
+                  <h3 className="font-semibold text-sm sm:text-base line-clamp-2 group-hover:text-primary transition-colors">
                     {podcast.podcast_name}
                   </h3>
 
                   {podcast.publisher_name && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs sm:text-sm text-muted-foreground truncate">
                       {podcast.publisher_name}
                     </p>
                   )}
 
-                  <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center justify-between pt-1 sm:pt-2">
                     {podcast.episode_count && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground">
                         {podcast.episode_count} episodes
                       </span>
                     )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-all" />
                   </div>
                 </div>
               </CardContent>
@@ -587,9 +587,9 @@ export default function ProspectView() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm mt-12">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center">
-          <p className="text-sm text-muted-foreground">
+      <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm mt-8 sm:mt-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 text-center">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Powered by <span className="font-semibold text-foreground">Authority Built</span>
           </p>
         </div>
@@ -599,9 +599,9 @@ export default function ProspectView() {
       <Sheet open={!!selectedPodcast} onOpenChange={() => setSelectedPodcast(null)}>
         <SheetContent className="w-full sm:max-w-xl p-0 overflow-hidden border-l-0 shadow-2xl">
           {selectedPodcast && (
-            <div className="flex flex-col h-full">
+            <div className="flex flex-col h-[90vh] sm:h-full">
               {/* Hero Header with Image */}
-              <div className="relative h-56 sm:h-64 overflow-hidden flex-shrink-0">
+              <div className="relative h-44 sm:h-64 overflow-hidden flex-shrink-0">
                 {selectedPodcast.podcast_image_url ? (
                   <img
                     src={selectedPodcast.podcast_image_url}
@@ -610,50 +610,53 @@ export default function ProspectView() {
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                    <Mic className="h-20 w-20 text-white/30" />
+                    <Mic className="h-16 w-16 sm:h-20 sm:w-20 text-white/30" />
                   </div>
                 )}
                 {/* Gradient overlays */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
                 <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent" />
 
+                {/* Drag handle for mobile */}
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/30 rounded-full sm:hidden" />
+
                 {/* Close button */}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm border border-white/20"
+                  className="absolute top-3 right-3 sm:top-4 sm:right-4 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm border border-white/20"
                   onClick={() => setSelectedPodcast(null)}
                 >
                   <X className="h-5 w-5" />
                 </Button>
 
                 {/* Content on image */}
-                <div className="absolute bottom-0 left-0 right-0 p-6">
+                <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
                   {/* Badges */}
-                  <div className="flex flex-wrap gap-2 mb-3">
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
                     {selectedPodcast.itunes_rating && selectedPodcast.itunes_rating >= 4.5 && (
-                      <Badge className="bg-amber-500 hover:bg-amber-500 text-white border-0">
+                      <Badge className="bg-amber-500 hover:bg-amber-500 text-white border-0 text-xs">
                         <Award className="h-3 w-3 mr-1" />
                         Top Rated
                       </Badge>
                     )}
                     {selectedPodcast.audience_size && selectedPodcast.audience_size >= 50000 && (
-                      <Badge className="bg-green-500 hover:bg-green-500 text-white border-0">
+                      <Badge className="bg-green-500 hover:bg-green-500 text-white border-0 text-xs">
                         <TrendingUp className="h-3 w-3 mr-1" />
                         High Reach
                       </Badge>
                     )}
                     {selectedPodcast.episode_count && selectedPodcast.episode_count >= 100 && (
-                      <Badge className="bg-purple-500 hover:bg-purple-500 text-white border-0">
+                      <Badge className="bg-purple-500 hover:bg-purple-500 text-white border-0 text-xs">
                         <Zap className="h-3 w-3 mr-1" />
                         Established
                       </Badge>
                     )}
                   </div>
 
-                  <h2 className="text-2xl font-bold text-white line-clamp-2 mb-1">{selectedPodcast.podcast_name}</h2>
+                  <h2 className="text-xl sm:text-2xl font-bold text-white line-clamp-2 mb-1">{selectedPodcast.podcast_name}</h2>
                   {selectedPodcast.publisher_name && (
-                    <p className="text-white/70 text-sm">by {selectedPodcast.publisher_name}</p>
+                    <p className="text-white/70 text-xs sm:text-sm">by {selectedPodcast.publisher_name}</p>
                   )}
                 </div>
               </div>
@@ -661,42 +664,42 @@ export default function ProspectView() {
               {/* Quick Stats Bar */}
               <div className="flex-shrink-0 bg-gradient-to-r from-slate-900 to-slate-800 text-white">
                 <div className="grid grid-cols-3 divide-x divide-white/10">
-                  <div className="p-4 text-center">
-                    <div className="flex items-center justify-center gap-1.5 mb-1">
-                      <Star className="h-5 w-5 text-yellow-400 fill-yellow-400" />
-                      <span className="text-2xl font-bold">
+                  <div className="p-2.5 sm:p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
+                      <Star className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 fill-yellow-400" />
+                      <span className="text-lg sm:text-2xl font-bold">
                         {selectedPodcast.itunes_rating ? Number(selectedPodcast.itunes_rating).toFixed(1) : '-'}
                       </span>
                     </div>
-                    <p className="text-xs text-white/60 uppercase tracking-wide">Rating</p>
+                    <p className="text-[10px] sm:text-xs text-white/60 uppercase tracking-wide">Rating</p>
                   </div>
-                  <div className="p-4 text-center">
-                    <div className="flex items-center justify-center gap-1.5 mb-1">
-                      <Users className="h-5 w-5 text-blue-400" />
-                      <span className="text-2xl font-bold">
+                  <div className="p-2.5 sm:p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
+                      <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
+                      <span className="text-lg sm:text-2xl font-bold">
                         {selectedPodcast.audience_size ? formatNumber(selectedPodcast.audience_size) : '-'}
                       </span>
                     </div>
-                    <p className="text-xs text-white/60 uppercase tracking-wide">Listeners</p>
+                    <p className="text-[10px] sm:text-xs text-white/60 uppercase tracking-wide">Listeners</p>
                   </div>
-                  <div className="p-4 text-center">
-                    <div className="flex items-center justify-center gap-1.5 mb-1">
-                      <BarChart3 className="h-5 w-5 text-purple-400" />
-                      <span className="text-2xl font-bold">
+                  <div className="p-2.5 sm:p-4 text-center">
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
+                      <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400" />
+                      <span className="text-lg sm:text-2xl font-bold">
                         {selectedPodcast.episode_count || '-'}
                       </span>
                     </div>
-                    <p className="text-xs text-white/60 uppercase tracking-wide">Episodes</p>
+                    <p className="text-[10px] sm:text-xs text-white/60 uppercase tracking-wide">Episodes</p>
                   </div>
                 </div>
               </div>
 
               {/* Scrollable Content */}
               <ScrollArea className="flex-1">
-                <div className="p-6 space-y-6">
+                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
                   {/* About Section */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">About This Podcast</h3>
+                  <div className="space-y-2 sm:space-y-3">
+                    <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest">About This Podcast</h3>
                     {isAnalyzing ? (
                       <div className="space-y-2">
                         <div className="h-4 bg-muted rounded animate-pulse w-full" />
@@ -713,14 +716,14 @@ export default function ProspectView() {
                   {/* Why It's a Great Fit */}
                   {dashboard.prospect_bio && (
                     <>
-                      <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 p-5 border border-amber-200/50 dark:border-amber-800/50">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg">
-                            <Sparkles className="h-5 w-5 text-white" />
+                      <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 p-3.5 sm:p-5 border border-amber-200/50 dark:border-amber-800/50">
+                        <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
+                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg">
+                            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-amber-900 dark:text-amber-100">Why This Is Perfect For You</h3>
-                            <p className="text-xs text-amber-700 dark:text-amber-300">AI-powered analysis</p>
+                            <h3 className="font-bold text-sm sm:text-base text-amber-900 dark:text-amber-100">Why This Is Perfect For You</h3>
+                            <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-300">AI-powered analysis</p>
                           </div>
                         </div>
 
@@ -753,14 +756,14 @@ export default function ProspectView() {
                       </div>
 
                       {/* Pitch Angles */}
-                      <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 p-5 border border-purple-200/50 dark:border-purple-800/50">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
-                            <Target className="h-5 w-5 text-white" />
+                      <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 p-3.5 sm:p-5 border border-purple-200/50 dark:border-purple-800/50">
+                        <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
+                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
+                            <Target className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-purple-900 dark:text-purple-100">Suggested Pitch Angles</h3>
-                            <p className="text-xs text-purple-700 dark:text-purple-300">Ways to approach this podcast</p>
+                            <h3 className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100">Suggested Pitch Angles</h3>
+                            <p className="text-[10px] sm:text-xs text-purple-700 dark:text-purple-300">Ways to approach this podcast</p>
                           </div>
                         </div>
 
@@ -804,43 +807,43 @@ export default function ProspectView() {
 
                   {/* Demographics */}
                   {(isLoadingDemographics || demographics) && (
-                    <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 p-5 border border-blue-200/50 dark:border-blue-800/50">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
-                          <Globe className="h-5 w-5 text-white" />
+                    <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 p-3.5 sm:p-5 border border-blue-200/50 dark:border-blue-800/50">
+                      <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
+                        <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                          <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-blue-900 dark:text-blue-100">Audience Profile</h3>
-                          <p className="text-xs text-blue-700 dark:text-blue-300">Know who you'll reach</p>
+                          <h3 className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">Audience Profile</h3>
+                          <p className="text-[10px] sm:text-xs text-blue-700 dark:text-blue-300">Know who you'll reach</p>
                         </div>
                       </div>
 
                       {isLoadingDemographics ? (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
                           {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="p-4 bg-white/50 dark:bg-white/5 rounded-xl space-y-2">
+                            <div key={i} className="p-3 sm:p-4 bg-white/50 dark:bg-white/5 rounded-lg sm:rounded-xl space-y-2">
                               <div className="h-3 bg-blue-200 dark:bg-blue-800 rounded animate-pulse w-1/2" />
                               <div className="h-5 bg-blue-100 dark:bg-blue-900 rounded animate-pulse w-3/4" />
                             </div>
                           ))}
                         </div>
                       ) : demographics && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-blue-100 dark:border-blue-800/50">
-                            <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">Age Group</p>
-                            <p className="font-bold text-blue-900 dark:text-blue-100">{demographics.age}</p>
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-blue-100 dark:border-blue-800/50">
+                            <p className="text-[10px] sm:text-xs font-medium text-blue-600 dark:text-blue-400 mb-0.5 sm:mb-1">Age Group</p>
+                            <p className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">{demographics.age}</p>
                           </div>
-                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-pink-100 dark:border-pink-800/50">
-                            <p className="text-xs font-medium text-pink-600 dark:text-pink-400 mb-1">Gender Split</p>
-                            <p className="font-bold text-pink-900 dark:text-pink-100 capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
+                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-pink-100 dark:border-pink-800/50">
+                            <p className="text-[10px] sm:text-xs font-medium text-pink-600 dark:text-pink-400 mb-0.5 sm:mb-1">Gender Split</p>
+                            <p className="font-bold text-sm sm:text-base text-pink-900 dark:text-pink-100 capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
                           </div>
-                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-green-100 dark:border-green-800/50">
-                            <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1">Buying Power</p>
-                            <p className="font-bold text-green-900 dark:text-green-100 capitalize">{demographics.purchasing_power}</p>
+                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-green-100 dark:border-green-800/50">
+                            <p className="text-[10px] sm:text-xs font-medium text-green-600 dark:text-green-400 mb-0.5 sm:mb-1">Buying Power</p>
+                            <p className="font-bold text-sm sm:text-base text-green-900 dark:text-green-100 capitalize">{demographics.purchasing_power}</p>
                           </div>
-                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-purple-100 dark:border-purple-800/50">
-                            <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-1">Education</p>
-                            <p className="font-bold text-purple-900 dark:text-purple-100 capitalize">{demographics.education_level}</p>
+                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-purple-100 dark:border-purple-800/50">
+                            <p className="text-[10px] sm:text-xs font-medium text-purple-600 dark:text-purple-400 mb-0.5 sm:mb-1">Education</p>
+                            <p className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100 capitalize">{demographics.education_level}</p>
                           </div>
                         </div>
                       )}
