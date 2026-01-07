@@ -54,7 +54,7 @@ export default function PodcastFinder() {
   // Prospect mode
   const [prospectName, setProspectName] = useState('')
   const [prospectBio, setProspectBio] = useState('')
-  const [lastProspectSheet, setLastProspectSheet] = useState<{ url: string; title: string } | null>(null)
+  const [lastProspectSheet, setLastProspectSheet] = useState<{ url: string; title: string; dashboardUrl: string } | null>(null)
   const isProspectMode = selectedClient === '__prospect__'
   const [isGenerating, setIsGenerating] = useState(false)
   const [queries, setQueries] = useState<GeneratedQuery[]>([])
@@ -829,8 +829,12 @@ export default function PodcastFinder() {
       if (isProspectMode) {
         const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport)
         // Save sheet info for persistent display
-        setLastProspectSheet({ url: result.spreadsheetUrl, title: result.sheetTitle })
-        toast.success(`Created "${result.sheetTitle}" with ${result.rowsAdded} podcasts!`)
+        setLastProspectSheet({
+          url: result.spreadsheetUrl,
+          title: result.sheetTitle,
+          dashboardUrl: result.dashboardUrl
+        })
+        toast.success(`Created dashboard for ${prospectName} with ${result.rowsAdded} podcasts!`)
       } else {
         const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
         toast.success(`Successfully exported ${result.rowsAdded} podcasts to Google Sheets!`)
@@ -1203,25 +1207,47 @@ export default function PodcastFinder() {
                   </div>
                 )}
                 {lastProspectSheet && (
-                  <div className="flex items-center gap-3 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
-                    <span className="text-green-500 text-lg">✓</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-green-700 dark:text-green-400 font-medium">Sheet Created</p>
+                  <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-green-500 text-lg">✓</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-green-700 dark:text-green-400 font-medium">Dashboard Created</p>
+                        <a
+                          href={lastProspectSheet.dashboardUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-green-600 dark:text-green-300 hover:underline truncate block font-medium"
+                        >
+                          Share this link with prospect →
+                        </a>
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(lastProspectSheet.dashboardUrl)
+                          toast.success('Dashboard link copied!')
+                        }}
+                        className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800"
+                      >
+                        Copy
+                      </button>
+                      <button
+                        onClick={() => setLastProspectSheet(null)}
+                        className="text-green-400 hover:text-green-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2 pl-8">
+                      <span>Admin:</span>
                       <a
                         href={lastProspectSheet.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-green-600 dark:text-green-300 hover:underline truncate block"
+                        className="text-blue-500 hover:underline"
                       >
-                        {lastProspectSheet.title} →
+                        Edit Google Sheet
                       </a>
                     </div>
-                    <button
-                      onClick={() => setLastProspectSheet(null)}
-                      className="text-green-400 hover:text-green-600 text-xs"
-                    >
-                      ✕
-                    </button>
                   </div>
                 )}
               </div>

@@ -21,6 +21,7 @@ import CheckoutCanceled from "./pages/CheckoutCanceled";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import PodcastFinder from "./pages/admin/PodcastFinder";
+import ProspectDashboards from "./pages/admin/ProspectDashboards";
 import PodcastDatabase from "./pages/admin/PodcastDatabase";
 import AuthCallback from "./pages/admin/Callback";
 import AISalesDirector from "./pages/admin/AISalesDirector";
@@ -44,6 +45,7 @@ import PortalLogin from "./pages/portal/Login";
 import PortalAuth from "./pages/portal/Auth";
 import PortalDashboard from "./pages/portal/Dashboard";
 import PortalResources from "./pages/portal/Resources";
+import ProspectView from "./pages/prospect/ProspectView";
 
 const queryClient = new QueryClient();
 
@@ -76,6 +78,8 @@ const App = () => (
             <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
             <Route path="/portal/login" element={<PortalLogin />} />
             <Route path="/portal/auth" element={<PortalAuth />} />
+            {/* Public prospect dashboard */}
+            <Route path="/prospect/:slug" element={<ProspectView />} />
             <Route
               path="/portal/dashboard"
               element={
@@ -110,6 +114,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <PodcastFinder />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/prospect-dashboards"
+              element={
+                <ProtectedRoute>
+                  <ProspectDashboards />
                 </ProtectedRoute>
               }
             />

@@ -150,6 +150,8 @@ export interface CreateProspectSheetResult {
   sheetTitle: string
   rowsAdded: number
   message: string
+  dashboardUrl: string
+  dashboardSlug: string
 }
 
 /**

@@ -1,8 +1,21 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+/**
+ * Generate a random slug for the prospect dashboard URL
+ */
+function generateSlug(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let slug = ''
+  for (let i = 0; i < 8; i++) {
+    slug += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return slug
 }
 
 interface PodcastExportData {
@@ -266,6 +279,37 @@ serve(async (req) => {
     const appendResult = await appendResponse.json()
     console.log('[Prospect Sheet] Data exported successfully')
 
+    // Create a record in the prospect_dashboards table
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    const slug = generateSlug()
+    console.log('[Prospect Sheet] Generated slug:', slug)
+
+    const { data: dashboardRecord, error: dbError } = await supabase
+      .from('prospect_dashboards')
+      .insert({
+        slug,
+        prospect_name: prospectName,
+        prospect_bio: prospectBio || null,
+        spreadsheet_id: spreadsheetId,
+        spreadsheet_url: spreadsheetUrl,
+      })
+      .select()
+      .single()
+
+    if (dbError) {
+      console.error('[Prospect Sheet] Failed to create dashboard record:', dbError)
+      // Don't fail the whole request - sheet was created successfully
+    } else {
+      console.log('[Prospect Sheet] Dashboard record created:', dashboardRecord.id)
+    }
+
+    // Build the dashboard URL
+    const appUrl = Deno.env.get('APP_URL') || 'https://authoritybuilt.com'
+    const dashboardUrl = `${appUrl}/prospect/${slug}`
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -275,6 +319,9 @@ serve(async (req) => {
         rowsAdded: podcasts.length,
         updatedRange: appendResult.updates?.updatedRange || 'Sheet1',
         message: `Created "${sheetTitle}" with ${podcasts.length} podcasts`,
+        // New fields for prospect dashboard
+        dashboardUrl,
+        dashboardSlug: slug,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
