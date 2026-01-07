@@ -1,16 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,15 +28,27 @@ import {
   Share2,
   Copy,
   ExternalLink,
-  MoreHorizontal,
+  MoreVertical,
   Trash2,
   Eye,
   EyeOff,
   Search,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  Users,
+  TrendingUp,
+  Calendar,
+  Link2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  BarChart3,
+  Sparkles,
+  ChevronRight,
+  X
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
+import { cn } from '@/lib/utils'
 
 interface ProspectDashboard {
   id: string
@@ -62,6 +69,7 @@ export default function ProspectDashboards() {
   const [searchQuery, setSearchQuery] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [dashboardToDelete, setDashboardToDelete] = useState<ProspectDashboard | null>(null)
+  const [selectedDashboard, setSelectedDashboard] = useState<ProspectDashboard | null>(null)
 
   const appUrl = window.location.origin
 
@@ -102,6 +110,10 @@ export default function ProspectDashboards() {
         )
       )
 
+      if (selectedDashboard?.id === dashboard.id) {
+        setSelectedDashboard(prev => prev ? { ...prev, is_active: !prev.is_active } : null)
+      }
+
       toast.success(dashboard.is_active ? 'Dashboard disabled' : 'Dashboard enabled')
     } catch (error) {
       console.error('Error toggling dashboard:', error)
@@ -121,6 +133,9 @@ export default function ProspectDashboards() {
       if (error) throw error
 
       setDashboards(prev => prev.filter(d => d.id !== dashboardToDelete.id))
+      if (selectedDashboard?.id === dashboardToDelete.id) {
+        setSelectedDashboard(null)
+      }
       toast.success('Dashboard deleted')
     } catch (error) {
       console.error('Error deleting dashboard:', error)
@@ -141,198 +156,420 @@ export default function ProspectDashboards() {
     d.prospect_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const totalViews = dashboards.reduce((sum, d) => sum + (d.view_count || 0), 0)
+  const activeDashboards = dashboards.filter(d => d.is_active).length
+  const recentlyViewed = dashboards.filter(d => {
+    if (!d.last_viewed_at) return false
+    const daysSince = (Date.now() - new Date(d.last_viewed_at).getTime()) / (1000 * 60 * 60 * 24)
+    return daysSince <= 7
+  }).length
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Prospect Dashboards</h1>
-          <p className="text-muted-foreground">
-            Manage shareable podcast opportunity dashboards for prospects
+          <p className="text-muted-foreground mt-1">
+            Create and share visual podcast opportunity dashboards with prospects
           </p>
         </div>
-        <Button onClick={fetchDashboards} variant="outline" size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
+        <Button onClick={fetchDashboards} variant="outline" size="sm" className="w-fit">
+          <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
           Refresh
         </Button>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Dashboards</CardTitle>
-            <Share2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dashboards.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Links</CardTitle>
-            <Eye className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {dashboards.filter(d => d.is_active).length}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Card className="border-0 shadow-md bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Dashboards</p>
+                <p className="text-3xl font-bold mt-1">{dashboards.length}</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                <Share2 className="h-6 w-6 text-blue-600" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Views</CardTitle>
-            <ExternalLink className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {dashboards.reduce((sum, d) => sum + (d.view_count || 0), 0)}
+
+        <Card className="border-0 shadow-md bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-600 dark:text-green-400">Active Links</p>
+                <p className="text-3xl font-bold mt-1">{activeDashboards}</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-green-500/10 flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-md bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Total Views</p>
+                <p className="text-3xl font-bold mt-1">{totalViews}</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                <Eye className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-md bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Viewed This Week</p>
+                <p className="text-3xl font-bold mt-1">{recentlyViewed}</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                <TrendingUp className="h-6 w-6 text-amber-600" />
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Dashboards Table */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>All Prospect Dashboards</CardTitle>
-              <CardDescription>
-                Click "Copy Link" to share with prospects. They'll see a visual dashboard of podcast opportunities.
-              </CardDescription>
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search prospects..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {/* Dashboard Cards */}
+      {loading ? (
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="border-0 shadow-md">
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-5 bg-muted rounded animate-pulse w-3/4" />
+                    <div className="h-4 bg-muted rounded animate-pulse w-1/2" />
+                  </div>
+                  <div className="h-6 w-16 bg-muted rounded-full animate-pulse" />
+                </div>
+                <div className="h-4 bg-muted rounded animate-pulse w-full" />
+                <div className="flex gap-2">
+                  <div className="h-9 bg-muted rounded animate-pulse flex-1" />
+                  <div className="h-9 w-9 bg-muted rounded animate-pulse" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : filteredDashboards.length === 0 ? (
+        <Card className="border-0 shadow-md">
+          <CardContent className="p-12 text-center">
+            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+              <Share2 className="h-8 w-8 text-muted-foreground" />
             </div>
-            <div className="relative w-64">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : filteredDashboards.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? 'No dashboards match your search' : 'No prospect dashboards created yet'}
-              <p className="text-sm mt-2">
-                Create one from the Podcast Finder by selecting "New Prospect" and exporting podcasts.
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Prospect</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Views</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDashboards.map((dashboard) => (
-                  <TableRow key={dashboard.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{dashboard.prospect_name}</p>
-                        {dashboard.prospect_bio && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 max-w-xs">
-                            {dashboard.prospect_bio}
-                          </p>
+            <h3 className="text-lg font-semibold mb-2">
+              {searchQuery ? 'No dashboards match your search' : 'No prospect dashboards yet'}
+            </h3>
+            <p className="text-muted-foreground max-w-sm mx-auto">
+              {searchQuery
+                ? 'Try a different search term'
+                : 'Create one from the Podcast Finder by selecting "New Prospect" mode and exporting podcasts.'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          {filteredDashboards.map((dashboard) => (
+            <Card
+              key={dashboard.id}
+              className={cn(
+                "border-0 shadow-md hover:shadow-lg transition-all cursor-pointer group",
+                !dashboard.is_active && "opacity-60",
+                selectedDashboard?.id === dashboard.id && "ring-2 ring-primary"
+              )}
+              onClick={() => setSelectedDashboard(dashboard)}
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
+                      {dashboard.prospect_name}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Created {formatDistanceToNow(new Date(dashboard.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={dashboard.is_active ? 'default' : 'secondary'}
+                    className={cn(
+                      "ml-2 shrink-0",
+                      dashboard.is_active && "bg-green-500 hover:bg-green-500"
+                    )}
+                  >
+                    {dashboard.is_active ? 'Active' : 'Disabled'}
+                  </Badge>
+                </div>
+
+                {dashboard.prospect_bio && (
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                    {dashboard.prospect_bio}
+                  </p>
+                )}
+
+                {/* Stats Row */}
+                <div className="flex items-center gap-4 mb-4 text-sm">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Eye className="h-4 w-4" />
+                    <span className="font-medium">{dashboard.view_count || 0}</span>
+                    <span>views</span>
+                  </div>
+                  {dashboard.last_viewed_at && (
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      <span>{formatDistanceToNow(new Date(dashboard.last_viewed_at), { addSuffix: true })}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => copyLink(dashboard.slug)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(`${appUrl}/prospect/${dashboard.slug}`, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => window.open(dashboard.spreadsheet_url, '_blank')}
+                      >
+                        <FileSpreadsheet className="h-4 w-4 mr-2" />
+                        Edit Google Sheet
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => toggleActive(dashboard)}>
+                        {dashboard.is_active ? (
+                          <>
+                            <EyeOff className="h-4 w-4 mr-2" />
+                            Disable Link
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4 mr-2" />
+                            Enable Link
+                          </>
                         )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => {
+                          setDashboardToDelete(dashboard)
+                          setDeleteDialogOpen(true)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Side Panel */}
+      <Sheet open={!!selectedDashboard} onOpenChange={() => setSelectedDashboard(null)}>
+        <SheetContent className="w-full sm:max-w-lg p-0 overflow-hidden">
+          {selectedDashboard && (
+            <div className="flex flex-col h-full">
+              {/* Header */}
+              <div className="p-6 bg-gradient-to-br from-primary/10 to-purple-500/10 border-b">
+                <div className="flex items-start justify-between mb-4">
+                  <Badge
+                    variant={selectedDashboard.is_active ? 'default' : 'secondary'}
+                    className={cn(
+                      selectedDashboard.is_active && "bg-green-500 hover:bg-green-500"
+                    )}
+                  >
+                    {selectedDashboard.is_active ? 'Active' : 'Disabled'}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 -mr-2 -mt-2"
+                    onClick={() => setSelectedDashboard(null)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
+                {selectedDashboard.prospect_bio && (
+                  <p className="text-muted-foreground mt-2 text-sm">{selectedDashboard.prospect_bio}</p>
+                )}
+              </div>
+
+              <ScrollArea className="flex-1">
+                <div className="p-6 space-y-6">
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Eye className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm font-medium text-purple-600">Total Views</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={dashboard.is_active ? 'default' : 'secondary'}>
-                        {dashboard.is_active ? 'Active' : 'Disabled'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {format(new Date(dashboard.created_at), 'MMM d, yyyy')}
+                      <p className="text-2xl font-bold">{selectedDashboard.view_count || 0}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/30">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Calendar className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-600">Created</span>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {format(new Date(dashboard.created_at), 'h:mm a')}
+                      <p className="text-lg font-bold">
+                        {format(new Date(selectedDashboard.created_at), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedDashboard.last_viewed_at && (
+                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Clock className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-600">Last Viewed</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">{dashboard.view_count || 0}</div>
-                      {dashboard.last_viewed_at && (
-                        <div className="text-xs text-muted-foreground">
-                          Last: {format(new Date(dashboard.last_viewed_at), 'MMM d')}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyLink(dashboard.slug)}
-                        >
-                          <Copy className="h-3 w-3 mr-1" />
-                          Copy Link
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => window.open(`${appUrl}/prospect/${dashboard.slug}`, '_blank')}
-                            >
-                              <ExternalLink className="h-4 w-4 mr-2" />
-                              View Dashboard
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => window.open(dashboard.spreadsheet_url, '_blank')}
-                            >
-                              <FileSpreadsheet className="h-4 w-4 mr-2" />
-                              Edit Google Sheet
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => toggleActive(dashboard)}>
-                              {dashboard.is_active ? (
-                                <>
-                                  <EyeOff className="h-4 w-4 mr-2" />
-                                  Disable Link
-                                </>
-                              ) : (
-                                <>
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  Enable Link
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => {
-                                setDashboardToDelete(dashboard)
-                                setDeleteDialogOpen(true)
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <p className="font-semibold">
+                        {format(new Date(selectedDashboard.last_viewed_at), 'MMM d, yyyy')} at {format(new Date(selectedDashboard.last_viewed_at), 'h:mm a')}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatDistanceToNow(new Date(selectedDashboard.last_viewed_at), { addSuffix: true })}
+                      </p>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Shareable Link */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Link2 className="h-4 w-4" />
+                      Shareable Link
+                    </h3>
+                    <div className="flex gap-2">
+                      <Input
+                        value={`${appUrl}/prospect/${selectedDashboard.slug}`}
+                        readOnly
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyLink(selectedDashboard.slug)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Quick Actions */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold">Quick Actions</h3>
+                    <div className="space-y-2">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => window.open(`${appUrl}/prospect/${selectedDashboard.slug}`, '_blank')}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-3" />
+                        View Dashboard
+                        <ChevronRight className="h-4 w-4 ml-auto" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => window.open(selectedDashboard.spreadsheet_url, '_blank')}
+                      >
+                        <FileSpreadsheet className="h-4 w-4 mr-3" />
+                        Edit Google Sheet
+                        <ChevronRight className="h-4 w-4 ml-auto" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => toggleActive(selectedDashboard)}
+                      >
+                        {selectedDashboard.is_active ? (
+                          <>
+                            <EyeOff className="h-4 w-4 mr-3" />
+                            Disable Link
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4 mr-3" />
+                            Enable Link
+                          </>
+                        )}
+                        <ChevronRight className="h-4 w-4 ml-auto" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-destructive hover:text-destructive"
+                        onClick={() => {
+                          setDashboardToDelete(selectedDashboard)
+                          setDeleteDialogOpen(true)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-3" />
+                        Delete Dashboard
+                        <ChevronRight className="h-4 w-4 ml-auto" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </ScrollArea>
+
+              {/* Footer CTA */}
+              <div className="p-4 border-t bg-muted/30">
+                <Button
+                  className="w-full"
+                  onClick={() => copyLink(selectedDashboard.slug)}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Link to Share
+                </Button>
+              </div>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
