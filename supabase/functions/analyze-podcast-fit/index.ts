@@ -107,36 +107,23 @@ serve(async (req) => {
       audienceSize ? `- **Estimated Audience Size**: ${audienceSize.toLocaleString()}` : null,
     ].filter(Boolean).join('\n')
 
-    const prompt = `You are a podcast booking strategist. Analyze why this podcast is a good fit for a client. BE CONCISE.
+    const prompt = `Podcast booking analysis. Be EXTREMELY brief.
 
-## Podcast Information
-${podcastContext}
+Podcast: ${podcastName}
+${podcastDescription ? `About: ${podcastDescription.substring(0, 200)}` : ''}
+${publisherName ? `Host: ${publisherName}` : ''}
 
-## Client Information
-- **Name**: ${clientName || 'Client'}
-- **Bio**: ${effectiveBio}
+Client: ${clientName || 'Client'}
+Bio: ${effectiveBio.substring(0, 200)}
 
-## Instructions - KEEP IT SHORT
-
-1. **clean_description**: 1-2 sentences MAX. What the podcast is about. Plain text, no HTML.
-
-2. **fit_reasons**: 3 bullet points. Each ONE SHORT SENTENCE (under 15 words). Why this client fits this show.
-
-3. **pitch_angles**: 3 episode ideas. Short title + ONE sentence description each.
-
-## Response Format
-Respond with ONLY valid JSON (no markdown):
+Return JSON only:
 {
-  "clean_description": "Brief 1-2 sentence podcast description",
-  "fit_reasons": [
-    "Short reason 1 (under 15 words)",
-    "Short reason 2 (under 15 words)",
-    "Short reason 3 (under 15 words)"
-  ],
+  "clean_description": "Max 20 words describing the podcast",
+  "fit_reasons": ["8-12 words max", "8-12 words max", "8-12 words max"],
   "pitch_angles": [
-    {"title": "Episode Title", "description": "One sentence pitch"},
-    {"title": "Episode Title", "description": "One sentence pitch"},
-    {"title": "Episode Title", "description": "One sentence pitch"}
+    {"title": "5 words max", "description": "15 words max"},
+    {"title": "5 words max", "description": "15 words max"},
+    {"title": "5 words max", "description": "15 words max"}
   ]
 }`
 
@@ -151,7 +138,7 @@ Respond with ONLY valid JSON (no markdown):
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 2048,
+        max_tokens: 800,
         messages: [
           {
             role: 'user',
