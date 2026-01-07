@@ -25,8 +25,10 @@ import {
   Globe,
   Award,
   BarChart3,
-  ArrowRight
+  ArrowRight,
+  Search
 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
 
@@ -73,6 +75,7 @@ export default function ProspectView() {
   const [error, setError] = useState<string | null>(null)
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -293,6 +296,17 @@ export default function ProspectView() {
     return num.toLocaleString()
   }
 
+  // Filter podcasts based on search query
+  const filteredPodcasts = podcasts.filter(podcast => {
+    if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      podcast.podcast_name.toLowerCase().includes(query) ||
+      podcast.podcast_description?.toLowerCase().includes(query) ||
+      podcast.publisher_name?.toLowerCase().includes(query)
+    )
+  })
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* Hero Header */}
@@ -312,14 +326,8 @@ export default function ProspectView() {
             </h1>
 
             <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
-              We've identified {podcasts.length} podcast{podcasts.length !== 1 ? 's' : ''} that would be perfect for your expertise
+              We've identified {podcasts.length} podcast{podcasts.length !== 1 ? 's' : ''} that {podcasts.length === 1 ? 'is' : 'are'} perfect for your expertise
             </p>
-
-            {dashboard.prospect_bio && (
-              <p className="text-sm text-muted-foreground max-w-xl mx-auto italic">
-                "{dashboard.prospect_bio}"
-              </p>
-            )}
           </div>
 
         </div>
@@ -458,14 +466,49 @@ export default function ProspectView() {
 
       {/* Podcast Grid */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-        <div className="flex items-center justify-between mb-6">
+        {/* Search and Info */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <p className="text-sm text-muted-foreground">
             Click any podcast to see why it's a great fit
           </p>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search podcasts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white dark:bg-slate-900"
+            />
+          </div>
         </div>
 
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {podcasts.map((podcast, index) => (
+        {/* Results count when searching */}
+        {searchQuery && (
+          <p className="text-sm text-muted-foreground mb-4">
+            Showing {filteredPodcasts.length} of {podcasts.length} podcasts
+          </p>
+        )}
+
+        {filteredPodcasts.length === 0 && searchQuery ? (
+          <Card className="border-0 shadow-md">
+            <CardContent className="p-12 text-center">
+              <Search className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No podcasts found</h3>
+              <p className="text-muted-foreground">
+                Try a different search term or clear the search to see all podcasts.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() => setSearchQuery('')}
+              >
+                Clear search
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredPodcasts.map((podcast) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
@@ -533,7 +576,8 @@ export default function ProspectView() {
               </CardContent>
             </Card>
           ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
