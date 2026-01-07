@@ -4,16 +4,211 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
-import { ALLOWED_ADMIN_EMAILS } from '@/lib/config'
-import { Save, Shield, Bell, Globe, Code, Copy, ExternalLink, Check } from 'lucide-react'
-import { useState } from 'react'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Save, Shield, Bell, Globe, Code, Copy, ExternalLink, Check, Plus, Trash2, Loader2, Key, Eye, EyeOff, UserPlus } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+
+interface AdminUser {
+  id: string
+  email: string
+  name: string | null
+  added_by: string | null
+  created_at: string
+}
 
 const Settings = () => {
   const { user } = useAuth()
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
 
+  // Admin user management state
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [loadingAdmins, setLoadingAdmins] = useState(true)
+  const [isAddAdminOpen, setIsAddAdminOpen] = useState(false)
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false)
+  const [deletingAdmin, setDeletingAdmin] = useState<AdminUser | null>(null)
+  const [resetPasswordAdmin, setResetPasswordAdmin] = useState<AdminUser | null>(null)
+  const [newAdminEmail, setNewAdminEmail] = useState('')
+  const [newAdminName, setNewAdminName] = useState('')
+  const [newAdminPassword, setNewAdminPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
   const API_ENDPOINT = 'https://ysjwveqnwjysldpfqzov.supabase.co/functions/v1/create-client-account'
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+
+  // Fetch admin users
+  useEffect(() => {
+    fetchAdminUsers()
+  }, [])
+
+  const fetchAdminUsers = async () => {
+    setLoadingAdmins(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/manage-admin-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action: 'list' }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setAdminUsers(data.admins)
+      }
+    } catch (error) {
+      console.error('Error fetching admin users:', error)
+    } finally {
+      setLoadingAdmins(false)
+    }
+  }
+
+  const handleAddAdmin = async () => {
+    if (!newAdminEmail || !newAdminPassword) {
+      toast.error('Email and password are required')
+      return
+    }
+
+    if (newAdminPassword.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/manage-admin-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'create',
+          email: newAdminEmail,
+          password: newAdminPassword,
+          name: newAdminName || undefined,
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success(`Admin user ${newAdminEmail} created successfully`)
+        setIsAddAdminOpen(false)
+        setNewAdminEmail('')
+        setNewAdminName('')
+        setNewAdminPassword('')
+        fetchAdminUsers()
+      } else {
+        toast.error(data.error || 'Failed to create admin user')
+      }
+    } catch (error) {
+      console.error('Error adding admin:', error)
+      toast.error('Failed to create admin user')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDeleteAdmin = async () => {
+    if (!deletingAdmin) return
+
+    setIsSubmitting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/manage-admin-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'delete',
+          id: deletingAdmin.id,
+          email: deletingAdmin.email,
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Admin user removed successfully')
+        setDeletingAdmin(null)
+        fetchAdminUsers()
+      } else {
+        toast.error(data.error || 'Failed to remove admin user')
+      }
+    } catch (error) {
+      console.error('Error deleting admin:', error)
+      toast.error('Failed to remove admin user')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!resetPasswordAdmin || !newPassword) return
+
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/manage-admin-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'reset-password',
+          email: resetPasswordAdmin.email,
+          newPassword: newPassword,
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success(`Password reset for ${resetPasswordAdmin.email}`)
+        setIsResetPasswordOpen(false)
+        setResetPasswordAdmin(null)
+        setNewPassword('')
+      } else {
+        toast.error(data.error || 'Failed to reset password')
+      }
+    } catch (error) {
+      console.error('Error resetting password:', error)
+      toast.error('Failed to reset password')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%'
+    let password = ''
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return password
+  }
 
   const copyToClipboard = (text: string, index: number) => {
     navigator.clipboard.writeText(text)
@@ -108,43 +303,265 @@ const data = await response.json()`
         {/* Admin Access */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Admin Access Control
-            </CardTitle>
-            <CardDescription>
-              Emails with admin dashboard access
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Admin Access Control
+                </CardTitle>
+                <CardDescription>
+                  Manage admin users who can access this dashboard
+                </CardDescription>
+              </div>
+              <Button onClick={() => setIsAddAdminOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Admin
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              {ALLOWED_ADMIN_EMAILS.map((email) => (
-                <div
-                  key={email}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Shield className="h-4 w-4 text-primary" />
+            {loadingAdmins ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {adminUsers.map((admin) => (
+                  <div
+                    key={admin.id}
+                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Shield className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{admin.name || admin.email}</p>
+                        <p className="text-sm text-muted-foreground">{admin.email}</p>
+                        {admin.added_by && (
+                          <p className="text-xs text-muted-foreground">Added by {admin.added_by}</p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{email}</p>
-                      <p className="text-xs text-muted-foreground">Admin</p>
+                    <div className="flex items-center gap-2">
+                      {admin.email.toLowerCase() === user?.email?.toLowerCase() && (
+                        <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                          You
+                        </span>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setResetPasswordAdmin(admin)
+                          setIsResetPasswordOpen(true)
+                        }}
+                        title="Reset password"
+                      >
+                        <Key className="h-4 w-4" />
+                      </Button>
+                      {admin.email.toLowerCase() !== user?.email?.toLowerCase() && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeletingAdmin(admin)}
+                          className="text-destructive hover:text-destructive"
+                          title="Remove admin"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  {email === user?.email && (
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                      You
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              To add more admin users, update the whitelist in your code configuration.
-            </p>
+                ))}
+              </div>
+            )}
+            {adminUsers.length === 0 && !loadingAdmins && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Shield className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No admin users found</p>
+                <p className="text-sm">Add your first admin user to get started</p>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Add Admin Dialog */}
+        <Dialog open={isAddAdminOpen} onOpenChange={setIsAddAdminOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Admin User</DialogTitle>
+              <DialogDescription>
+                Create a new admin account with dashboard access
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="admin-name">Name (optional)</Label>
+                <Input
+                  id="admin-name"
+                  placeholder="John Doe"
+                  value={newAdminName}
+                  onChange={(e) => setNewAdminName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-email">Email</Label>
+                <Input
+                  id="admin-email"
+                  type="email"
+                  placeholder="admin@example.com"
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-password">Password</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="admin-password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Min 8 characters"
+                      value={newAdminPassword}
+                      onChange={(e) => setNewAdminPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setNewAdminPassword(generateRandomPassword())}
+                  >
+                    Generate
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddAdminOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddAdmin} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Create Admin
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reset Password Dialog */}
+        <Dialog open={isResetPasswordOpen} onOpenChange={setIsResetPasswordOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset Password</DialogTitle>
+              <DialogDescription>
+                Set a new password for {resetPasswordAdmin?.email}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="new-password"
+                      type={showNewPassword ? 'text' : 'password'}
+                      placeholder="Min 8 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setNewPassword(generateRandomPassword())}
+                  >
+                    Generate
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setIsResetPasswordOpen(false)
+                setResetPasswordAdmin(null)
+                setNewPassword('')
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleResetPassword} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  <>
+                    <Key className="h-4 w-4 mr-2" />
+                    Reset Password
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Admin Confirmation */}
+        <AlertDialog open={!!deletingAdmin} onOpenChange={() => setDeletingAdmin(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Admin User</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to remove <strong>{deletingAdmin?.email}</strong> as an admin?
+                This will delete their account and they will no longer be able to access the admin dashboard.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAdmin}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  'Remove Admin'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Notification Settings */}
         <Card>
