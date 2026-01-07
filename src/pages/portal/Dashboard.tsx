@@ -4355,9 +4355,37 @@ export default function PortalDashboard() {
                           <span>Analyzing podcast fit...</span>
                         </div>
                       ) : podcastFitAnalysis ? (
-                        <div className="text-sm text-purple-800 dark:text-purple-200 space-y-2 whitespace-pre-wrap leading-relaxed break-words max-w-full overflow-hidden">
-                          {podcastFitAnalysis}
-                        </div>
+                        (() => {
+                          // Try to parse as JSON, fallback to string display
+                          try {
+                            const parsed = typeof podcastFitAnalysis === 'string'
+                              ? JSON.parse(podcastFitAnalysis)
+                              : podcastFitAnalysis
+                            return (
+                              <div className="space-y-3">
+                                {parsed.clean_description && (
+                                  <p className="text-sm text-purple-800 dark:text-purple-200">{parsed.clean_description}</p>
+                                )}
+                                {parsed.fit_reasons && parsed.fit_reasons.length > 0 && (
+                                  <ul className="space-y-1">
+                                    {parsed.fit_reasons.map((reason: string, idx: number) => (
+                                      <li key={idx} className="flex items-start gap-2 text-sm text-purple-800 dark:text-purple-200">
+                                        <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                                        <span>{reason}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            )
+                          } catch {
+                            return (
+                              <div className="text-sm text-purple-800 dark:text-purple-200 whitespace-pre-wrap">
+                                {podcastFitAnalysis}
+                              </div>
+                            )
+                          }
+                        })()
                       ) : (
                         <div className="text-sm text-purple-700 dark:text-purple-300 italic">
                           Unable to generate analysis at this time.
