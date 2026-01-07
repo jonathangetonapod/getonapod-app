@@ -541,17 +541,37 @@ export async function getTopChartPodcasts(
   }
 
   // Normalize field names and add rank
-  return podcasts.map((podcast: any, index: number) => ({
-    ...podcast,
-    // Normalize to standard field names
-    podcast_id: podcast.podcast_id || podcast.id || `chart-${index}`,
-    podcast_name: podcast.podcast_name || podcast.name || podcast.title,
-    podcast_description: podcast.podcast_description || podcast.description || '',
-    publisher_name: podcast.publisher_name || podcast.publisher || podcast.author,
-    podcast_image_url: podcast.podcast_image_url || podcast.artwork || podcast.image ||
-                       podcast.artworkUrl || podcast.imageUrl || podcast.artwork_url ||
-                       podcast.image_url || podcast.cover || podcast.thumbnail,
-    podcast_url: podcast.podcast_url || podcast.url || podcast.link,
-    rank: podcast.rank || index + 1,
-  }));
+  return podcasts.map((podcast: any, index: number) => {
+    // Get image URL from various possible fields
+    const imageUrl = podcast.podcast_image_url || podcast.thumbnail || podcast.artwork ||
+                     podcast.image || podcast.artworkUrl || podcast.imageUrl ||
+                     podcast.artwork_url || podcast.image_url || podcast.cover;
+
+    // Get audience size (chart API has it at top level, search API has it nested)
+    const audienceSize = podcast.audience_size || podcast.reach?.audience_size;
+
+    // Get rating (chart API has it at top level, search API has it nested)
+    const rating = podcast.rating || podcast.reach?.itunes?.itunes_rating_average;
+
+    return {
+      ...podcast,
+      // Normalize to standard field names
+      podcast_id: podcast.podcast_id || podcast.id || `chart-${index}`,
+      podcast_name: podcast.podcast_name || podcast.name || podcast.title,
+      podcast_description: podcast.podcast_description || podcast.description || '',
+      publisher_name: podcast.publisher_name || podcast.publisher || podcast.author,
+      podcast_image_url: imageUrl,
+      podcast_url: podcast.podcast_url || podcast.url || podcast.link,
+      rank: podcast.rank || index + 1,
+      // Normalize reach object for consistent access
+      reach: {
+        ...podcast.reach,
+        audience_size: audienceSize,
+        itunes: {
+          ...podcast.reach?.itunes,
+          itunes_rating_average: rating,
+        },
+      },
+    };
+  });
 }
