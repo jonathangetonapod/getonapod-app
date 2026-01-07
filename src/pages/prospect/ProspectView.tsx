@@ -349,7 +349,7 @@ export default function ProspectView() {
 
       {/* Stats Cards Section */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 relative z-10">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Total Podcasts */}
           <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
             <CardContent className="p-4 sm:p-6 text-center">
@@ -386,14 +386,6 @@ export default function ProspectView() {
             </CardContent>
           </Card>
 
-          {/* Total Episodes */}
-          <Card className="border-0 shadow-lg bg-white dark:bg-slate-900 col-span-2 lg:col-span-1">
-            <CardContent className="p-4 sm:p-6 text-center">
-              <Mic className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-              <p className="text-3xl sm:text-4xl font-bold text-purple-600">{formatNumber(totalEpisodes)}</p>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1">Total Episodes</p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Highlights Row */}
