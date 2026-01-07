@@ -23,6 +23,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import {
@@ -50,7 +60,9 @@ import {
   ImageIcon,
   Save,
   Loader2,
-  Upload
+  Upload,
+  Plus,
+  Pencil
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -81,6 +93,20 @@ export default function ProspectDashboards() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [bioExpanded, setBioExpanded] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Create prospect dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newProspect, setNewProspect] = useState({
+    name: '',
+    bio: '',
+    imageUrl: '',
+    spreadsheetUrl: ''
+  })
+
+  // Edit spreadsheet URL
+  const [editSpreadsheetUrl, setEditSpreadsheetUrl] = useState('')
+  const [savingSpreadsheet, setSavingSpreadsheet] = useState(false)
 
   const appUrl = window.location.origin
 
@@ -163,10 +189,11 @@ export default function ProspectDashboards() {
     toast.success('Dashboard link copied!')
   }
 
-  // Sync editImageUrl and reset bioExpanded when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, and reset bioExpanded when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
+      setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
       setBioExpanded(false)
     }
   }, [selectedDashboard])
@@ -277,6 +304,126 @@ export default function ProspectDashboards() {
     }
   }
 
+  // Generate a random slug
+  const generateSlug = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+    let slug = ''
+    for (let i = 0; i < 8; i++) {
+      slug += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return slug
+  }
+
+  // Extract spreadsheet ID from URL
+  const extractSpreadsheetId = (url: string): string | null => {
+    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    return match ? match[1] : null
+  }
+
+  const createProspect = async () => {
+    if (!newProspect.name.trim()) {
+      toast.error('Prospect name is required')
+      return
+    }
+
+    setCreating(true)
+    try {
+      const slug = generateSlug()
+      let spreadsheetId = ''
+      let spreadsheetUrl = newProspect.spreadsheetUrl.trim()
+
+      // Extract spreadsheet ID if URL provided
+      if (spreadsheetUrl) {
+        const extractedId = extractSpreadsheetId(spreadsheetUrl)
+        if (extractedId) {
+          spreadsheetId = extractedId
+          // Normalize the URL
+          spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('prospect_dashboards')
+        .insert({
+          slug,
+          prospect_name: newProspect.name.trim(),
+          prospect_bio: newProspect.bio.trim() || null,
+          prospect_image_url: newProspect.imageUrl.trim() || null,
+          spreadsheet_id: spreadsheetId || null,
+          spreadsheet_url: spreadsheetUrl || null,
+          is_active: true,
+          view_count: 0
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setDashboards(prev => [data, ...prev])
+      setCreateDialogOpen(false)
+      setNewProspect({ name: '', bio: '', imageUrl: '', spreadsheetUrl: '' })
+      toast.success('Prospect created successfully!')
+
+      // Open the side panel for the new prospect
+      setSelectedDashboard(data)
+    } catch (error) {
+      console.error('Error creating prospect:', error)
+      toast.error('Failed to create prospect')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const saveSpreadsheetUrl = async () => {
+    if (!selectedDashboard) return
+
+    setSavingSpreadsheet(true)
+    try {
+      let spreadsheetId = ''
+      let spreadsheetUrl = editSpreadsheetUrl.trim()
+
+      // Extract spreadsheet ID if URL provided
+      if (spreadsheetUrl) {
+        const extractedId = extractSpreadsheetId(spreadsheetUrl)
+        if (extractedId) {
+          spreadsheetId = extractedId
+          // Normalize the URL
+          spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`
+        }
+      }
+
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({
+          spreadsheet_id: spreadsheetId || null,
+          spreadsheet_url: spreadsheetUrl || null
+        })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, spreadsheet_id: spreadsheetId, spreadsheet_url: spreadsheetUrl }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, spreadsheet_id: spreadsheetId, spreadsheet_url: spreadsheetUrl } : null
+      )
+      setEditSpreadsheetUrl(spreadsheetUrl)
+
+      toast.success('Google Sheet URL updated!')
+    } catch (error) {
+      console.error('Error saving spreadsheet URL:', error)
+      toast.error('Failed to save spreadsheet URL')
+    } finally {
+      setSavingSpreadsheet(false)
+    }
+  }
+
   const filteredDashboards = dashboards.filter(d =>
     d.prospect_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -300,10 +447,16 @@ export default function ProspectDashboards() {
             Create and share visual podcast opportunity dashboards with prospects
           </p>
         </div>
-        <Button onClick={fetchDashboards} variant="outline" size="sm" className="w-fit">
-          <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setCreateDialogOpen(true)} size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            New Prospect
+          </Button>
+          <Button onClick={fetchDashboards} variant="outline" size="sm">
+            <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -698,6 +851,49 @@ export default function ProspectDashboards() {
 
                   <Separator />
 
+                  {/* Google Sheet URL */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <FileSpreadsheet className="h-4 w-4" />
+                      Google Sheet
+                    </h3>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste Google Sheet URL..."
+                        value={editSpreadsheetUrl}
+                        onChange={(e) => setEditSpreadsheetUrl(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={saveSpreadsheetUrl}
+                        disabled={savingSpreadsheet || editSpreadsheetUrl === (selectedDashboard.spreadsheet_url || '')}
+                      >
+                        {savingSpreadsheet ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    {editSpreadsheetUrl && (
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-xs"
+                        onClick={() => window.open(editSpreadsheetUrl, '_blank')}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        Open in Google Sheets
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Link the Google Sheet containing podcast opportunities for this prospect
+                    </p>
+                  </div>
+
+                  <Separator />
+
                   {/* Shareable Link */}
                   <div className="space-y-3">
                     <h3 className="font-semibold flex items-center gap-2">
@@ -815,6 +1011,82 @@ export default function ProspectDashboards() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Create Prospect Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create New Prospect</DialogTitle>
+            <DialogDescription>
+              Add a new prospect to track podcast opportunities for. You can link a Google Sheet later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="prospect-name">
+                Prospect Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="prospect-name"
+                placeholder="e.g., John Smith, Acme Corp CEO"
+                value={newProspect.name}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-bio">Bio / Background</Label>
+              <Textarea
+                id="prospect-bio"
+                placeholder="Describe the prospect's expertise, industry, target audience..."
+                value={newProspect.bio}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, bio: e.target.value }))}
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-image">Profile Picture URL</Label>
+              <Input
+                id="prospect-image"
+                type="url"
+                placeholder="https://example.com/profile-picture.jpg"
+                value={newProspect.imageUrl}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, imageUrl: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-sheet">Google Sheet URL</Label>
+              <Input
+                id="prospect-sheet"
+                type="url"
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                value={newProspect.spreadsheetUrl}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, spreadsheetUrl: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Link an existing Google Sheet or leave blank to add later
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={createProspect} disabled={creating || !newProspect.name.trim()}>
+              {creating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Prospect
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </DashboardLayout>
   )
