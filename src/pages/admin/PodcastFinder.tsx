@@ -258,13 +258,24 @@ export default function PodcastFinder() {
   }
 
   const handleGenerateQueries = async () => {
-    if (!selectedClient || !selectedClientData) {
+    // Support both client mode and prospect mode
+    const nameToUse = isProspectMode ? prospectName : selectedClientData?.name
+    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
+
+    if (!isProspectMode && !selectedClientData) {
       toast.error('Please select a client first')
       return
     }
 
-    if (!selectedClientData.bio) {
-      toast.error('Please add a bio for this client first')
+    if (isProspectMode && !prospectName.trim()) {
+      toast.error('Please enter a prospect name')
+      return
+    }
+
+    if (!bioToUse) {
+      toast.error(isProspectMode
+        ? 'Please enter a prospect bio first'
+        : 'Please add a bio for this client first')
       return
     }
 
@@ -272,9 +283,9 @@ export default function PodcastFinder() {
 
     try {
       const generatedQueries = await generatePodcastQueries({
-        clientName: selectedClientData.name,
-        clientBio: selectedClientData.bio,
-        clientEmail: selectedClientData.email || undefined,
+        clientName: nameToUse!,
+        clientBio: bioToUse,
+        clientEmail: isProspectMode ? undefined : selectedClientData?.email || undefined,
       })
 
       const queries: GeneratedQuery[] = generatedQueries.map((query, index) => ({
@@ -303,7 +314,11 @@ export default function PodcastFinder() {
   }
 
   const handleRegenerateQuery = async (queryId: string, isAutomatic = false) => {
-    if (!selectedClientData || !selectedClientData.bio) return
+    // Support both client mode and prospect mode
+    const nameToUse = isProspectMode ? prospectName : selectedClientData?.name
+    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
+
+    if (!bioToUse || !nameToUse) return
 
     const query = queries.find(q => q.id === queryId)
     if (!query) return
@@ -336,9 +351,9 @@ export default function PodcastFinder() {
 
       const newQueryText = await regenerateQuery(
         {
-          clientName: selectedClientData.name,
-          clientBio: selectedClientData.bio,
-          clientEmail: selectedClientData.email || undefined,
+          clientName: nameToUse,
+          clientBio: bioToUse,
+          clientEmail: isProspectMode ? undefined : selectedClientData?.email || undefined,
         },
         query.text
       )
@@ -471,10 +486,20 @@ export default function PodcastFinder() {
 
   const handleScanCompatibility = async (queryId: string) => {
     const query = queries.find(q => q.id === queryId)
-    if (!query || !query.results.length || !selectedClientData) return
+    if (!query || !query.results.length) return
 
-    if (!selectedClientData.bio) {
-      toast.error('Client bio is required for compatibility scoring')
+    // Support both client mode and prospect mode
+    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
+
+    if (!bioToUse) {
+      toast.error(isProspectMode
+        ? 'Prospect bio is required for compatibility scoring'
+        : 'Client bio is required for compatibility scoring')
+      return
+    }
+
+    if (!isProspectMode && !selectedClientData) {
+      toast.error('Please select a client or enter prospect details')
       return
     }
 
@@ -496,7 +521,7 @@ export default function PodcastFinder() {
 
       // Score with progress callback
       const scores = await scoreCompatibilityBatch(
-        selectedClientData.bio,
+        bioToUse,
         podcastsForScoring,
         10,
         (completed, total) => {
