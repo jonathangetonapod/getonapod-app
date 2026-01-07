@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { RichTextEditor } from '@/components/blog/RichTextEditor'
+import { GuestResourceEditor } from '@/components/GuestResourceEditor'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -379,9 +379,10 @@ export default function GuestResourcesManagement() {
             {formData.type === 'article' && (
               <div className="space-y-2">
                 <Label>Content</Label>
-                <RichTextEditor
+                <GuestResourceEditor
                   content={formData.content}
                   onChange={(content) => setFormData({ ...formData, content })}
+                  category={formData.category}
                   placeholder="Write your content or paste from Google Docs..."
                 />
               </div>
