@@ -25,7 +25,6 @@ import {
   Grid3x3,
   List
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
 import { getGuestResources, trackResourceView, type GuestResource, type ResourceCategory } from '@/services/guestResources'
 
 const categoryInfo = {
@@ -366,9 +365,10 @@ export default function PortalResources() {
           </DialogHeader>
 
           {viewingResource?.content && (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown>{viewingResource.content}</ReactMarkdown>
-            </div>
+            <div
+              className="prose prose-sm dark:prose-invert max-w-none"
+              dangerouslySetInnerHTML={{ __html: viewingResource.content }}
+            />
           )}
 
           {viewingResource?.url && (
