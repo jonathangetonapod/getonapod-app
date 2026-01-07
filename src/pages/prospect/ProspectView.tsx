@@ -20,7 +20,12 @@ import {
   Radio,
   X,
   ChevronRight,
-  Headphones
+  Headphones,
+  Zap,
+  Globe,
+  Award,
+  BarChart3,
+  ArrowRight
 } from 'lucide-react'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
@@ -542,80 +547,106 @@ export default function ProspectView() {
 
       {/* Side Panel */}
       <Sheet open={!!selectedPodcast} onOpenChange={() => setSelectedPodcast(null)}>
-        <SheetContent className="w-full sm:max-w-lg p-0 overflow-hidden">
-          <ScrollArea className="h-full">
-            {selectedPodcast && (
-              <div className="flex flex-col">
-                {/* Header Image */}
-                <div className="relative h-48 sm:h-56 overflow-hidden bg-gradient-to-br from-primary/20 to-purple-500/20">
-                  {selectedPodcast.podcast_image_url ? (
-                    <img
-                      src={selectedPodcast.podcast_image_url}
-                      alt={selectedPodcast.podcast_name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Mic className="h-16 w-16 text-white/50" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+        <SheetContent className="w-full sm:max-w-xl p-0 overflow-hidden border-l-0 shadow-2xl">
+          {selectedPodcast && (
+            <div className="flex flex-col h-full">
+              {/* Hero Header with Image */}
+              <div className="relative h-56 sm:h-64 overflow-hidden flex-shrink-0">
+                {selectedPodcast.podcast_image_url ? (
+                  <img
+                    src={selectedPodcast.podcast_image_url}
+                    alt={selectedPodcast.podcast_name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
+                    <Mic className="h-20 w-20 text-white/30" />
+                  </div>
+                )}
+                {/* Gradient overlays */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent" />
 
-                  {/* Close button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-4 right-4 h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white"
-                    onClick={() => setSelectedPodcast(null)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                {/* Close button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-4 right-4 h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm border border-white/20"
+                  onClick={() => setSelectedPodcast(null)}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
 
-                  {/* Title on image */}
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <h2 className="text-xl font-bold line-clamp-2">{selectedPodcast.podcast_name}</h2>
-                    {selectedPodcast.publisher_name && (
-                      <p className="text-sm text-white/80 mt-1">by {selectedPodcast.publisher_name}</p>
+                {/* Content on image */}
+                <div className="absolute bottom-0 left-0 right-0 p-6">
+                  {/* Badges */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {selectedPodcast.itunes_rating && selectedPodcast.itunes_rating >= 4.5 && (
+                      <Badge className="bg-amber-500 hover:bg-amber-500 text-white border-0">
+                        <Award className="h-3 w-3 mr-1" />
+                        Top Rated
+                      </Badge>
+                    )}
+                    {selectedPodcast.audience_size && selectedPodcast.audience_size >= 50000 && (
+                      <Badge className="bg-green-500 hover:bg-green-500 text-white border-0">
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        High Reach
+                      </Badge>
+                    )}
+                    {selectedPodcast.episode_count && selectedPodcast.episode_count >= 100 && (
+                      <Badge className="bg-purple-500 hover:bg-purple-500 text-white border-0">
+                        <Zap className="h-3 w-3 mr-1" />
+                        Established
+                      </Badge>
                     )}
                   </div>
-                </div>
 
-                {/* Stats Row */}
-                <div className="flex items-center justify-around py-4 px-4 border-b bg-muted/30">
-                  {selectedPodcast.itunes_rating && (
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                        <span className="font-bold">{Number(selectedPodcast.itunes_rating).toFixed(1)}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Rating</p>
-                    </div>
-                  )}
-                  {selectedPodcast.audience_size && (
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Users className="h-4 w-4 text-primary" />
-                        <span className="font-bold">{formatNumber(selectedPodcast.audience_size)}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Listeners</p>
-                    </div>
-                  )}
-                  {selectedPodcast.episode_count && (
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <Mic className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-bold">{selectedPodcast.episode_count}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Episodes</p>
-                    </div>
+                  <h2 className="text-2xl font-bold text-white line-clamp-2 mb-1">{selectedPodcast.podcast_name}</h2>
+                  {selectedPodcast.publisher_name && (
+                    <p className="text-white/70 text-sm">by {selectedPodcast.publisher_name}</p>
                   )}
                 </div>
+              </div>
 
-                {/* Content */}
-                <div className="p-5 space-y-6">
-                  {/* About */}
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">About</h3>
+              {/* Quick Stats Bar */}
+              <div className="flex-shrink-0 bg-gradient-to-r from-slate-900 to-slate-800 text-white">
+                <div className="grid grid-cols-3 divide-x divide-white/10">
+                  <div className="p-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Star className="h-5 w-5 text-yellow-400 fill-yellow-400" />
+                      <span className="text-2xl font-bold">
+                        {selectedPodcast.itunes_rating ? Number(selectedPodcast.itunes_rating).toFixed(1) : '-'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/60 uppercase tracking-wide">Rating</p>
+                  </div>
+                  <div className="p-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Users className="h-5 w-5 text-blue-400" />
+                      <span className="text-2xl font-bold">
+                        {selectedPodcast.audience_size ? formatNumber(selectedPodcast.audience_size) : '-'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/60 uppercase tracking-wide">Listeners</p>
+                  </div>
+                  <div className="p-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <BarChart3 className="h-5 w-5 text-purple-400" />
+                      <span className="text-2xl font-bold">
+                        {selectedPodcast.episode_count || '-'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/60 uppercase tracking-wide">Episodes</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable Content */}
+              <ScrollArea className="flex-1">
+                <div className="p-6 space-y-6">
+                  {/* About Section */}
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">About This Podcast</h3>
                     {isAnalyzing ? (
                       <div className="space-y-2">
                         <div className="h-4 bg-muted rounded animate-pulse w-full" />
@@ -629,149 +660,159 @@ export default function ProspectView() {
                     )}
                   </div>
 
-                  <Separator />
-
                   {/* Why It's a Great Fit */}
                   {dashboard.prospect_bio && (
                     <>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                            <Sparkles className="h-4 w-4 text-amber-600" />
+                      <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 p-5 border border-amber-200/50 dark:border-amber-800/50">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg">
+                            <Sparkles className="h-5 w-5 text-white" />
                           </div>
-                          <h3 className="font-semibold">Why This Is Perfect For You</h3>
+                          <div>
+                            <h3 className="font-bold text-amber-900 dark:text-amber-100">Why This Is Perfect For You</h3>
+                            <p className="text-xs text-amber-700 dark:text-amber-300">AI-powered analysis</p>
+                          </div>
                         </div>
 
                         {isAnalyzing ? (
-                          <div className="space-y-3 pl-10">
+                          <div className="space-y-3">
                             {[1, 2, 3].map((i) => (
-                              <div key={i} className="flex items-start gap-2">
-                                <div className="h-5 w-5 bg-muted rounded-full animate-pulse shrink-0" />
-                                <div className="flex-1 h-4 bg-muted rounded animate-pulse" />
+                              <div key={i} className="flex items-start gap-3">
+                                <div className="h-6 w-6 bg-amber-200 dark:bg-amber-800 rounded-full animate-pulse shrink-0" />
+                                <div className="flex-1 h-4 bg-amber-200 dark:bg-amber-800 rounded animate-pulse" />
                               </div>
                             ))}
                           </div>
                         ) : fitAnalysis?.fit_reasons && fitAnalysis.fit_reasons.length > 0 ? (
-                          <ul className="space-y-2 pl-10">
+                          <ul className="space-y-3">
                             {fitAnalysis.fit_reasons.map((reason, idx) => (
-                              <li key={idx} className="flex items-start gap-2">
-                                <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                                <span className="text-sm">{reason}</span>
+                              <li key={idx} className="flex items-start gap-3">
+                                <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center shrink-0 mt-0.5">
+                                  <CheckCircle2 className="h-4 w-4 text-white" />
+                                </div>
+                                <span className="text-sm text-amber-900 dark:text-amber-100">{reason}</span>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-sm text-muted-foreground italic pl-10">Analyzing fit...</p>
+                          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm">Analyzing fit...</span>
+                          </div>
                         )}
                       </div>
 
-                      <Separator />
-
                       {/* Pitch Angles */}
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                            <Target className="h-4 w-4 text-purple-600" />
+                      <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 p-5 border border-purple-200/50 dark:border-purple-800/50">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
+                            <Target className="h-5 w-5 text-white" />
                           </div>
-                          <h3 className="font-semibold">Suggested Pitch Angles</h3>
+                          <div>
+                            <h3 className="font-bold text-purple-900 dark:text-purple-100">Suggested Pitch Angles</h3>
+                            <p className="text-xs text-purple-700 dark:text-purple-300">Ways to approach this podcast</p>
+                          </div>
                         </div>
 
                         {isAnalyzing ? (
-                          <div className="space-y-3 pl-10">
+                          <div className="space-y-3">
                             {[1, 2, 3].map((i) => (
-                              <div key={i} className="p-3 border rounded-lg space-y-2">
-                                <div className="h-4 bg-muted rounded animate-pulse w-2/3" />
-                                <div className="h-3 bg-muted rounded animate-pulse w-full" />
+                              <div key={i} className="p-4 bg-white/50 dark:bg-white/5 rounded-xl space-y-2">
+                                <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded animate-pulse w-2/3" />
+                                <div className="h-3 bg-purple-100 dark:bg-purple-900 rounded animate-pulse w-full" />
                               </div>
                             ))}
                           </div>
                         ) : fitAnalysis?.pitch_angles && fitAnalysis.pitch_angles.length > 0 ? (
-                          <div className="space-y-2 pl-10">
+                          <div className="space-y-3">
                             {fitAnalysis.pitch_angles.map((angle, idx) => (
                               <div
                                 key={idx}
-                                className="p-3 rounded-lg border bg-gradient-to-r from-purple-50 to-transparent dark:from-purple-950/20 dark:to-transparent"
+                                className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-purple-100 dark:border-purple-800/50 hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
                               >
-                                <div className="flex items-start gap-2">
-                                  <span className="flex items-center justify-center h-5 w-5 rounded-full bg-purple-600 text-white text-xs font-bold shrink-0">
+                                <div className="flex items-start gap-3">
+                                  <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-gradient-to-br from-purple-600 to-violet-600 text-white text-sm font-bold shrink-0 shadow">
                                     {idx + 1}
                                   </span>
                                   <div className="space-y-1">
-                                    <h4 className="font-medium text-sm">{angle.title}</h4>
-                                    <p className="text-xs text-muted-foreground">{angle.description}</p>
+                                    <h4 className="font-semibold text-purple-900 dark:text-purple-100">{angle.title}</h4>
+                                    <p className="text-sm text-purple-700 dark:text-purple-300">{angle.description}</p>
                                   </div>
                                 </div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground italic pl-10">Generating pitch ideas...</p>
+                          <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm">Generating pitch ideas...</span>
+                          </div>
                         )}
                       </div>
-
-                      <Separator />
                     </>
                   )}
 
                   {/* Demographics */}
                   {(isLoadingDemographics || demographics) && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                          <Users className="h-4 w-4 text-blue-600" />
+                    <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 p-5 border border-blue-200/50 dark:border-blue-800/50">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                          <Globe className="h-5 w-5 text-white" />
                         </div>
-                        <h3 className="font-semibold">Audience Demographics</h3>
+                        <div>
+                          <h3 className="font-bold text-blue-900 dark:text-blue-100">Audience Profile</h3>
+                          <p className="text-xs text-blue-700 dark:text-blue-300">Know who you'll reach</p>
+                        </div>
                       </div>
 
                       {isLoadingDemographics ? (
-                        <div className="grid grid-cols-2 gap-2 pl-10">
+                        <div className="grid grid-cols-2 gap-3">
                           {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="p-3 bg-muted/50 rounded-lg space-y-1">
-                              <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-                              <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
+                            <div key={i} className="p-4 bg-white/50 dark:bg-white/5 rounded-xl space-y-2">
+                              <div className="h-3 bg-blue-200 dark:bg-blue-800 rounded animate-pulse w-1/2" />
+                              <div className="h-5 bg-blue-100 dark:bg-blue-900 rounded animate-pulse w-3/4" />
                             </div>
                           ))}
                         </div>
                       ) : demographics && (
-                        <div className="grid grid-cols-2 gap-2 pl-10">
-                          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                            <p className="text-xs text-blue-600 dark:text-blue-400">Age Group</p>
-                            <p className="font-semibold">{demographics.age}</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-blue-100 dark:border-blue-800/50">
+                            <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">Age Group</p>
+                            <p className="font-bold text-blue-900 dark:text-blue-100">{demographics.age}</p>
                           </div>
-                          <div className="p-3 bg-pink-50 dark:bg-pink-950/30 rounded-lg">
-                            <p className="text-xs text-pink-600 dark:text-pink-400">Gender</p>
-                            <p className="font-semibold capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
+                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-pink-100 dark:border-pink-800/50">
+                            <p className="text-xs font-medium text-pink-600 dark:text-pink-400 mb-1">Gender Split</p>
+                            <p className="font-bold text-pink-900 dark:text-pink-100 capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
                           </div>
-                          <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
-                            <p className="text-xs text-green-600 dark:text-green-400">Buying Power</p>
-                            <p className="font-semibold capitalize">{demographics.purchasing_power}</p>
+                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-green-100 dark:border-green-800/50">
+                            <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1">Buying Power</p>
+                            <p className="font-bold text-green-900 dark:text-green-100 capitalize">{demographics.purchasing_power}</p>
                           </div>
-                          <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
-                            <p className="text-xs text-purple-600 dark:text-purple-400">Education</p>
-                            <p className="font-semibold capitalize">{demographics.education_level}</p>
+                          <div className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-purple-100 dark:border-purple-800/50">
+                            <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-1">Education</p>
+                            <p className="font-bold text-purple-900 dark:text-purple-100 capitalize">{demographics.education_level}</p>
                           </div>
                         </div>
                       )}
                     </div>
                   )}
-
-                  {/* CTA */}
-                  {selectedPodcast.podcast_url && (
-                    <div className="pt-4">
-                      <Button
-                        className="w-full"
-                        size="lg"
-                        onClick={() => window.open(selectedPodcast.podcast_url!, '_blank', 'noopener,noreferrer')}
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Visit Podcast
-                      </Button>
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
-          </ScrollArea>
+              </ScrollArea>
+
+              {/* Sticky Footer CTA */}
+              {selectedPodcast.podcast_url && (
+                <div className="flex-shrink-0 p-4 bg-white dark:bg-slate-900 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+                  <Button
+                    className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg"
+                    onClick={() => window.open(selectedPodcast.podcast_url!, '_blank', 'noopener,noreferrer')}
+                  >
+                    Visit Podcast
+                    <ArrowRight className="h-5 w-5 ml-2" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </div>
