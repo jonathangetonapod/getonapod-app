@@ -104,6 +104,15 @@ Generate the beautifully formatted HTML content now:`
 
     // Clean up the generated content - convert special characters to ASCII equivalents
     let generatedContent = message.content[0].text
+      // Fix already-corrupted UTF-8 sequences (common double-encoding issues)
+      .replace(/â€"/g, '-')   // Corrupted em-dash
+      .replace(/â€"/g, '-')   // Corrupted en-dash
+      .replace(/â€™/g, "'")   // Corrupted right single quote
+      .replace(/â€˜/g, "'")   // Corrupted left single quote
+      .replace(/â€œ/g, '"')   // Corrupted left double quote
+      .replace(/â€/g, '"')   // Corrupted right double quote
+      .replace(/â€¦/g, '...') // Corrupted ellipsis
+      .replace(/â€¢/g, '-')   // Corrupted bullet
       // Convert smart quotes to regular quotes
       .replace(/[\u2018\u2019\u201A\u201B]/g, "'")  // Single quotes
       .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // Double quotes
@@ -138,7 +147,7 @@ Generate the beautifully formatted HTML content now:`
       {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
         },
       }
     )
@@ -154,7 +163,7 @@ Generate the beautifully formatted HTML content now:`
         status: 500,
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
         },
       }
     )

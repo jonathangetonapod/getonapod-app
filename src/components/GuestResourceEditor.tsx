@@ -105,6 +105,16 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
       if (data.success && data.data.content) {
         // Clean up any remaining special characters on the frontend
         const cleanContent = data.data.content
+          // Fix corrupted UTF-8 sequences
+          .replace(/â€"/g, '-')
+          .replace(/â€"/g, '-')
+          .replace(/â€™/g, "'")
+          .replace(/â€˜/g, "'")
+          .replace(/â€œ/g, '"')
+          .replace(/â€/g, '"')
+          .replace(/â€¦/g, '...')
+          .replace(/â€¢/g, '-')
+          // Convert unicode special chars
           .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
           .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
           .replace(/[\u2013\u2014\u2015]/g, '-')
