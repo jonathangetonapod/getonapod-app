@@ -366,8 +366,19 @@ export default function PortalResources() {
 
           {viewingResource?.content && (
             <div
-              className="prose prose-sm dark:prose-invert max-w-none"
-              dangerouslySetInnerHTML={{ __html: viewingResource.content }}
+              className="prose prose-sm dark:prose-invert max-w-none [&_blockquote]:bg-blue-50 [&_blockquote]:dark:bg-blue-950 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-500 [&_blockquote]:p-4 [&_blockquote]:my-4 [&_blockquote]:rounded-r-lg [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_p]:my-3"
+              dangerouslySetInnerHTML={{
+                __html: viewingResource.content
+                  // Fix corrupted UTF-8 sequences
+                  .replace(/â€"/g, '-')
+                  .replace(/â€"/g, '-')
+                  .replace(/â€™/g, "'")
+                  .replace(/â€˜/g, "'")
+                  .replace(/â€œ/g, '"')
+                  .replace(/â€/g, '"')
+                  .replace(/â€¦/g, '...')
+                  .replace(/â€¢/g, '-')
+              }}
             />
           )}
 
