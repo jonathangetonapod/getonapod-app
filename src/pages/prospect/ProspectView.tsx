@@ -849,18 +849,6 @@ export default function ProspectView() {
                 </div>
               </ScrollArea>
 
-              {/* Sticky Footer CTA */}
-              {selectedPodcast.podcast_url && (
-                <div className="flex-shrink-0 p-4 bg-white dark:bg-slate-900 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-                  <Button
-                    className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg"
-                    onClick={() => window.open(selectedPodcast.podcast_url!, '_blank', 'noopener,noreferrer')}
-                  >
-                    Visit Podcast
-                    <ArrowRight className="h-5 w-5 ml-2" />
-                  </Button>
-                </div>
-              )}
             </div>
           )}
         </SheetContent>
