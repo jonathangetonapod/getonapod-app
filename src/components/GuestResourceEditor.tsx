@@ -103,7 +103,15 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
       if (error) throw error
 
       if (data.success && data.data.content) {
-        editor.commands.setContent(data.data.content)
+        // Clean up any remaining special characters on the frontend
+        const cleanContent = data.data.content
+          .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+          .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+          .replace(/[\u2013\u2014\u2015]/g, '-')
+          .replace(/\u2026/g, '...')
+          .replace(/[\uFFFC\uFFFD\u200B\u200C\u200D\uFEFF]/g, '')
+          .replace(/[\u0080-\u009F]/g, '')
+        editor.commands.setContent(cleanContent)
 
         toast({
           title: 'Content generated!',

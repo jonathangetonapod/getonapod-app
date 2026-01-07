@@ -95,7 +95,28 @@ Generate the beautifully formatted HTML content now:`
       ],
     })
 
-    const generatedContent = message.content[0].text
+    // Clean up the generated content - convert special characters to ASCII equivalents
+    let generatedContent = message.content[0].text
+      // Convert smart quotes to regular quotes
+      .replace(/[\u2018\u2019\u201A\u201B]/g, "'")  // Single quotes
+      .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // Double quotes
+      // Convert dashes to regular dashes
+      .replace(/[\u2013\u2014\u2015]/g, '-')  // En dash, em dash, horizontal bar
+      // Convert ellipsis
+      .replace(/\u2026/g, '...')
+      // Convert bullet points to standard
+      .replace(/[\u2022\u2023\u2043]/g, '-')
+      // Remove object replacement characters and other invisible chars
+      .replace(/[\uFFFC\uFFFD\u200B\u200C\u200D\uFEFF\u00A0]/g, ' ')
+      // Remove other problematic unicode but keep standard punctuation
+      .replace(/[\u0080-\u009F]/g, '')
+      // Clean up multiple spaces
+      .replace(/  +/g, ' ')
+      // Clean up empty list items
+      .replace(/<li>\s*<\/li>/g, '')
+      // Trim whitespace
+      .trim()
+
     const wordCount = generatedContent.split(/\s+/).length
 
     return new Response(
