@@ -781,8 +781,8 @@ export default function PodcastFinder() {
             </div>
 
             {selectedClientData && (
-              <div className="p-5 bg-gradient-to-br from-muted/50 to-muted/30 rounded-xl border-2 space-y-3">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="p-5 bg-gradient-to-br from-muted/50 to-muted/30 rounded-xl border-2 space-y-3 max-h-[400px] overflow-y-auto">
+                <div className="flex items-center gap-2 mb-3 sticky top-0 bg-gradient-to-br from-muted/80 to-muted/60 -mx-5 -mt-5 px-5 pt-5 pb-2 backdrop-blur-sm">
                   <div className="h-2 w-2 rounded-full bg-primary"></div>
                   <p className="text-sm font-semibold uppercase tracking-wide text-primary">Selected Client</p>
                 </div>
