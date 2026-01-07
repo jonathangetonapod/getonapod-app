@@ -1,8 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
+import LinkExtension from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
@@ -31,16 +31,18 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Link.configure({
+      StarterKit.configure({
+        // Disable default extensions we're overriding
+      }),
+      LinkExtension.configure({
         openOnClick: false,
         HTMLAttributes: {
-          class: 'text-blue-600 underline',
+          class: 'text-blue-600 underline cursor-pointer',
         },
       }),
       Image.configure({
         HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg',
+          class: 'max-w-full h-auto rounded-lg my-4',
         },
       }),
     ],
@@ -50,10 +52,17 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none min-h-[400px] p-4',
+        class: 'prose prose-sm sm:prose-base max-w-none focus:outline-none min-h-[400px] p-4 [&_blockquote]:bg-blue-50 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-500 [&_blockquote]:p-4 [&_blockquote]:my-4 [&_blockquote]:rounded-r-lg [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1',
       },
     },
   })
+
+  // Update editor content when prop changes
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content)
+    }
+  }, [content, editor])
 
   if (!editor) {
     return null
