@@ -4395,90 +4395,227 @@ export default function PortalDashboard() {
                 </div>
               )}
 
-              {/* Audience Demographics - Only shown if available */}
-              {(isLoadingBookingDemographics || bookingDemographics) && (
-                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                  <div className="flex items-start gap-3 mb-4">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center flex-shrink-0">
-                      <Users className="h-5 w-5 text-white" />
+              {/* Audience Demographics - Enhanced Version */}
+              {isLoadingBookingDemographics ? (
+                <div className="p-4 bg-muted/30 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">Analyzing audience demographics...</span>
+                  </div>
+                </div>
+              ) : bookingDemographics ? (
+                <div className="space-y-6 p-5 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-purple-600 rounded-lg">
+                        <Users className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg">Who's Listening</h3>
+                        <p className="text-xs text-muted-foreground">Deep insights from {bookingDemographics.episodes_analyzed} episodes</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-blue-900 dark:text-blue-100">Who's Listening</h4>
-                      <p className="text-xs text-blue-700 dark:text-blue-300">Know exactly who you'll reach on this podcast</p>
+                    <span className="text-xs bg-purple-600 text-white px-2 py-1 rounded-full font-medium">AI-Powered</span>
+                  </div>
+
+                  {/* Key Metrics Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-3 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-xl border border-green-200 dark:border-green-800">
+                      <p className="text-[10px] uppercase tracking-wider text-green-600 dark:text-green-400 font-semibold mb-1">Buying Power</p>
+                      <p className="font-bold text-lg text-green-800 dark:text-green-300 capitalize">{bookingDemographics.purchasing_power || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/30 dark:to-violet-900/30 rounded-xl border border-purple-200 dark:border-purple-800">
+                      <p className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400 font-semibold mb-1">Education</p>
+                      <p className="font-bold text-lg text-purple-800 dark:text-purple-300 capitalize">{bookingDemographics.education_level || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-gradient-to-br from-blue-100 to-sky-100 dark:from-blue-900/30 dark:to-sky-900/30 rounded-xl border border-blue-200 dark:border-blue-800">
+                      <p className="text-[10px] uppercase tracking-wider text-blue-600 dark:text-blue-400 font-semibold mb-1">Core Age</p>
+                      <p className="font-bold text-lg text-blue-800 dark:text-blue-300">{bookingDemographics.age || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30 rounded-xl border border-orange-200 dark:border-orange-800">
+                      <p className="text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-semibold mb-1">Engagement</p>
+                      <p className="font-bold text-lg text-orange-800 dark:text-orange-300 capitalize">{bookingDemographics.engagement_level || 'N/A'}</p>
                     </div>
                   </div>
-                  {isLoadingBookingDemographics ? (
-                    <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Loading audience data...</span>
+
+                  {/* Gender & Age Distribution */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Gender */}
+                    {bookingDemographics.gender_skew && (
+                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Gender Skew</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <div className="h-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-full" />
+                          </div>
+                          <span className="font-bold text-sm capitalize">{bookingDemographics.gender_skew.replace(/_/g, ' ')}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Age Distribution */}
+                    {bookingDemographics.age_distribution && bookingDemographics.age_distribution.length > 0 && (
+                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                        <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Age Distribution</p>
+                        <div className="space-y-2">
+                          {bookingDemographics.age_distribution.slice(0, 4).map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <span className="text-xs w-16 text-muted-foreground">{item.age}</span>
+                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all"
+                                  style={{ width: `${Math.min(item.percentage, 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-semibold w-10 text-right">{item.percentage}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Geographic & Professional Distribution */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Geographic */}
+                    {bookingDemographics.geographic_distribution && bookingDemographics.geographic_distribution.length > 0 && (
+                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Globe className="h-4 w-4 text-blue-500" />
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Regions</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {bookingDemographics.geographic_distribution.slice(0, 5).map((item, idx) => (
+                            <span key={idx} className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full">
+                              {item.region} <span className="font-bold">{item.percentage}%</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Professional Industry */}
+                    {bookingDemographics.professional_industry && bookingDemographics.professional_industry.length > 0 && (
+                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                        <div className="flex items-center gap-2 mb-3">
+                          <TrendingUp className="h-4 w-4 text-green-500" />
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Industries</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {bookingDemographics.professional_industry.slice(0, 5).map((item, idx) => (
+                            <span key={idx} className="text-xs bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
+                              {item.industry} <span className="font-bold">{item.percentage}%</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Living Environment */}
+                  {bookingDemographics.living_environment && (
+                    <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                      <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Living Environment</p>
+                      <div className="flex gap-2">
+                        <div className="flex-1 text-center p-2 rounded-lg bg-blue-100/50 dark:bg-blue-900/30">
+                          <p className="text-2xl font-bold text-blue-600">{bookingDemographics.living_environment.urban}%</p>
+                          <p className="text-xs text-muted-foreground">Urban</p>
+                        </div>
+                        <div className="flex-1 text-center p-2 rounded-lg bg-green-100/50 dark:bg-green-900/30">
+                          <p className="text-2xl font-bold text-green-600">{bookingDemographics.living_environment.suburban}%</p>
+                          <p className="text-xs text-muted-foreground">Suburban</p>
+                        </div>
+                        <div className="flex-1 text-center p-2 rounded-lg bg-amber-100/50 dark:bg-amber-900/30">
+                          <p className="text-2xl font-bold text-amber-600">{bookingDemographics.living_environment.rural}%</p>
+                          <p className="text-xs text-muted-foreground">Rural</p>
+                        </div>
+                      </div>
                     </div>
-                  ) : bookingDemographics && (
-                    <div className="space-y-4">
-                      {/* Key Metrics */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-blue-100 dark:border-blue-800">
-                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Primary Age Group</p>
-                          <p className="font-bold text-lg text-blue-900 dark:text-blue-100">{bookingDemographics.age}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Target demographic</p>
+                  )}
+
+                  {/* Brand Relationship */}
+                  {bookingDemographics.brand_relationship && (
+                    <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-3 uppercase tracking-wider">Brand Relationship</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Loyalty</p>
+                          <p className="font-bold text-amber-700 dark:text-amber-400 capitalize">{bookingDemographics.brand_relationship.loyalty_level}</p>
                         </div>
-                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-blue-100 dark:border-blue-800">
-                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Gender Split</p>
-                          <p className="font-bold text-lg text-blue-900 dark:text-blue-100 capitalize">{bookingDemographics.gender_skew?.replace(/_/g, ' ')}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Audience makeup</p>
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Price Sensitivity</p>
+                          <p className="font-bold text-amber-700 dark:text-amber-400 capitalize">{bookingDemographics.brand_relationship.price_sensitivity}</p>
                         </div>
-                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-green-100 dark:border-green-800">
-                          <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Buying Power</p>
-                          <p className="font-bold text-lg text-green-900 dark:text-green-100 capitalize">{bookingDemographics.purchasing_power}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Can afford premium</p>
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Switching</p>
+                          <p className="font-bold text-amber-700 dark:text-amber-400 capitalize">{bookingDemographics.brand_relationship.brand_switching_frequency}</p>
                         </div>
-                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-purple-100 dark:border-purple-800">
-                          <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mb-1">Education</p>
-                          <p className="font-bold text-lg text-purple-900 dark:text-purple-100 capitalize">{bookingDemographics.education_level}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Decision makers</p>
+                        <div className="text-center">
+                          <p className="text-xs text-muted-foreground">Advocacy</p>
+                          <p className="font-bold text-amber-700 dark:text-amber-400 capitalize">{bookingDemographics.brand_relationship.advocacy_potential}</p>
                         </div>
                       </div>
+                      {bookingDemographics.brand_relationship.reasoning && (
+                        <p className="text-xs text-muted-foreground italic">"{bookingDemographics.brand_relationship.reasoning}"</p>
+                      )}
+                    </div>
+                  )}
 
-                      {/* Geographic & Industry */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {bookingDemographics.geographic_distribution && bookingDemographics.geographic_distribution.length > 0 && (
-                          <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
-                            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-2">Where They Are</p>
-                            <div className="space-y-1">
-                              {bookingDemographics.geographic_distribution.slice(0, 3).map((geo, idx) => (
-                                <div key={idx} className="flex items-center justify-between">
-                                  <span className="text-sm font-medium">{geo.region}</span>
-                                  <span className="text-sm text-muted-foreground">{geo.percentage}%</span>
-                                </div>
+                  {/* Technology Adoption */}
+                  {bookingDemographics.technology_adoption && (
+                    <div className="p-4 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 rounded-xl border border-cyan-200 dark:border-cyan-800">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-400 uppercase tracking-wider">Tech Adoption Profile</p>
+                        <span className="text-xs bg-cyan-600 text-white px-2 py-0.5 rounded-full">{Math.round(bookingDemographics.technology_adoption.confidence_score * 100)}% Confidence</span>
+                      </div>
+                      <p className="font-bold text-lg text-cyan-800 dark:text-cyan-300 mb-1">{bookingDemographics.technology_adoption.profile}</p>
+                      {bookingDemographics.technology_adoption.reasoning && (
+                        <p className="text-xs text-muted-foreground">"{bookingDemographics.technology_adoption.reasoning}"</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Content Habits */}
+                  {bookingDemographics.content_habits && (
+                    <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                      <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Content Consumption</p>
+                      <div className="space-y-3">
+                        {bookingDemographics.content_habits.primary_platforms && (
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-1">Platforms</p>
+                            <div className="flex flex-wrap gap-1">
+                              {bookingDemographics.content_habits.primary_platforms.map((platform, idx) => (
+                                <span key={idx} className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{platform}</span>
                               ))}
                             </div>
                           </div>
                         )}
-                        {bookingDemographics.professional_industry && bookingDemographics.professional_industry.length > 0 && (
-                          <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
-                            <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium mb-2">Industries Represented</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {bookingDemographics.professional_industry.slice(0, 4).map((ind, idx) => (
-                                <span key={idx} className="text-xs bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 px-2 py-1 rounded-full font-medium">
-                                  {ind.industry}
-                                </span>
+                        {bookingDemographics.content_habits.preferred_formats && (
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-1">Preferred Formats</p>
+                            <div className="flex flex-wrap gap-1">
+                              {bookingDemographics.content_habits.preferred_formats.map((format, idx) => (
+                                <span key={idx} className="text-xs bg-gray-100 dark:bg-gray-800 border px-2 py-1 rounded-full">{format}</span>
                               ))}
                             </div>
                           </div>
                         )}
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-blue-200 dark:border-blue-800">
-                        <p className="text-xs text-muted-foreground">
-                          AI-analyzed from {bookingDemographics.episodes_analyzed} recent episodes
-                        </p>
-                        <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
-                          Verified Data
-                        </span>
+                        {bookingDemographics.content_habits.consumption_context && (
+                          <div>
+                            <p className="text-[10px] text-muted-foreground mb-1">When They Listen</p>
+                            <div className="flex flex-wrap gap-1">
+                              {bookingDemographics.content_habits.consumption_context.map((context, idx) => (
+                                <span key={idx} className="text-xs bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 px-2 py-1 rounded-full">{context}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
 
               {/* Why This is a Great Fit - AI Generated */}
               {client?.bio && (

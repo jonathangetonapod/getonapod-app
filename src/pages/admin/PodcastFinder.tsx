@@ -1804,7 +1804,6 @@ export default function PodcastFinder() {
                           <TableHead className="w-[60px] font-semibold"></TableHead>
                           <TableHead className="font-semibold">Podcast</TableHead>
                           <TableHead className="font-semibold">Audience</TableHead>
-                          <TableHead className="font-semibold">Episodes</TableHead>
                           <TableHead className="font-semibold">Rating</TableHead>
                           <TableHead className="font-semibold">Fit Score</TableHead>
                           <TableHead className="w-[80px] font-semibold">Actions</TableHead>
@@ -1859,9 +1858,6 @@ export default function PodcastFinder() {
                                   {podcast.reach?.audience_size?.toLocaleString() || 'N/A'}
                                 </span>
                               </div>
-                            </TableCell>
-                            <TableCell className="py-4">
-                              <span className="font-medium">{podcast.episode_count}</span>
                             </TableCell>
                             <TableCell className="py-4">
                               <div className="flex items-center gap-1">
