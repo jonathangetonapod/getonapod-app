@@ -143,6 +143,65 @@ export async function exportPodcastsToGoogleSheets(
   }
 }
 
+export interface CreateProspectSheetResult {
+  success: boolean
+  spreadsheetUrl: string
+  spreadsheetId: string
+  sheetTitle: string
+  rowsAdded: number
+  message: string
+}
+
+/**
+ * Create a new Google Sheet for a prospect and export podcasts to it
+ * This creates a new sheet without requiring a client record
+ */
+export async function createProspectSheet(
+  prospectName: string,
+  prospectBio: string | undefined,
+  podcasts: PodcastExportData[]
+): Promise<CreateProspectSheetResult> {
+  if (!prospectName) {
+    throw new Error('Prospect name is required')
+  }
+
+  if (!podcasts || podcasts.length === 0) {
+    throw new Error('At least one podcast must be selected for export')
+  }
+
+  try {
+    // Get the authenticated user's JWT token
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      throw new Error('You must be logged in to create a prospect sheet')
+    }
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/create-prospect-sheet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        prospectName,
+        prospectBio,
+        podcasts,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create prospect sheet')
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error creating prospect sheet:', error)
+    throw new Error(`Failed to create prospect sheet: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
 /**
  * Get outreach podcasts from a client's Google Sheet
  * Reads column E (Podscan Podcast IDs) and fetches podcast details

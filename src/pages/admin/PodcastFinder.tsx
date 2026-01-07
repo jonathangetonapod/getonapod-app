@@ -33,7 +33,7 @@ import { generatePodcastQueries, regenerateQuery } from '@/services/queryGenerat
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { searchPodcasts, getPodcastById, getPodcastDemographics, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type PodcastDemographics, type ChartCountry, type ChartCategory } from '@/services/podscan'
 import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
-import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
+import { exportPodcastsToGoogleSheets, createProspectSheet, type PodcastExportData } from '@/services/googleSheets'
 import { toast } from 'sonner'
 
 interface GeneratedQuery {
@@ -50,6 +50,11 @@ interface GeneratedQuery {
 
 export default function PodcastFinder() {
   const [selectedClient, setSelectedClient] = useState<string>('')
+
+  // Prospect mode
+  const [prospectName, setProspectName] = useState('')
+  const [prospectBio, setProspectBio] = useState('')
+  const isProspectMode = selectedClient === '__prospect__'
   const [isGenerating, setIsGenerating] = useState(false)
   const [queries, setQueries] = useState<GeneratedQuery[]>([])
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null)
@@ -535,10 +540,20 @@ export default function PodcastFinder() {
   }
 
   const handleScanChartCompatibility = async () => {
-    if (!chartResults.length || !selectedClientData) return
+    if (!chartResults.length) return
 
-    if (!selectedClientData.bio) {
-      toast.error('Client bio is required for compatibility scoring')
+    // Support both client mode and prospect mode
+    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
+
+    if (!bioToUse) {
+      toast.error(isProspectMode
+        ? 'Prospect bio is required for compatibility scoring'
+        : 'Client bio is required for compatibility scoring')
+      return
+    }
+
+    if (!isProspectMode && !selectedClientData) {
+      toast.error('Please select a client or enter prospect details')
       return
     }
 
@@ -558,7 +573,7 @@ export default function PodcastFinder() {
 
       // Score with progress callback
       const scores = await scoreCompatibilityBatch(
-        selectedClientData.bio,
+        bioToUse,
         podcastsForScoring,
         10,
         (completed, total) => {
@@ -714,7 +729,17 @@ export default function PodcastFinder() {
   }
 
   const handleExportToGoogleSheets = async () => {
-    if (!selectedClient) {
+    // Validation for prospect mode
+    if (isProspectMode) {
+      if (!prospectName.trim()) {
+        toast.error('Please enter a prospect name')
+        return
+      }
+      if (!prospectBio.trim()) {
+        toast.error('Please enter prospect bio/background')
+        return
+      }
+    } else if (!selectedClient) {
       toast.error('Please select a client first')
       return
     }
@@ -774,9 +799,28 @@ export default function PodcastFinder() {
         })
       }
 
-      const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
+      // Use different export based on mode
+      if (isProspectMode) {
+        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport)
+        toast.success(
+          <div className="space-y-2">
+            <p>Created sheet with {result.rowsAdded} podcasts!</p>
+            <a
+              href={result.spreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:underline text-sm block"
+            >
+              Open "{result.sheetTitle}" →
+            </a>
+          </div>,
+          { duration: 10000 }
+        )
+      } else {
+        const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
+        toast.success(`Successfully exported ${result.rowsAdded} podcasts to Google Sheets!`)
+      }
 
-      toast.success(`Successfully exported ${result.rowsAdded} podcasts to Google Sheets!`)
       setSelectedPodcasts(new Set()) // Clear selection after successful export
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to export to Google Sheets')
@@ -1044,6 +1088,13 @@ export default function PodcastFinder() {
                     <SelectValue placeholder="Choose a client..." />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__prospect__" className="font-semibold text-purple-600 dark:text-purple-400">
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        New Prospect
+                      </span>
+                    </SelectItem>
+                    <Separator className="my-1" />
                     {clients.map((client) => (
                       <SelectItem key={client.id} value={client.id}>
                         {client.name}
@@ -1088,7 +1139,59 @@ export default function PodcastFinder() {
               )}
             </div>
 
-            {selectedClientData && (
+            {/* Prospect Mode Input */}
+            {isProspectMode && (
+              <div className="p-5 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 bg-purple-600 rounded-lg">
+                    <Sparkles className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">New Prospect</p>
+                    <p className="text-xs text-muted-foreground">Enter prospect details for personalized podcast recommendations</p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="prospect-name" className="text-sm font-medium">
+                      Prospect Name <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="prospect-name"
+                      placeholder="e.g., John Smith, Acme Corp CEO"
+                      value={prospectName}
+                      onChange={(e) => setProspectName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="prospect-bio" className="text-sm font-medium">
+                      Prospect Bio / Background <span className="text-red-500">*</span>
+                    </Label>
+                    <textarea
+                      id="prospect-bio"
+                      placeholder="Describe the prospect's expertise, industry, target audience, and what topics they could speak about on podcasts..."
+                      value={prospectBio}
+                      onChange={(e) => setProspectBio(e.target.value)}
+                      className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      The more details you provide, the better the AI can score podcast compatibility.
+                    </p>
+                  </div>
+                </div>
+                {(!prospectName || !prospectBio) && (
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <span className="text-amber-500">⚠️</span>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Fill in both name and bio to enable compatibility scoring and export.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Client Info Display */}
+            {selectedClientData && !isProspectMode && (
               <div className="p-5 bg-gradient-to-br from-muted/50 to-muted/30 rounded-xl border-2 space-y-3 max-h-[400px] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3 sticky top-0 bg-gradient-to-br from-muted/80 to-muted/60 -mx-5 -mt-5 px-5 pt-5 pb-2 backdrop-blur-sm">
                   <div className="h-2 w-2 rounded-full bg-primary"></div>
