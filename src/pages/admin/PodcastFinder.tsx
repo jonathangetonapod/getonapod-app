@@ -80,6 +80,7 @@ export default function PodcastFinder() {
   const [hasSponsors, setHasSponsors] = useState('any')
   const [searchFields, setSearchFields] = useState('name,description')
   const [activeOnly, setActiveOnly] = useState(false)
+  const [bioExpanded, setBioExpanded] = useState(false)
 
   // Fetch clients
   const { data: clientsData } = useQuery({
@@ -801,9 +802,23 @@ export default function PodcastFinder() {
                       <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
                       Client Bio
                     </p>
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap bg-background/50 p-3 rounded-lg">
-                      {selectedClientData.bio}
-                    </p>
+                    <div className="text-sm text-muted-foreground leading-relaxed bg-background/50 p-3 rounded-lg">
+                      <p className={`whitespace-pre-wrap ${!bioExpanded && selectedClientData.bio.length > 200 ? 'line-clamp-3' : ''}`}>
+                        {selectedClientData.bio}
+                      </p>
+                      {selectedClientData.bio.length > 200 && (
+                        <button
+                          onClick={() => setBioExpanded(!bioExpanded)}
+                          className="text-primary hover:underline text-xs font-medium mt-2 flex items-center gap-1"
+                        >
+                          {bioExpanded ? (
+                            <>Show less <ChevronUp className="h-3 w-3" /></>
+                          ) : (
+                            <>Read more <ChevronDown className="h-3 w-3" /></>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="pt-3 border-t-2 border-border/50 mt-3">

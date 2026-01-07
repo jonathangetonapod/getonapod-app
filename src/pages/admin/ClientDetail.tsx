@@ -51,7 +51,9 @@ import {
   Key,
   EyeOff,
   RefreshCw,
-  Package
+  Package,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient, setClientPassword, clearClientPassword, generatePassword } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
@@ -91,6 +93,7 @@ export default function ClientDetail() {
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [creatingSheet, setCreatingSheet] = useState(false)
+  const [bioExpanded, setBioExpanded] = useState(false)
   const [editBookingForm, setEditBookingForm] = useState({
     podcast_name: '',
     host_name: '',
@@ -1085,7 +1088,23 @@ export default function ClientDetail() {
                     <FileText className="h-4 w-4 text-muted-foreground mt-1" />
                     <div className="flex-1">
                       <p className="text-sm font-medium mb-2">Client Bio (for AI Podcast Search)</p>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.bio}</p>
+                      <div className="text-sm text-muted-foreground">
+                        <p className={`whitespace-pre-wrap ${!bioExpanded && client.bio.length > 200 ? 'line-clamp-3' : ''}`}>
+                          {client.bio}
+                        </p>
+                        {client.bio.length > 200 && (
+                          <button
+                            onClick={() => setBioExpanded(!bioExpanded)}
+                            className="text-primary hover:underline text-xs font-medium mt-2 flex items-center gap-1"
+                          >
+                            {bioExpanded ? (
+                              <>Show less <ChevronUp className="h-3 w-3" /></>
+                            ) : (
+                              <>Read more <ChevronDown className="h-3 w-3" /></>
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
