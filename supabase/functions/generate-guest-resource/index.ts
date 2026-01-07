@@ -81,10 +81,17 @@ For key points:
 
 **Content Length:** Create a comprehensive resource (800-1200 words) that provides real value.
 
+**CRITICAL FORMATTING RULES:**
+- Use ONLY standard ASCII characters
+- Use straight quotes (') and (") - NEVER smart/curly quotes
+- Use regular hyphens (-) - NEVER em-dashes or en-dashes
+- Use three periods (...) - NEVER ellipsis character
+- This is extremely important for proper rendering
+
 Generate the beautifully formatted HTML content now:`
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4000,
       temperature: 0.7,
       messages: [
