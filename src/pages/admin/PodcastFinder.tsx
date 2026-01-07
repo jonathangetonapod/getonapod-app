@@ -2235,41 +2235,220 @@ export default function PodcastFinder() {
                   <div className="p-4 bg-muted/30 rounded-lg">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-muted-foreground">Loading demographics...</span>
+                      <span className="text-sm text-muted-foreground">Analyzing audience demographics...</span>
                     </div>
                   </div>
                 ) : podcastDemographics ? (
-                  <div className="space-y-4 p-4 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-lg border">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-purple-600" />
-                      <h3 className="font-semibold text-lg">Audience Demographics</h3>
-                      <Badge variant="secondary" className="text-xs">Verified Data</Badge>
+                  <div className="space-y-6 p-5 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 bg-purple-600 rounded-lg">
+                          <Users className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg">Audience Intelligence</h3>
+                          <p className="text-xs text-muted-foreground">Deep insights from {podcastDemographics.episodes_analyzed} episodes</p>
+                        </div>
+                      </div>
+                      <Badge className="bg-purple-600 hover:bg-purple-700">AI-Powered</Badge>
                     </div>
+
+                    {/* Key Metrics Grid */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="p-3 bg-green-100/50 dark:bg-green-900/20 rounded-lg text-center">
-                        <p className="text-xs text-muted-foreground mb-1">Buying Power</p>
-                        <p className="font-bold text-green-700 dark:text-green-400">{podcastDemographics.purchasing_power || 'N/A'}</p>
-                        <p className="text-[10px] text-muted-foreground">Can afford premium</p>
+                      <div className="p-3 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-xl border border-green-200 dark:border-green-800">
+                        <p className="text-[10px] uppercase tracking-wider text-green-600 dark:text-green-400 font-semibold mb-1">Buying Power</p>
+                        <p className="font-bold text-lg text-green-800 dark:text-green-300">{podcastDemographics.purchasing_power || 'N/A'}</p>
                       </div>
-                      <div className="p-3 bg-purple-100/50 dark:bg-purple-900/20 rounded-lg text-center">
-                        <p className="text-xs text-muted-foreground mb-1">Education</p>
-                        <p className="font-bold text-purple-700 dark:text-purple-400">{podcastDemographics.education_level || 'N/A'}</p>
-                        <p className="text-[10px] text-muted-foreground">Decision makers</p>
+                      <div className="p-3 bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/30 dark:to-violet-900/30 rounded-xl border border-purple-200 dark:border-purple-800">
+                        <p className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400 font-semibold mb-1">Education</p>
+                        <p className="font-bold text-lg text-purple-800 dark:text-purple-300">{podcastDemographics.education_level || 'N/A'}</p>
                       </div>
-                      <div className="p-3 bg-blue-100/50 dark:bg-blue-900/20 rounded-lg text-center">
-                        <p className="text-xs text-muted-foreground mb-1">Age Group</p>
-                        <p className="font-bold text-blue-700 dark:text-blue-400">{podcastDemographics.age || 'N/A'}</p>
-                        <p className="text-[10px] text-muted-foreground">Primary audience</p>
+                      <div className="p-3 bg-gradient-to-br from-blue-100 to-sky-100 dark:from-blue-900/30 dark:to-sky-900/30 rounded-xl border border-blue-200 dark:border-blue-800">
+                        <p className="text-[10px] uppercase tracking-wider text-blue-600 dark:text-blue-400 font-semibold mb-1">Core Age</p>
+                        <p className="font-bold text-lg text-blue-800 dark:text-blue-300">{podcastDemographics.age || 'N/A'}</p>
                       </div>
-                      <div className="p-3 bg-orange-100/50 dark:bg-orange-900/20 rounded-lg text-center">
-                        <p className="text-xs text-muted-foreground mb-1">Engagement</p>
-                        <p className="font-bold text-orange-700 dark:text-orange-400">{podcastDemographics.engagement_level || 'N/A'}</p>
-                        <p className="text-[10px] text-muted-foreground">Listener loyalty</p>
+                      <div className="p-3 bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30 rounded-xl border border-orange-200 dark:border-orange-800">
+                        <p className="text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-semibold mb-1">Engagement</p>
+                        <p className="font-bold text-lg text-orange-800 dark:text-orange-300">{podcastDemographics.engagement_level || 'N/A'}</p>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground text-center">
-                      Based on analysis of {podcastDemographics.episodes_analyzed} episodes
-                    </p>
+
+                    {/* Gender & Age Distribution */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* Gender */}
+                      {podcastDemographics.gender_skew && (
+                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Gender Skew</p>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <div className="h-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-full" />
+                            </div>
+                            <span className="font-bold text-sm">{podcastDemographics.gender_skew}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Age Distribution */}
+                      {podcastDemographics.age_distribution && podcastDemographics.age_distribution.length > 0 && (
+                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                          <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Age Distribution</p>
+                          <div className="space-y-2">
+                            {podcastDemographics.age_distribution.slice(0, 4).map((item, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                <span className="text-xs w-16 text-muted-foreground">{item.age}</span>
+                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all"
+                                    style={{ width: `${Math.min(item.percentage, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-semibold w-10 text-right">{item.percentage}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Geographic & Professional Distribution */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* Geographic */}
+                      {podcastDemographics.geographic_distribution && podcastDemographics.geographic_distribution.length > 0 && (
+                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Globe className="h-4 w-4 text-blue-500" />
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Regions</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {podcastDemographics.geographic_distribution.slice(0, 5).map((item, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {item.region} <span className="ml-1 font-bold text-blue-600">{item.percentage}%</span>
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Professional Industry */}
+                      {podcastDemographics.professional_industry && podcastDemographics.professional_industry.length > 0 && (
+                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                          <div className="flex items-center gap-2 mb-3">
+                            <TrendingUp className="h-4 w-4 text-green-500" />
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Industries</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {podcastDemographics.professional_industry.slice(0, 5).map((item, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {item.industry} <span className="ml-1 font-bold text-green-600">{item.percentage}%</span>
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Living Environment */}
+                    {podcastDemographics.living_environment && (
+                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                        <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Living Environment</p>
+                        <div className="flex gap-2">
+                          <div className="flex-1 text-center p-2 rounded-lg bg-blue-100/50 dark:bg-blue-900/30">
+                            <p className="text-2xl font-bold text-blue-600">{podcastDemographics.living_environment.urban}%</p>
+                            <p className="text-xs text-muted-foreground">Urban</p>
+                          </div>
+                          <div className="flex-1 text-center p-2 rounded-lg bg-green-100/50 dark:bg-green-900/30">
+                            <p className="text-2xl font-bold text-green-600">{podcastDemographics.living_environment.suburban}%</p>
+                            <p className="text-xs text-muted-foreground">Suburban</p>
+                          </div>
+                          <div className="flex-1 text-center p-2 rounded-lg bg-amber-100/50 dark:bg-amber-900/30">
+                            <p className="text-2xl font-bold text-amber-600">{podcastDemographics.living_environment.rural}%</p>
+                            <p className="text-xs text-muted-foreground">Rural</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Brand Relationship */}
+                    {podcastDemographics.brand_relationship && (
+                      <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-3 uppercase tracking-wider">Brand Relationship</p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                          <div className="text-center">
+                            <p className="text-xs text-muted-foreground">Loyalty</p>
+                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.loyalty_level}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-muted-foreground">Price Sensitivity</p>
+                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.price_sensitivity}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-muted-foreground">Switching</p>
+                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.brand_switching_frequency}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-muted-foreground">Advocacy</p>
+                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.advocacy_potential}</p>
+                          </div>
+                        </div>
+                        {podcastDemographics.brand_relationship.reasoning && (
+                          <p className="text-xs text-muted-foreground italic">"{podcastDemographics.brand_relationship.reasoning}"</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Technology Adoption */}
+                    {podcastDemographics.technology_adoption && (
+                      <div className="p-4 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 rounded-xl border border-cyan-200 dark:border-cyan-800">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-400 uppercase tracking-wider">Tech Adoption Profile</p>
+                          <Badge className="bg-cyan-600">{Math.round(podcastDemographics.technology_adoption.confidence_score * 100)}% Confidence</Badge>
+                        </div>
+                        <p className="font-bold text-lg text-cyan-800 dark:text-cyan-300 mb-1">{podcastDemographics.technology_adoption.profile}</p>
+                        {podcastDemographics.technology_adoption.reasoning && (
+                          <p className="text-xs text-muted-foreground">"{podcastDemographics.technology_adoption.reasoning}"</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Content Habits */}
+                    {podcastDemographics.content_habits && (
+                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
+                        <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Content Consumption</p>
+                        <div className="space-y-3">
+                          {podcastDemographics.content_habits.primary_platforms && (
+                            <div>
+                              <p className="text-[10px] text-muted-foreground mb-1">Platforms</p>
+                              <div className="flex flex-wrap gap-1">
+                                {podcastDemographics.content_habits.primary_platforms.map((platform, idx) => (
+                                  <Badge key={idx} variant="secondary" className="text-xs">{platform}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {podcastDemographics.content_habits.preferred_formats && (
+                            <div>
+                              <p className="text-[10px] text-muted-foreground mb-1">Preferred Formats</p>
+                              <div className="flex flex-wrap gap-1">
+                                {podcastDemographics.content_habits.preferred_formats.map((format, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">{format}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {podcastDemographics.content_habits.consumption_context && (
+                            <div>
+                              <p className="text-[10px] text-muted-foreground mb-1">When They Listen</p>
+                              <div className="flex flex-wrap gap-1">
+                                {podcastDemographics.content_habits.consumption_context.map((context, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs bg-purple-50 dark:bg-purple-950/30">{context}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
 

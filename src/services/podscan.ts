@@ -524,16 +524,34 @@ export async function getTopChartPodcasts(
     return [];
   }
 
+  // Log first podcast to see actual field structure
+  if (podcasts.length > 0) {
+    console.log('📋 Sample podcast fields:', Object.keys(podcasts[0]));
+    console.log('🖼️ Image fields check:', {
+      podcast_image_url: podcasts[0].podcast_image_url,
+      artwork: podcasts[0].artwork,
+      image: podcasts[0].image,
+      artworkUrl: podcasts[0].artworkUrl,
+      imageUrl: podcasts[0].imageUrl,
+      cover: podcasts[0].cover,
+      thumbnail: podcasts[0].thumbnail,
+      artwork_url: podcasts[0].artwork_url,
+      image_url: podcasts[0].image_url,
+    });
+  }
+
   // Normalize field names and add rank
   return podcasts.map((podcast: any, index: number) => ({
     ...podcast,
     // Normalize to standard field names
     podcast_id: podcast.podcast_id || podcast.id || `chart-${index}`,
-    podcast_name: podcast.podcast_name || podcast.name,
+    podcast_name: podcast.podcast_name || podcast.name || podcast.title,
     podcast_description: podcast.podcast_description || podcast.description || '',
-    publisher_name: podcast.publisher_name || podcast.publisher,
-    podcast_image_url: podcast.podcast_image_url || podcast.artwork || podcast.image,
-    podcast_url: podcast.podcast_url || podcast.url,
+    publisher_name: podcast.publisher_name || podcast.publisher || podcast.author,
+    podcast_image_url: podcast.podcast_image_url || podcast.artwork || podcast.image ||
+                       podcast.artworkUrl || podcast.imageUrl || podcast.artwork_url ||
+                       podcast.image_url || podcast.cover || podcast.thumbnail,
+    podcast_url: podcast.podcast_url || podcast.url || podcast.link,
     rank: podcast.rank || index + 1,
   }));
 }
