@@ -46,7 +46,10 @@ import {
   BarChart3,
   Sparkles,
   ChevronRight,
-  X
+  X,
+  ImageIcon,
+  Save,
+  Loader2
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -56,6 +59,7 @@ interface ProspectDashboard {
   slug: string
   prospect_name: string
   prospect_bio: string | null
+  prospect_image_url: string | null
   spreadsheet_id: string
   spreadsheet_url: string
   created_at: string
@@ -71,6 +75,8 @@ export default function ProspectDashboards() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [dashboardToDelete, setDashboardToDelete] = useState<ProspectDashboard | null>(null)
   const [selectedDashboard, setSelectedDashboard] = useState<ProspectDashboard | null>(null)
+  const [editImageUrl, setEditImageUrl] = useState('')
+  const [savingImage, setSavingImage] = useState(false)
 
   const appUrl = window.location.origin
 
@@ -151,6 +157,46 @@ export default function ProspectDashboards() {
     const url = `${appUrl}/prospect/${slug}`
     navigator.clipboard.writeText(url)
     toast.success('Dashboard link copied!')
+  }
+
+  // Sync editImageUrl when selectedDashboard changes
+  useEffect(() => {
+    if (selectedDashboard) {
+      setEditImageUrl(selectedDashboard.prospect_image_url || '')
+    }
+  }, [selectedDashboard])
+
+  const saveProfilePicture = async () => {
+    if (!selectedDashboard) return
+
+    setSavingImage(true)
+    try {
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ prospect_image_url: editImageUrl.trim() || null })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, prospect_image_url: editImageUrl.trim() || null }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, prospect_image_url: editImageUrl.trim() || null } : null
+      )
+
+      toast.success('Profile picture updated!')
+    } catch (error) {
+      console.error('Error saving profile picture:', error)
+      toast.error('Failed to save profile picture')
+    } finally {
+      setSavingImage(false)
+    }
   }
 
   const filteredDashboards = dashboards.filter(d =>
@@ -474,6 +520,56 @@ export default function ProspectDashboards() {
                       </p>
                     </div>
                   )}
+
+                  <Separator />
+
+                  {/* Profile Picture */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4" />
+                      Profile Picture
+                    </h3>
+
+                    {/* Preview */}
+                    {editImageUrl && (
+                      <div className="flex justify-center">
+                        <div className="h-20 w-20 rounded-full overflow-hidden ring-2 ring-muted shadow-md">
+                          <img
+                            src={editImageUrl}
+                            alt="Preview"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste image URL..."
+                        value={editImageUrl}
+                        onChange={(e) => setEditImageUrl(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={saveProfilePicture}
+                        disabled={savingImage || editImageUrl === (selectedDashboard.prospect_image_url || '')}
+                      >
+                        {savingImage ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      This will appear on the prospect's dashboard
+                    </p>
+                  </div>
 
                   <Separator />
 
