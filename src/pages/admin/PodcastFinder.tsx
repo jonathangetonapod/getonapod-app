@@ -1855,7 +1855,7 @@ export default function PodcastFinder() {
                               <div className="flex items-center gap-2">
                                 <Users className="h-4 w-4 text-muted-foreground" />
                                 <span className="font-medium">
-                                  {podcast.reach?.audience_size?.toLocaleString() || 'N/A'}
+                                  {(podcast.reach?.audience_size || (podcast as any).audience_size)?.toLocaleString() || 'N/A'}
                                 </span>
                               </div>
                             </TableCell>
@@ -1863,7 +1863,7 @@ export default function PodcastFinder() {
                               <div className="flex items-center gap-1">
                                 <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                                 <span className="font-medium">
-                                  {podcast.reach?.itunes?.itunes_rating_average || 'N/A'}
+                                  {podcast.reach?.itunes?.itunes_rating_average || (podcast as any).rating || 'N/A'}
                                 </span>
                               </div>
                             </TableCell>
