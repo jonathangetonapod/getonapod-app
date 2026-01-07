@@ -79,6 +79,7 @@ export default function ProspectDashboards() {
   const [editImageUrl, setEditImageUrl] = useState('')
   const [savingImage, setSavingImage] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [bioExpanded, setBioExpanded] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const appUrl = window.location.origin
@@ -162,10 +163,11 @@ export default function ProspectDashboards() {
     toast.success('Dashboard link copied!')
   }
 
-  // Sync editImageUrl when selectedDashboard changes
+  // Sync editImageUrl and reset bioExpanded when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
+      setBioExpanded(false)
     }
   }, [selectedDashboard])
 
@@ -556,7 +558,22 @@ export default function ProspectDashboards() {
                 </div>
                 <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
                 {selectedDashboard.prospect_bio && (
-                  <p className="text-muted-foreground mt-2 text-sm">{selectedDashboard.prospect_bio}</p>
+                  <div className="mt-2">
+                    <p className={cn(
+                      "text-muted-foreground text-sm",
+                      !bioExpanded && "line-clamp-3"
+                    )}>
+                      {selectedDashboard.prospect_bio}
+                    </p>
+                    {selectedDashboard.prospect_bio.length > 150 && (
+                      <button
+                        onClick={() => setBioExpanded(!bioExpanded)}
+                        className="text-primary text-sm font-medium mt-1 hover:underline"
+                      >
+                        {bioExpanded ? 'Show less' : 'Show more'}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 

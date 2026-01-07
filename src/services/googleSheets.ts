@@ -206,6 +206,59 @@ export async function createProspectSheet(
   }
 }
 
+export interface AppendToProspectSheetResult {
+  success: boolean
+  rowsAdded: number
+  spreadsheetUrl: string
+}
+
+/**
+ * Append podcasts to an existing prospect's Google Sheet
+ */
+export async function appendToProspectSheet(
+  dashboardId: string,
+  podcasts: PodcastExportData[]
+): Promise<AppendToProspectSheetResult> {
+  if (!dashboardId) {
+    throw new Error('Dashboard ID is required')
+  }
+
+  if (!podcasts || podcasts.length === 0) {
+    throw new Error('At least one podcast must be selected for export')
+  }
+
+  try {
+    // Get the authenticated user's JWT token
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      throw new Error('You must be logged in to append to a prospect sheet')
+    }
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/append-prospect-sheet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        dashboardId,
+        podcasts,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to append to prospect sheet')
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error appending to prospect sheet:', error)
+    throw new Error(`Failed to append to prospect sheet: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
 /**
  * Get outreach podcasts from a client's Google Sheet
  * Reads column E (Podscan Podcast IDs) and fetches podcast details

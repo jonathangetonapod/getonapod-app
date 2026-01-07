@@ -33,7 +33,8 @@ import { generatePodcastQueries, regenerateQuery } from '@/services/queryGenerat
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { searchPodcasts, getPodcastById, getPodcastDemographics, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type PodcastDemographics, type ChartCountry, type ChartCategory } from '@/services/podscan'
 import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
-import { exportPodcastsToGoogleSheets, createProspectSheet, type PodcastExportData } from '@/services/googleSheets'
+import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
+import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 
 interface GeneratedQuery {
@@ -48,6 +49,15 @@ interface GeneratedQuery {
   regenerateAttempts: number
 }
 
+interface ExistingProspect {
+  id: string
+  prospect_name: string
+  prospect_bio: string | null
+  prospect_image_url: string | null
+  spreadsheet_url: string
+  slug: string
+}
+
 export default function PodcastFinder() {
   const [selectedClient, setSelectedClient] = useState<string>('')
 
@@ -57,6 +67,12 @@ export default function PodcastFinder() {
   const [prospectImageUrl, setProspectImageUrl] = useState('')
   const [lastProspectSheet, setLastProspectSheet] = useState<{ url: string; title: string; dashboardUrl: string } | null>(null)
   const isProspectMode = selectedClient === '__prospect__'
+
+  // Existing prospect selection
+  const [prospectMode, setProspectMode] = useState<'new' | 'existing'>('new')
+  const [existingProspects, setExistingProspects] = useState<ExistingProspect[]>([])
+  const [selectedExistingProspect, setSelectedExistingProspect] = useState<string>('')
+  const [loadingProspects, setLoadingProspects] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [queries, setQueries] = useState<GeneratedQuery[]>([])
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null)
@@ -191,6 +207,43 @@ export default function PodcastFinder() {
     }
     localStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
   }, [selectedClient, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly, finderMode, chartPlatform, chartCountry, chartCategory, chartLimit, chartResults, chartScores, chartReasonings])
+
+  // Fetch existing prospects when prospect mode is selected
+  useEffect(() => {
+    if (isProspectMode && prospectMode === 'existing' && existingProspects.length === 0) {
+      const fetchProspects = async () => {
+        setLoadingProspects(true)
+        try {
+          const { data, error } = await supabase
+            .from('prospect_dashboards')
+            .select('id, prospect_name, prospect_bio, prospect_image_url, spreadsheet_url, slug')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+
+          if (error) throw error
+          setExistingProspects(data || [])
+        } catch (error) {
+          console.error('Failed to fetch existing prospects:', error)
+          toast.error('Failed to load existing prospects')
+        } finally {
+          setLoadingProspects(false)
+        }
+      }
+      fetchProspects()
+    }
+  }, [isProspectMode, prospectMode, existingProspects.length])
+
+  // When selecting an existing prospect, populate the form fields
+  useEffect(() => {
+    if (selectedExistingProspect) {
+      const prospect = existingProspects.find(p => p.id === selectedExistingProspect)
+      if (prospect) {
+        setProspectName(prospect.prospect_name)
+        setProspectBio(prospect.prospect_bio || '')
+        setProspectImageUrl(prospect.prospect_image_url || '')
+      }
+    }
+  }, [selectedExistingProspect, existingProspects])
 
   // Fetch chart countries when entering charts mode
   useEffect(() => {
@@ -758,13 +811,20 @@ export default function PodcastFinder() {
   const handleExportToGoogleSheets = async () => {
     // Validation for prospect mode
     if (isProspectMode) {
-      if (!prospectName.trim()) {
-        toast.error('Please enter a prospect name')
-        return
-      }
-      if (!prospectBio.trim()) {
-        toast.error('Please enter prospect bio/background')
-        return
+      if (prospectMode === 'existing') {
+        if (!selectedExistingProspect) {
+          toast.error('Please select an existing prospect')
+          return
+        }
+      } else {
+        if (!prospectName.trim()) {
+          toast.error('Please enter a prospect name')
+          return
+        }
+        if (!prospectBio.trim()) {
+          toast.error('Please enter prospect bio/background')
+          return
+        }
       }
     } else if (!selectedClient) {
       toast.error('Please select a client first')
@@ -828,14 +888,28 @@ export default function PodcastFinder() {
 
       // Use different export based on mode
       if (isProspectMode) {
-        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, prospectImageUrl.trim() || undefined)
-        // Save sheet info for persistent display
-        setLastProspectSheet({
-          url: result.spreadsheetUrl,
-          title: result.sheetTitle,
-          dashboardUrl: result.dashboardUrl
-        })
-        toast.success(`Created dashboard for ${prospectName} with ${result.rowsAdded} podcasts!`)
+        if (prospectMode === 'existing' && selectedExistingProspect) {
+          // Append to existing prospect's sheet
+          const result = await appendToProspectSheet(selectedExistingProspect, podcastsToExport)
+          const existingProspect = existingProspects.find(p => p.id === selectedExistingProspect)
+          const appUrl = window.location.origin
+          setLastProspectSheet({
+            url: result.spreadsheetUrl,
+            title: existingProspect?.prospect_name || prospectName,
+            dashboardUrl: `${appUrl}/prospect/${existingProspect?.slug}`
+          })
+          toast.success(`Added ${result.rowsAdded} podcasts to ${existingProspect?.prospect_name}'s sheet!`)
+        } else {
+          // Create new prospect sheet
+          const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, prospectImageUrl.trim() || undefined)
+          // Save sheet info for persistent display
+          setLastProspectSheet({
+            url: result.spreadsheetUrl,
+            title: result.sheetTitle,
+            dashboardUrl: result.dashboardUrl
+          })
+          toast.success(`Created dashboard for ${prospectName} with ${result.rowsAdded} podcasts!`)
+        }
       } else {
         const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
         toast.success(`Successfully exported ${result.rowsAdded} podcasts to Google Sheets!`)
@@ -1162,63 +1236,147 @@ export default function PodcastFinder() {
             {/* Prospect Mode Input */}
             {isProspectMode && (
               <div className="p-5 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800 space-y-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <Sparkles className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">New Prospect</p>
-                    <p className="text-xs text-muted-foreground">Enter prospect details for personalized podcast recommendations</p>
-                  </div>
+                {/* Toggle between New and Existing Prospect */}
+                <div className="flex gap-2 p-1 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
+                  <button
+                    onClick={() => {
+                      setProspectMode('new')
+                      setSelectedExistingProspect('')
+                      setProspectName('')
+                      setProspectBio('')
+                      setProspectImageUrl('')
+                    }}
+                    className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all ${
+                      prospectMode === 'new'
+                        ? 'bg-white dark:bg-purple-800 text-purple-700 dark:text-purple-100 shadow-sm'
+                        : 'text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-800/50'
+                    }`}
+                  >
+                    <Sparkles className="h-4 w-4 inline mr-2" />
+                    New Prospect
+                  </button>
+                  <button
+                    onClick={() => setProspectMode('existing')}
+                    className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all ${
+                      prospectMode === 'existing'
+                        ? 'bg-white dark:bg-purple-800 text-purple-700 dark:text-purple-100 shadow-sm'
+                        : 'text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-800/50'
+                    }`}
+                  >
+                    <Users className="h-4 w-4 inline mr-2" />
+                    Existing Prospect
+                  </button>
                 </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="prospect-name" className="text-sm font-medium">
-                      Prospect Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="prospect-name"
-                      placeholder="e.g., John Smith, Acme Corp CEO"
-                      value={prospectName}
-                      onChange={(e) => setProspectName(e.target.value)}
-                    />
+
+                {prospectMode === 'existing' ? (
+                  // Existing Prospect Selection
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Select Existing Prospect</Label>
+                      <Select
+                        value={selectedExistingProspect}
+                        onValueChange={setSelectedExistingProspect}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={loadingProspects ? "Loading..." : "Choose a prospect..."} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {existingProspects.map((prospect) => (
+                            <SelectItem key={prospect.id} value={prospect.id}>
+                              {prospect.prospect_name}
+                            </SelectItem>
+                          ))}
+                          {existingProspects.length === 0 && !loadingProspects && (
+                            <SelectItem value="__none__" disabled>
+                              No existing prospects found
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        New podcasts will be added to this prospect's existing Google Sheet
+                      </p>
+                    </div>
+
+                    {selectedExistingProspect && (
+                      <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg border border-purple-100 dark:border-purple-700">
+                        <p className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-1">{prospectName}</p>
+                        {prospectBio && (
+                          <p className="text-xs text-muted-foreground line-clamp-3">{prospectBio}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="prospect-bio" className="text-sm font-medium">
-                      Prospect Bio / Background <span className="text-red-500">*</span>
-                    </Label>
-                    <textarea
-                      id="prospect-bio"
-                      placeholder="Describe the prospect's expertise, industry, target audience, and what topics they could speak about on podcasts..."
-                      value={prospectBio}
-                      onChange={(e) => setProspectBio(e.target.value)}
-                      className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The more details you provide, the better the AI can score podcast compatibility.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="prospect-image" className="text-sm font-medium">
-                      Profile Picture URL <span className="text-muted-foreground">(optional)</span>
-                    </Label>
-                    <Input
-                      id="prospect-image"
-                      type="url"
-                      placeholder="https://example.com/profile-picture.jpg"
-                      value={prospectImageUrl}
-                      onChange={(e) => setProspectImageUrl(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Add a profile picture or company logo to personalize the prospect's dashboard.
-                    </p>
-                  </div>
-                </div>
-                {(!prospectName || !prospectBio) && (
+                ) : (
+                  // New Prospect Form
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-purple-600 rounded-lg">
+                        <Sparkles className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">Create New Prospect</p>
+                        <p className="text-xs text-muted-foreground">Enter prospect details for personalized podcast recommendations</p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="prospect-name" className="text-sm font-medium">
+                          Prospect Name <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="prospect-name"
+                          placeholder="e.g., John Smith, Acme Corp CEO"
+                          value={prospectName}
+                          onChange={(e) => setProspectName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="prospect-bio" className="text-sm font-medium">
+                          Prospect Bio / Background <span className="text-red-500">*</span>
+                        </Label>
+                        <textarea
+                          id="prospect-bio"
+                          placeholder="Describe the prospect's expertise, industry, target audience, and what topics they could speak about on podcasts..."
+                          value={prospectBio}
+                          onChange={(e) => setProspectBio(e.target.value)}
+                          className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The more details you provide, the better the AI can score podcast compatibility.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="prospect-image" className="text-sm font-medium">
+                          Profile Picture URL <span className="text-muted-foreground">(optional)</span>
+                        </Label>
+                        <Input
+                          id="prospect-image"
+                          type="url"
+                          placeholder="https://example.com/profile-picture.jpg"
+                          value={prospectImageUrl}
+                          onChange={(e) => setProspectImageUrl(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Add a profile picture or company logo to personalize the prospect's dashboard.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+                {prospectMode === 'new' && (!prospectName || !prospectBio) && (
                   <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
                     <span className="text-amber-500">⚠️</span>
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       Fill in both name and bio to enable compatibility scoring and export.
+                    </p>
+                  </div>
+                )}
+                {prospectMode === 'existing' && !selectedExistingProspect && (
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <span className="text-amber-500">⚠️</span>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Select an existing prospect to add podcasts to their sheet.
                     </p>
                   </div>
                 )}
