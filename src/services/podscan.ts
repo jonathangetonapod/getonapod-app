@@ -421,8 +421,19 @@ export async function getChartCountries(): Promise<ChartCountry[]> {
   const data = await response.json();
   console.log('✅ Chart countries fetched:', data);
 
-  // API returns { countries: [...] } or just an array
-  return data.countries || data;
+  // Extract array from response - check various possible structures
+  const countries = data.countries || data.data || data;
+
+  // If it's an object with country codes as keys, convert to array
+  if (countries && !Array.isArray(countries) && typeof countries === 'object') {
+    console.log('📦 Converting countries object to array');
+    return Object.entries(countries).map(([code, name]) => ({
+      code,
+      name: typeof name === 'string' ? name : code.toUpperCase()
+    }));
+  }
+
+  return Array.isArray(countries) ? countries : [];
 }
 
 /**
@@ -450,8 +461,19 @@ export async function getChartCategories(
   const data = await response.json();
   console.log('✅ Chart categories fetched:', data);
 
-  // API returns { categories: [...] } or just an array
-  return data.categories || data;
+  // Extract array from response - check various possible structures
+  const categories = data.categories || data.data || data;
+
+  // If it's an object with category IDs as keys, convert to array
+  if (categories && !Array.isArray(categories) && typeof categories === 'object') {
+    console.log('📦 Converting categories object to array');
+    return Object.entries(categories).map(([id, name]) => ({
+      id,
+      name: typeof name === 'string' ? name : id
+    }));
+  }
+
+  return Array.isArray(categories) ? categories : [];
 }
 
 /**
@@ -488,8 +510,13 @@ export async function getTopChartPodcasts(
   const data = await response.json();
   console.log('✅ Chart podcasts fetched:', data);
 
-  // API returns { podcasts: [...] } or just an array
-  const podcasts = data.podcasts || data;
+  // Extract array from response - check various possible structures
+  const podcasts = data.podcasts || data.data || data;
+
+  if (!Array.isArray(podcasts)) {
+    console.error('❌ Unexpected response format - podcasts is not an array:', podcasts);
+    return [];
+  }
 
   // Add rank based on position in array if not already present
   return podcasts.map((podcast: PodcastData, index: number) => ({
