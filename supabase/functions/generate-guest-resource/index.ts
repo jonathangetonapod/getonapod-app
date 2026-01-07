@@ -91,7 +91,7 @@ For key points:
 Generate the beautifully formatted HTML content now:`
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4000,
       temperature: 0.7,
       messages: [
