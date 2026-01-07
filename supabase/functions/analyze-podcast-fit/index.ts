@@ -22,19 +22,20 @@ serve(async (req) => {
   }
 
   try {
-    const {
-      podcastId,
-      podcastName,
-      podcastDescription,
-      podcastUrl,
-      publisherName,
-      itunesRating,
-      episodeCount,
-      audienceSize,
-      clientId,
-      clientName,
-      clientBio
-    } = await req.json()
+    const body = await req.json()
+
+    // Support both old format (from clientPortal.ts) and new format (from googleSheets.ts)
+    const podcastId = body.podcastId || body.podcastName // Use name as fallback ID
+    const podcastName = body.podcastName
+    const podcastDescription = body.podcastDescription || ''
+    const podcastUrl = body.podcastUrl || ''
+    const publisherName = body.publisherName || body.hostName || ''
+    const itunesRating = body.itunesRating
+    const episodeCount = body.episodeCount
+    const audienceSize = body.audienceSize
+    const clientId = body.clientId || 'legacy' // Legacy calls don't have clientId
+    const clientName = body.clientName || ''
+    const clientBio = body.clientBio || ''
 
     console.log('[Analyze Podcast Fit] Received params:', {
       podcastId,
@@ -44,8 +45,8 @@ serve(async (req) => {
       hasBio: !!clientBio
     })
 
-    if (!podcastId || !podcastName || !clientId) {
-      throw new Error('podcastId, podcastName, and clientId are required')
+    if (!podcastName) {
+      throw new Error('podcastName is required')
     }
 
     // Use a default bio if none provided
