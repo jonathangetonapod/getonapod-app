@@ -4397,11 +4397,16 @@ export default function PortalDashboard() {
 
               {/* Audience Demographics - Only shown if available */}
               {(isLoadingBookingDemographics || bookingDemographics) && (
-                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Audience Insights
-                  </h4>
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center flex-shrink-0">
+                      <Users className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-blue-900 dark:text-blue-100">Who's Listening</h4>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">Know exactly who you'll reach on this podcast</p>
+                    </div>
+                  </div>
                   {isLoadingBookingDemographics ? (
                     <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -4411,44 +4416,49 @@ export default function PortalDashboard() {
                     <div className="space-y-4">
                       {/* Key Metrics */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
-                          <p className="text-xs text-muted-foreground">Age</p>
-                          <p className="font-semibold text-sm">{bookingDemographics.age}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Primary Age Group</p>
+                          <p className="font-bold text-lg text-blue-900 dark:text-blue-100">{bookingDemographics.age}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Target demographic</p>
                         </div>
-                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
-                          <p className="text-xs text-muted-foreground">Gender</p>
-                          <p className="font-semibold text-sm capitalize">{bookingDemographics.gender_skew?.replace(/_/g, ' ')}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Gender Split</p>
+                          <p className="font-bold text-lg text-blue-900 dark:text-blue-100 capitalize">{bookingDemographics.gender_skew?.replace(/_/g, ' ')}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Audience makeup</p>
                         </div>
-                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
-                          <p className="text-xs text-muted-foreground">Income</p>
-                          <p className="font-semibold text-sm capitalize">{bookingDemographics.purchasing_power}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-green-100 dark:border-green-800">
+                          <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Buying Power</p>
+                          <p className="font-bold text-lg text-green-900 dark:text-green-100 capitalize">{bookingDemographics.purchasing_power}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Can afford premium</p>
                         </div>
-                        <div className="text-center p-2 bg-white/50 dark:bg-white/5 rounded">
-                          <p className="text-xs text-muted-foreground">Education</p>
-                          <p className="font-semibold text-sm capitalize">{bookingDemographics.education_level}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-purple-100 dark:border-purple-800">
+                          <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mb-1">Education</p>
+                          <p className="font-bold text-lg text-purple-900 dark:text-purple-100 capitalize">{bookingDemographics.education_level}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Decision makers</p>
                         </div>
                       </div>
 
                       {/* Geographic & Industry */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {bookingDemographics.geographic_distribution && bookingDemographics.geographic_distribution.length > 0 && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">Top Regions</p>
-                            <div className="flex flex-wrap gap-1">
+                          <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-2">Where They Are</p>
+                            <div className="space-y-1">
                               {bookingDemographics.geographic_distribution.slice(0, 3).map((geo, idx) => (
-                                <span key={idx} className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
-                                  {geo.region} ({geo.percentage}%)
-                                </span>
+                                <div key={idx} className="flex items-center justify-between">
+                                  <span className="text-sm font-medium">{geo.region}</span>
+                                  <span className="text-sm text-muted-foreground">{geo.percentage}%</span>
+                                </div>
                               ))}
                             </div>
                           </div>
                         )}
                         {bookingDemographics.professional_industry && bookingDemographics.professional_industry.length > 0 && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">Top Industries</p>
-                            <div className="flex flex-wrap gap-1">
-                              {bookingDemographics.professional_industry.slice(0, 3).map((ind, idx) => (
-                                <span key={idx} className="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-800 dark:text-cyan-200 px-2 py-0.5 rounded">
+                          <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                            <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium mb-2">Industries Represented</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {bookingDemographics.professional_industry.slice(0, 4).map((ind, idx) => (
+                                <span key={idx} className="text-xs bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 px-2 py-1 rounded-full font-medium">
                                   {ind.industry}
                                 </span>
                               ))}
@@ -4457,9 +4467,14 @@ export default function PortalDashboard() {
                         )}
                       </div>
 
-                      <p className="text-xs text-muted-foreground">
-                        Based on {bookingDemographics.episodes_analyzed} episodes analyzed
-                      </p>
+                      <div className="flex items-center justify-between pt-2 border-t border-blue-200 dark:border-blue-800">
+                        <p className="text-xs text-muted-foreground">
+                          AI-analyzed from {bookingDemographics.episodes_analyzed} recent episodes
+                        </p>
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                          Verified Data
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -4718,15 +4733,20 @@ export default function PortalDashboard() {
 
               {/* Audience Demographics - Only show if available */}
               {(isLoadingDemographics || podcastDemographics) && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <Users className="h-4 w-4 text-blue-500" />
-                    Audience Insights
-                  </h4>
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center flex-shrink-0">
+                      <Users className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-blue-900 dark:text-blue-100">Who's Listening</h4>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">Know exactly who you'll reach on this podcast</p>
+                    </div>
+                  </div>
                   {isLoadingDemographics ? (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="p-3 border rounded-lg space-y-2">
+                        <div key={i} className="p-3 bg-white/70 dark:bg-white/10 rounded-lg space-y-2">
                           <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
                           <div className="h-5 bg-muted rounded animate-pulse w-3/4" />
                         </div>
@@ -4736,114 +4756,123 @@ export default function PortalDashboard() {
                     <div className="space-y-4">
                       {/* Key Metrics */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div className="p-3 border rounded-lg bg-gradient-to-br from-blue-500/5 to-transparent">
-                          <p className="text-xs text-muted-foreground">Primary Age</p>
-                          <p className="font-semibold">{podcastDemographics.age}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Primary Age Group</p>
+                          <p className="font-bold text-lg text-blue-900 dark:text-blue-100">{podcastDemographics.age}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Target demographic</p>
                         </div>
-                        <div className="p-3 border rounded-lg bg-gradient-to-br from-pink-500/5 to-transparent">
-                          <p className="text-xs text-muted-foreground">Gender</p>
-                          <p className="font-semibold capitalize">{podcastDemographics.gender_skew?.replace(/_/g, ' ')}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Gender Split</p>
+                          <p className="font-bold text-lg text-blue-900 dark:text-blue-100 capitalize">{podcastDemographics.gender_skew?.replace(/_/g, ' ')}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Audience makeup</p>
                         </div>
-                        <div className="p-3 border rounded-lg bg-gradient-to-br from-green-500/5 to-transparent">
-                          <p className="text-xs text-muted-foreground">Income Level</p>
-                          <p className="font-semibold capitalize">{podcastDemographics.purchasing_power}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-green-100 dark:border-green-800">
+                          <p className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Buying Power</p>
+                          <p className="font-bold text-lg text-green-900 dark:text-green-100 capitalize">{podcastDemographics.purchasing_power}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Can afford premium</p>
                         </div>
-                        <div className="p-3 border rounded-lg bg-gradient-to-br from-amber-500/5 to-transparent">
-                          <p className="text-xs text-muted-foreground">Education</p>
-                          <p className="font-semibold capitalize">{podcastDemographics.education_level}</p>
+                        <div className="p-3 bg-white/70 dark:bg-white/10 rounded-lg border border-purple-100 dark:border-purple-800">
+                          <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mb-1">Education</p>
+                          <p className="font-bold text-lg text-purple-900 dark:text-purple-100 capitalize">{podcastDemographics.education_level}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Decision makers</p>
                         </div>
                       </div>
 
-                      {/* Geographic Distribution */}
-                      {podcastDemographics.geographic_distribution && podcastDemographics.geographic_distribution.length > 0 && (
-                        <div className="p-3 border rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-2">🌎 Geographic Reach</p>
-                          <div className="flex flex-wrap gap-2">
-                            {podcastDemographics.geographic_distribution.slice(0, 4).map((geo, idx) => (
-                              <Badge key={idx} variant="secondary" className="text-xs">
-                                {geo.region}: {geo.percentage.toFixed(0)}%
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Top Industries */}
-                      {podcastDemographics.professional_industry && podcastDemographics.professional_industry.length > 0 && (
-                        <div className="p-3 border rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-2">💼 Top Industries</p>
-                          <div className="flex flex-wrap gap-2">
-                            {podcastDemographics.professional_industry
-                              .sort((a, b) => b.percentage - a.percentage)
-                              .slice(0, 5)
-                              .map((ind, idx) => (
-                                <Badge key={idx} variant="outline" className="text-xs">
-                                  {ind.industry}: {ind.percentage.toFixed(0)}%
-                                </Badge>
+                      {/* Geographic & Industry */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {podcastDemographics.geographic_distribution && podcastDemographics.geographic_distribution.length > 0 && (
+                          <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-2">Where They Are</p>
+                            <div className="space-y-1">
+                              {podcastDemographics.geographic_distribution.slice(0, 3).map((geo, idx) => (
+                                <div key={idx} className="flex items-center justify-between">
+                                  <span className="text-sm font-medium">{geo.region}</span>
+                                  <span className="text-sm text-muted-foreground">{geo.percentage}%</span>
+                                </div>
                               ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+                        {podcastDemographics.professional_industry && podcastDemographics.professional_industry.length > 0 && (
+                          <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                            <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium mb-2">Industries Represented</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {podcastDemographics.professional_industry
+                                .sort((a, b) => b.percentage - a.percentage)
+                                .slice(0, 4)
+                                .map((ind, idx) => (
+                                  <span key={idx} className="text-xs bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-200 px-2 py-1 rounded-full font-medium">
+                                    {ind.industry}
+                                  </span>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Additional Insights Row */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {/* Living Environment */}
-                        {podcastDemographics.living_environment && (
-                          <div className="p-3 border rounded-lg">
-                            <p className="text-xs text-muted-foreground mb-1">🏠 Living Environment</p>
-                            <div className="text-sm space-y-1">
-                              <div className="flex justify-between">
-                                <span>Urban</span>
-                                <span className="font-medium">{podcastDemographics.living_environment.urban}%</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Suburban</span>
-                                <span className="font-medium">{podcastDemographics.living_environment.suburban}%</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Rural</span>
-                                <span className="font-medium">{podcastDemographics.living_environment.rural}%</span>
+                      {(podcastDemographics.living_environment || podcastDemographics.content_habits || podcastDemographics.brand_relationship) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {podcastDemographics.living_environment && (
+                            <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                              <p className="text-xs text-orange-600 dark:text-orange-400 font-medium mb-2">Living Environment</p>
+                              <div className="text-sm space-y-1">
+                                <div className="flex justify-between">
+                                  <span>Urban</span>
+                                  <span className="font-semibold">{podcastDemographics.living_environment.urban}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Suburban</span>
+                                  <span className="font-semibold">{podcastDemographics.living_environment.suburban}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Rural</span>
+                                  <span className="font-semibold">{podcastDemographics.living_environment.rural}%</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Content Habits */}
-                        {podcastDemographics.content_habits && (
-                          <div className="p-3 border rounded-lg">
-                            <p className="text-xs text-muted-foreground mb-1">📱 Content Habits</p>
-                            <p className="text-sm capitalize mb-1">{podcastDemographics.content_habits.content_frequency} listener</p>
-                            <div className="flex flex-wrap gap-1">
-                              {podcastDemographics.content_habits.primary_platforms?.slice(0, 3).map((platform, idx) => (
-                                <Badge key={idx} variant="secondary" className="text-xs py-0">
-                                  {platform}
-                                </Badge>
-                              ))}
+                          {podcastDemographics.content_habits && (
+                            <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                              <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mb-2">Content Habits</p>
+                              <p className="text-sm capitalize mb-2 font-medium">{podcastDemographics.content_habits.content_frequency} listener</p>
+                              <div className="flex flex-wrap gap-1">
+                                {podcastDemographics.content_habits.primary_platforms?.slice(0, 3).map((platform, idx) => (
+                                  <span key={idx} className="text-xs bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full">
+                                    {platform}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {/* Brand Relationship */}
-                        {podcastDemographics.brand_relationship && (
-                          <div className="p-3 border rounded-lg">
-                            <p className="text-xs text-muted-foreground mb-1">🎯 Brand Affinity</p>
-                            <div className="text-sm space-y-1">
-                              <div className="flex justify-between">
-                                <span>Loyalty</span>
-                                <span className="font-medium capitalize">{podcastDemographics.brand_relationship.loyalty_level}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Price Sensitivity</span>
-                                <span className="font-medium capitalize">{podcastDemographics.brand_relationship.price_sensitivity}</span>
+                          {podcastDemographics.brand_relationship && (
+                            <div className="p-3 bg-white/50 dark:bg-white/5 rounded-lg">
+                              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium mb-2">Brand Affinity</p>
+                              <div className="text-sm space-y-1">
+                                <div className="flex justify-between">
+                                  <span>Loyalty</span>
+                                  <span className="font-semibold capitalize">{podcastDemographics.brand_relationship.loyalty_level}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Price Sensitivity</span>
+                                  <span className="font-semibold capitalize">{podcastDemographics.brand_relationship.price_sensitivity}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-2 border-t border-blue-200 dark:border-blue-800">
+                        <p className="text-xs text-muted-foreground">
+                          AI-analyzed from {podcastDemographics.episodes_analyzed} recent episodes
+                        </p>
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                          Verified Data
+                        </span>
                       </div>
-
-                      <p className="text-xs text-muted-foreground text-center">
-                        Based on analysis of {podcastDemographics.episodes_analyzed} episodes
-                      </p>
                     </div>
                   )}
                 </div>
