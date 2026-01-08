@@ -22,6 +22,7 @@ import {
   Radio,
   X,
   ChevronRight,
+  ChevronLeft,
   Headphones,
   Zap,
   Globe,
@@ -34,7 +35,9 @@ import {
   ThumbsDown,
   MessageSquare,
   Check,
-  Clock
+  Clock,
+  Play,
+  Calendar
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -115,6 +118,14 @@ export default function ProspectView() {
   const [fitAnalysis, setFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
+  const [recentEpisodes, setRecentEpisodes] = useState<Array<{
+    episode_id: string
+    episode_name: string
+    published_at: string
+    duration_seconds?: number
+    episode_url?: string
+  }>>([])
+  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false)
 
   // Feedback state
   const [feedbackMap, setFeedbackMap] = useState<Map<string, PodcastFeedback>>(new Map())
@@ -461,6 +472,40 @@ export default function ProspectView() {
       setCurrentNotes('')
     }
   }, [selectedPodcast, feedbackMap])
+
+  // Fetch recent episodes when side panel opens
+  useEffect(() => {
+    if (!selectedPodcast) {
+      setRecentEpisodes([])
+      return
+    }
+
+    const fetchEpisodes = async () => {
+      setIsLoadingEpisodes(true)
+      try {
+        const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
+        const response = await fetch(
+          `https://podscan.fm/api/v1/podcasts/${selectedPodcast.podcast_id}/episodes?limit=5`,
+          {
+            headers: {
+              'Authorization': `Bearer ${podscanApiKey}`,
+            },
+          }
+        )
+
+        if (response.ok) {
+          const data = await response.json()
+          setRecentEpisodes(data.episodes || [])
+        }
+      } catch (err) {
+        console.error('Error fetching episodes:', err)
+      } finally {
+        setIsLoadingEpisodes(false)
+      }
+    }
+
+    fetchEpisodes()
+  }, [selectedPodcast])
 
   // Confetti celebration for approvals
   const triggerConfetti = () => {
@@ -1336,6 +1381,58 @@ export default function ProspectView() {
                       </div>
                     </div>
                   )}
+
+                  {/* Recent Episodes Carousel */}
+                  <div className="space-y-2 sm:space-y-3">
+                    <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                      <Play className="h-3 w-3" />
+                      Recent Episodes
+                    </h3>
+
+                    {isLoadingEpisodes ? (
+                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="flex-shrink-0 w-56 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse">
+                            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-2" />
+                            <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : recentEpisodes.length > 0 ? (
+                      <div className="relative group">
+                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                          {recentEpisodes.map((episode, idx) => (
+                            <div
+                              key={episode.episode_id}
+                              className="flex-shrink-0 w-56 p-3 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 border border-slate-200/50 dark:border-slate-700/50 hover:border-primary/30 transition-all duration-200 snap-start cursor-pointer group/card"
+                              onClick={() => episode.episode_url && window.open(episode.episode_url, '_blank')}
+                            >
+                              <div className="flex items-start gap-2">
+                                <div className="flex-shrink-0 h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover/card:bg-primary/20 transition-colors">
+                                  <Play className="h-4 w-4 text-primary" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium line-clamp-2 group-hover/card:text-primary transition-colors">
+                                    {episode.episode_name}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                    <Calendar className="h-3 w-3" />
+                                    <span>{formatDistanceToNow(new Date(episode.published_at), { addSuffix: true })}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Scroll hint gradient */}
+                        {recentEpisodes.length > 2 && (
+                          <div className="absolute right-0 top-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No recent episodes available</p>
+                    )}
+                  </div>
 
                   {/* Why It's a Great Fit */}
                   {dashboard.prospect_bio && (
