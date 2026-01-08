@@ -38,8 +38,8 @@ interface ProspectDashboard {
   prospect_name: string
   prospect_bio: string | null
   prospect_image_url: string | null
-  spreadsheet_id: string
-  spreadsheet_url: string
+  spreadsheet_id: string | null
+  spreadsheet_url: string | null
   is_active: boolean
 }
 
@@ -127,25 +127,30 @@ export default function ProspectView() {
           })
           .eq('id', dashboardData.id)
 
-        // Fetch podcasts from Google Sheet via edge function
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            spreadsheetId: dashboardData.spreadsheet_id,
-          }),
-        })
+        // Fetch podcasts from Google Sheet via edge function (only if spreadsheet exists)
+        if (dashboardData.spreadsheet_id) {
+          const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({
+              spreadsheetId: dashboardData.spreadsheet_id,
+            }),
+          })
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to fetch podcasts')
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error || 'Failed to fetch podcasts')
+          }
+
+          const data = await response.json()
+          setPodcasts(data.podcasts || [])
+        } else {
+          // No spreadsheet linked yet - show empty state
+          setPodcasts([])
         }
-
-        const data = await response.json()
-        setPodcasts(data.podcasts || [])
       } catch (err) {
         console.error('Error fetching dashboard:', err)
         setError('Failed to load dashboard')
@@ -495,7 +500,17 @@ export default function ProspectView() {
           </p>
         )}
 
-        {filteredPodcasts.length === 0 && searchQuery ? (
+        {podcasts.length === 0 ? (
+          <Card className="border-0 shadow-md">
+            <CardContent className="p-8 sm:p-12 text-center">
+              <Radio className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-base sm:text-lg font-semibold mb-2">Podcasts Coming Soon</h3>
+              <p className="text-sm text-muted-foreground">
+                We're curating the perfect podcast opportunities for you. Check back soon!
+              </p>
+            </CardContent>
+          </Card>
+        ) : filteredPodcasts.length === 0 && searchQuery ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
