@@ -88,6 +88,7 @@ interface PodcastFeedback {
   id: string
   prospect_dashboard_id: string
   podcast_id: string
+  podcast_name: string | null
   status: 'approved' | 'rejected' | null
   notes: string | null
   created_at: string
@@ -1045,17 +1046,20 @@ export default function ProspectDashboards() {
                                       : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700"
                                   )}
                                 >
-                                  <div className="flex items-center gap-2 mb-1">
+                                  <div className="flex items-center gap-2 mb-2">
                                     {fb.status === 'approved' ? (
-                                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
                                     ) : fb.status === 'rejected' ? (
-                                      <XCircle className="h-3.5 w-3.5 text-red-600" />
+                                      <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
                                     ) : null}
-                                    <span className="text-xs text-muted-foreground">
-                                      Podcast: {fb.podcast_id.slice(0, 8)}...
+                                    <span className="font-medium truncate">
+                                      {fb.podcast_name || 'Unknown Podcast'}
                                     </span>
                                   </div>
-                                  <p className="text-sm">{fb.notes}</p>
+                                  <p className="text-sm mb-2">{fb.notes}</p>
+                                  <p className="text-xs text-muted-foreground font-mono">
+                                    ID: {fb.podcast_id}
+                                  </p>
                                 </div>
                               ))}
                             </div>

@@ -82,6 +82,7 @@ interface PodcastFeedback {
   id: string
   prospect_dashboard_id: string
   podcast_id: string
+  podcast_name: string | null
   status: 'approved' | 'rejected' | null
   notes: string | null
   created_at: string
@@ -294,7 +295,7 @@ export default function ProspectView() {
   }, [selectedPodcast, feedbackMap])
 
   // Save feedback (approve/reject/notes)
-  const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string) => {
+  const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string, podcastName?: string) => {
     if (!dashboard) return
 
     setIsSavingFeedback(true)
@@ -302,6 +303,7 @@ export default function ProspectView() {
       const feedbackData = {
         prospect_dashboard_id: dashboard.id,
         podcast_id: podcastId,
+        podcast_name: podcastName || selectedPodcast?.podcast_name || null,
         status,
         notes: notes !== undefined ? notes : (currentNotes || null),
       }
