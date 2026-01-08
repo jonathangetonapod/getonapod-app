@@ -251,10 +251,12 @@ export default function ProspectView() {
       // AI Analysis preloader
       const preloadAnalysis = async (podcast: typeof podcasts[0]) => {
         if (analysisCache.has(podcast.podcast_id)) {
+          console.log('[Preload] AI analysis already cached:', podcast.podcast_name)
           setAnalysesPreloaded(prev => prev + 1)
           return
         }
 
+        console.log('[Preload] 🤖 Fetching AI analysis:', podcast.podcast_name)
         try {
           const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
             method: 'POST',
@@ -279,7 +281,10 @@ export default function ProspectView() {
 
           if (response.ok) {
             const data = await response.json()
+            console.log('[Preload] ✅ AI analysis cached:', podcast.podcast_name)
             setAnalysisCache(prev => new Map(prev).set(podcast.podcast_id, data.analysis))
+          } else {
+            console.error('[Preload] ❌ AI analysis failed:', podcast.podcast_name, response.status)
           }
         } catch (err) {
           console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, err)
@@ -321,11 +326,14 @@ export default function ProspectView() {
     }
 
     const cached = analysisCache.get(selectedPodcast.podcast_id)
+    console.log('[Panel] Checking cache for:', selectedPodcast.podcast_name, 'Found:', !!cached, 'Cache size:', analysisCache.size)
     if (cached) {
+      console.log('[Panel] ✅ Using cached analysis')
       setFitAnalysis(cached)
       return
     }
 
+    console.log('[Panel] ❌ Cache miss, fetching fresh analysis...')
     const analyzefit = async () => {
       setIsAnalyzing(true)
       setFitAnalysis(null)
