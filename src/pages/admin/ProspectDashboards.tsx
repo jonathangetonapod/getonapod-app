@@ -130,7 +130,6 @@ export default function ProspectDashboards() {
 
   const appUrl = window.location.origin
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
   useEffect(() => {
     fetchDashboards()
@@ -282,11 +281,17 @@ export default function ProspectDashboards() {
 
     setDeletingPodcastId(podcastId)
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        toast.error('Not authenticated')
+        return
+      }
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           spreadsheetId: selectedDashboard.spreadsheet_id,
