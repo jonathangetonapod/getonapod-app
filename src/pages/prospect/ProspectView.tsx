@@ -128,6 +128,8 @@ export default function ProspectView() {
   // Preloading state
   const [preloadingAnalyses, setPreloadingAnalyses] = useState(false)
   const [analysesPreloaded, setAnalysesPreloaded] = useState(0)
+  const [currentlyLoadingPodcasts, setCurrentlyLoadingPodcasts] = useState<Set<string>>(new Set())
+  const [preloadingComplete, setPreloadingComplete] = useState(false)
 
   // Fetch dashboard data
   useEffect(() => {
@@ -258,6 +260,9 @@ export default function ProspectView() {
 
         console.log('[Preload] 🤖 Fetching AI analysis:', podcast.podcast_name)
 
+        // Track currently loading
+        setCurrentlyLoadingPodcasts(prev => new Set(prev).add(podcast.podcast_id))
+
         // Retry logic for transient errors (503, etc.)
         const MAX_RETRIES = 3
         let lastError: unknown = null
@@ -310,6 +315,13 @@ export default function ProspectView() {
           console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, lastError)
         }
 
+        // Remove from currently loading
+        setCurrentlyLoadingPodcasts(prev => {
+          const next = new Set(prev)
+          next.delete(podcast.podcast_id)
+          return next
+        })
+
         setAnalysesPreloaded(prev => prev + 1)
       }
 
@@ -333,6 +345,16 @@ export default function ProspectView() {
 
       console.log('[Preload] Finished parallel preload')
       setPreloadingAnalyses(false)
+      setPreloadingComplete(true)
+
+      // Mini celebration when preloading completes
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.3 },
+        colors: ['#8B5CF6', '#3B82F6', '#10B981'],
+        zIndex: 9999,
+      })
     }
 
     preloadAll()
@@ -733,11 +755,69 @@ export default function ProspectView() {
               )
             })()}
 
-            {/* Preloading Status */}
+            {/* Preloading Status - Engaging UI */}
             {preloadingAnalyses && (
-              <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground animate-fade-in">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span>Preparing insights... {analysesPreloaded}/{podcasts.length}</span>
+              <div className="mt-8 animate-fade-in">
+                <div className="inline-flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-xl">
+                  {/* Animated AI Icon */}
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-lg opacity-50 animate-pulse" />
+                    <div className="relative h-14 w-14 rounded-full bg-gradient-to-r from-primary to-purple-600 flex items-center justify-center">
+                      <Sparkles className="h-7 w-7 text-white animate-pulse" />
+                    </div>
+                  </div>
+
+                  {/* Status Text */}
+                  <div className="text-center space-y-1">
+                    <p className="font-semibold text-foreground">AI is preparing your personalized insights</p>
+                    <p className="text-sm text-muted-foreground">
+                      Analyzing why each podcast is perfect for you...
+                    </p>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="w-64 space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{analysesPreloaded} of {podcasts.length} analyzed</span>
+                      <span>{Math.round((analysesPreloaded / podcasts.length) * 100)}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${(analysesPreloaded / podcasts.length) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Currently Loading Podcasts */}
+                  {currentlyLoadingPodcasts.size > 0 && (
+                    <div className="flex flex-wrap justify-center gap-2 max-w-sm">
+                      {Array.from(currentlyLoadingPodcasts).map(podcastId => {
+                        const podcast = podcasts.find(p => p.podcast_id === podcastId)
+                        if (!podcast) return null
+                        return (
+                          <div
+                            key={podcastId}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-xs font-medium text-primary animate-pulse"
+                          >
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span className="truncate max-w-[120px]">{podcast.podcast_name}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Ready to Explore - Shows briefly after preloading completes */}
+            {!preloadingAnalyses && preloadingComplete && (
+              <div className="mt-8 animate-scale-in">
+                <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-semibold">All insights ready! Click any podcast to explore.</span>
+                </div>
               </div>
             )}
 
@@ -1038,6 +1118,20 @@ export default function ProspectView() {
                   )}
                   {/* Overlay gradient */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                  {/* AI Analysis Status Badge */}
+                  {preloadingAnalyses && !analysisCache.has(podcast.podcast_id) && (
+                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1 px-2 py-1 rounded-full bg-primary/90 text-white text-xs font-medium backdrop-blur-sm">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span className="hidden sm:inline">Analyzing...</span>
+                    </div>
+                  )}
+                  {analysisCache.has(podcast.podcast_id) && (
+                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/90 text-white text-xs font-medium backdrop-blur-sm">
+                      <Sparkles className="h-3 w-3" />
+                      <span className="hidden sm:inline">AI Ready</span>
+                    </div>
+                  )}
 
                   {/* Feedback Status Badge */}
                   {feedbackMap.get(podcast.podcast_id)?.status && (
