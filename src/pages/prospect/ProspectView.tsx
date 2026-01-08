@@ -121,8 +121,13 @@ export default function ProspectView() {
   const [currentNotes, setCurrentNotes] = useState('')
   const [isSavingFeedback, setIsSavingFeedback] = useState(false)
 
-  // Cache for analyses
+  // Cache for analyses and demographics
   const [analysisCache, setAnalysisCache] = useState<Map<string, PodcastFitAnalysis>>(new Map())
+  const [demographicsCache, setDemographicsCache] = useState<Map<string, PodcastDemographics | null>>(new Map())
+
+  // Preloading state
+  const [preloadingAnalyses, setPreloadingAnalyses] = useState(false)
+  const [analysesPreloaded, setAnalysesPreloaded] = useState(0)
 
   // Fetch dashboard data
   useEffect(() => {
@@ -212,6 +217,114 @@ export default function ProspectView() {
     fetchDashboard()
   }, [slug])
 
+  // Preload all AI analyses in background after podcasts load
+  useEffect(() => {
+    if (!dashboard?.prospect_bio || podcasts.length === 0 || preloadingAnalyses) return
+    if (analysisCache.size >= podcasts.length) return // Already preloaded
+
+    const preloadAnalyses = async () => {
+      setPreloadingAnalyses(true)
+      console.log('[Preload] Starting to preload AI analyses for', podcasts.length, 'podcasts')
+
+      // Process in batches of 3 to avoid overwhelming the API
+      const BATCH_SIZE = 3
+      for (let i = 0; i < podcasts.length; i += BATCH_SIZE) {
+        const batch = podcasts.slice(i, i + BATCH_SIZE)
+
+        await Promise.all(
+          batch.map(async (podcast) => {
+            // Skip if already cached
+            if (analysisCache.has(podcast.podcast_id)) {
+              setAnalysesPreloaded(prev => prev + 1)
+              return
+            }
+
+            try {
+              const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({
+                  podcastId: podcast.podcast_id,
+                  podcastName: podcast.podcast_name,
+                  podcastDescription: podcast.podcast_description,
+                  podcastUrl: podcast.podcast_url,
+                  publisherName: podcast.publisher_name,
+                  itunesRating: podcast.itunes_rating,
+                  episodeCount: podcast.episode_count,
+                  audienceSize: podcast.audience_size,
+                  clientId: dashboard.id,
+                  clientName: dashboard.prospect_name,
+                  clientBio: dashboard.prospect_bio,
+                }),
+              })
+
+              if (response.ok) {
+                const data = await response.json()
+                setAnalysisCache(prev => new Map(prev).set(podcast.podcast_id, data.analysis))
+              }
+            } catch (err) {
+              console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, err)
+            }
+
+            setAnalysesPreloaded(prev => prev + 1)
+          })
+        )
+
+        // Small delay between batches
+        if (i + BATCH_SIZE < podcasts.length) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+
+      console.log('[Preload] Finished preloading AI analyses')
+      setPreloadingAnalyses(false)
+    }
+
+    preloadAnalyses()
+  }, [dashboard, podcasts, preloadingAnalyses, analysisCache.size])
+
+  // Preload all demographics in background
+  useEffect(() => {
+    if (podcasts.length === 0) return
+    if (demographicsCache.size >= podcasts.length) return // Already preloaded
+
+    const preloadDemographics = async () => {
+      console.log('[Preload] Starting to preload demographics for', podcasts.length, 'podcasts')
+
+      // Process in batches of 5
+      const BATCH_SIZE = 5
+      for (let i = 0; i < podcasts.length; i += BATCH_SIZE) {
+        const batch = podcasts.slice(i, i + BATCH_SIZE)
+
+        await Promise.all(
+          batch.map(async (podcast) => {
+            if (demographicsCache.has(podcast.podcast_id)) return
+
+            try {
+              const data = await getPodcastDemographics(podcast.podcast_id)
+              setDemographicsCache(prev => new Map(prev).set(podcast.podcast_id, data))
+            } catch (err) {
+              // Demographics may not exist for all podcasts, that's ok
+              setDemographicsCache(prev => new Map(prev).set(podcast.podcast_id, null))
+            }
+          })
+        )
+
+        // Small delay between batches
+        if (i + BATCH_SIZE < podcasts.length) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
+
+      console.log('[Preload] Finished preloading demographics')
+    }
+
+    preloadDemographics()
+  }, [podcasts, demographicsCache.size])
+
   // Analyze podcast fit when side panel opens
   useEffect(() => {
     if (!selectedPodcast || !dashboard?.prospect_bio) {
@@ -266,10 +379,16 @@ export default function ProspectView() {
     analyzefit()
   }, [selectedPodcast, dashboard, analysisCache])
 
-  // Fetch demographics when side panel opens
+  // Fetch demographics when side panel opens (use cache if available)
   useEffect(() => {
     if (!selectedPodcast) {
       setDemographics(null)
+      return
+    }
+
+    // Check cache first
+    if (demographicsCache.has(selectedPodcast.podcast_id)) {
+      setDemographics(demographicsCache.get(selectedPodcast.podcast_id) || null)
       return
     }
 
@@ -278,8 +397,10 @@ export default function ProspectView() {
       try {
         const data = await getPodcastDemographics(selectedPodcast.podcast_id)
         setDemographics(data)
+        setDemographicsCache(prev => new Map(prev).set(selectedPodcast.podcast_id, data))
       } catch (err) {
         console.error('Error fetching demographics:', err)
+        setDemographicsCache(prev => new Map(prev).set(selectedPodcast.podcast_id, null))
       } finally {
         setIsLoadingDemographics(false)
       }
@@ -595,6 +716,14 @@ export default function ProspectView() {
                 </div>
               )
             })()}
+
+            {/* Preloading Status */}
+            {preloadingAnalyses && (
+              <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground animate-fade-in">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Preparing insights... {analysesPreloaded}/{podcasts.length}</span>
+              </div>
+            )}
 
             {/* Scroll CTA */}
             <div className="mt-8 animate-bounce">
