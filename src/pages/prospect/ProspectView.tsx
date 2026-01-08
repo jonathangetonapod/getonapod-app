@@ -34,12 +34,21 @@ import {
   ThumbsDown,
   MessageSquare,
   Check,
-  Clock
+  Clock,
+  Building2,
+  MapPin,
+  Home,
+  Heart,
+  Smartphone,
+  ShoppingBag,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
 
 interface ProspectDashboard {
   id: string
@@ -116,6 +125,7 @@ export default function ProspectView() {
   const [fitAnalysis, setFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
+  const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(false)
 
   // Feedback state
   const [feedbackMap, setFeedbackMap] = useState<Map<string, PodcastFeedback>>(new Map())
@@ -1414,46 +1424,331 @@ export default function ProspectView() {
                     </>
                   )}
 
-                  {/* Demographics */}
+                  {/* Demographics - Enhanced */}
                   {(isLoadingDemographics || demographics) && (
                     <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 p-3.5 sm:p-5 border border-blue-200/50 dark:border-blue-800/50">
-                      <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-                        <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
-                          <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                      <div className="flex items-center justify-between mb-3 sm:mb-4">
+                        <div className="flex items-center gap-2.5 sm:gap-3">
+                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
+                            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">Audience Insights</h3>
+                            <p className="text-[10px] sm:text-xs text-blue-700 dark:text-blue-300">
+                              {demographics?.episodes_analyzed ? `Based on ${demographics.episodes_analyzed} episodes` : 'Know who you\'ll reach'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">Audience Profile</h3>
-                          <p className="text-[10px] sm:text-xs text-blue-700 dark:text-blue-300">Know who you'll reach</p>
-                        </div>
+                        {demographics && (
+                          <button
+                            onClick={() => setIsDemographicsExpanded(!isDemographicsExpanded)}
+                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors p-1"
+                          >
+                            {isDemographicsExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                          </button>
+                        )}
                       </div>
 
                       {isLoadingDemographics ? (
-                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                          {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="p-3 sm:p-4 bg-white/50 dark:bg-white/5 rounded-lg sm:rounded-xl space-y-2">
-                              <div className="h-3 bg-blue-200 dark:bg-blue-800 rounded animate-pulse w-1/2" />
-                              <div className="h-5 bg-blue-100 dark:bg-blue-900 rounded animate-pulse w-3/4" />
-                            </div>
-                          ))}
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                            {[1, 2, 3, 4].map((i) => (
+                              <div key={i} className="p-3 sm:p-4 bg-white/50 dark:bg-white/5 rounded-lg sm:rounded-xl space-y-2">
+                                <div className="h-3 bg-blue-200 dark:bg-blue-800 rounded animate-pulse w-1/2" />
+                                <div className="h-5 bg-blue-100 dark:bg-blue-900 rounded animate-pulse w-3/4" />
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ) : demographics && (
-                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-blue-100 dark:border-blue-800/50">
-                            <p className="text-[10px] sm:text-xs font-medium text-blue-600 dark:text-blue-400 mb-0.5 sm:mb-1">Age Group</p>
-                            <p className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">{demographics.age}</p>
+                        <div className="space-y-4">
+                          {/* Core Stats - Always visible */}
+                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-blue-100 dark:border-blue-800/50">
+                              <p className="text-[10px] sm:text-xs font-medium text-blue-600 dark:text-blue-400 mb-0.5 sm:mb-1">Age Group</p>
+                              <p className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">{demographics.age}</p>
+                            </div>
+                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-pink-100 dark:border-pink-800/50">
+                              <p className="text-[10px] sm:text-xs font-medium text-pink-600 dark:text-pink-400 mb-0.5 sm:mb-1">Gender Split</p>
+                              <p className="font-bold text-sm sm:text-base text-pink-900 dark:text-pink-100 capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
+                            </div>
+                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-green-100 dark:border-green-800/50">
+                              <p className="text-[10px] sm:text-xs font-medium text-green-600 dark:text-green-400 mb-0.5 sm:mb-1">Buying Power</p>
+                              <p className="font-bold text-sm sm:text-base text-green-900 dark:text-green-100 capitalize">{demographics.purchasing_power}</p>
+                            </div>
+                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-purple-100 dark:border-purple-800/50">
+                              <p className="text-[10px] sm:text-xs font-medium text-purple-600 dark:text-purple-400 mb-0.5 sm:mb-1">Education</p>
+                              <p className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100 capitalize">{demographics.education_level}</p>
+                            </div>
                           </div>
-                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-pink-100 dark:border-pink-800/50">
-                            <p className="text-[10px] sm:text-xs font-medium text-pink-600 dark:text-pink-400 mb-0.5 sm:mb-1">Gender Split</p>
-                            <p className="font-bold text-sm sm:text-base text-pink-900 dark:text-pink-100 capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
-                          </div>
-                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-green-100 dark:border-green-800/50">
-                            <p className="text-[10px] sm:text-xs font-medium text-green-600 dark:text-green-400 mb-0.5 sm:mb-1">Buying Power</p>
-                            <p className="font-bold text-sm sm:text-base text-green-900 dark:text-green-100 capitalize">{demographics.purchasing_power}</p>
-                          </div>
-                          <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-purple-100 dark:border-purple-800/50">
-                            <p className="text-[10px] sm:text-xs font-medium text-purple-600 dark:text-purple-400 mb-0.5 sm:mb-1">Education</p>
-                            <p className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100 capitalize">{demographics.education_level}</p>
-                          </div>
+
+                          {/* Engagement Badge */}
+                          {demographics.engagement_level && (
+                            <div className="flex items-center gap-2 p-2.5 bg-white/50 dark:bg-white/5 rounded-lg border border-orange-200/50 dark:border-orange-800/30">
+                              <Zap className="h-4 w-4 text-orange-500" />
+                              <span className="text-xs font-medium text-orange-700 dark:text-orange-300">
+                                Engagement: <span className="capitalize">{demographics.engagement_level}</span>
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Expanded Details */}
+                          {isDemographicsExpanded && (
+                            <div className="space-y-4 pt-2 border-t border-blue-200/50 dark:border-blue-800/30">
+                              {/* Age Distribution Chart - Recharts */}
+                              {demographics.age_distribution && demographics.age_distribution.length > 0 && (
+                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-blue-100/50 dark:border-blue-800/30">
+                                  <h4 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-1.5">
+                                    <BarChart3 className="h-3.5 w-3.5" />
+                                    Age Distribution
+                                  </h4>
+                                  <div className="h-36">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <BarChart
+                                        data={demographics.age_distribution.map(item => ({
+                                          name: item.age,
+                                          value: item.percentage
+                                        }))}
+                                        layout="vertical"
+                                        margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+                                      >
+                                        <XAxis type="number" domain={[0, 100]} hide />
+                                        <YAxis
+                                          type="category"
+                                          dataKey="name"
+                                          axisLine={false}
+                                          tickLine={false}
+                                          tick={{ fontSize: 10, fill: '#64748b' }}
+                                          width={50}
+                                        />
+                                        <Tooltip
+                                          formatter={(value: number) => [`${value}%`, 'Audience']}
+                                          contentStyle={{
+                                            backgroundColor: 'rgba(255,255,255,0.95)',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '8px',
+                                            fontSize: '12px'
+                                          }}
+                                        />
+                                        <Bar
+                                          dataKey="value"
+                                          fill="url(#blueGradient)"
+                                          radius={[0, 4, 4, 0]}
+                                          label={{ position: 'right', fontSize: 10, fill: '#3b82f6', formatter: (v: number) => `${v}%` }}
+                                        />
+                                        <defs>
+                                          <linearGradient id="blueGradient" x1="0" y1="0" x2="1" y2="0">
+                                            <stop offset="0%" stopColor="#3b82f6" />
+                                            <stop offset="100%" stopColor="#06b6d4" />
+                                          </linearGradient>
+                                        </defs>
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Professional Industries - Pie Chart with Legend */}
+                              {demographics.professional_industry && demographics.professional_industry.length > 0 && (() => {
+                                const INDUSTRY_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe']
+                                const topIndustries = demographics.professional_industry.slice(0, 5)
+                                return (
+                                  <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-indigo-100/50 dark:border-indigo-800/30">
+                                    <h4 className="text-xs font-semibold text-indigo-800 dark:text-indigo-200 mb-3 flex items-center gap-1.5">
+                                      <Building2 className="h-3.5 w-3.5" />
+                                      Top Industries
+                                    </h4>
+                                    <div className="flex items-center gap-4">
+                                      <div className="w-24 h-24 shrink-0">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                          <PieChart>
+                                            <Pie
+                                              data={topIndustries.map((item, idx) => ({
+                                                name: item.industry,
+                                                value: item.percentage
+                                              }))}
+                                              cx="50%"
+                                              cy="50%"
+                                              innerRadius={20}
+                                              outerRadius={40}
+                                              paddingAngle={2}
+                                              dataKey="value"
+                                            >
+                                              {topIndustries.map((_, idx) => (
+                                                <Cell key={idx} fill={INDUSTRY_COLORS[idx]} />
+                                              ))}
+                                            </Pie>
+                                          </PieChart>
+                                        </ResponsiveContainer>
+                                      </div>
+                                      <div className="flex-1 space-y-1">
+                                        {topIndustries.map((item, idx) => (
+                                          <div key={idx} className="flex items-center gap-2">
+                                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: INDUSTRY_COLORS[idx] }} />
+                                            <span className="text-[10px] text-slate-600 dark:text-slate-400 truncate flex-1">{item.industry}</span>
+                                            <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{item.percentage}%</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+
+                              {/* Geographic Distribution */}
+                              {demographics.geographic_distribution && demographics.geographic_distribution.length > 0 && (
+                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-emerald-100/50 dark:border-emerald-800/30">
+                                  <h4 className="text-xs font-semibold text-emerald-800 dark:text-emerald-200 mb-3 flex items-center gap-1.5">
+                                    <MapPin className="h-3.5 w-3.5" />
+                                    Geographic Reach
+                                  </h4>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {demographics.geographic_distribution.slice(0, 6).map((item, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/50 rounded-full text-[10px] font-medium text-emerald-700 dark:text-emerald-300"
+                                      >
+                                        {item.region} <span className="font-bold">{item.percentage}%</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Living Environment - Donut Chart */}
+                              {demographics.living_environment && (
+                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-amber-100/50 dark:border-amber-800/30">
+                                  <h4 className="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-3 flex items-center gap-1.5">
+                                    <Home className="h-3.5 w-3.5" />
+                                    Living Environment
+                                  </h4>
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-24 h-24">
+                                      <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                          <Pie
+                                            data={[
+                                              { name: 'Urban', value: demographics.living_environment.urban, color: '#f59e0b' },
+                                              { name: 'Suburban', value: demographics.living_environment.suburban, color: '#fbbf24' },
+                                              { name: 'Rural', value: demographics.living_environment.rural, color: '#fcd34d' }
+                                            ]}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={25}
+                                            outerRadius={40}
+                                            paddingAngle={2}
+                                            dataKey="value"
+                                          >
+                                            <Cell fill="#f59e0b" />
+                                            <Cell fill="#fbbf24" />
+                                            <Cell fill="#fcd34d" />
+                                          </Pie>
+                                        </PieChart>
+                                      </ResponsiveContainer>
+                                    </div>
+                                    <div className="flex-1 space-y-1.5">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-amber-500" />
+                                        <span className="text-[10px] text-slate-600 dark:text-slate-400">Urban</span>
+                                        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 ml-auto">{demographics.living_environment.urban}%</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-amber-400" />
+                                        <span className="text-[10px] text-slate-600 dark:text-slate-400">Suburban</span>
+                                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 ml-auto">{demographics.living_environment.suburban}%</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-amber-300" />
+                                        <span className="text-[10px] text-slate-600 dark:text-slate-400">Rural</span>
+                                        <span className="text-xs font-bold text-amber-500 dark:text-amber-500 ml-auto">{demographics.living_environment.rural}%</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Content Habits */}
+                              {demographics.content_habits && (
+                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-cyan-100/50 dark:border-cyan-800/30">
+                                  <h4 className="text-xs font-semibold text-cyan-800 dark:text-cyan-200 mb-3 flex items-center gap-1.5">
+                                    <Smartphone className="h-3.5 w-3.5" />
+                                    Content Habits
+                                  </h4>
+                                  <div className="space-y-2">
+                                    {demographics.content_habits.primary_platforms && demographics.content_habits.primary_platforms.length > 0 && (
+                                      <div>
+                                        <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">Platforms: </span>
+                                        <span className="text-[10px] text-cyan-800 dark:text-cyan-200">{demographics.content_habits.primary_platforms.join(', ')}</span>
+                                      </div>
+                                    )}
+                                    {demographics.content_habits.content_frequency && (
+                                      <div>
+                                        <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">Frequency: </span>
+                                        <span className="text-[10px] text-cyan-800 dark:text-cyan-200 capitalize">{demographics.content_habits.content_frequency}</span>
+                                      </div>
+                                    )}
+                                    {demographics.content_habits.preferred_formats && demographics.content_habits.preferred_formats.length > 0 && (
+                                      <div>
+                                        <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">Formats: </span>
+                                        <span className="text-[10px] text-cyan-800 dark:text-cyan-200">{demographics.content_habits.preferred_formats.join(', ')}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Brand Relationship */}
+                              {demographics.brand_relationship && (
+                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-rose-100/50 dark:border-rose-800/30">
+                                  <h4 className="text-xs font-semibold text-rose-800 dark:text-rose-200 mb-3 flex items-center gap-1.5">
+                                    <ShoppingBag className="h-3.5 w-3.5" />
+                                    Brand Relationship
+                                  </h4>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
+                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Loyalty</div>
+                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.loyalty_level}</div>
+                                    </div>
+                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
+                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Price Sensitivity</div>
+                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.price_sensitivity}</div>
+                                    </div>
+                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
+                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Switching</div>
+                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.brand_switching_frequency}</div>
+                                    </div>
+                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
+                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Advocacy</div>
+                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.advocacy_potential}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Technology Adoption */}
+                              {demographics.technology_adoption && (
+                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-violet-100/50 dark:border-violet-800/30">
+                                  <h4 className="text-xs font-semibold text-violet-800 dark:text-violet-200 mb-2 flex items-center gap-1.5">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Tech Adoption: <span className="capitalize">{demographics.technology_adoption.profile}</span>
+                                  </h4>
+                                  {demographics.technology_adoption.reasoning && (
+                                    <p className="text-[10px] text-violet-700 dark:text-violet-300 leading-relaxed">{demographics.technology_adoption.reasoning}</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Expand prompt */}
+                          {!isDemographicsExpanded && (demographics.age_distribution || demographics.professional_industry || demographics.living_environment) && (
+                            <button
+                              onClick={() => setIsDemographicsExpanded(true)}
+                              className="w-full text-center py-2 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 font-medium transition-colors"
+                            >
+                              View detailed audience breakdown
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
