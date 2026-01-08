@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
+import confetti from 'canvas-confetti'
 import {
   Mic,
   Users,
@@ -297,9 +298,36 @@ export default function ProspectView() {
     }
   }, [selectedPodcast, feedbackMap])
 
+  // Confetti celebration for approvals
+  const triggerConfetti = () => {
+    const count = 200
+    const defaults = {
+      origin: { y: 0.7 },
+      zIndex: 9999,
+    }
+
+    function fire(particleRatio: number, opts: confetti.Options) {
+      confetti({
+        ...defaults,
+        ...opts,
+        particleCount: Math.floor(count * particleRatio),
+      })
+    }
+
+    fire(0.25, { spread: 26, startVelocity: 55 })
+    fire(0.2, { spread: 60 })
+    fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 })
+    fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 })
+    fire(0.1, { spread: 120, startVelocity: 45 })
+  }
+
   // Save feedback (approve/reject/notes)
   const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string, podcastName?: string) => {
     if (!dashboard) return
+
+    // Check if this is a new approval (not already approved)
+    const existingFeedback = feedbackMap.get(podcastId)
+    const isNewApproval = status === 'approved' && existingFeedback?.status !== 'approved'
 
     setIsSavingFeedback(true)
     try {
@@ -327,6 +355,11 @@ export default function ProspectView() {
         newMap.set(podcastId, data)
         return newMap
       })
+
+      // Trigger confetti for new approvals
+      if (isNewApproval) {
+        triggerConfetti()
+      }
     } catch (err) {
       console.error('Error saving feedback:', err)
     } finally {
@@ -464,88 +497,89 @@ export default function ProspectView() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* Hero Header */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-purple-500/5 to-pink-500/5" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
+        {/* Animated gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-purple-500/10 via-transparent to-transparent" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
-          <div className="text-center space-y-3 sm:space-y-4">
-            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-medium">
-              <Radio className="h-3 w-3 sm:h-4 sm:w-4" />
-              Curated Podcast Opportunities
+        {/* Floating decorative elements */}
+        <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16 lg:py-20">
+          <div className="text-center space-y-4 sm:space-y-6">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg animate-fade-in">
+              <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+              <span className="text-sm font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                Personalized Podcast Opportunities
+              </span>
             </div>
 
             {/* Prospect Profile Picture */}
             {dashboard.prospect_image_url && (
-              <div className="flex justify-center">
-                <div className="h-20 w-20 sm:h-24 sm:w-24 lg:h-28 lg:w-28 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-xl">
-                  <img
-                    src={dashboard.prospect_image_url}
-                    alt={dashboard.prospect_name}
-                    className="w-full h-full object-cover"
-                  />
+              <div className="flex justify-center animate-scale-in">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-lg opacity-50 animate-pulse" />
+                  <div className="relative h-24 w-24 sm:h-32 sm:w-32 lg:h-36 lg:w-36 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl">
+                    <img
+                      src={dashboard.prospect_image_url}
+                      alt={dashboard.prospect_name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 </div>
               </div>
             )}
 
-            <h1 className="text-2xl sm:text-3xl lg:text-5xl font-bold tracking-tight px-2">
-              Hi, <span className="text-primary">{dashboard.prospect_name}</span>
-            </h1>
+            {/* Greeting */}
+            <div className="space-y-2 animate-fade-in-up">
+              <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight px-2">
+                Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
+              </h1>
+              <p className="text-lg sm:text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto px-2">
+                We've curated <span className="font-bold text-foreground">{podcasts.length}</span> podcast{podcasts.length !== 1 ? 's' : ''} perfect for your expertise
+              </p>
+            </div>
 
-            <p className="text-base sm:text-lg lg:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
-              We've identified {podcasts.length} podcast{podcasts.length !== 1 ? 's' : ''} that {podcasts.length === 1 ? 'is' : 'are'} perfect for your expertise
-            </p>
+            {/* Big Stats */}
+            <div className="flex flex-wrap justify-center gap-6 sm:gap-10 pt-4 animate-fade-in-up delay-200">
+              <div className="text-center">
+                <p className="text-3xl sm:text-5xl font-bold bg-gradient-to-r from-green-500 to-emerald-600 bg-clip-text text-transparent">
+                  {formatNumber(totalReach)}+
+                </p>
+                <p className="text-sm sm:text-base text-muted-foreground font-medium">Potential Listeners</p>
+              </div>
+              <div className="hidden sm:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
+              <div className="text-center">
+                <p className="text-3xl sm:text-5xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">
+                  {avgRating > 0 ? avgRating.toFixed(1) : '4.5'}
+                </p>
+                <p className="text-sm sm:text-base text-muted-foreground font-medium">Avg Rating</p>
+              </div>
+              <div className="hidden sm:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
+              <div className="text-center">
+                <p className="text-3xl sm:text-5xl font-bold bg-gradient-to-r from-blue-500 to-cyan-600 bg-clip-text text-transparent">
+                  {podcasts.length}
+                </p>
+                <p className="text-sm sm:text-base text-muted-foreground font-medium">Curated Podcasts</p>
+              </div>
+            </div>
           </div>
-
         </div>
       </div>
 
-      {/* Stats Cards Section */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-4 sm:-mt-6 relative z-10">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-          {/* Total Podcasts */}
-          <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-3 sm:p-6 text-center">
-              <Headphones className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-primary" />
-              <p className="text-2xl sm:text-4xl font-bold">{podcasts.length}</p>
-              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Podcasts</p>
-            </CardContent>
-          </Card>
-
-          {/* Total Potential Reach */}
-          <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-3 sm:p-6 text-center">
-              <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-green-600" />
-              <p className="text-2xl sm:text-4xl font-bold text-green-600">{formatNumber(totalReach)}</p>
-              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Total Reach</p>
-            </CardContent>
-          </Card>
-
-          {/* Avg Listeners Per Episode */}
-          <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-3 sm:p-6 text-center">
-              <Users className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-blue-600" />
-              <p className="text-2xl sm:text-4xl font-bold text-blue-600">{formatNumber(avgListenersPerEpisode)}</p>
-              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Avg Listeners</p>
-            </CardContent>
-          </Card>
-
-          {/* Average Rating */}
-          <Card className="border-0 shadow-lg bg-white dark:bg-slate-900">
-            <CardContent className="p-3 sm:p-6 text-center">
-              <Star className="h-6 w-6 sm:h-8 sm:w-8 mx-auto mb-1 sm:mb-2 text-amber-500 fill-amber-500" />
-              <p className="text-2xl sm:text-4xl font-bold text-amber-600">{avgRating > 0 ? avgRating.toFixed(1) : '-'}</p>
-              <p className="text-[10px] sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">Avg Rating</p>
-            </CardContent>
-          </Card>
-
-        </div>
-
-        {/* Highlights Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 mt-3 sm:mt-4">
+      {/* Featured Podcasts Section */}
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
+          Featured Opportunities
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           {/* Highest Reach */}
           {highestReachPodcast && highestReachPodcast.audience_size && (
             <Card
-              className="border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 cursor-pointer hover:shadow-xl transition-shadow active:scale-[0.98]"
+              className="border-0 shadow-xl bg-gradient-to-br from-green-50/80 to-emerald-50/80 dark:from-green-950/50 dark:to-emerald-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+              style={{ animationDelay: '100ms' }}
               onClick={() => setSelectedPodcast(highestReachPodcast)}
             >
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
@@ -570,7 +604,8 @@ export default function ProspectView() {
           {/* Top Rated */}
           {topRatedPodcast && topRatedPodcast.itunes_rating && (
             <Card
-              className="border-0 shadow-lg bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 cursor-pointer hover:shadow-xl transition-shadow active:scale-[0.98]"
+              className="border-0 shadow-xl bg-gradient-to-br from-amber-50/80 to-yellow-50/80 dark:from-amber-950/50 dark:to-yellow-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+              style={{ animationDelay: '200ms' }}
               onClick={() => setSelectedPodcast(topRatedPodcast)}
             >
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
@@ -598,7 +633,8 @@ export default function ProspectView() {
           {/* Most Established */}
           {mostEpisodesPodcast && mostEpisodesPodcast.episode_count && (
             <Card
-              className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 cursor-pointer hover:shadow-xl transition-shadow active:scale-[0.98]"
+              className="border-0 shadow-xl bg-gradient-to-br from-purple-50/80 to-violet-50/80 dark:from-purple-950/50 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+              style={{ animationDelay: '300ms' }}
               onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
             >
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
@@ -781,14 +817,17 @@ export default function ProspectView() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredPodcasts.map((podcast) => (
+            {filteredPodcasts.map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
-                "group cursor-pointer border-0 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden",
-                "active:scale-[0.98] bg-white dark:bg-slate-900",
+                "group cursor-pointer border-0 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden",
+                "active:scale-[0.98] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm",
+                "hover:-translate-y-1 hover:scale-[1.02]",
+                "animate-slide-in-bottom",
                 selectedPodcast?.podcast_id === podcast.podcast_id && "ring-2 ring-primary shadow-xl"
               )}
+              style={{ animationDelay: `${index * 50}ms` }}
               onClick={() => setSelectedPodcast(podcast)}
             >
               <CardContent className="p-0">
