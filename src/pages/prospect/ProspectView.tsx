@@ -96,7 +96,7 @@ export default function ProspectView() {
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set())
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -342,19 +342,17 @@ export default function ProspectView() {
   // Toggle category selection
   const toggleCategory = (categoryId: string) => {
     setSelectedCategories(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(categoryId)) {
-        newSet.delete(categoryId)
+      if (prev.includes(categoryId)) {
+        return prev.filter(id => id !== categoryId)
       } else {
-        newSet.add(categoryId)
+        return [...prev, categoryId]
       }
-      return newSet
     })
   }
 
   // Clear all category filters
   const clearCategoryFilters = () => {
-    setSelectedCategories(new Set())
+    setSelectedCategories([])
   }
 
   // Filter podcasts based on search query and selected categories
@@ -371,10 +369,10 @@ export default function ProspectView() {
     }
 
     // Category filter (OR logic - podcast matches if it has ANY of the selected categories)
-    if (selectedCategories.size > 0) {
+    if (selectedCategories.length > 0) {
       const categories = getCategoriesArray(podcast)
       const podcastCategoryIds = categories.map(c => c.category_id)
-      const hasMatchingCategory = podcastCategoryIds.some(id => selectedCategories.has(id))
+      const hasMatchingCategory = podcastCategoryIds.some(id => selectedCategories.includes(id))
       if (!hasMatchingCategory) return false
     }
 
@@ -567,7 +565,7 @@ export default function ProspectView() {
             <div className="flex items-center gap-2 mb-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs sm:text-sm font-medium text-muted-foreground">Filter by category</span>
-              {selectedCategories.size > 0 && (
+              {selectedCategories.length > 0 && (
                 <button
                   onClick={clearCategoryFilters}
                   className="text-xs text-primary hover:text-primary/80 ml-auto"
@@ -578,7 +576,7 @@ export default function ProspectView() {
             </div>
             <div className="flex flex-wrap gap-2">
               {allCategories.map((cat) => {
-                const isSelected = selectedCategories.has(cat.category_id)
+                const isSelected = selectedCategories.includes(cat.category_id)
                 return (
                   <button
                     key={cat.category_id}
@@ -600,10 +598,10 @@ export default function ProspectView() {
         )}
 
         {/* Results count when filtering */}
-        {(searchQuery || selectedCategories.size > 0) && (
+        {(searchQuery || selectedCategories.length > 0) && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {podcasts.length} podcasts
-            {selectedCategories.size > 0 && ` in ${selectedCategories.size} ${selectedCategories.size === 1 ? 'category' : 'categories'}`}
+            {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
           </p>
         )}
 
@@ -617,15 +615,15 @@ export default function ProspectView() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.size > 0) ? (
+        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0) ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
               <h3 className="text-base sm:text-lg font-semibold mb-2">No podcasts found</h3>
               <p className="text-sm text-muted-foreground">
-                {selectedCategories.size > 0 && searchQuery
+                {selectedCategories.length > 0 && searchQuery
                   ? 'Try different filters or search terms.'
-                  : selectedCategories.size > 0
+                  : selectedCategories.length > 0
                   ? 'No podcasts match the selected categories.'
                   : 'Try a different search term.'}
               </p>
