@@ -845,24 +845,64 @@ export default function ProspectView() {
                 </div>
 
                 {/* Content */}
-                <div className="p-3 sm:p-4 space-y-1.5 sm:space-y-2">
+                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
                   <h3 className="font-semibold text-sm sm:text-base line-clamp-2 group-hover:text-primary transition-colors">
                     {podcast.podcast_name}
                   </h3>
 
                   {podcast.publisher_name && (
                     <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                      {podcast.publisher_name}
+                      by {podcast.publisher_name}
                     </p>
                   )}
 
-                  <div className="flex items-center justify-between pt-1 sm:pt-2">
-                    {podcast.episode_count && (
-                      <span className="text-[10px] sm:text-xs text-muted-foreground">
-                        {podcast.episode_count} episodes
-                      </span>
+                  {/* Stats Row */}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {podcast.audience_size && (
+                      <div className="flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5" />
+                        <span className="font-medium">{formatNumber(podcast.audience_size)}</span>
+                      </div>
                     )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-all" />
+                    {podcast.episode_count && (
+                      <div className="flex items-center gap-1">
+                        <Mic className="h-3.5 w-3.5" />
+                        <span>{podcast.episode_count} eps</span>
+                      </div>
+                    )}
+                    {podcast.itunes_rating && (
+                      <div className="flex items-center gap-1">
+                        <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                        <span>{Number(podcast.itunes_rating).toFixed(1)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Categories */}
+                  {podcast.podcast_categories && podcast.podcast_categories.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {podcast.podcast_categories.slice(0, 2).map((cat) => (
+                        <span
+                          key={cat.category_id}
+                          className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] sm:text-xs rounded-full text-muted-foreground"
+                        >
+                          {cat.category_name}
+                        </span>
+                      ))}
+                      {podcast.podcast_categories.length > 2 && (
+                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] sm:text-xs rounded-full text-muted-foreground">
+                          +{podcast.podcast_categories.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* View Details */}
+                  <div className="flex items-center justify-end pt-1">
+                    <span className="text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                      View Details
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </span>
                   </div>
                 </div>
               </CardContent>
