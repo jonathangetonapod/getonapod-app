@@ -863,11 +863,11 @@ export default function ProspectView() {
         <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
           Featured Opportunities
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 sm:grid sm:grid-cols-3 sm:overflow-visible scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0">
           {/* Highest Reach */}
           {highestReachPodcast && highestReachPodcast.audience_size && (
             <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-green-50/80 to-emerald-50/80 dark:from-green-950/50 dark:to-emerald-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+              className="border-0 shadow-xl bg-gradient-to-br from-green-50/80 to-emerald-50/80 dark:from-green-950/50 dark:to-emerald-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
               style={{ animationDelay: '100ms' }}
               onClick={() => setSelectedPodcast(highestReachPodcast)}
             >
@@ -893,7 +893,7 @@ export default function ProspectView() {
           {/* Top Rated */}
           {topRatedPodcast && topRatedPodcast.itunes_rating && (
             <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-amber-50/80 to-yellow-50/80 dark:from-amber-950/50 dark:to-yellow-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+              className="border-0 shadow-xl bg-gradient-to-br from-amber-50/80 to-yellow-50/80 dark:from-amber-950/50 dark:to-yellow-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
               style={{ animationDelay: '200ms' }}
               onClick={() => setSelectedPodcast(topRatedPodcast)}
             >
@@ -922,7 +922,7 @@ export default function ProspectView() {
           {/* Most Established */}
           {mostEpisodesPodcast && mostEpisodesPodcast.episode_count && (
             <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-purple-50/80 to-violet-50/80 dark:from-purple-950/50 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+              className="border-0 shadow-xl bg-gradient-to-br from-purple-50/80 to-violet-50/80 dark:from-purple-950/50 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
               style={{ animationDelay: '300ms' }}
               onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
             >
@@ -1937,15 +1937,15 @@ export default function ProspectView() {
           setTutorialStep(0)
           setShowTutorial(true)
         }}
-        className="fixed bottom-6 right-6 z-40 h-12 w-12 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-all hover:scale-105 flex items-center justify-center"
+        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-all hover:scale-105 flex items-center justify-center"
         title="How to use this dashboard"
       >
-        <HelpCircle className="h-6 w-6" />
+        <HelpCircle className="h-5 w-5 sm:h-6 sm:w-6" />
       </button>
 
       {/* Tutorial Stepper Modal */}
       <Dialog open={showTutorial} onOpenChange={(open) => !open && closeTutorial()}>
-        <DialogContent className="sm:max-w-lg p-0 overflow-hidden">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-lg p-0 overflow-hidden rounded-2xl">
           <VisuallyHidden>
             <DialogTitle>How to Use Your Dashboard</DialogTitle>
           </VisuallyHidden>
@@ -1954,16 +1954,16 @@ export default function ProspectView() {
           <div className="relative">
             {/* Step 0: Welcome */}
             {tutorialStep === 0 && (
-              <div className="p-6 sm:p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                  <Sparkles className="h-8 w-8 text-white" />
+              <div className="p-5 sm:p-8 text-center">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
+                  <Sparkles className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Welcome to Your Dashboard!</h2>
-                <p className="text-muted-foreground mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">Welcome to Your Dashboard!</h2>
+                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
                   We've hand-picked podcasts that are a perfect fit for your expertise and goals. Let us show you how to make the most of it.
                 </p>
-                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
+                <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span>Takes about 1 minute</span>
                 </div>
               </div>
@@ -1971,21 +1971,21 @@ export default function ProspectView() {
 
             {/* Step 1: Browse Podcasts */}
             {tutorialStep === 1 && (
-              <div className="p-6 sm:p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                  <Search className="h-8 w-8 text-white" />
+              <div className="p-5 sm:p-8 text-center">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                  <Search className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Browse Your Podcasts</h2>
-                <p className="text-muted-foreground mb-4">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">Browse Your Podcasts</h2>
+                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                   Scroll through your curated list of podcasts. Each card shows key info like audience size, ratings, and categories.
                 </p>
-                <div className="bg-muted/50 rounded-xl p-4 text-left space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Search className="h-4 w-4 text-primary" />
+                <div className="bg-muted/50 rounded-xl p-3 sm:p-4 text-left space-y-2">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
+                    <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
                     <span>Use the search bar to find specific podcasts</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Tag className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
+                    <Tag className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
                     <span>Filter by category to narrow your selection</span>
                   </div>
                 </div>
@@ -1994,25 +1994,25 @@ export default function ProspectView() {
 
             {/* Step 2: View AI Insights */}
             {tutorialStep === 2 && (
-              <div className="p-6 sm:p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                  <MousePointerClick className="h-8 w-8 text-white" />
+              <div className="p-5 sm:p-8 text-center">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <MousePointerClick className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Tap for AI Insights</h2>
-                <p className="text-muted-foreground mb-4">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">Tap for AI Insights</h2>
+                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                   Click on any podcast card to open a detailed side panel with AI-powered analysis.
                 </p>
-                <div className="bg-muted/50 rounded-xl p-4 text-left space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Target className="h-4 w-4 text-green-500" />
+                <div className="bg-muted/50 rounded-xl p-3 sm:p-4 text-left space-y-2">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
+                    <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 shrink-0" />
                     <span><strong>Fit Score</strong> — How well you match this show</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Zap className="h-4 w-4 text-amber-500" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
+                    <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500 shrink-0" />
                     <span><strong>Pitch Angles</strong> — Topics to discuss</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Users className="h-4 w-4 text-blue-500" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
+                    <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 shrink-0" />
                     <span><strong>Audience Insights</strong> — Who you'll reach</span>
                   </div>
                 </div>
@@ -2021,25 +2021,25 @@ export default function ProspectView() {
 
             {/* Step 3: Approve or Reject */}
             {tutorialStep === 3 && (
-              <div className="p-6 sm:p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-                  <ListChecks className="h-8 w-8 text-white" />
+              <div className="p-5 sm:p-8 text-center">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                  <ListChecks className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Share Your Feedback</h2>
-                <p className="text-muted-foreground mb-4">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">Share Your Feedback</h2>
+                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                   For each podcast, let us know if it's a good fit for you.
                 </p>
-                <div className="flex justify-center gap-4 mb-4">
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-                    <ThumbsUp className="h-5 w-5" />
-                    <span className="font-medium">Approve</span>
+                <div className="flex justify-center gap-3 sm:gap-4 mb-3 sm:mb-4">
+                  <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                    <ThumbsUp className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <span className="text-sm sm:text-base font-medium">Approve</span>
                   </div>
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
-                    <ThumbsDown className="h-5 w-5" />
-                    <span className="font-medium">Reject</span>
+                  <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                    <ThumbsDown className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <span className="text-sm sm:text-base font-medium">Reject</span>
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   You can also add notes to explain your preference — this helps us find even better matches!
                 </p>
               </div>
@@ -2047,16 +2047,16 @@ export default function ProspectView() {
 
             {/* Step 4: What's Next */}
             {tutorialStep === 4 && (
-              <div className="p-6 sm:p-8 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-                  <Rocket className="h-8 w-8 text-white" />
+              <div className="p-5 sm:p-8 text-center">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                  <Rocket className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">We'll Take It From Here!</h2>
-                <p className="text-muted-foreground mb-4">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2">We'll Take It From Here!</h2>
+                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                   Once you've reviewed your podcasts, our team will start crafting personalized pitches for your approved shows.
                 </p>
-                <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-xl p-4 border border-primary/20">
-                  <p className="text-sm font-medium text-primary">
+                <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-xl p-3 sm:p-4 border border-primary/20">
+                  <p className="text-xs sm:text-sm font-medium text-primary">
                     Pro Tip: The more podcasts you review, the faster we can get you booked!
                   </p>
                 </div>
