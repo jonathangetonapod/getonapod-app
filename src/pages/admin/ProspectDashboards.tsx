@@ -777,48 +777,51 @@ export default function ProspectDashboards() {
         <SheetContent className="w-full sm:max-w-lg p-0 overflow-hidden">
           {selectedDashboard && (
             <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="p-6 bg-gradient-to-br from-primary/10 to-purple-500/10 border-b">
-                <div className="flex items-start justify-between mb-4">
-                  <Badge
-                    variant={selectedDashboard.is_active ? 'default' : 'secondary'}
-                    className={cn(
-                      selectedDashboard.is_active && "bg-green-500 hover:bg-green-500"
-                    )}
-                  >
-                    {selectedDashboard.is_active ? 'Active' : 'Disabled'}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 -mr-2 -mt-2"
-                    onClick={() => setSelectedDashboard(null)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
-                {selectedDashboard.prospect_bio && (
-                  <div className="mt-2">
-                    <p className={cn(
-                      "text-muted-foreground text-sm",
-                      !bioExpanded && "line-clamp-3"
-                    )}>
-                      {selectedDashboard.prospect_bio}
-                    </p>
-                    {selectedDashboard.prospect_bio.length > 150 && (
-                      <button
-                        onClick={() => setBioExpanded(!bioExpanded)}
-                        className="text-primary text-sm font-medium mt-1 hover:underline"
-                      >
-                        {bioExpanded ? 'Show less' : 'Show more'}
-                      </button>
-                    )}
-                  </div>
-                )}
+              {/* Close button - fixed position */}
+              <div className="absolute top-4 right-4 z-10">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+                  onClick={() => setSelectedDashboard(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
 
               <ScrollArea className="flex-1">
+                {/* Header */}
+                <div className="p-6 bg-gradient-to-br from-primary/10 to-purple-500/10 border-b">
+                  <div className="flex items-start justify-between mb-4">
+                    <Badge
+                      variant={selectedDashboard.is_active ? 'default' : 'secondary'}
+                      className={cn(
+                        selectedDashboard.is_active && "bg-green-500 hover:bg-green-500"
+                      )}
+                    >
+                      {selectedDashboard.is_active ? 'Active' : 'Disabled'}
+                    </Badge>
+                  </div>
+                  <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
+                  {selectedDashboard.prospect_bio && (
+                    <div className="mt-2">
+                      <p className={cn(
+                        "text-muted-foreground text-sm whitespace-pre-wrap",
+                        !bioExpanded && "line-clamp-3"
+                      )}>
+                        {selectedDashboard.prospect_bio}
+                      </p>
+                      {selectedDashboard.prospect_bio.length > 150 && (
+                        <button
+                          onClick={() => setBioExpanded(!bioExpanded)}
+                          className="text-primary text-sm font-medium mt-1 hover:underline"
+                        >
+                          {bioExpanded ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="p-6 space-y-6">
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-4">
