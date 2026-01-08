@@ -107,25 +107,32 @@ serve(async (req) => {
       audienceSize ? `- **Estimated Audience Size**: ${audienceSize.toLocaleString()}` : null,
     ].filter(Boolean).join('\n')
 
-    const prompt = `Podcast booking analysis. Be EXTREMELY brief.
+    const prompt = `You are a podcast booking strategist analyzing why a specific podcast would be an excellent fit for a client.
 
-Podcast: ${podcastName}
-${podcastDescription ? `About: ${podcastDescription.substring(0, 200)}` : ''}
-${publisherName ? `Host: ${publisherName}` : ''}
+## PODCAST INFORMATION
+${podcastContext}
 
-Client: ${clientName || 'Client'}
-Bio: ${effectiveBio.substring(0, 200)}
+## CLIENT/PROSPECT INFORMATION
+Name: ${clientName || 'Client'}
+Bio: ${effectiveBio}
 
-Return JSON only:
-{
-  "clean_description": "Max 20 words describing the podcast",
-  "fit_reasons": ["8-12 words max", "8-12 words max", "8-12 words max"],
-  "pitch_angles": [
-    {"title": "5 words max", "description": "15 words max"},
-    {"title": "5 words max", "description": "15 words max"},
-    {"title": "5 words max", "description": "15 words max"}
-  ]
-}`
+## YOUR TASK
+Analyze why this podcast is a great match for this specific client based on their background, expertise, and what they could offer the podcast's audience. Think deeply about:
+
+1. **Audience Alignment**: How does the podcast's audience overlap with people who would benefit from the client's expertise?
+2. **Content Synergy**: What specific topics or themes from the client's background would resonate with this podcast's focus?
+3. **Value Exchange**: What unique insights, stories, or perspectives can the client bring that would genuinely help the podcast's listeners?
+4. **Credibility Match**: How does the client's experience and credentials align with the podcast's typical guest profile?
+
+## RESPONSE FORMAT
+Return a JSON object with:
+- "clean_description": A clear, concise description of what the podcast is about (1-2 sentences, no HTML)
+- "fit_reasons": An array of 3-4 detailed reasons why this is a great fit. Each reason should be 1-2 sentences explaining the specific connection between the client's background and the podcast's audience/topics. Be specific - reference actual elements from the client's bio.
+- "pitch_angles": An array of 3 specific episode topic ideas. Each should have:
+  - "title": A compelling episode title (5-8 words)
+  - "description": A 2-3 sentence pitch explaining what the episode would cover and why it would resonate with listeners. Reference the client's specific expertise.
+
+Return ONLY valid JSON, no markdown code blocks or other text.`
 
     console.log('[Analyze Podcast Fit] Calling Claude API...')
 
@@ -137,8 +144,8 @@ Return JSON only:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 800,
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 2000,
         messages: [
           {
             role: 'user',
