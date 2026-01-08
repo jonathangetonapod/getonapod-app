@@ -1391,7 +1391,7 @@ export default function ProspectView() {
                     {podcast.itunes_rating && (
                       <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
                         <Star className="h-3 w-3 mr-1 fill-yellow-400 text-yellow-400" />
-                        {podcast.itunes_rating.toFixed(1)}
+                        {typeof podcast.itunes_rating === 'number' ? podcast.itunes_rating.toFixed(1) : podcast.itunes_rating}
                       </Badge>
                     )}
                   </div>
