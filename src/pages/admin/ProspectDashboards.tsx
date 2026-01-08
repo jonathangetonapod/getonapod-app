@@ -149,7 +149,38 @@ export default function ProspectDashboards() {
           .order('updated_at', { ascending: false })
 
         if (error) throw error
-        setFeedback(data || [])
+
+        // Enrich feedback with podcast names from Podscan API for entries missing names
+        const feedbackData = data || []
+        const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
+
+        const enrichedFeedback = await Promise.all(
+          feedbackData.map(async (fb) => {
+            if (fb.podcast_name) return fb
+
+            // Fetch podcast name from Podscan
+            try {
+              const response = await fetch(
+                `https://podscan.fm/api/v1/podcasts/${fb.podcast_id}`,
+                {
+                  headers: {
+                    'Authorization': `Bearer ${podscanApiKey}`,
+                  },
+                }
+              )
+              if (response.ok) {
+                const podcastData = await response.json()
+                const podcast = podcastData.podcast || podcastData
+                return { ...fb, podcast_name: podcast.podcast_name || null }
+              }
+            } catch (err) {
+              console.error('Error fetching podcast name:', err)
+            }
+            return fb
+          })
+        )
+
+        setFeedback(enrichedFeedback)
       } catch (error) {
         console.error('Error fetching feedback:', error)
       } finally {
