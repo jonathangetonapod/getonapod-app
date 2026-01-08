@@ -50,6 +50,7 @@ interface ProspectDashboard {
   spreadsheet_id: string | null
   spreadsheet_url: string | null
   is_active: boolean
+  personalized_tagline: string | null
 }
 
 interface PodcastCategory {
@@ -130,6 +131,10 @@ export default function ProspectView() {
   const [analysesPreloaded, setAnalysesPreloaded] = useState(0)
   const [currentlyLoadingPodcasts, setCurrentlyLoadingPodcasts] = useState<Set<string>>(new Set())
   const [preloadingComplete, setPreloadingComplete] = useState(false)
+
+  // Personalized tagline state
+  const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
+  const [isGeneratingTagline, setIsGeneratingTagline] = useState(false)
 
   // Fetch dashboard data
   useEffect(() => {
@@ -218,6 +223,48 @@ export default function ProspectView() {
 
     fetchDashboard()
   }, [slug])
+
+  // Generate personalized tagline if not already set
+  useEffect(() => {
+    if (!dashboard?.prospect_bio || !podcasts.length) return
+    if (dashboard.personalized_tagline) {
+      setPersonalizedTagline(dashboard.personalized_tagline)
+      return
+    }
+    if (isGeneratingTagline || personalizedTagline) return
+
+    const generateTagline = async () => {
+      setIsGeneratingTagline(true)
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-tagline`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            prospectName: dashboard.prospect_name,
+            prospectBio: dashboard.prospect_bio,
+            podcastCount: podcasts.length,
+            dashboardId: dashboard.id,
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setPersonalizedTagline(data.tagline)
+          // Update local dashboard state to prevent regeneration
+          setDashboard(prev => prev ? { ...prev, personalized_tagline: data.tagline } : null)
+        }
+      } catch (err) {
+        console.error('Error generating tagline:', err)
+      } finally {
+        setIsGeneratingTagline(false)
+      }
+    }
+
+    generateTagline()
+  }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline])
 
   // Preload all AI analyses AND demographics in parallel with rate limiting
   useEffect(() => {
@@ -703,7 +750,16 @@ export default function ProspectView() {
                 Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
               </h1>
               <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2">
-                We've curated <span className="font-bold text-foreground">{podcasts.length}</span> podcast{podcasts.length !== 1 ? 's' : ''} perfect for your expertise
+                {isGeneratingTagline ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Personalizing your experience...
+                  </span>
+                ) : personalizedTagline ? (
+                  <span>{personalizedTagline}</span>
+                ) : (
+                  <>We've curated <span className="font-bold text-foreground">{podcasts.length}</span> podcast{podcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
+                )}
               </p>
             </div>
 
