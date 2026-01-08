@@ -355,6 +355,11 @@ export default function ProspectView() {
         colors: ['#8B5CF6', '#3B82F6', '#10B981'],
         zIndex: 9999,
       })
+
+      // Auto-hide the completion banner after 3 seconds
+      setTimeout(() => {
+        setPreloadingComplete(false)
+      }, 3000)
     }
 
     preloadAll()
@@ -665,8 +670,8 @@ export default function ProspectView() {
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16 lg:py-20">
-          <div className="text-center space-y-4 sm:space-y-6">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+          <div className="text-center space-y-3 sm:space-y-4">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg animate-fade-in">
               <Sparkles className="h-4 w-4 text-primary animate-pulse" />
@@ -679,8 +684,8 @@ export default function ProspectView() {
             {dashboard.prospect_image_url && (
               <div className="flex justify-center animate-scale-in">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-lg opacity-50 animate-pulse" />
-                  <div className="relative h-24 w-24 sm:h-32 sm:w-32 lg:h-36 lg:w-36 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl">
+                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-md opacity-50 animate-pulse" />
+                  <div className="relative h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 rounded-full overflow-hidden ring-3 ring-white dark:ring-slate-800 shadow-xl">
                     <img
                       src={dashboard.prospect_image_url}
                       alt={dashboard.prospect_name}
@@ -692,142 +697,100 @@ export default function ProspectView() {
             )}
 
             {/* Greeting */}
-            <div className="space-y-2 animate-fade-in-up">
-              <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight px-2">
+            <div className="space-y-1 animate-fade-in-up">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-2">
                 Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
               </h1>
-              <p className="text-lg sm:text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto px-2">
+              <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2">
                 We've curated <span className="font-bold text-foreground">{podcasts.length}</span> podcast{podcasts.length !== 1 ? 's' : ''} perfect for your expertise
               </p>
             </div>
 
-            {/* Big Stats */}
-            <div className="flex flex-wrap justify-center gap-6 sm:gap-10 pt-4 animate-fade-in-up delay-200">
-              <div className="text-center">
-                <p className="text-3xl sm:text-5xl font-bold bg-gradient-to-r from-green-500 to-emerald-600 bg-clip-text text-transparent">
-                  {formatNumber(totalReach)}+
-                </p>
-                <p className="text-sm sm:text-base text-muted-foreground font-medium">Potential Listeners</p>
+            {/* Compact Stats Row */}
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-green-500" />
+                <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
               </div>
-              <div className="hidden sm:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
-              <div className="text-center">
-                <p className="text-3xl sm:text-5xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">
-                  {avgRating > 0 ? avgRating.toFixed(1) : '4.5'}
-                </p>
-                <p className="text-sm sm:text-base text-muted-foreground font-medium">Avg Rating</p>
+              <div className="flex items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
               </div>
-              <div className="hidden sm:block w-px bg-gradient-to-b from-transparent via-slate-300 to-transparent" />
-              <div className="text-center">
-                <p className="text-3xl sm:text-5xl font-bold bg-gradient-to-r from-blue-500 to-cyan-600 bg-clip-text text-transparent">
-                  {podcasts.length}
-                </p>
-                <p className="text-sm sm:text-base text-muted-foreground font-medium">Curated Podcasts</p>
+              <div className="flex items-center gap-2">
+                <Mic className="h-5 w-5 text-primary" />
+                <span className="text-lg sm:text-xl font-bold">{podcasts.length}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
               </div>
             </div>
 
-            {/* Review Progress */}
-            {(() => {
-              const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status).length
-              const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
-              return (
-                <div className="mt-8 animate-fade-in-up delay-300">
-                  {reviewedCount > 0 ? (
-                    <div className="inline-flex flex-col items-center gap-2 px-6 py-3 rounded-2xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        You've reviewed <span className="text-foreground font-bold">{reviewedCount}</span> of <span className="text-foreground font-bold">{podcasts.length}</span> podcasts
-                        {approvedCount > 0 && (
-                          <span className="text-green-600"> ({approvedCount} approved!)</span>
-                        )}
-                      </p>
-                      <div className="w-48 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+            {/* Action CTA */}
+            <div className="mt-4 animate-fade-in-up delay-300">
+              {(() => {
+                const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status).length
+                const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
+
+                if (reviewedCount > 0) {
+                  return (
+                    <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
+                      <div className="w-32 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500"
                           style={{ width: `${(reviewedCount / podcasts.length) * 100}%` }}
                         />
                       </div>
+                      <span className="text-sm font-medium">
+                        {reviewedCount}/{podcasts.length} reviewed
+                        {approvedCount > 0 && <span className="text-green-600 ml-1">• {approvedCount} approved</span>}
+                      </span>
                     </div>
-                  ) : (
-                    <p className="text-muted-foreground">
-                      Review each podcast below and let us know which ones interest you
-                    </p>
-                  )}
-                </div>
-              )
-            })()}
+                  )
+                }
+                return (
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">Your action needed:</span> Review each podcast and approve the ones you'd like us to pitch
+                  </p>
+                )
+              })()}
+            </div>
 
-            {/* Preloading Status - Engaging UI */}
+            {/* Preloading Status - Compact */}
             {preloadingAnalyses && (
-              <div className="mt-8 animate-fade-in">
-                <div className="inline-flex flex-col items-center gap-4 px-8 py-6 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-xl">
+              <div className="mt-4 animate-fade-in">
+                <div className="inline-flex items-center gap-4 px-5 py-3 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg">
                   {/* Animated AI Icon */}
                   <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-lg opacity-50 animate-pulse" />
-                    <div className="relative h-14 w-14 rounded-full bg-gradient-to-r from-primary to-purple-600 flex items-center justify-center">
-                      <Sparkles className="h-7 w-7 text-white animate-pulse" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-sm opacity-50 animate-pulse" />
+                    <div className="relative h-8 w-8 rounded-full bg-gradient-to-r from-primary to-purple-600 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-white" />
                     </div>
                   </div>
 
-                  {/* Status Text */}
-                  <div className="text-center space-y-1">
-                    <p className="font-semibold text-foreground">AI is preparing your personalized insights</p>
-                    <p className="text-sm text-muted-foreground">
-                      Analyzing why each podcast is perfect for you...
-                    </p>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="w-64 space-y-2">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{analysesPreloaded} of {podcasts.length} analyzed</span>
-                      <span>{Math.round((analysesPreloaded / podcasts.length) * 100)}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  {/* Progress Info */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Preparing AI insights...</span>
+                    <div className="w-24 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500 ease-out"
                         style={{ width: `${(analysesPreloaded / podcasts.length) * 100}%` }}
                       />
                     </div>
+                    <span className="text-xs text-muted-foreground">{analysesPreloaded}/{podcasts.length}</span>
                   </div>
-
-                  {/* Currently Loading Podcasts */}
-                  {currentlyLoadingPodcasts.size > 0 && (
-                    <div className="flex flex-wrap justify-center gap-2 max-w-sm">
-                      {Array.from(currentlyLoadingPodcasts).map(podcastId => {
-                        const podcast = podcasts.find(p => p.podcast_id === podcastId)
-                        if (!podcast) return null
-                        return (
-                          <div
-                            key={podcastId}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-xs font-medium text-primary animate-pulse"
-                          >
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span className="truncate max-w-[120px]">{podcast.podcast_name}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
             )}
 
             {/* Ready to Explore - Shows briefly after preloading completes */}
             {!preloadingAnalyses && preloadingComplete && (
-              <div className="mt-8 animate-scale-in">
-                <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="font-semibold">All insights ready! Click any podcast to explore.</span>
+              <div className="mt-4 animate-scale-in">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg text-sm">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="font-medium">AI insights ready!</span>
                 </div>
               </div>
             )}
-
-            {/* Scroll CTA */}
-            <div className="mt-8 animate-bounce">
-              <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                <p className="text-sm font-medium">Explore your opportunities below</p>
-                <ChevronRight className="h-6 w-6 rotate-90" />
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -1118,20 +1081,6 @@ export default function ProspectView() {
                   )}
                   {/* Overlay gradient */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-
-                  {/* AI Analysis Status Badge */}
-                  {preloadingAnalyses && !analysisCache.has(podcast.podcast_id) && (
-                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1 px-2 py-1 rounded-full bg-primary/90 text-white text-xs font-medium backdrop-blur-sm">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      <span className="hidden sm:inline">Analyzing...</span>
-                    </div>
-                  )}
-                  {analysisCache.has(podcast.podcast_id) && (
-                    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/90 text-white text-xs font-medium backdrop-blur-sm">
-                      <Sparkles className="h-3 w-3" />
-                      <span className="hidden sm:inline">AI Ready</span>
-                    </div>
-                  )}
 
                   {/* Feedback Status Badge */}
                   {feedbackMap.get(podcast.podcast_id)?.status && (
