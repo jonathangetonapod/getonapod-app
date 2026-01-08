@@ -226,8 +226,8 @@ export default function ProspectView() {
       setPreloadingAnalyses(true)
       console.log('[Preload] Starting parallel preload for', podcasts.length, 'podcasts')
 
-      // Controlled concurrency - max 2 AI analyses (Sonnet is rate-limited) and 10 demographics at once
-      const AI_CONCURRENCY = 2
+      // Controlled concurrency - max 3 AI analyses (Sonnet is rate-limited) and 10 demographics at once
+      const AI_CONCURRENCY = 3
       const DEMO_CONCURRENCY = 10
 
       // Helper for controlled parallel execution
@@ -311,9 +311,6 @@ export default function ProspectView() {
         }
 
         setAnalysesPreloaded(prev => prev + 1)
-
-        // Small delay between requests to avoid overwhelming the API
-        await new Promise(r => setTimeout(r, 500))
       }
 
       // Demographics preloader
