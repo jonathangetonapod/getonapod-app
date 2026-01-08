@@ -226,8 +226,8 @@ export default function ProspectView() {
       setPreloadingAnalyses(true)
       console.log('[Preload] Starting parallel preload for', podcasts.length, 'podcasts')
 
-      // Controlled concurrency - max 5 AI analyses and 10 demographics at once
-      const AI_CONCURRENCY = 5
+      // Controlled concurrency - max 2 AI analyses (Sonnet is rate-limited) and 10 demographics at once
+      const AI_CONCURRENCY = 2
       const DEMO_CONCURRENCY = 10
 
       // Helper for controlled parallel execution
@@ -257,40 +257,63 @@ export default function ProspectView() {
         }
 
         console.log('[Preload] 🤖 Fetching AI analysis:', podcast.podcast_name)
-        try {
-          const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': SUPABASE_ANON_KEY,
-            },
-            body: JSON.stringify({
-              podcastId: podcast.podcast_id,
-              podcastName: podcast.podcast_name,
-              podcastDescription: podcast.podcast_description,
-              podcastUrl: podcast.podcast_url,
-              publisherName: podcast.publisher_name,
-              itunesRating: podcast.itunes_rating,
-              episodeCount: podcast.episode_count,
-              audienceSize: podcast.audience_size,
-              clientId: dashboard.id,
-              clientName: dashboard.prospect_name,
-              clientBio: dashboard.prospect_bio,
-            }),
-          })
 
-          if (response.ok) {
-            const data = await response.json()
-            console.log('[Preload] ✅ AI analysis cached:', podcast.podcast_name)
-            setAnalysisCache(prev => new Map(prev).set(podcast.podcast_id, data.analysis))
-          } else {
-            console.error('[Preload] ❌ AI analysis failed:', podcast.podcast_name, response.status)
+        // Retry logic for transient errors (503, etc.)
+        const MAX_RETRIES = 3
+        let lastError: unknown = null
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_ANON_KEY,
+              },
+              body: JSON.stringify({
+                podcastId: podcast.podcast_id,
+                podcastName: podcast.podcast_name,
+                podcastDescription: podcast.podcast_description,
+                podcastUrl: podcast.podcast_url,
+                publisherName: podcast.publisher_name,
+                itunesRating: podcast.itunes_rating,
+                episodeCount: podcast.episode_count,
+                audienceSize: podcast.audience_size,
+                clientId: dashboard.id,
+                clientName: dashboard.prospect_name,
+                clientBio: dashboard.prospect_bio,
+              }),
+            })
+
+            if (response.ok) {
+              const data = await response.json()
+              console.log('[Preload] ✅ AI analysis cached:', podcast.podcast_name)
+              setAnalysisCache(prev => new Map(prev).set(podcast.podcast_id, data.analysis))
+              break // Success, exit retry loop
+            } else if (response.status === 503 && attempt < MAX_RETRIES) {
+              console.log(`[Preload] ⏳ AI analysis 503, retry ${attempt}/${MAX_RETRIES}:`, podcast.podcast_name)
+              await new Promise(r => setTimeout(r, 2000 * attempt)) // Exponential backoff
+            } else {
+              console.error('[Preload] ❌ AI analysis failed:', podcast.podcast_name, response.status)
+              break
+            }
+          } catch (err) {
+            lastError = err
+            if (attempt < MAX_RETRIES) {
+              console.log(`[Preload] ⏳ Network error, retry ${attempt}/${MAX_RETRIES}:`, podcast.podcast_name)
+              await new Promise(r => setTimeout(r, 2000 * attempt))
+            }
           }
-        } catch (err) {
-          console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, err)
+        }
+
+        if (lastError && !analysisCache.has(podcast.podcast_id)) {
+          console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, lastError)
         }
 
         setAnalysesPreloaded(prev => prev + 1)
+
+        // Small delay between requests to avoid overwhelming the API
+        await new Promise(r => setTimeout(r, 500))
       }
 
       // Demographics preloader
