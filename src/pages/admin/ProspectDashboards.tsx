@@ -125,6 +125,7 @@ export default function ProspectDashboards() {
   // Feedback state
   const [feedback, setFeedback] = useState<PodcastFeedback[]>([])
   const [loadingFeedback, setLoadingFeedback] = useState(false)
+  const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
 
   const appUrl = window.location.origin
 
@@ -137,8 +138,10 @@ export default function ProspectDashboards() {
     const fetchFeedback = async () => {
       if (!selectedDashboard) {
         setFeedback([])
+        setExpandedFeedbackSection(null)
         return
       }
+      setExpandedFeedbackSection(null)
 
       setLoadingFeedback(true)
       try {
@@ -1041,9 +1044,17 @@ export default function ProspectDashboards() {
                       </p>
                     ) : (
                       <>
-                        {/* Feedback Summary */}
+                        {/* Feedback Summary - Clickable */}
                         <div className="grid grid-cols-3 gap-2">
-                          <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 text-center">
+                          <button
+                            onClick={() => setExpandedFeedbackSection(expandedFeedbackSection === 'approved' ? null : 'approved')}
+                            className={cn(
+                              "p-3 rounded-lg text-center transition-all",
+                              expandedFeedbackSection === 'approved'
+                                ? "bg-green-100 dark:bg-green-900/50 ring-2 ring-green-500"
+                                : "bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-900/40"
+                            )}
+                          >
                             <div className="flex items-center justify-center gap-1 text-green-600 dark:text-green-400 mb-1">
                               <ThumbsUp className="h-4 w-4" />
                             </div>
@@ -1051,8 +1062,16 @@ export default function ProspectDashboards() {
                               {feedback.filter(f => f.status === 'approved').length}
                             </p>
                             <p className="text-xs text-green-600 dark:text-green-400">Approved</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 text-center">
+                          </button>
+                          <button
+                            onClick={() => setExpandedFeedbackSection(expandedFeedbackSection === 'rejected' ? null : 'rejected')}
+                            className={cn(
+                              "p-3 rounded-lg text-center transition-all",
+                              expandedFeedbackSection === 'rejected'
+                                ? "bg-red-100 dark:bg-red-900/50 ring-2 ring-red-500"
+                                : "bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/40"
+                            )}
+                          >
                             <div className="flex items-center justify-center gap-1 text-red-600 dark:text-red-400 mb-1">
                               <ThumbsDown className="h-4 w-4" />
                             </div>
@@ -1060,8 +1079,16 @@ export default function ProspectDashboards() {
                               {feedback.filter(f => f.status === 'rejected').length}
                             </p>
                             <p className="text-xs text-red-600 dark:text-red-400">Rejected</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 text-center">
+                          </button>
+                          <button
+                            onClick={() => setExpandedFeedbackSection(expandedFeedbackSection === 'notes' ? null : 'notes')}
+                            className={cn(
+                              "p-3 rounded-lg text-center transition-all",
+                              expandedFeedbackSection === 'notes'
+                                ? "bg-slate-200 dark:bg-slate-700 ring-2 ring-slate-500"
+                                : "bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                            )}
+                          >
                             <div className="flex items-center justify-center gap-1 text-slate-600 dark:text-slate-400 mb-1">
                               <MessageSquare className="h-4 w-4" />
                             </div>
@@ -1069,16 +1096,80 @@ export default function ProspectDashboards() {
                               {feedback.filter(f => f.notes).length}
                             </p>
                             <p className="text-xs text-slate-600 dark:text-slate-400">With Notes</p>
-                          </div>
+                          </button>
                         </div>
 
+                        {/* Approved Podcasts List */}
+                        {expandedFeedbackSection === 'approved' && feedback.filter(f => f.status === 'approved').length > 0 && (
+                          <div className="space-y-2 mt-4">
+                            <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">
+                              Approved Podcasts
+                            </p>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {feedback.filter(f => f.status === 'approved').map((fb) => (
+                                <div
+                                  key={fb.id}
+                                  className="p-3 rounded-lg border bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                                    <span className="font-medium text-sm truncate">
+                                      {fb.podcast_name || 'Unknown Podcast'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground font-mono">
+                                    ID: {fb.podcast_id}
+                                  </p>
+                                  {fb.notes && (
+                                    <p className="text-xs text-muted-foreground mt-1 italic">
+                                      "{fb.notes}"
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Rejected Podcasts List */}
+                        {expandedFeedbackSection === 'rejected' && feedback.filter(f => f.status === 'rejected').length > 0 && (
+                          <div className="space-y-2 mt-4">
+                            <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
+                              Rejected Podcasts
+                            </p>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {feedback.filter(f => f.status === 'rejected').map((fb) => (
+                                <div
+                                  key={fb.id}
+                                  className="p-3 rounded-lg border bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                                    <span className="font-medium text-sm truncate">
+                                      {fb.podcast_name || 'Unknown Podcast'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground font-mono">
+                                    ID: {fb.podcast_id}
+                                  </p>
+                                  {fb.notes && (
+                                    <p className="text-xs text-muted-foreground mt-1 italic">
+                                      "{fb.notes}"
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Feedback with Notes */}
-                        {feedback.filter(f => f.notes).length > 0 && (
+                        {expandedFeedbackSection === 'notes' && feedback.filter(f => f.notes).length > 0 && (
                           <div className="space-y-2 mt-4">
                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                               Notes from Prospect
                             </p>
-                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
                               {feedback.filter(f => f.notes).map((fb) => (
                                 <div
                                   key={fb.id}
