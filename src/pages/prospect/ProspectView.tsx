@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import confetti from 'canvas-confetti'
@@ -22,6 +24,7 @@ import {
   Radio,
   X,
   ChevronRight,
+  ChevronLeft,
   Headphones,
   Zap,
   Globe,
@@ -42,7 +45,11 @@ import {
   Smartphone,
   ShoppingBag,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  HelpCircle,
+  MousePointerClick,
+  ListChecks,
+  Rocket
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -142,6 +149,10 @@ export default function ProspectView() {
   // Personalized tagline state
   const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
   const [isGeneratingTagline, setIsGeneratingTagline] = useState(false)
+
+  // Tutorial modal state
+  const [showTutorial, setShowTutorial] = useState(false)
+  const [tutorialStep, setTutorialStep] = useState(0)
 
   // Fetch dashboard data
   useEffect(() => {
@@ -272,6 +283,29 @@ export default function ProspectView() {
 
     generateTagline()
   }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline])
+
+  // Show tutorial on first visit
+  useEffect(() => {
+    if (!dashboard || loading) return
+    const tutorialKey = `prospect-tutorial-seen-${dashboard.id}`
+    const hasSeenTutorial = localStorage.getItem(tutorialKey)
+    if (!hasSeenTutorial) {
+      // Small delay to let the page render first
+      const timer = setTimeout(() => {
+        setShowTutorial(true)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [dashboard, loading])
+
+  // Mark tutorial as seen when closed
+  const closeTutorial = () => {
+    setShowTutorial(false)
+    setTutorialStep(0)
+    if (dashboard) {
+      localStorage.setItem(`prospect-tutorial-seen-${dashboard.id}`, 'true')
+    }
+  }
 
   // Preload all AI analyses AND demographics in parallel with rate limiting
   useEffect(() => {
@@ -1884,6 +1918,182 @@ export default function ProspectView() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Help Button - Fixed position */}
+      <button
+        onClick={() => {
+          setTutorialStep(0)
+          setShowTutorial(true)
+        }}
+        className="fixed bottom-6 right-6 z-40 h-12 w-12 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-all hover:scale-105 flex items-center justify-center"
+        title="How to use this dashboard"
+      >
+        <HelpCircle className="h-6 w-6" />
+      </button>
+
+      {/* Tutorial Stepper Modal */}
+      <Dialog open={showTutorial} onOpenChange={(open) => !open && closeTutorial()}>
+        <DialogContent className="sm:max-w-lg p-0 overflow-hidden">
+          <VisuallyHidden>
+            <DialogTitle>How to Use Your Dashboard</DialogTitle>
+          </VisuallyHidden>
+
+          {/* Step Content */}
+          <div className="relative">
+            {/* Step 0: Welcome */}
+            {tutorialStep === 0 && (
+              <div className="p-6 sm:p-8 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
+                  <Sparkles className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Welcome to Your Dashboard!</h2>
+                <p className="text-muted-foreground mb-6">
+                  We've hand-picked podcasts that are a perfect fit for your expertise and goals. Let us show you how to make the most of it.
+                </p>
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span>Takes about 1 minute</span>
+                </div>
+              </div>
+            )}
+
+            {/* Step 1: Browse Podcasts */}
+            {tutorialStep === 1 && (
+              <div className="p-6 sm:p-8 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                  <Search className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Browse Your Podcasts</h2>
+                <p className="text-muted-foreground mb-4">
+                  Scroll through your curated list of podcasts. Each card shows key info like audience size, ratings, and categories.
+                </p>
+                <div className="bg-muted/50 rounded-xl p-4 text-left space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Search className="h-4 w-4 text-primary" />
+                    <span>Use the search bar to find specific podcasts</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Tag className="h-4 w-4 text-primary" />
+                    <span>Filter by category to narrow your selection</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: View AI Insights */}
+            {tutorialStep === 2 && (
+              <div className="p-6 sm:p-8 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <MousePointerClick className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Tap for AI Insights</h2>
+                <p className="text-muted-foreground mb-4">
+                  Click on any podcast card to open a detailed side panel with AI-powered analysis.
+                </p>
+                <div className="bg-muted/50 rounded-xl p-4 text-left space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Target className="h-4 w-4 text-green-500" />
+                    <span><strong>Fit Score</strong> — How well you match this show</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Zap className="h-4 w-4 text-amber-500" />
+                    <span><strong>Pitch Angles</strong> — Topics to discuss</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-blue-500" />
+                    <span><strong>Audience Insights</strong> — Who you'll reach</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Approve or Reject */}
+            {tutorialStep === 3 && (
+              <div className="p-6 sm:p-8 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                  <ListChecks className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Share Your Feedback</h2>
+                <p className="text-muted-foreground mb-4">
+                  For each podcast, let us know if it's a good fit for you.
+                </p>
+                <div className="flex justify-center gap-4 mb-4">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                    <ThumbsUp className="h-5 w-5" />
+                    <span className="font-medium">Approve</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                    <ThumbsDown className="h-5 w-5" />
+                    <span className="font-medium">Reject</span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  You can also add notes to explain your preference — this helps us find even better matches!
+                </p>
+              </div>
+            )}
+
+            {/* Step 4: What's Next */}
+            {tutorialStep === 4 && (
+              <div className="p-6 sm:p-8 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                  <Rocket className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">We'll Take It From Here!</h2>
+                <p className="text-muted-foreground mb-4">
+                  Once you've reviewed your podcasts, our team will start crafting personalized pitches for your approved shows.
+                </p>
+                <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-xl p-4 border border-primary/20">
+                  <p className="text-sm font-medium text-primary">
+                    Pro Tip: The more podcasts you review, the faster we can get you booked!
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Progress Dots */}
+            <div className="flex justify-center gap-2 pb-4">
+              {[0, 1, 2, 3, 4].map((step) => (
+                <button
+                  key={step}
+                  onClick={() => setTutorialStep(step)}
+                  className={cn(
+                    "w-2 h-2 rounded-full transition-all",
+                    tutorialStep === step
+                      ? "bg-primary w-6"
+                      : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                  )}
+                />
+              ))}
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex items-center justify-between p-4 border-t bg-muted/30">
+              <Button
+                variant="ghost"
+                onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
+                disabled={tutorialStep === 0}
+                className="gap-1"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Button>
+
+              {tutorialStep < 4 ? (
+                <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="gap-1">
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button onClick={closeTutorial} className="gap-1 bg-green-600 hover:bg-green-700">
+                  Get Started
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
