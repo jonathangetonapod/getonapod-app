@@ -1725,7 +1725,7 @@ export default function PodcastFinder() {
                   </Button>
                   <Button
                     onClick={handleScoreAllResults}
-                    disabled={queries.some(q => q.isScoring) || queries.every(q => q.results.length === 0)}
+                    disabled={queries.some(q => q.isScoring) || queries.every(q => q.results.length === 0) || !(isProspectMode ? prospectBio : selectedClientData?.bio)}
                     variant="default"
                   >
                     <Star className="h-4 w-4 mr-2" />
@@ -1803,7 +1803,7 @@ export default function PodcastFinder() {
                       <>
                         <Button
                           onClick={() => handleScanCompatibility(query.id)}
-                          disabled={query.isScoring}
+                          disabled={query.isScoring || !(isProspectMode ? prospectBio : selectedClientData?.bio)}
                           variant="secondary"
                           className="flex-1 min-w-[160px]"
                         >
@@ -2194,7 +2194,7 @@ export default function PodcastFinder() {
                       </Button>
                       <Button
                         onClick={handleScanChartCompatibility}
-                        disabled={isChartScoring || !selectedClientData?.bio}
+                        disabled={isChartScoring || !(isProspectMode ? prospectBio : selectedClientData?.bio)}
                         variant="secondary"
                       >
                         {isChartScoring ? (
