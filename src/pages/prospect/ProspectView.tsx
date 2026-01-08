@@ -128,9 +128,6 @@ export default function ProspectView() {
 
   // Preloading state
   const [preloadingAnalyses, setPreloadingAnalyses] = useState(false)
-  const [analysesPreloaded, setAnalysesPreloaded] = useState(0)
-  const [currentlyLoadingPodcasts, setCurrentlyLoadingPodcasts] = useState<Set<string>>(new Set())
-  const [preloadingComplete, setPreloadingComplete] = useState(false)
 
   // Personalized tagline state
   const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
@@ -301,14 +298,10 @@ export default function ProspectView() {
       const preloadAnalysis = async (podcast: typeof podcasts[0]) => {
         if (analysisCache.has(podcast.podcast_id)) {
           console.log('[Preload] AI analysis already cached:', podcast.podcast_name)
-          setAnalysesPreloaded(prev => prev + 1)
           return
         }
 
         console.log('[Preload] 🤖 Fetching AI analysis:', podcast.podcast_name)
-
-        // Track currently loading
-        setCurrentlyLoadingPodcasts(prev => new Set(prev).add(podcast.podcast_id))
 
         // Retry logic for transient errors (503, etc.)
         const MAX_RETRIES = 3
@@ -361,15 +354,6 @@ export default function ProspectView() {
         if (lastError && !analysisCache.has(podcast.podcast_id)) {
           console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, lastError)
         }
-
-        // Remove from currently loading
-        setCurrentlyLoadingPodcasts(prev => {
-          const next = new Set(prev)
-          next.delete(podcast.podcast_id)
-          return next
-        })
-
-        setAnalysesPreloaded(prev => prev + 1)
       }
 
       // Demographics preloader
@@ -392,21 +376,6 @@ export default function ProspectView() {
 
       console.log('[Preload] Finished parallel preload')
       setPreloadingAnalyses(false)
-      setPreloadingComplete(true)
-
-      // Mini celebration when preloading completes
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.3 },
-        colors: ['#8B5CF6', '#3B82F6', '#10B981'],
-        zIndex: 9999,
-      })
-
-      // Auto-hide the completion banner after 3 seconds
-      setTimeout(() => {
-        setPreloadingComplete(false)
-      }, 3000)
     }
 
     preloadAll()
@@ -749,13 +718,8 @@ export default function ProspectView() {
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-2">
                 Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
               </h1>
-              <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2">
-                {isGeneratingTagline ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Personalizing your experience...
-                  </span>
-                ) : personalizedTagline ? (
+              <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2 transition-opacity duration-300">
+                {personalizedTagline ? (
                   <span>{personalizedTagline}</span>
                 ) : (
                   <>We've curated <span className="font-bold text-foreground">{podcasts.length}</span> podcast{podcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
@@ -812,42 +776,6 @@ export default function ProspectView() {
               })()}
             </div>
 
-            {/* Preloading Status - Compact */}
-            {preloadingAnalyses && (
-              <div className="mt-4 animate-fade-in">
-                <div className="inline-flex items-center gap-4 px-5 py-3 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg">
-                  {/* Animated AI Icon */}
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-sm opacity-50 animate-pulse" />
-                    <div className="relative h-8 w-8 rounded-full bg-gradient-to-r from-primary to-purple-600 flex items-center justify-center">
-                      <Sparkles className="h-4 w-4 text-white" />
-                    </div>
-                  </div>
-
-                  {/* Progress Info */}
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium">Preparing AI insights...</span>
-                    <div className="w-24 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${(analysesPreloaded / podcasts.length) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground">{analysesPreloaded}/{podcasts.length}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Ready to Explore - Shows briefly after preloading completes */}
-            {!preloadingAnalyses && preloadingComplete && (
-              <div className="mt-4 animate-scale-in">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg text-sm">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span className="font-medium">AI insights ready!</span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
