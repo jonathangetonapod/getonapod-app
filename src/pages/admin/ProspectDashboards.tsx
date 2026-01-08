@@ -126,8 +126,11 @@ export default function ProspectDashboards() {
   const [feedback, setFeedback] = useState<PodcastFeedback[]>([])
   const [loadingFeedback, setLoadingFeedback] = useState(false)
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
+  const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
 
   const appUrl = window.location.origin
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
   useEffect(() => {
     fetchDashboards()
@@ -269,6 +272,51 @@ export default function ProspectDashboards() {
       : `${appUrl}/prospect/${slug}`
     navigator.clipboard.writeText(url)
     toast.success(includeTour ? 'Link with welcome tour copied!' : 'Dashboard link copied!')
+  }
+
+  const deletePodcastFromSheet = async (podcastId: string, podcastName: string | null) => {
+    if (!selectedDashboard?.spreadsheet_id) {
+      toast.error('No spreadsheet linked to this dashboard')
+      return
+    }
+
+    setDeletingPodcastId(podcastId)
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          spreadsheetId: selectedDashboard.spreadsheet_id,
+          podcastId: podcastId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete podcast')
+      }
+
+      // Also delete the feedback record
+      await supabase
+        .from('prospect_podcast_feedback')
+        .delete()
+        .eq('prospect_dashboard_id', selectedDashboard.id)
+        .eq('podcast_id', podcastId)
+
+      // Remove from local feedback state
+      setFeedback(prev => prev.filter(f => f.podcast_id !== podcastId))
+
+      toast.success(`Deleted "${podcastName || podcastId}" from sheet`)
+    } catch (error) {
+      console.error('Error deleting podcast:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to delete podcast')
+    } finally {
+      setDeletingPodcastId(null)
+    }
   }
 
   // Sync editImageUrl, editSpreadsheetUrl, and reset bioExpanded when selectedDashboard changes
@@ -1143,11 +1191,27 @@ export default function ProspectDashboards() {
                                   key={fb.id}
                                   className="p-3 rounded-lg border bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
                                 >
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                                    <span className="font-medium text-sm truncate">
-                                      {fb.podcast_name || 'Unknown Podcast'}
-                                    </span>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                                      <span className="font-medium text-sm truncate">
+                                        {fb.podcast_name || 'Unknown Podcast'}
+                                      </span>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
+                                      onClick={() => deletePodcastFromSheet(fb.podcast_id, fb.podcast_name)}
+                                      disabled={deletingPodcastId === fb.podcast_id}
+                                    >
+                                      {deletingPodcastId === fb.podcast_id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                      <span className="ml-1 text-xs">Delete</span>
+                                    </Button>
                                   </div>
                                   <p className="text-xs text-muted-foreground font-mono">
                                     ID: {fb.podcast_id}
