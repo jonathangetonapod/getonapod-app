@@ -27,9 +27,14 @@ import {
   BarChart3,
   ArrowRight,
   Search,
-  Tag
+  Tag,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquare,
+  Check
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
 
@@ -73,6 +78,18 @@ interface PodcastFitAnalysis {
   pitch_angles: PitchAngle[]
 }
 
+interface PodcastFeedback {
+  id: string
+  prospect_dashboard_id: string
+  podcast_id: string
+  status: 'approved' | 'rejected' | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+type FeedbackFilter = 'all' | 'approved' | 'rejected' | 'not_reviewed'
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -85,6 +102,7 @@ export default function ProspectView() {
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -92,6 +110,11 @@ export default function ProspectView() {
   const [fitAnalysis, setFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
+
+  // Feedback state
+  const [feedbackMap, setFeedbackMap] = useState<Map<string, PodcastFeedback>>(new Map())
+  const [currentNotes, setCurrentNotes] = useState('')
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false)
 
   // Cache for analyses
   const [analysisCache, setAnalysisCache] = useState<Map<string, PodcastFitAnalysis>>(new Map())
@@ -158,6 +181,20 @@ export default function ProspectView() {
         } else {
           // No spreadsheet linked yet - show empty state
           setPodcasts([])
+        }
+
+        // Fetch existing feedback for this prospect
+        const { data: feedbackData } = await supabase
+          .from('prospect_podcast_feedback')
+          .select('*')
+          .eq('prospect_dashboard_id', dashboardData.id)
+
+        if (feedbackData && feedbackData.length > 0) {
+          const map = new Map<string, PodcastFeedback>()
+          feedbackData.forEach((fb: PodcastFeedback) => {
+            map.set(fb.podcast_id, fb)
+          })
+          setFeedbackMap(map)
         }
       } catch (err) {
         console.error('Error fetching dashboard:', err)
@@ -246,6 +283,52 @@ export default function ProspectView() {
     fetchDemographics()
   }, [selectedPodcast])
 
+  // Load existing notes when podcast is selected
+  useEffect(() => {
+    if (selectedPodcast) {
+      const existing = feedbackMap.get(selectedPodcast.podcast_id)
+      setCurrentNotes(existing?.notes || '')
+    } else {
+      setCurrentNotes('')
+    }
+  }, [selectedPodcast, feedbackMap])
+
+  // Save feedback (approve/reject/notes)
+  const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string) => {
+    if (!dashboard) return
+
+    setIsSavingFeedback(true)
+    try {
+      const feedbackData = {
+        prospect_dashboard_id: dashboard.id,
+        podcast_id: podcastId,
+        status,
+        notes: notes !== undefined ? notes : (currentNotes || null),
+      }
+
+      const { data, error } = await supabase
+        .from('prospect_podcast_feedback')
+        .upsert(feedbackData, {
+          onConflict: 'prospect_dashboard_id,podcast_id',
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Update local state
+      setFeedbackMap(prev => {
+        const newMap = new Map(prev)
+        newMap.set(podcastId, data)
+        return newMap
+      })
+    } catch (err) {
+      console.error('Error saving feedback:', err)
+    } finally {
+      setIsSavingFeedback(false)
+    }
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -326,7 +409,20 @@ export default function ProspectView() {
   }
   allCategories.sort((a, b) => a.category_name.localeCompare(b.category_name))
 
-  // Filter podcasts based on search query and selected categories
+  // Count feedback stats
+  const feedbackStats = {
+    approved: 0,
+    rejected: 0,
+    notReviewed: 0
+  }
+  podcasts.forEach(podcast => {
+    const feedback = feedbackMap.get(podcast.podcast_id)
+    if (feedback?.status === 'approved') feedbackStats.approved++
+    else if (feedback?.status === 'rejected') feedbackStats.rejected++
+    else feedbackStats.notReviewed++
+  })
+
+  // Filter podcasts based on search query, categories, and feedback status
   const filteredPodcasts = podcasts.filter(podcast => {
     // Search filter
     if (searchQuery.trim()) {
@@ -346,6 +442,14 @@ export default function ProspectView() {
       const podcastCatIds = podcastCats.map(c => c.category_id)
       const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
       if (!hasMatch) return false
+    }
+
+    // Feedback status filter
+    if (feedbackFilter !== 'all') {
+      const feedback = feedbackMap.get(podcast.podcast_id)
+      if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
+      if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
+      if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
     }
 
     return true
@@ -531,6 +635,62 @@ export default function ProspectView() {
           </div>
         </div>
 
+        {/* Feedback Status Filter */}
+        <div className="mb-4 sm:mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <ThumbsUp className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Filter by status</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setFeedbackFilter('all')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
+                feedbackFilter === 'all'
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
+              )}
+            >
+              All ({podcasts.length})
+            </button>
+            <button
+              onClick={() => setFeedbackFilter('approved')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border flex items-center gap-1.5",
+                feedbackFilter === 'approved'
+                  ? "bg-green-600 text-white border-green-600"
+                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-green-500 hover:text-green-600"
+              )}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Approved ({feedbackStats.approved})
+            </button>
+            <button
+              onClick={() => setFeedbackFilter('rejected')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border flex items-center gap-1.5",
+                feedbackFilter === 'rejected'
+                  ? "bg-red-600 text-white border-red-600"
+                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-red-500 hover:text-red-600"
+              )}
+            >
+              <X className="h-3.5 w-3.5" />
+              Rejected ({feedbackStats.rejected})
+            </button>
+            <button
+              onClick={() => setFeedbackFilter('not_reviewed')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
+                feedbackFilter === 'not_reviewed'
+                  ? "bg-slate-600 text-white border-slate-600"
+                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-slate-500"
+              )}
+            >
+              To Review ({feedbackStats.notReviewed})
+            </button>
+          </div>
+        </div>
+
         {/* Category Filter Chips */}
         {allCategories.length > 0 && (
           <div className="mb-4 sm:mb-6">
@@ -642,6 +802,28 @@ export default function ProspectView() {
                   )}
                   {/* Overlay gradient */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                  {/* Feedback Status Badge */}
+                  {feedbackMap.get(podcast.podcast_id)?.status && (
+                    <div className={cn(
+                      "absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm",
+                      feedbackMap.get(podcast.podcast_id)?.status === 'approved'
+                        ? "bg-green-500/90 text-white"
+                        : "bg-red-500/90 text-white"
+                    )}>
+                      {feedbackMap.get(podcast.podcast_id)?.status === 'approved' ? (
+                        <>
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span className="hidden sm:inline">Approved</span>
+                        </>
+                      ) : (
+                        <>
+                          <X className="h-3 w-3" />
+                          <span className="hidden sm:inline">Rejected</span>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Badges on image */}
                   <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center gap-1.5 sm:gap-2">
@@ -972,6 +1154,108 @@ export default function ProspectView() {
                       )}
                     </div>
                   )}
+
+                  {/* Feedback Section */}
+                  <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                    <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <MessageSquare className="h-3 w-3" />
+                      Your Feedback
+                    </h3>
+
+                    {/* Current Status Display */}
+                    {(() => {
+                      const feedback = feedbackMap.get(selectedPodcast.podcast_id)
+                      if (feedback?.status) {
+                        return (
+                          <div className={cn(
+                            "mb-4 p-3 rounded-lg border",
+                            feedback.status === 'approved'
+                              ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
+                              : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                          )}>
+                            <div className="flex items-center gap-2">
+                              {feedback.status === 'approved' ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              ) : (
+                                <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+                              )}
+                              <span className={cn(
+                                "text-sm font-medium",
+                                feedback.status === 'approved'
+                                  ? "text-green-700 dark:text-green-300"
+                                  : "text-red-700 dark:text-red-300"
+                              )}>
+                                {feedback.status === 'approved' ? 'You approved this podcast' : 'You rejected this podcast'}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
+
+                    {/* Approve/Reject Buttons */}
+                    <div className="flex gap-3 mb-4">
+                      <Button
+                        variant={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved' ? 'default' : 'outline'}
+                        className={cn(
+                          "flex-1 gap-2",
+                          feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
+                            ? "bg-green-600 hover:bg-green-700 text-white"
+                            : "hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30"
+                        )}
+                        onClick={() => saveFeedback(selectedPodcast.podcast_id, 'approved')}
+                        disabled={isSavingFeedback}
+                      >
+                        <ThumbsUp className="h-4 w-4" />
+                        Approve
+                      </Button>
+                      <Button
+                        variant={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected' ? 'default' : 'outline'}
+                        className={cn(
+                          "flex-1 gap-2",
+                          feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected'
+                            ? "bg-red-600 hover:bg-red-700 text-white"
+                            : "hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/30"
+                        )}
+                        onClick={() => saveFeedback(selectedPodcast.podcast_id, 'rejected')}
+                        disabled={isSavingFeedback}
+                      >
+                        <ThumbsDown className="h-4 w-4" />
+                        Reject
+                      </Button>
+                    </div>
+
+                    {/* Notes Section */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Add a note (optional)
+                      </label>
+                      <Textarea
+                        placeholder="Any thoughts or questions about this podcast..."
+                        value={currentNotes}
+                        onChange={(e) => setCurrentNotes(e.target.value)}
+                        className="min-h-[80px] resize-none text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2"
+                        onClick={() => {
+                          const existing = feedbackMap.get(selectedPodcast.podcast_id)
+                          saveFeedback(selectedPodcast.podcast_id, existing?.status || null, currentNotes)
+                        }}
+                        disabled={isSavingFeedback || currentNotes === (feedbackMap.get(selectedPodcast.podcast_id)?.notes || '')}
+                      >
+                        {isSavingFeedback ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                        Save Note
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </ScrollArea>
 

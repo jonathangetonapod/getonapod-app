@@ -62,7 +62,10 @@ import {
   Loader2,
   Upload,
   Plus,
-  Pencil
+  Pencil,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquare
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -79,6 +82,16 @@ interface ProspectDashboard {
   is_active: boolean
   view_count: number
   last_viewed_at: string | null
+}
+
+interface PodcastFeedback {
+  id: string
+  prospect_dashboard_id: string
+  podcast_id: string
+  status: 'approved' | 'rejected' | null
+  notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 export default function ProspectDashboards() {
@@ -108,11 +121,43 @@ export default function ProspectDashboards() {
   const [editSpreadsheetUrl, setEditSpreadsheetUrl] = useState('')
   const [savingSpreadsheet, setSavingSpreadsheet] = useState(false)
 
+  // Feedback state
+  const [feedback, setFeedback] = useState<PodcastFeedback[]>([])
+  const [loadingFeedback, setLoadingFeedback] = useState(false)
+
   const appUrl = window.location.origin
 
   useEffect(() => {
     fetchDashboards()
   }, [])
+
+  // Fetch feedback when a dashboard is selected
+  useEffect(() => {
+    const fetchFeedback = async () => {
+      if (!selectedDashboard) {
+        setFeedback([])
+        return
+      }
+
+      setLoadingFeedback(true)
+      try {
+        const { data, error } = await supabase
+          .from('prospect_podcast_feedback')
+          .select('*')
+          .eq('prospect_dashboard_id', selectedDashboard.id)
+          .order('updated_at', { ascending: false })
+
+        if (error) throw error
+        setFeedback(data || [])
+      } catch (error) {
+        console.error('Error fetching feedback:', error)
+      } finally {
+        setLoadingFeedback(false)
+      }
+    }
+
+    fetchFeedback()
+  }, [selectedDashboard])
 
   const fetchDashboards = async () => {
     setLoading(true)
@@ -929,6 +974,95 @@ export default function ProspectDashboards() {
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Prospect Feedback */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      Prospect Feedback
+                    </h3>
+
+                    {loadingFeedback ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : feedback.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No feedback from prospect yet
+                      </p>
+                    ) : (
+                      <>
+                        {/* Feedback Summary */}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 text-center">
+                            <div className="flex items-center justify-center gap-1 text-green-600 dark:text-green-400 mb-1">
+                              <ThumbsUp className="h-4 w-4" />
+                            </div>
+                            <p className="text-lg font-bold text-green-700 dark:text-green-300">
+                              {feedback.filter(f => f.status === 'approved').length}
+                            </p>
+                            <p className="text-xs text-green-600 dark:text-green-400">Approved</p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 text-center">
+                            <div className="flex items-center justify-center gap-1 text-red-600 dark:text-red-400 mb-1">
+                              <ThumbsDown className="h-4 w-4" />
+                            </div>
+                            <p className="text-lg font-bold text-red-700 dark:text-red-300">
+                              {feedback.filter(f => f.status === 'rejected').length}
+                            </p>
+                            <p className="text-xs text-red-600 dark:text-red-400">Rejected</p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 text-center">
+                            <div className="flex items-center justify-center gap-1 text-slate-600 dark:text-slate-400 mb-1">
+                              <MessageSquare className="h-4 w-4" />
+                            </div>
+                            <p className="text-lg font-bold text-slate-700 dark:text-slate-300">
+                              {feedback.filter(f => f.notes).length}
+                            </p>
+                            <p className="text-xs text-slate-600 dark:text-slate-400">With Notes</p>
+                          </div>
+                        </div>
+
+                        {/* Feedback with Notes */}
+                        {feedback.filter(f => f.notes).length > 0 && (
+                          <div className="space-y-2 mt-4">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Notes from Prospect
+                            </p>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {feedback.filter(f => f.notes).map((fb) => (
+                                <div
+                                  key={fb.id}
+                                  className={cn(
+                                    "p-3 rounded-lg border text-sm",
+                                    fb.status === 'approved'
+                                      ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-800"
+                                      : fb.status === 'rejected'
+                                      ? "bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                                      : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2 mb-1">
+                                    {fb.status === 'approved' ? (
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                    ) : fb.status === 'rejected' ? (
+                                      <XCircle className="h-3.5 w-3.5 text-red-600" />
+                                    ) : null}
+                                    <span className="text-xs text-muted-foreground">
+                                      Podcast: {fb.podcast_id.slice(0, 8)}...
+                                    </span>
+                                  </div>
+                                  <p className="text-sm">{fb.notes}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
 
                   <Separator />
