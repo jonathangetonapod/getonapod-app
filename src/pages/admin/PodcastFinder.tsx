@@ -2103,13 +2103,13 @@ export default function PodcastFinder() {
                       Category
                       {loadingCategories && <Loader2 className="h-3 w-3 animate-spin" />}
                     </Label>
-                    <Select value={chartCategory} onValueChange={setChartCategory} disabled={loadingCategories || chartCategories.length === 0}>
+                    <Select value={chartCategory || ''} onValueChange={setChartCategory} disabled={loadingCategories || chartCategories.length === 0}>
                       <SelectTrigger id="chart-category">
                         <SelectValue placeholder={loadingCategories ? 'Loading...' : 'Select category...'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {chartCategories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
+                        {chartCategories.filter(cat => cat.id && cat.name).map((cat) => (
+                          <SelectItem key={cat.id} value={String(cat.id)}>
                             {cat.name}
                           </SelectItem>
                         ))}

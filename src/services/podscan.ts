@@ -468,18 +468,27 @@ export async function getChartCategories(
   console.log('✅ Chart categories fetched:', data);
 
   // Extract array from response - check various possible structures
-  const categories = data.categories || data.data || data;
+  const rawCategories = data.categories || data.data || data;
 
-  // If it's an object with category IDs as keys, convert to array
-  if (categories && !Array.isArray(categories) && typeof categories === 'object') {
-    console.log('📦 Converting categories object to array');
-    return Object.entries(categories).map(([id, name]) => ({
-      id,
-      name: typeof name === 'string' ? name : id
-    }));
+  // If it's already an array, map to ensure correct structure
+  if (Array.isArray(rawCategories)) {
+    console.log('📦 Categories is array with', rawCategories.length, 'items');
+    return rawCategories.map((cat: any) => ({
+      id: String(cat.id || cat.category_id || cat.slug || ''),
+      name: String(cat.name || cat.title || cat.label || cat.id || '')
+    })).filter(cat => cat.id && cat.name);
   }
 
-  return Array.isArray(categories) ? categories : [];
+  // If it's an object with category IDs as keys (e.g., {id1: "name1", id2: "name2"})
+  if (rawCategories && typeof rawCategories === 'object') {
+    console.log('📦 Converting categories object to array');
+    return Object.entries(rawCategories).map(([id, value]) => ({
+      id: String(id),
+      name: typeof value === 'string' ? value : (typeof value === 'object' && value !== null ? (value as any).name || String(id) : String(id))
+    })).filter(cat => cat.id && cat.name);
+  }
+
+  return [];
 }
 
 /**
