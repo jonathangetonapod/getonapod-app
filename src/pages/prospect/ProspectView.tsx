@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -76,18 +76,6 @@ interface PodcastFitAnalysis {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// Helper to safely get categories array (handles both array and object formats from API)
-const getCategoriesArray = (podcast: OutreachPodcast): PodcastCategory[] => {
-  if (!podcast.podcast_categories) return []
-  if (Array.isArray(podcast.podcast_categories)) return podcast.podcast_categories
-  // Handle single object format
-  if (typeof podcast.podcast_categories === 'object') {
-    const cat = podcast.podcast_categories as unknown as PodcastCategory
-    return cat.category_id && cat.category_name ? [cat] : []
-  }
-  return []
-}
-
 export default function ProspectView() {
   const { slug } = useParams<{ slug: string }>()
 
@@ -96,7 +84,6 @@ export default function ProspectView() {
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -322,61 +309,15 @@ export default function ProspectView() {
     return num.toLocaleString()
   }
 
-  // Extract unique categories from all podcasts
-  const allCategories = useMemo(() => {
-    const categoryMap = new Map<string, string>() // category_id -> category_name
-    podcasts.forEach(podcast => {
-      const categories = getCategoriesArray(podcast)
-      categories.forEach(cat => {
-        if (cat?.category_id && cat?.category_name && !categoryMap.has(cat.category_id)) {
-          categoryMap.set(cat.category_id, cat.category_name)
-        }
-      })
-    })
-    // Sort alphabetically by category name
-    return Array.from(categoryMap.entries())
-      .map(([id, name]) => ({ category_id: id, category_name: name }))
-      .sort((a, b) => a.category_name.localeCompare(b.category_name))
-  }, [podcasts])
-
-  // Toggle category selection
-  const toggleCategory = (categoryId: string) => {
-    setSelectedCategories(prev => {
-      if (prev.includes(categoryId)) {
-        return prev.filter(id => id !== categoryId)
-      } else {
-        return [...prev, categoryId]
-      }
-    })
-  }
-
-  // Clear all category filters
-  const clearCategoryFilters = () => {
-    setSelectedCategories([])
-  }
-
-  // Filter podcasts based on search query and selected categories
+  // Filter podcasts based on search query
   const filteredPodcasts = podcasts.filter(podcast => {
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      const matchesSearch = (
-        podcast.podcast_name.toLowerCase().includes(query) ||
-        podcast.podcast_description?.toLowerCase().includes(query) ||
-        podcast.publisher_name?.toLowerCase().includes(query)
-      )
-      if (!matchesSearch) return false
-    }
-
-    // Category filter (OR logic - podcast matches if it has ANY of the selected categories)
-    if (selectedCategories.length > 0) {
-      const categories = getCategoriesArray(podcast)
-      const podcastCategoryIds = categories.map(c => c.category_id)
-      const hasMatchingCategory = podcastCategoryIds.some(id => selectedCategories.includes(id))
-      if (!hasMatchingCategory) return false
-    }
-
-    return true
+    if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      podcast.podcast_name.toLowerCase().includes(query) ||
+      podcast.podcast_description?.toLowerCase().includes(query) ||
+      podcast.publisher_name?.toLowerCase().includes(query)
+    )
   })
 
   return (
@@ -559,49 +500,10 @@ export default function ProspectView() {
           </div>
         </div>
 
-        {/* Category Filter Chips */}
-        {allCategories.length > 0 && (
-          <div className="mb-4 sm:mb-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Tag className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs sm:text-sm font-medium text-muted-foreground">Filter by category</span>
-              {selectedCategories.length > 0 && (
-                <button
-                  onClick={clearCategoryFilters}
-                  className="text-xs text-primary hover:text-primary/80 ml-auto"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {allCategories.map((cat) => {
-                const isSelected = selectedCategories.includes(cat.category_id)
-                return (
-                  <button
-                    key={cat.category_id}
-                    onClick={() => toggleCategory(cat.category_id)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200",
-                      "border hover:shadow-md active:scale-95",
-                      isSelected
-                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50 hover:text-primary"
-                    )}
-                  >
-                    {cat.category_name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Results count when filtering */}
-        {(searchQuery || selectedCategories.length > 0) && (
+        {/* Results count when searching */}
+        {searchQuery && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {podcasts.length} podcasts
-            {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
           </p>
         )}
 
@@ -615,27 +517,20 @@ export default function ProspectView() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0) ? (
+        ) : filteredPodcasts.length === 0 && searchQuery ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
               <h3 className="text-base sm:text-lg font-semibold mb-2">No podcasts found</h3>
               <p className="text-sm text-muted-foreground">
-                {selectedCategories.length > 0 && searchQuery
-                  ? 'Try different filters or search terms.'
-                  : selectedCategories.length > 0
-                  ? 'No podcasts match the selected categories.'
-                  : 'Try a different search term.'}
+                Try a different search term or clear the search.
               </p>
               <Button
                 variant="outline"
                 className="mt-4"
-                onClick={() => {
-                  setSearchQuery('')
-                  clearCategoryFilters()
-                }}
+                onClick={() => setSearchQuery('')}
               >
-                Clear all filters
+                Clear search
               </Button>
             </CardContent>
           </Card>
