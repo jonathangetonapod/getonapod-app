@@ -217,7 +217,7 @@ export default function ProspectView() {
     fetchDashboard()
   }, [slug])
 
-  // Preload all AI analyses AND demographics in parallel
+  // Preload all AI analyses AND demographics in parallel with rate limiting
   useEffect(() => {
     if (!dashboard?.prospect_bio || podcasts.length === 0 || preloadingAnalyses) return
     if (analysisCache.size >= podcasts.length && demographicsCache.size >= podcasts.length) return
@@ -226,8 +226,30 @@ export default function ProspectView() {
       setPreloadingAnalyses(true)
       console.log('[Preload] Starting parallel preload for', podcasts.length, 'podcasts')
 
-      // Create all promises upfront for maximum parallelism
-      const analysisPromises = podcasts.map(async (podcast) => {
+      // Controlled concurrency - max 5 AI analyses and 10 demographics at once
+      const AI_CONCURRENCY = 5
+      const DEMO_CONCURRENCY = 10
+
+      // Helper for controlled parallel execution
+      const runWithConcurrency = async <T,>(
+        items: T[],
+        fn: (item: T) => Promise<void>,
+        concurrency: number
+      ) => {
+        const queue = [...items]
+        const workers = Array(Math.min(concurrency, items.length))
+          .fill(null)
+          .map(async () => {
+            while (queue.length > 0) {
+              const item = queue.shift()
+              if (item) await fn(item)
+            }
+          })
+        await Promise.all(workers)
+      }
+
+      // AI Analysis preloader
+      const preloadAnalysis = async (podcast: typeof podcasts[0]) => {
         if (analysisCache.has(podcast.podcast_id)) {
           setAnalysesPreloaded(prev => prev + 1)
           return
@@ -264,9 +286,10 @@ export default function ProspectView() {
         }
 
         setAnalysesPreloaded(prev => prev + 1)
-      })
+      }
 
-      const demographicsPromises = podcasts.map(async (podcast) => {
+      // Demographics preloader
+      const preloadDemographics = async (podcast: typeof podcasts[0]) => {
         if (demographicsCache.has(podcast.podcast_id)) return
 
         try {
@@ -275,12 +298,12 @@ export default function ProspectView() {
         } catch (err) {
           setDemographicsCache(prev => new Map(prev).set(podcast.podcast_id, null))
         }
-      })
+      }
 
-      // Run ALL requests in parallel - analyses and demographics simultaneously
+      // Run both preloaders in parallel, each with their own concurrency limit
       await Promise.all([
-        Promise.all(analysisPromises),
-        Promise.all(demographicsPromises)
+        runWithConcurrency(podcasts, preloadAnalysis, AI_CONCURRENCY),
+        runWithConcurrency(podcasts, preloadDemographics, DEMO_CONCURRENCY)
       ])
 
       console.log('[Preload] Finished parallel preload')
