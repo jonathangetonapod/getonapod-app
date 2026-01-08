@@ -54,7 +54,7 @@ interface ExistingProspect {
   prospect_name: string
   prospect_bio: string | null
   prospect_image_url: string | null
-  spreadsheet_url: string
+  spreadsheet_url: string | null
   slug: string
 }
 
@@ -78,6 +78,8 @@ export default function PodcastFinder() {
   const isClientMode = selectedTarget && !isProspectMode
   const selectedProspectId = isExistingProspectMode ? selectedTarget.replace('__prospect_', '') : null
   const selectedClient = isClientMode ? selectedTarget : ''
+  const selectedExistingProspect = selectedProspectId ? existingProspects.find(p => p.id === selectedProspectId) : null
+  const existingProspectHasSheet = selectedExistingProspect?.spreadsheet_url ? true : false
   const [isGenerating, setIsGenerating] = useState(false)
   const [queries, setQueries] = useState<GeneratedQuery[]>([])
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null)
@@ -890,17 +892,53 @@ export default function PodcastFinder() {
       }
 
       // Use different export based on mode
-      if (isExistingProspectMode && selectedProspectId) {
+      if (isExistingProspectMode && selectedProspectId && existingProspectHasSheet) {
         // Append to existing prospect's sheet
         const result = await appendToProspectSheet(selectedProspectId, podcastsToExport)
-        const existingProspect = existingProspects.find(p => p.id === selectedProspectId)
         const appUrl = window.location.origin
         setLastProspectSheet({
           url: result.spreadsheetUrl,
-          title: existingProspect?.prospect_name || prospectName,
-          dashboardUrl: `${appUrl}/prospect/${existingProspect?.slug}`
+          title: selectedExistingProspect?.prospect_name || prospectName,
+          dashboardUrl: `${appUrl}/prospect/${selectedExistingProspect?.slug}`
         })
-        toast.success(`Added ${result.rowsAdded} podcasts to ${existingProspect?.prospect_name}'s sheet!`)
+        toast.success(`Added ${result.rowsAdded} podcasts to ${selectedExistingProspect?.prospect_name}'s sheet!`)
+      } else if (isExistingProspectMode && selectedProspectId && !existingProspectHasSheet) {
+        // Existing prospect but no sheet - create a new sheet and update the prospect record
+        const result = await createProspectSheet(
+          prospectName.trim(),
+          prospectBio.trim(),
+          podcastsToExport,
+          prospectImageUrl.trim() || undefined
+        )
+        // Update the existing prospect with the new sheet info
+        const { error: updateError } = await supabase
+          .from('prospect_dashboards')
+          .update({
+            spreadsheet_id: result.spreadsheetId,
+            spreadsheet_url: result.spreadsheetUrl
+          })
+          .eq('id', selectedProspectId)
+
+        if (updateError) {
+          console.error('Failed to update prospect with sheet info:', updateError)
+        }
+
+        // Update local state
+        setExistingProspects(prev =>
+          prev.map(p =>
+            p.id === selectedProspectId
+              ? { ...p, spreadsheet_url: result.spreadsheetUrl }
+              : p
+          )
+        )
+
+        const appUrl = window.location.origin
+        setLastProspectSheet({
+          url: result.spreadsheetUrl,
+          title: selectedExistingProspect?.prospect_name || prospectName,
+          dashboardUrl: `${appUrl}/prospect/${selectedExistingProspect?.slug}`
+        })
+        toast.success(`Created sheet for ${selectedExistingProspect?.prospect_name} with ${result.rowsAdded} podcasts!`)
       } else if (isNewProspectMode) {
         // Create new prospect sheet
         const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, prospectImageUrl.trim() || undefined)
@@ -1266,9 +1304,15 @@ export default function PodcastFinder() {
                       <p className="text-xs text-muted-foreground line-clamp-2">{prospectBio}</p>
                     )}
                   </div>
-                  <p className="text-xs text-purple-600 dark:text-purple-400 whitespace-nowrap">
-                    Podcasts will be added to existing sheet
-                  </p>
+                  {existingProspectHasSheet ? (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                      Podcasts will be added to existing sheet
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                      New sheet will be created on export
+                    </p>
+                  )}
                 </div>
               </div>
             )}

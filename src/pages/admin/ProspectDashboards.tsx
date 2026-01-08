@@ -890,6 +890,21 @@ export default function ProspectDashboards() {
                     <p className="text-xs text-muted-foreground">
                       Link the Google Sheet containing podcast opportunities for this prospect
                     </p>
+                    <details className="text-xs">
+                      <summary className="text-muted-foreground cursor-pointer hover:text-foreground">
+                        Expected sheet format
+                      </summary>
+                      <div className="mt-2 p-2 bg-muted rounded text-muted-foreground space-y-1">
+                        <p className="font-medium">Columns (in order):</p>
+                        <ol className="list-decimal list-inside space-y-0.5 pl-2">
+                          <li>Podcast Name</li>
+                          <li>Description</li>
+                          <li>iTunes Rating</li>
+                          <li>Episode Count</li>
+                          <li>Podscan Podcast ID</li>
+                        </ol>
+                      </div>
+                    </details>
                   </div>
 
                   <Separator />
@@ -1063,8 +1078,23 @@ export default function ProspectDashboards() {
                 onChange={(e) => setNewProspect(prev => ({ ...prev, spreadsheetUrl: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
-                Link an existing Google Sheet or leave blank to add later
+                Link an existing Google Sheet or leave blank to add later.
               </p>
+              <details className="text-xs">
+                <summary className="text-muted-foreground cursor-pointer hover:text-foreground">
+                  Expected sheet format
+                </summary>
+                <div className="mt-2 p-2 bg-muted rounded text-muted-foreground space-y-1">
+                  <p className="font-medium">Columns (in order):</p>
+                  <ol className="list-decimal list-inside space-y-0.5 pl-2">
+                    <li>Podcast Name</li>
+                    <li>Description</li>
+                    <li>iTunes Rating</li>
+                    <li>Episode Count</li>
+                    <li>Podscan Podcast ID</li>
+                  </ol>
+                </div>
+              </details>
             </div>
           </div>
           <DialogFooter>
