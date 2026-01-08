@@ -1172,7 +1172,7 @@ export default function PodcastFinder() {
                   </Button>
                   <Button
                     onClick={handleExportToGoogleSheets}
-                    disabled={isExporting || !selectedClient}
+                    disabled={isExporting || !selectedTarget}
                     size="lg"
                     className="bg-green-600 hover:bg-green-700"
                   >
