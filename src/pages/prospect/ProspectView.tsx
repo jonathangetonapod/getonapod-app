@@ -84,6 +84,7 @@ export default function ProspectView() {
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -309,15 +310,45 @@ export default function ProspectView() {
     return num.toLocaleString()
   }
 
-  // Filter podcasts based on search query
+  // Extract unique categories from all podcasts (computed each render, no useMemo)
+  const allCategories: Array<{ category_id: string; category_name: string }> = []
+  const seenCategoryIds = new Set<string>()
+  for (const podcast of podcasts) {
+    const cats = podcast.podcast_categories
+    if (Array.isArray(cats)) {
+      for (const cat of cats) {
+        if (cat?.category_id && cat?.category_name && !seenCategoryIds.has(cat.category_id)) {
+          seenCategoryIds.add(cat.category_id)
+          allCategories.push({ category_id: cat.category_id, category_name: cat.category_name })
+        }
+      }
+    }
+  }
+  allCategories.sort((a, b) => a.category_name.localeCompare(b.category_name))
+
+  // Filter podcasts based on search query and selected categories
   const filteredPodcasts = podcasts.filter(podcast => {
-    if (!searchQuery.trim()) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      podcast.podcast_name.toLowerCase().includes(query) ||
-      podcast.podcast_description?.toLowerCase().includes(query) ||
-      podcast.publisher_name?.toLowerCase().includes(query)
-    )
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      const matchesSearch = (
+        podcast.podcast_name.toLowerCase().includes(query) ||
+        podcast.podcast_description?.toLowerCase().includes(query) ||
+        podcast.publisher_name?.toLowerCase().includes(query)
+      )
+      if (!matchesSearch) return false
+    }
+
+    // Category filter
+    if (selectedCategories.length > 0) {
+      const podcastCats = podcast.podcast_categories
+      if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
+      const podcastCatIds = podcastCats.map(c => c.category_id)
+      const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
+      if (!hasMatch) return false
+    }
+
+    return true
   })
 
   return (
@@ -500,10 +531,52 @@ export default function ProspectView() {
           </div>
         </div>
 
-        {/* Results count when searching */}
-        {searchQuery && (
+        {/* Category Filter Chips */}
+        {allCategories.length > 0 && (
+          <div className="mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs sm:text-sm font-medium text-muted-foreground">Filter by category</span>
+              {selectedCategories.length > 0 && (
+                <button
+                  onClick={() => setSelectedCategories([])}
+                  className="text-xs text-primary hover:text-primary/80 ml-auto"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {allCategories.map((cat) => (
+                <button
+                  key={cat.category_id}
+                  onClick={() => {
+                    setSelectedCategories(prev =>
+                      prev.includes(cat.category_id)
+                        ? prev.filter(id => id !== cat.category_id)
+                        : [...prev, cat.category_id]
+                    )
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200",
+                    "border hover:shadow-md active:scale-95",
+                    selectedCategories.includes(cat.category_id)
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                      : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50 hover:text-primary"
+                  )}
+                >
+                  {cat.category_name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Results count when filtering */}
+        {(searchQuery || selectedCategories.length > 0) && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {podcasts.length} podcasts
+            {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
           </p>
         )}
 
@@ -517,20 +590,27 @@ export default function ProspectView() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredPodcasts.length === 0 && searchQuery ? (
+        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0) ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
               <h3 className="text-base sm:text-lg font-semibold mb-2">No podcasts found</h3>
               <p className="text-sm text-muted-foreground">
-                Try a different search term or clear the search.
+                {selectedCategories.length > 0 && searchQuery
+                  ? 'Try different filters or search terms.'
+                  : selectedCategories.length > 0
+                  ? 'No podcasts match the selected categories.'
+                  : 'Try a different search term.'}
               </p>
               <Button
                 variant="outline"
                 className="mt-4"
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('')
+                  setSelectedCategories([])
+                }}
               >
-                Clear search
+                Clear all filters
               </Button>
             </CardContent>
           </Card>
