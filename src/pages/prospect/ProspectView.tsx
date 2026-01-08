@@ -827,8 +827,10 @@ export default function ProspectView() {
             {/* Action CTA */}
             <div className="mt-4 animate-fade-in-up delay-300">
               {(() => {
-                const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status).length
-                const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
+                // Only count feedback for podcasts currently in the list
+                const currentPodcastIds = new Set(podcasts.map(p => p.podcast_id))
+                const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status && currentPodcastIds.has(f.podcast_id)).length
+                const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved' && currentPodcastIds.has(f.podcast_id)).length
 
                 if (reviewedCount > 0) {
                   return (
