@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { supabase } from '@/lib/supabase'
+import { formatDistanceToNow } from 'date-fns'
 import {
   Mic,
   Users,
@@ -31,7 +32,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   MessageSquare,
-  Check
+  Check,
+  Clock
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -65,6 +67,7 @@ interface OutreachPodcast {
   episode_count: number | null
   audience_size: number | null
   podcast_categories?: PodcastCategory[] | null
+  last_posted_at: string | null
 }
 
 interface PitchAngle {
@@ -829,16 +832,16 @@ export default function ProspectView() {
 
                   {/* Badges on image */}
                   <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center gap-1.5 sm:gap-2">
-                    {podcast.itunes_rating && (
-                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                        <Star className="h-3 w-3 mr-1 fill-yellow-400 text-yellow-400" />
-                        {Number(podcast.itunes_rating).toFixed(1)}
-                      </Badge>
-                    )}
                     {podcast.audience_size && (
                       <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
                         <Users className="h-3 w-3 mr-1" />
                         {formatNumber(podcast.audience_size)}
+                      </Badge>
+                    )}
+                    {podcast.last_posted_at && (
+                      <Badge className="bg-green-600/90 hover:bg-green-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Active
                       </Badge>
                     )}
                   </div>
@@ -870,10 +873,10 @@ export default function ProspectView() {
                         <span>{podcast.episode_count} eps</span>
                       </div>
                     )}
-                    {podcast.itunes_rating && (
-                      <div className="flex items-center gap-1">
-                        <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-                        <span>{Number(podcast.itunes_rating).toFixed(1)}</span>
+                    {podcast.last_posted_at && (
+                      <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{formatDistanceToNow(new Date(podcast.last_posted_at), { addSuffix: true })}</span>
                       </div>
                     )}
                   </div>

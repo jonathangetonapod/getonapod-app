@@ -49,6 +49,7 @@ export interface OutreachPodcast {
   episode_count: number | null
   audience_size: number | null
   podcast_categories?: PodcastCategory[] | null
+  last_posted_at: string | null
 }
 
 export interface GetOutreachPodcastsResult {
@@ -337,6 +338,7 @@ export async function getClientOutreachPodcasts(
             episode_count: podcast.episode_count || null,
             audience_size: podcast.reach?.audience_size || null,
             podcast_categories: podcast.podcast_categories || null,
+            last_posted_at: podcast.last_posted_at || null,
           }
         }
         return null
