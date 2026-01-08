@@ -1346,18 +1346,52 @@ export default function ProspectView() {
                     </div>
                   )}
 
-                  {/* Badges on image */}
-                  <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center gap-1.5 sm:gap-2">
-                    {podcast.audience_size && (
-                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                        <Users className="h-3 w-3 mr-1" />
-                        {formatNumber(podcast.audience_size)}
+                  {/* Top-left badges: Quality & AI Ready */}
+                  <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex flex-col gap-1.5">
+                    {/* Quality Badge - based on audience + episodes */}
+                    {(() => {
+                      const hasHighAudience = podcast.audience_size && podcast.audience_size >= 50000
+                      const hasGoodEpisodes = podcast.episode_count && podcast.episode_count >= 100
+                      if (hasHighAudience && hasGoodEpisodes) {
+                        return (
+                          <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-500 hover:to-orange-500 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5 shadow-lg">
+                            <Award className="h-3 w-3 mr-1" />
+                            Top Pick
+                          </Badge>
+                        )
+                      }
+                      return null
+                    })()}
+                    {/* AI Insights Ready */}
+                    {analysisCache.has(podcast.podcast_id) && (
+                      <Badge className="bg-purple-600/90 hover:bg-purple-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        AI Ready
                       </Badge>
                     )}
-                    {podcast.last_posted_at && (
-                      <Badge className="bg-green-600/90 hover:bg-green-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Active
+                  </div>
+
+                  {/* Bottom badges: Audience & Rating */}
+                  <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      {podcast.audience_size && (
+                        <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
+                          <Users className="h-3 w-3 mr-1" />
+                          {formatNumber(podcast.audience_size)}
+                        </Badge>
+                      )}
+                      {podcast.last_posted_at && (
+                        <Badge className="bg-green-600/90 hover:bg-green-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Active
+                        </Badge>
+                      )}
+                    </div>
+                    {/* Star Rating */}
+                    {podcast.itunes_rating && (
+                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
+                        <Star className="h-3 w-3 mr-1 fill-yellow-400 text-yellow-400" />
+                        {podcast.itunes_rating.toFixed(1)}
                       </Badge>
                     )}
                   </div>
@@ -1416,10 +1450,45 @@ export default function ProspectView() {
                     </div>
                   )}
 
-                  {/* View Details */}
-                  <div className="flex items-center justify-end pt-1">
+                  {/* Quick Actions & View Details */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                    {/* Quick Approve/Reject Buttons */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          saveFeedback(podcast.podcast_id, 'approved', undefined, podcast.podcast_name)
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-full transition-all duration-200",
+                          feedbackMap.get(podcast.podcast_id)?.status === 'approved'
+                            ? "bg-green-500 text-white shadow-md"
+                            : "hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600"
+                        )}
+                        title="Approve"
+                      >
+                        <ThumbsUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          saveFeedback(podcast.podcast_id, 'rejected', undefined, podcast.podcast_name)
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-full transition-all duration-200",
+                          feedbackMap.get(podcast.podcast_id)?.status === 'rejected'
+                            ? "bg-red-500 text-white shadow-md"
+                            : "hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600"
+                        )}
+                        title="Reject"
+                      >
+                        <ThumbsDown className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {/* View Details */}
                     <span className="text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                      View Details
+                      Details
                       <ChevronRight className="h-3.5 w-3.5" />
                     </span>
                   </div>
