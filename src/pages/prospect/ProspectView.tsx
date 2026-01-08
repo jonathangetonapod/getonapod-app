@@ -756,6 +756,28 @@ export default function ProspectView() {
               </div>
             </div>
 
+            {/* AI Insights Loading Status */}
+            {preloadingAnalyses && analysisCache.size < podcasts.length && (
+              <div className="flex items-center justify-center gap-2 pt-2 animate-fade-in">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-100/80 dark:bg-purple-900/30 border border-purple-200/50 dark:border-purple-800/50">
+                  <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 animate-pulse" />
+                  <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                    AI insights ready: {analysisCache.size}/{podcasts.length}
+                  </span>
+                </div>
+              </div>
+            )}
+            {analysisCache.size >= podcasts.length && analysisCache.size > 0 && (
+              <div className="flex items-center justify-center gap-2 pt-2 animate-fade-in">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-100/80 dark:bg-green-900/30 border border-green-200/50 dark:border-green-800/50">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                  <span className="text-xs font-medium text-green-700 dark:text-green-300">
+                    All AI insights ready
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Action CTA */}
             <div className="mt-4 animate-fade-in-up delay-300">
               {(() => {
