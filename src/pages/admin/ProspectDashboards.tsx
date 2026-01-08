@@ -260,10 +260,12 @@ export default function ProspectDashboards() {
     }
   }
 
-  const copyLink = (slug: string) => {
-    const url = `${appUrl}/prospect/${slug}`
+  const copyLink = (slug: string, includeTour: boolean = false) => {
+    const url = includeTour
+      ? `${appUrl}/prospect/${slug}?tour=1`
+      : `${appUrl}/prospect/${slug}`
     navigator.clipboard.writeText(url)
-    toast.success('Dashboard link copied!')
+    toast.success(includeTour ? 'Link with welcome tour copied!' : 'Dashboard link copied!')
   }
 
   // Sync editImageUrl, editSpreadsheetUrl, and reset bioExpanded when selectedDashboard changes
@@ -700,15 +702,24 @@ export default function ProspectDashboards() {
 
                 {/* Actions */}
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => copyLink(dashboard.slug)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Link
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="default" size="sm" className="flex-1">
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Link
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => copyLink(dashboard.slug)}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Link
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => copyLink(dashboard.slug, true)}>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Copy with Welcome Tour
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1160,13 +1171,21 @@ export default function ProspectDashboards() {
               </ScrollArea>
 
               {/* Footer CTA */}
-              <div className="p-4 border-t bg-muted/30">
+              <div className="p-4 border-t bg-muted/30 space-y-2">
                 <Button
                   className="w-full"
                   onClick={() => copyLink(selectedDashboard.slug)}
                 >
                   <Copy className="h-4 w-4 mr-2" />
                   Copy Link to Share
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => copyLink(selectedDashboard.slug, true)}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Copy with Welcome Tour
                 </Button>
               </div>
             </div>

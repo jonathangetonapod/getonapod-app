@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -117,6 +117,8 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export default function ProspectView() {
   const { slug } = useParams<{ slug: string }>()
+  const [searchParams] = useSearchParams()
+  const forceTour = searchParams.get('tour') === '1'
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -284,19 +286,28 @@ export default function ProspectView() {
     generateTagline()
   }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline])
 
-  // Show tutorial on first visit
+  // Show tutorial on first visit or if ?tour=1 is in URL
   useEffect(() => {
     if (!dashboard || loading) return
+
+    // If ?tour=1 is in URL, always show the tutorial
+    if (forceTour) {
+      const timer = setTimeout(() => {
+        setShowTutorial(true)
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+
+    // Otherwise, check localStorage for first-time visitors
     const tutorialKey = `prospect-tutorial-seen-${dashboard.id}`
     const hasSeenTutorial = localStorage.getItem(tutorialKey)
     if (!hasSeenTutorial) {
-      // Small delay to let the page render first
       const timer = setTimeout(() => {
         setShowTutorial(true)
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [dashboard, loading])
+  }, [dashboard, loading, forceTour])
 
   // Mark tutorial as seen when closed
   const closeTutorial = () => {
