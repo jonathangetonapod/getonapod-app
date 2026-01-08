@@ -33,6 +33,11 @@ export interface ExportToSheetsResult {
   updatedRange: string
 }
 
+export interface PodcastCategory {
+  category_id: string
+  category_name: string
+}
+
 export interface OutreachPodcast {
   podcast_id: string
   podcast_name: string
@@ -43,6 +48,7 @@ export interface OutreachPodcast {
   itunes_rating: number | null
   episode_count: number | null
   audience_size: number | null
+  podcast_categories?: PodcastCategory[] | null
 }
 
 export interface GetOutreachPodcastsResult {
@@ -330,6 +336,7 @@ export async function getClientOutreachPodcasts(
             itunes_rating: podcast.reach?.itunes?.itunes_rating_average || null,
             episode_count: podcast.episode_count || null,
             audience_size: podcast.reach?.audience_size || null,
+            podcast_categories: podcast.podcast_categories || null,
           }
         }
         return null

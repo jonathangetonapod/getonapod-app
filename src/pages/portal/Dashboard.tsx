@@ -60,7 +60,8 @@ import {
   LayoutGrid,
   List,
   Trash2,
-  Eye
+  Eye,
+  Tag
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -4794,6 +4795,27 @@ export default function PortalDashboard() {
                   </p>
                 )}
               </div>
+
+              {/* Categories */}
+              {viewingOutreachPodcast.podcast_categories && viewingOutreachPodcast.podcast_categories.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-primary" />
+                    Categories
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingOutreachPodcast.podcast_categories.map((cat) => (
+                      <Badge
+                        key={cat.category_id}
+                        variant="secondary"
+                        className="text-xs bg-primary/10 text-primary border-0"
+                      >
+                        {cat.category_name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Why This Is a Great Fit */}
               <div className="space-y-3">

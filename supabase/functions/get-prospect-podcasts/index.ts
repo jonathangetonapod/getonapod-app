@@ -101,6 +101,11 @@ async function getGoogleAccessToken(): Promise<string> {
   return tokenData.access_token
 }
 
+interface PodcastCategory {
+  category_id: string
+  category_name: string
+}
+
 interface OutreachPodcast {
   podcast_id: string
   podcast_name: string
@@ -111,6 +116,7 @@ interface OutreachPodcast {
   itunes_rating: number | null
   episode_count: number | null
   audience_size: number | null
+  podcast_categories: PodcastCategory[] | null
 }
 
 serve(async (req) => {
@@ -205,6 +211,7 @@ serve(async (req) => {
                 itunes_rating: podcast.reach?.itunes?.itunes_rating_average || podcast.rating || null,
                 episode_count: podcast.episode_count || null,
                 audience_size: podcast.reach?.audience_size || podcast.audience_size || null,
+                podcast_categories: podcast.podcast_categories || null,
               }
             }
             return null

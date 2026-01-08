@@ -26,7 +26,8 @@ import {
   Award,
   BarChart3,
   ArrowRight,
-  Search
+  Search,
+  Tag
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
@@ -43,6 +44,11 @@ interface ProspectDashboard {
   is_active: boolean
 }
 
+interface PodcastCategory {
+  category_id: string
+  category_name: string
+}
+
 interface OutreachPodcast {
   podcast_id: string
   podcast_name: string
@@ -53,6 +59,7 @@ interface OutreachPodcast {
   itunes_rating: number | null
   episode_count: number | null
   audience_size: number | null
+  podcast_categories?: PodcastCategory[] | null
 }
 
 interface PitchAngle {
@@ -727,6 +734,27 @@ export default function ProspectView() {
                       </p>
                     )}
                   </div>
+
+                  {/* Categories */}
+                  {selectedPodcast.podcast_categories && selectedPodcast.podcast_categories.length > 0 && (
+                    <div className="space-y-2 sm:space-y-3">
+                      <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                        <Tag className="h-3 w-3" />
+                        Categories
+                      </h3>
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                        {selectedPodcast.podcast_categories.map((cat) => (
+                          <Badge
+                            key={cat.category_id}
+                            variant="secondary"
+                            className="text-xs px-2 py-0.5 bg-primary/10 text-primary border-0"
+                          >
+                            {cat.category_name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Why It's a Great Fit */}
                   {dashboard.prospect_bio && (
