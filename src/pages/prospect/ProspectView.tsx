@@ -565,6 +565,44 @@ export default function ProspectView() {
                 <p className="text-sm sm:text-base text-muted-foreground font-medium">Curated Podcasts</p>
               </div>
             </div>
+
+            {/* Review Progress */}
+            {(() => {
+              const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status).length
+              const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
+              return (
+                <div className="mt-8 animate-fade-in-up delay-300">
+                  {reviewedCount > 0 ? (
+                    <div className="inline-flex flex-col items-center gap-2 px-6 py-3 rounded-2xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        You've reviewed <span className="text-foreground font-bold">{reviewedCount}</span> of <span className="text-foreground font-bold">{podcasts.length}</span> podcasts
+                        {approvedCount > 0 && (
+                          <span className="text-green-600"> ({approvedCount} approved!)</span>
+                        )}
+                      </p>
+                      <div className="w-48 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500"
+                          style={{ width: `${(reviewedCount / podcasts.length) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Review each podcast below and let us know which ones interest you
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Scroll CTA */}
+            <div className="mt-8 animate-bounce">
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <p className="text-sm font-medium">Explore your opportunities below</p>
+                <ChevronRight className="h-6 w-6 rotate-90" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -660,18 +698,27 @@ export default function ProspectView() {
 
       {/* Podcast Grid */}
       <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-12">
-        {/* Search and Info */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
-            Tap any podcast to see why it's a great fit
+        {/* Section Header */}
+        <div className="text-center mb-6 sm:mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2">
+            Your Podcast Opportunities
+          </h2>
+          <p className="text-muted-foreground max-w-xl mx-auto">
+            Click any podcast to learn why it's a perfect fit for you.
+            <span className="text-primary font-medium"> Approve the ones you love</span>,
+            and we'll start reaching out on your behalf.
           </p>
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        </div>
+
+        {/* Search */}
+        <div className="flex justify-center mb-6">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search podcasts..."
+              placeholder="Search by name, topic, or host..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white dark:bg-slate-900 h-10 sm:h-9 text-base sm:text-sm"
+              className="pl-11 bg-white dark:bg-slate-900 h-12 text-base rounded-full border-2 focus:border-primary"
             />
           </div>
         </div>
