@@ -387,7 +387,7 @@ export default function ProspectView() {
 
             if (response.ok) {
               const data = await response.json()
-              console.log('[Preload] ✅ AI analysis cached:', podcast.podcast_name)
+              console.log(`[Preload] ✅ AI analysis ${data.cached ? '(DB cache)' : '(fresh Sonnet)'}:`, podcast.podcast_name)
               setAnalysisCache(prev => new Map(prev).set(podcast.podcast_id, data.analysis))
               break // Success, exit retry loop
             } else if (response.status === 503 && attempt < MAX_RETRIES) {
@@ -480,11 +480,12 @@ export default function ProspectView() {
 
         if (response.ok) {
           const data = await response.json()
+          console.log(`[Panel] ✅ Analysis received ${data.cached ? '(DB cache)' : '(fresh Sonnet)'}`)
           setFitAnalysis(data.analysis)
           setAnalysisCache(prev => new Map(prev).set(selectedPodcast.podcast_id, data.analysis))
         }
       } catch (err) {
-        console.error('Error analyzing fit:', err)
+        console.error('[Panel] Error analyzing fit:', err)
       } finally {
         setIsAnalyzing(false)
       }
