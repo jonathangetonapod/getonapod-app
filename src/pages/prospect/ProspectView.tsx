@@ -76,6 +76,18 @@ interface PodcastFitAnalysis {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Helper to safely get categories array (handles both array and object formats from API)
+const getCategoriesArray = (podcast: OutreachPodcast): PodcastCategory[] => {
+  if (!podcast.podcast_categories) return []
+  if (Array.isArray(podcast.podcast_categories)) return podcast.podcast_categories
+  // Handle single object format
+  if (typeof podcast.podcast_categories === 'object') {
+    const cat = podcast.podcast_categories as unknown as PodcastCategory
+    return cat.category_id && cat.category_name ? [cat] : []
+  }
+  return []
+}
+
 export default function ProspectView() {
   const { slug } = useParams<{ slug: string }>()
 
@@ -314,8 +326,9 @@ export default function ProspectView() {
   const allCategories = useMemo(() => {
     const categoryMap = new Map<string, string>() // category_id -> category_name
     podcasts.forEach(podcast => {
-      podcast.podcast_categories?.forEach(cat => {
-        if (cat.category_id && cat.category_name && !categoryMap.has(cat.category_id)) {
+      const categories = getCategoriesArray(podcast)
+      categories.forEach(cat => {
+        if (cat?.category_id && cat?.category_name && !categoryMap.has(cat.category_id)) {
           categoryMap.set(cat.category_id, cat.category_name)
         }
       })
@@ -359,7 +372,8 @@ export default function ProspectView() {
 
     // Category filter (OR logic - podcast matches if it has ANY of the selected categories)
     if (selectedCategories.size > 0) {
-      const podcastCategoryIds = podcast.podcast_categories?.map(c => c.category_id) || []
+      const categories = getCategoriesArray(podcast)
+      const podcastCategoryIds = categories.map(c => c.category_id)
       const hasMatchingCategory = podcastCategoryIds.some(id => selectedCategories.has(id))
       if (!hasMatchingCategory) return false
     }
