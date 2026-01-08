@@ -129,6 +129,8 @@ export default function ProspectView() {
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
   const [minEpisodes, setMinEpisodes] = useState<number | null>(null)
   const [minAudience, setMinAudience] = useState<number | null>(null)
+  const [maxEpisodes, setMaxEpisodes] = useState<number | null>(null)
+  const [maxAudience, setMaxAudience] = useState<number | null>(null)
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -729,14 +731,20 @@ export default function ProspectView() {
       if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
     }
 
-    // Episode count filter
+    // Episode count filters
     if (minEpisodes !== null) {
       if (!podcast.episode_count || podcast.episode_count < minEpisodes) return false
     }
+    if (maxEpisodes !== null) {
+      if (!podcast.episode_count || podcast.episode_count >= maxEpisodes) return false
+    }
 
-    // Audience size filter
+    // Audience size filters
     if (minAudience !== null) {
       if (!podcast.audience_size || podcast.audience_size < minAudience) return false
+    }
+    if (maxAudience !== null) {
+      if (!podcast.audience_size || podcast.audience_size >= maxAudience) return false
     }
 
     return true
@@ -1086,86 +1094,164 @@ export default function ProspectView() {
         )}
 
         {/* Episode Count & Audience Size Filters */}
-        <div className="mb-4 sm:mb-6 flex flex-wrap gap-4 sm:gap-6">
-          {/* Episode Count Filter */}
-          <div className="flex-1 min-w-[200px]">
-            <div className="flex items-center gap-2 mb-2">
-              <Mic className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs sm:text-sm font-medium text-muted-foreground">Min episodes</span>
-              {minEpisodes !== null && (
-                <button
-                  onClick={() => setMinEpisodes(null)}
-                  className="text-xs text-primary hover:text-primary/80 ml-auto"
-                >
-                  Clear
-                </button>
-              )}
+        <div className="mb-4 sm:mb-6 space-y-4">
+          {/* Episode Count Filters */}
+          <div className="flex flex-wrap gap-4 sm:gap-6">
+            {/* Min Episodes */}
+            <div className="flex-1 min-w-[180px]">
+              <div className="flex items-center gap-2 mb-2">
+                <Mic className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Min episodes</span>
+                {minEpisodes !== null && (
+                  <button
+                    onClick={() => setMinEpisodes(null)}
+                    className="text-xs text-primary hover:text-primary/80 ml-auto"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: 'Any', value: null },
+                  { label: '50+', value: 50 },
+                  { label: '100+', value: 100 },
+                  { label: '200+', value: 200 },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    onClick={() => setMinEpisodes(option.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
+                      minEpisodes === option.value
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: 'Any', value: null },
-                { label: '50+', value: 50 },
-                { label: '100+', value: 100 },
-                { label: '200+', value: 200 },
-                { label: '500+', value: 500 },
-              ].map((option) => (
-                <button
-                  key={option.label}
-                  onClick={() => setMinEpisodes(option.value)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                    minEpisodes === option.value
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
+
+            {/* Under Episodes (for finding low quality) */}
+            <div className="flex-1 min-w-[180px]">
+              <div className="flex items-center gap-2 mb-2">
+                <Mic className="h-4 w-4 text-orange-500" />
+                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Under episodes</span>
+                {maxEpisodes !== null && (
+                  <button
+                    onClick={() => setMaxEpisodes(null)}
+                    className="text-xs text-orange-600 hover:text-orange-500 ml-auto"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: 'Any', value: null },
+                  { label: '<25', value: 25 },
+                  { label: '<50', value: 50 },
+                  { label: '<100', value: 100 },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    onClick={() => setMaxEpisodes(option.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
+                      maxEpisodes === option.value
+                        ? "bg-orange-600 text-white border-orange-600"
+                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-orange-500 hover:text-orange-600"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Audience Size Filter */}
-          <div className="flex-1 min-w-[200px]">
-            <div className="flex items-center gap-2 mb-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs sm:text-sm font-medium text-muted-foreground">Min audience</span>
-              {minAudience !== null && (
-                <button
-                  onClick={() => setMinAudience(null)}
-                  className="text-xs text-primary hover:text-primary/80 ml-auto"
-                >
-                  Clear
-                </button>
-              )}
+          {/* Audience Size Filters */}
+          <div className="flex flex-wrap gap-4 sm:gap-6">
+            {/* Min Audience */}
+            <div className="flex-1 min-w-[180px]">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Min audience</span>
+                {minAudience !== null && (
+                  <button
+                    onClick={() => setMinAudience(null)}
+                    className="text-xs text-primary hover:text-primary/80 ml-auto"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: 'Any', value: null },
+                  { label: '10K+', value: 10000 },
+                  { label: '50K+', value: 50000 },
+                  { label: '100K+', value: 100000 },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    onClick={() => setMinAudience(option.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
+                      minAudience === option.value
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: 'Any', value: null },
-                { label: '10K+', value: 10000 },
-                { label: '50K+', value: 50000 },
-                { label: '100K+', value: 100000 },
-                { label: '500K+', value: 500000 },
-              ].map((option) => (
-                <button
-                  key={option.label}
-                  onClick={() => setMinAudience(option.value)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                    minAudience === option.value
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
+
+            {/* Under Audience (for finding low quality) */}
+            <div className="flex-1 min-w-[180px]">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-orange-500" />
+                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Under audience</span>
+                {maxAudience !== null && (
+                  <button
+                    onClick={() => setMaxAudience(null)}
+                    className="text-xs text-orange-600 hover:text-orange-500 ml-auto"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: 'Any', value: null },
+                  { label: '<5K', value: 5000 },
+                  { label: '<10K', value: 10000 },
+                  { label: '<25K', value: 25000 },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    onClick={() => setMaxAudience(option.value)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
+                      maxAudience === option.value
+                        ? "bg-orange-600 text-white border-orange-600"
+                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-orange-500 hover:text-orange-600"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Results count when filtering */}
-        {(searchQuery || selectedCategories.length > 0 || minEpisodes !== null || minAudience !== null) && (
+        {(searchQuery || selectedCategories.length > 0 || minEpisodes !== null || minAudience !== null || maxEpisodes !== null || maxAudience !== null) && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {podcasts.length} podcasts
             {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
@@ -1182,7 +1268,7 @@ export default function ProspectView() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || minEpisodes !== null || minAudience !== null) ? (
+        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || minEpisodes !== null || minAudience !== null || maxEpisodes !== null || maxAudience !== null) ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
@@ -1198,6 +1284,8 @@ export default function ProspectView() {
                   setSelectedCategories([])
                   setMinEpisodes(null)
                   setMinAudience(null)
+                  setMaxEpisodes(null)
+                  setMaxAudience(null)
                 }}
               >
                 Clear all filters
