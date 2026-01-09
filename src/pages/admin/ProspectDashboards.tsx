@@ -83,6 +83,7 @@ interface ProspectDashboard {
   content_ready: boolean
   view_count: number
   last_viewed_at: string | null
+  personalized_tagline: string | null
 }
 
 interface PodcastFeedback {
@@ -122,6 +123,11 @@ export default function ProspectDashboards() {
   // Edit spreadsheet URL
   const [editSpreadsheetUrl, setEditSpreadsheetUrl] = useState('')
   const [savingSpreadsheet, setSavingSpreadsheet] = useState(false)
+
+  // Edit tagline
+  const [editTagline, setEditTagline] = useState('')
+  const [savingTagline, setSavingTagline] = useState(false)
+  const [generatingTagline, setGeneratingTagline] = useState(false)
 
   // Feedback state
   const [feedback, setFeedback] = useState<PodcastFeedback[]>([])
@@ -447,11 +453,15 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, and reset state when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, editTagline and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
       setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
+      // Extract the custom part of tagline (after "perfect for ")
+      const tagline = selectedDashboard.personalized_tagline || ''
+      const match = tagline.match(/perfect for\s+(.+)$/i)
+      setEditTagline(match ? match[1] : '')
       setBioExpanded(false)
       // Reset cache status when switching dashboards
       setCacheStatusData(null)
@@ -677,6 +687,102 @@ export default function ProspectDashboards() {
       toast.error('Failed to save spreadsheet URL')
     } finally {
       setSavingSpreadsheet(false)
+    }
+  }
+
+  const saveTagline = async () => {
+    if (!selectedDashboard) return
+
+    setSavingTagline(true)
+    try {
+      // Construct full tagline with "We've curated X podcasts perfect for " prefix
+      const fullTagline = editTagline.trim()
+        ? `We've curated podcasts perfect for ${editTagline.trim()}`
+        : null
+
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ personalized_tagline: fullTagline })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, personalized_tagline: fullTagline }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, personalized_tagline: fullTagline } : null
+      )
+
+      toast.success('Tagline updated!')
+    } catch (error) {
+      console.error('Error saving tagline:', error)
+      toast.error('Failed to save tagline')
+    } finally {
+      setSavingTagline(false)
+    }
+  }
+
+  const generateTagline = async () => {
+    if (!selectedDashboard) return
+
+    if (!selectedDashboard.prospect_bio) {
+      toast.error('Please add a prospect bio first to generate a tagline')
+      return
+    }
+
+    setGeneratingTagline(true)
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-tagline`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          prospectName: selectedDashboard.prospect_name,
+          prospectBio: selectedDashboard.prospect_bio,
+          podcastCount: cacheStatusData?.totalInSheet || 0,
+          dashboardId: selectedDashboard.id,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate tagline')
+      }
+
+      const data = await response.json()
+      if (data.tagline) {
+        // Extract just the custom part after "perfect for "
+        const match = data.tagline.match(/perfect for\s+(.+)$/i)
+        const customPart = match ? match[1] : data.tagline
+        setEditTagline(customPart)
+
+        // Update local state with full tagline
+        setDashboards(prev =>
+          prev.map(d =>
+            d.id === selectedDashboard.id
+              ? { ...d, personalized_tagline: data.tagline }
+              : d
+          )
+        )
+        setSelectedDashboard(prev =>
+          prev ? { ...prev, personalized_tagline: data.tagline } : null
+        )
+
+        toast.success('Tagline generated!')
+      }
+    } catch (error) {
+      console.error('Error generating tagline:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to generate tagline')
+    } finally {
+      setGeneratingTagline(false)
     }
   }
 
@@ -1390,6 +1496,69 @@ export default function ProspectDashboards() {
                         </ol>
                       </div>
                     </details>
+                  </div>
+
+                  <Separator />
+
+                  {/* Personalized Tagline */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Pencil className="h-4 w-4" />
+                      Dashboard Tagline
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Customize what appears after "We've curated X podcasts perfect for..."
+                    </p>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground mb-2">Preview:</p>
+                      <p className="text-sm font-medium">
+                        We've curated {cacheStatusData?.totalInSheet || '...'} podcasts perfect for{' '}
+                        <span className="text-primary">{editTagline || 'your expertise'}</span>
+                      </p>
+                    </div>
+                    <Textarea
+                      placeholder="e.g., sharing your mission to transform healthcare through technology"
+                      value={editTagline}
+                      onChange={(e) => setEditTagline(e.target.value)}
+                      className="text-sm min-h-[80px]"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={generateTagline}
+                        disabled={generatingTagline || !selectedDashboard.prospect_bio}
+                      >
+                        {generatingTagline ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Generate with AI
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={saveTagline}
+                        disabled={savingTagline}
+                      >
+                        {savingTagline ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    {!selectedDashboard.prospect_bio && (
+                      <p className="text-xs text-amber-600">
+                        Add a prospect bio to enable AI generation
+                      </p>
+                    )}
                   </div>
 
                   <Separator />
