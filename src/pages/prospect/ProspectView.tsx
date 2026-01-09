@@ -1475,7 +1475,7 @@ export default function ProspectView() {
 
       {/* Side Panel */}
       <Sheet open={!!selectedPodcast} onOpenChange={() => setSelectedPodcast(null)}>
-        <SheetContent className="w-full sm:max-w-xl p-0 overflow-hidden border-l-0 shadow-2xl">
+        <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-hidden overflow-x-hidden border-l-0 shadow-2xl">
           {selectedPodcast && (
             <div className="flex flex-col h-[90vh] sm:h-full">
               {/* Hero Header with Image */}
@@ -1573,8 +1573,8 @@ export default function ProspectView() {
               </div>
 
               {/* Scrollable Content */}
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-8">
+              <ScrollArea className="flex-1 min-h-0 overflow-x-hidden">
+                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-8 overflow-x-hidden">
                   {/* About Section */}
                   <div className="space-y-2 sm:space-y-3">
                     <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest">About This Podcast</h3>
