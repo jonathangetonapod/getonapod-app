@@ -832,7 +832,9 @@ export default function ProspectView() {
                 Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
               </h1>
               <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2 transition-opacity duration-300">
-                {personalizedTagline ? (
+                {loadingPodcasts ? (
+                  <span>Loading your personalized podcast matches...</span>
+                ) : personalizedTagline ? (
                   <span>{personalizedTagline}</span>
                 ) : (
                   <>We've curated <span className="font-bold text-foreground">{uniquePodcasts.length}</span> podcast{uniquePodcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
@@ -841,23 +843,31 @@ export default function ProspectView() {
             </div>
 
             {/* Compact Stats Row */}
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-green-500" />
-                <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
+            {loadingPodcasts ? (
+              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+                <div className="h-7 w-32 bg-slate-200/60 rounded-lg animate-pulse" />
+                <div className="h-7 w-28 bg-slate-200/60 rounded-lg animate-pulse" />
+                <div className="h-7 w-28 bg-slate-200/60 rounded-lg animate-pulse" />
               </div>
-              <div className="flex items-center gap-2">
-                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
+            ) : (
+              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-green-500" />
+                  <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                  <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mic className="h-5 w-5 text-primary" />
+                  <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Mic className="h-5 w-5 text-primary" />
-                <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
-              </div>
-            </div>
+            )}
 
             {/* AI Insights Loading Status */}
             {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
@@ -1051,7 +1061,7 @@ export default function ProspectView() {
                   : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
               )}
             >
-              All ({uniquePodcasts.length})
+              All ({loadingPodcasts ? '-' : uniquePodcasts.length})
             </button>
             <button
               onClick={() => setFeedbackFilter('approved')}
@@ -1063,7 +1073,7 @@ export default function ProspectView() {
               )}
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
-              Approved ({feedbackStats.approved})
+              Approved ({loadingPodcasts ? '-' : feedbackStats.approved})
             </button>
             <button
               onClick={() => setFeedbackFilter('rejected')}
@@ -1075,7 +1085,7 @@ export default function ProspectView() {
               )}
             >
               <X className="h-3.5 w-3.5" />
-              Rejected ({feedbackStats.rejected})
+              Rejected ({loadingPodcasts ? '-' : feedbackStats.rejected})
             </button>
             <button
               onClick={() => setFeedbackFilter('not_reviewed')}
@@ -1086,7 +1096,7 @@ export default function ProspectView() {
                   : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-slate-500"
               )}
             >
-              To Review ({feedbackStats.notReviewed})
+              To Review ({loadingPodcasts ? '-' : feedbackStats.notReviewed})
             </button>
           </div>
         </div>
@@ -1181,7 +1191,7 @@ export default function ProspectView() {
         </div>
 
         {/* Results count when filtering */}
-        {(searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') && (
+        {!loadingPodcasts && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {uniquePodcasts.length} podcasts
             {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
