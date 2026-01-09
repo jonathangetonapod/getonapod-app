@@ -130,7 +130,20 @@ export default function ProspectDashboards() {
 
   // Cache building state
   const [buildingCache, setBuildingCache] = useState(false)
-  const [cacheStatus, setCacheStatus] = useState<{ cached: number; fetched: number; total: number } | null>(null)
+  const [cacheStatus, setCacheStatus] = useState<{
+    cached: number
+    fetched: number
+    total: number
+    stats?: {
+      fromSheet: number
+      fromCache: number
+      podscanFetched: number
+      aiAnalysesGenerated: number
+      demographicsFetched: number
+      cachedWithAi: number
+      cachedWithDemographics: number
+    }
+  } | null>(null)
 
   const appUrl = window.location.origin
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -600,6 +613,7 @@ export default function ProspectDashboards() {
         cached: data.cached || 0,
         fetched: data.fetched || 0,
         total: data.total || 0,
+        stats: data.stats,
       })
 
       if (data.fetched > 0) {
@@ -1163,14 +1177,26 @@ export default function ProspectDashboards() {
                       )}
                     </Button>
                     {cacheStatus && !buildingCache && (
-                      <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                      <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg space-y-2">
                         <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                           <CheckCircle2 className="h-4 w-4" />
                           <span className="text-sm font-medium">Ready to share!</span>
                         </div>
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          {cacheStatus.total} podcasts cached • {cacheStatus.fetched} new, {cacheStatus.cached} existing
-                        </p>
+                        <div className="text-xs text-green-600 dark:text-green-400 space-y-1">
+                          <p className="font-medium">{cacheStatus.total} podcasts total</p>
+                          {cacheStatus.stats && (
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-green-600/80 dark:text-green-400/80">
+                              <span>From cache:</span>
+                              <span className="font-medium">{cacheStatus.stats.fromCache}</span>
+                              <span>Podscan fetched:</span>
+                              <span className="font-medium">{cacheStatus.stats.podscanFetched}</span>
+                              <span>AI analyses:</span>
+                              <span className="font-medium">{cacheStatus.stats.aiAnalysesGenerated + cacheStatus.stats.cachedWithAi}</span>
+                              <span>Demographics:</span>
+                              <span className="font-medium">{cacheStatus.stats.demographicsFetched + cacheStatus.stats.cachedWithDemographics}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -280,6 +280,15 @@ serve(async (req) => {
     const missingPodcastIds = podcastIds.filter(id => !cachedPodcastIds.has(id))
     console.log('[Get Prospect Podcasts] Need to fetch', missingPodcastIds.length, 'new podcasts')
 
+    // Stats tracking
+    const stats = {
+      podscanFetched: 0,
+      demographicsFetched: 0,
+      aiAnalysesGenerated: 0,
+      cachedWithAi: cachedPodcasts.filter(p => p.ai_fit_reasons && p.ai_fit_reasons.length > 0).length,
+      cachedWithDemographics: cachedPodcasts.filter(p => p.demographics).length,
+    }
+
     // Fetch missing podcasts from Podscan + AI analysis
     const newPodcasts: CachedPodcast[] = []
 
@@ -308,6 +317,7 @@ serve(async (req) => {
                 return null
               }
 
+              stats.podscanFetched++
               const podscanData = await podscanRes.json()
               const podcast = podscanData.podcast || podscanData
 
@@ -339,6 +349,7 @@ serve(async (req) => {
                   const demoData = await demoRes.json()
                   if (demoData && demoData.episodes_analyzed) {
                     podcastData.demographics = demoData
+                    stats.demographicsFetched++
                     console.log('[Get Prospect Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
                   }
                 }
@@ -367,6 +378,7 @@ serve(async (req) => {
                   podcastData.ai_clean_description = analysis.clean_description
                   podcastData.ai_fit_reasons = analysis.fit_reasons
                   podcastData.ai_pitch_angles = analysis.pitch_angles
+                  stats.aiAnalysesGenerated++
                 }
               }
 
@@ -422,6 +434,7 @@ serve(async (req) => {
       .filter((p): p is CachedPodcast => p !== undefined)
 
     console.log('[Get Prospect Podcasts] Returning', orderedPodcasts.length, 'podcasts (' + cachedPodcasts.length + ' cached, ' + newPodcasts.length + ' new)')
+    console.log('[Get Prospect Podcasts] Stats:', stats)
 
     return new Response(
       JSON.stringify({
@@ -430,6 +443,15 @@ serve(async (req) => {
         total: orderedPodcasts.length,
         cached: cachedPodcasts.length,
         fetched: newPodcasts.length,
+        stats: {
+          fromSheet: podcastIds.length,
+          fromCache: cachedPodcasts.length,
+          podscanFetched: stats.podscanFetched,
+          aiAnalysesGenerated: stats.aiAnalysesGenerated,
+          demographicsFetched: stats.demographicsFetched,
+          cachedWithAi: stats.cachedWithAi,
+          cachedWithDemographics: stats.cachedWithDemographics,
+        },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
