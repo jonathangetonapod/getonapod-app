@@ -279,6 +279,50 @@ serve(async (req) => {
 
     console.log('[Get Prospect Podcasts] Found', podcastIds.length, 'podcast IDs in sheet')
 
+    // Clean up stale cache entries (podcasts no longer in sheet)
+    if (prospectDashboardId && podcastIds.length >= 0) {
+      // Get all cached podcast IDs for this dashboard
+      const { data: allCached } = await supabase
+        .from('prospect_dashboard_podcasts')
+        .select('podcast_id')
+        .eq('prospect_dashboard_id', prospectDashboardId)
+
+      if (allCached && allCached.length > 0) {
+        const sheetPodcastIds = new Set(podcastIds)
+        const staleIds = allCached
+          .map(p => p.podcast_id)
+          .filter(id => !sheetPodcastIds.has(id))
+
+        if (staleIds.length > 0) {
+          console.log('[Get Prospect Podcasts] Removing', staleIds.length, 'stale podcasts from cache')
+
+          // Delete stale podcasts from cache
+          const { error: deleteError } = await supabase
+            .from('prospect_dashboard_podcasts')
+            .delete()
+            .eq('prospect_dashboard_id', prospectDashboardId)
+            .in('podcast_id', staleIds)
+
+          if (deleteError) {
+            console.error('[Get Prospect Podcasts] Error deleting stale cache:', deleteError)
+          } else {
+            console.log('[Get Prospect Podcasts] Deleted stale cache entries')
+          }
+
+          // Also delete stale feedback
+          const { error: feedbackDeleteError } = await supabase
+            .from('prospect_podcast_feedback')
+            .delete()
+            .eq('prospect_dashboard_id', prospectDashboardId)
+            .in('podcast_id', staleIds)
+
+          if (feedbackDeleteError) {
+            console.error('[Get Prospect Podcasts] Error deleting stale feedback:', feedbackDeleteError)
+          }
+        }
+      }
+    }
+
     if (podcastIds.length === 0) {
       return new Response(
         JSON.stringify({ success: true, podcasts: [], total: 0 }),
