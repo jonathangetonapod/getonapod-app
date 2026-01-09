@@ -664,24 +664,24 @@ export default function ProspectView() {
   }
   allCategories.sort((a, b) => a.category_name.localeCompare(b.category_name))
 
-  // Count feedback stats
-  const feedbackStats = {
-    approved: 0,
-    rejected: 0,
-    notReviewed: 0
-  }
-  podcasts.forEach(podcast => {
-    const feedback = feedbackMap.get(podcast.podcast_id)
-    if (feedback?.status === 'approved') feedbackStats.approved++
-    else if (feedback?.status === 'rejected') feedbackStats.rejected++
-    else feedbackStats.notReviewed++
-  })
-
   // Filter podcasts based on search query, categories, and feedback status
   // First dedupe podcasts by ID
   const uniquePodcasts = podcasts.filter((podcast, index, self) =>
     index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
   )
+
+  // Count feedback stats (from deduplicated list)
+  const feedbackStats = {
+    approved: 0,
+    rejected: 0,
+    notReviewed: 0
+  }
+  uniquePodcasts.forEach(podcast => {
+    const feedback = feedbackMap.get(podcast.podcast_id)
+    if (feedback?.status === 'approved') feedbackStats.approved++
+    else if (feedback?.status === 'rejected') feedbackStats.rejected++
+    else feedbackStats.notReviewed++
+  })
 
   const filteredPodcasts = uniquePodcasts.filter(podcast => {
     // Search filter (use debounced for performance)
