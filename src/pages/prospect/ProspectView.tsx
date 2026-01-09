@@ -760,8 +760,11 @@ export default function ProspectView() {
     // Audience size filter
     if (audienceFilter !== 'any') {
       const aud = podcast.audience_size || 0
-      if (audienceFilter === 'under10k' && aud >= 10000) return false
-      if (audienceFilter === '10kto50k' && (aud < 10000 || aud >= 50000)) return false
+      if (audienceFilter === 'under1k' && aud >= 1000) return false
+      if (audienceFilter === '1kto5k' && (aud < 1000 || aud >= 5000)) return false
+      if (audienceFilter === '5kto10k' && (aud < 5000 || aud >= 10000)) return false
+      if (audienceFilter === '10kto25k' && (aud < 10000 || aud >= 25000)) return false
+      if (audienceFilter === '25kto50k' && (aud < 25000 || aud >= 50000)) return false
       if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
       if (audienceFilter === '100kplus' && aud < 100000) return false
     }
@@ -1168,8 +1171,11 @@ export default function ProspectView() {
               className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               <option value="any">Audience: Any</option>
-              <option value="under10k">Under 10K</option>
-              <option value="10kto50k">10K - 50K</option>
+              <option value="under1k">Under 1K</option>
+              <option value="1kto5k">1K - 5K</option>
+              <option value="5kto10k">5K - 10K</option>
+              <option value="10kto25k">10K - 25K</option>
+              <option value="25kto50k">25K - 50K</option>
               <option value="50kto100k">50K - 100K</option>
               <option value="100kplus">100K+</option>
             </select>
