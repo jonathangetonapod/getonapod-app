@@ -26,7 +26,8 @@ import {
   Calendar,
   X,
   Trash2,
-  FileText
+  FileText,
+  Plus
 } from 'lucide-react'
 import { getClients } from '@/services/clients'
 import { generatePodcastQueries, regenerateQuery } from '@/services/queryGeneration'
@@ -82,6 +83,7 @@ export default function PodcastFinder() {
   const existingProspectHasSheet = selectedExistingProspect?.spreadsheet_url ? true : false
   const [isGenerating, setIsGenerating] = useState(false)
   const [queries, setQueries] = useState<GeneratedQuery[]>([])
+  const [customKeywords, setCustomKeywords] = useState('')
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [scoreModalOpen, setScoreModalOpen] = useState(false)
@@ -376,6 +378,39 @@ export default function PodcastFinder() {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleAddCustomKeywords = () => {
+    if (!customKeywords.trim()) {
+      toast.error('Please enter at least one keyword')
+      return
+    }
+
+    const keywords = customKeywords
+      .split(',')
+      .map(k => k.trim())
+      .filter(k => k.length > 0)
+
+    if (keywords.length === 0) {
+      toast.error('Please enter at least one keyword')
+      return
+    }
+
+    const newQueries: GeneratedQuery[] = keywords.map((keyword, index) => ({
+      id: `custom-${Date.now()}-${index}`,
+      text: keyword,
+      isEditing: false,
+      isSearching: false,
+      results: [],
+      isScoring: false,
+      compatibilityScores: {},
+      scoreReasonings: {},
+      regenerateAttempts: 0
+    }))
+
+    setQueries(prev => [...prev, ...newQueries])
+    setCustomKeywords('')
+    toast.success(`Added ${keywords.length} custom ${keywords.length === 1 ? 'query' : 'queries'}`)
   }
 
   const handleRegenerateQuery = async (queryId: string, isAutomatic = false) => {
@@ -1258,35 +1293,55 @@ export default function PodcastFinder() {
 
               {/* Search mode: Generate Queries button */}
               {finderMode === 'search' && (
-                <div className="flex items-end gap-2">
-                  <Button
-                    onClick={handleGenerateQueries}
-                    disabled={!selectedTarget || isGenerating}
-                    className="flex-1"
-                    size="lg"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-5 w-5 mr-2" />
-                        Generate 5 AI Queries
-                      </>
-                    )}
-                  </Button>
-                  {queries.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-end gap-2">
                     <Button
-                      onClick={handleReset}
-                      variant="outline"
+                      onClick={handleGenerateQueries}
+                      disabled={!selectedTarget || isGenerating}
+                      className="flex-1"
                       size="lg"
-                      title="Clear all queries and start over"
                     >
-                      <X className="h-5 w-5" />
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-5 w-5 mr-2" />
+                          Generate 5 AI Queries
+                        </>
+                      )}
                     </Button>
-                  )}
+                    {queries.length > 0 && (
+                      <Button
+                        onClick={handleReset}
+                        variant="outline"
+                        size="lg"
+                        title="Clear all queries and start over"
+                      >
+                        <X className="h-5 w-5" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Add custom keywords (comma separated)"
+                        value={customKeywords}
+                        onChange={(e) => setCustomKeywords(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddCustomKeywords()}
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAddCustomKeywords}
+                      disabled={!customKeywords.trim()}
+                      variant="outline"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
