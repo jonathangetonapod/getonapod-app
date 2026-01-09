@@ -294,6 +294,13 @@ export default function ProspectDashboards() {
     toast.success(includeTour ? 'Link with welcome tour copied!' : 'Dashboard link copied!')
   }
 
+  // Helper to extract spreadsheet ID from URL
+  const extractSpreadsheetId = (url: string | null): string | null => {
+    if (!url) return null
+    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    return match ? match[1] : null
+  }
+
   const deletePodcastFromDashboard = async (podcastId: string, podcastName: string | null) => {
     if (!selectedDashboard?.id) {
       toast.error('No dashboard selected')
@@ -302,6 +309,32 @@ export default function ProspectDashboards() {
 
     setDeletingPodcastId(podcastId)
     try {
+      // Delete from Google Sheet first
+      const spreadsheetId = extractSpreadsheetId(selectedDashboard.spreadsheet_url)
+      if (spreadsheetId) {
+        try {
+          const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            },
+            body: JSON.stringify({ spreadsheetId, podcastId }),
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            console.warn('Failed to delete from Google Sheet:', errorData.error)
+            // Continue with database deletion even if sheet deletion fails
+          } else {
+            console.log('Deleted from Google Sheet successfully')
+          }
+        } catch (sheetError) {
+          console.warn('Error deleting from Google Sheet:', sheetError)
+          // Continue with database deletion
+        }
+      }
+
       // Delete from the cached podcasts table
       const { error: cacheError } = await supabase
         .from('prospect_dashboard_podcasts')
@@ -351,6 +384,34 @@ export default function ProspectDashboards() {
     setDeletingAllRejected(true)
     try {
       const podcastIds = rejectedPodcasts.map(f => f.podcast_id)
+
+      // Delete from Google Sheet first (one by one since the API deletes single rows)
+      const spreadsheetId = extractSpreadsheetId(selectedDashboard.spreadsheet_url)
+      if (spreadsheetId) {
+        const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+        let sheetDeleteCount = 0
+
+        for (const podcastId of podcastIds) {
+          try {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`,
+              },
+              body: JSON.stringify({ spreadsheetId, podcastId }),
+            })
+
+            if (response.ok) {
+              sheetDeleteCount++
+            }
+          } catch (sheetError) {
+            console.warn('Error deleting from Google Sheet:', podcastId, sheetError)
+          }
+        }
+
+        console.log(`Deleted ${sheetDeleteCount}/${podcastIds.length} from Google Sheet`)
+      }
 
       // Delete all rejected from cached podcasts table
       const { error: cacheError } = await supabase
@@ -513,12 +574,6 @@ export default function ProspectDashboards() {
       slug += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     return slug
-  }
-
-  // Extract spreadsheet ID from URL
-  const extractSpreadsheetId = (url: string): string | null => {
-    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-    return match ? match[1] : null
   }
 
   const createProspect = async () => {
