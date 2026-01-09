@@ -215,7 +215,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { spreadsheetId, prospectDashboardId, prospectName, prospectBio, cacheOnly } = body
+    const { spreadsheetId, prospectDashboardId, prospectName, prospectBio, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
 
     if (!spreadsheetId) {
       return new Response(
@@ -224,7 +224,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '')
+    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
     console.log('[Get Prospect Podcasts] Prospect name:', prospectName, '| Bio length:', prospectBio?.length || 0)
 
     // Initialize Supabase client
@@ -290,47 +290,43 @@ serve(async (req) => {
       cachedWithDemographics: cachedPodcasts.filter(p => p.demographics).length,
     }
 
-    // If cacheOnly mode, return only cached data (don't fetch anything)
-    if (cacheOnly) {
-      // Check if cache is ready (all podcasts are cached with AI analysis)
-      const cacheReady = missingPodcastIds.length === 0 && stats.cachedWithAi === cachedPodcasts.length
-
-      if (!cacheReady) {
-        console.log('[Get Prospect Podcasts] Cache not ready - missing:', missingPodcastIds.length, 'without AI:', cachedPodcasts.length - stats.cachedWithAi)
-        return new Response(
-          JSON.stringify({
-            success: true,
-            cacheReady: false,
-            podcasts: [],
-            total: podcastIds.length,
+    // Check Status Only mode - just report stats, don't fetch anything
+    if (checkStatusOnly) {
+      console.log('[Get Prospect Podcasts] Check Status Only mode')
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: {
+            totalInSheet: podcastIds.length,
             cached: cachedPodcasts.length,
             missing: missingPodcastIds.length,
+            withAi: stats.cachedWithAi,
             withoutAi: cachedPodcasts.length - stats.cachedWithAi,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
+            withDemographics: stats.cachedWithDemographics,
+          },
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-      // Cache is ready - return cached podcasts
+    // If cacheOnly mode, return cached data (publishing controlled by content_ready flag in DB)
+    if (cacheOnly) {
+      // Return cached podcasts - admin controls publishing via content_ready flag
       const orderedPodcasts = podcastIds
         .map(id => cachedPodcasts.find(p => p.podcast_id === id))
         .filter((p): p is CachedPodcast => p !== undefined)
 
-      console.log('[Get Prospect Podcasts] Cache ready - returning', orderedPodcasts.length, 'podcasts')
+      console.log('[Get Prospect Podcasts] Cache only - returning', orderedPodcasts.length, 'of', podcastIds.length, 'podcasts')
       return new Response(
         JSON.stringify({
           success: true,
-          cacheReady: true,
           podcasts: orderedPodcasts,
           total: orderedPodcasts.length,
           cached: cachedPodcasts.length,
-          fetched: 0,
+          missing: missingPodcastIds.length,
           stats: {
             fromSheet: podcastIds.length,
             fromCache: cachedPodcasts.length,
-            podscanFetched: 0,
-            aiAnalysesGenerated: 0,
-            demographicsFetched: 0,
             cachedWithAi: stats.cachedWithAi,
             cachedWithDemographics: stats.cachedWithDemographics,
           },
@@ -339,7 +335,98 @@ serve(async (req) => {
       )
     }
 
-    // Fetch missing podcasts from Podscan + AI analysis
+    // AI Analysis Only mode - run AI on cached podcasts that don't have it
+    if (aiAnalysisOnly) {
+      const startTime = Date.now()
+      const MAX_RUNTIME_MS = 50000
+      let stoppedEarly = false
+
+      // Find cached podcasts without AI analysis
+      const podcastsNeedingAi = cachedPodcasts.filter(p => !p.ai_fit_reasons || p.ai_fit_reasons.length === 0)
+      console.log('[Get Prospect Podcasts] AI Analysis Only - need to analyze', podcastsNeedingAi.length, 'podcasts')
+
+      if (podcastsNeedingAi.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            aiComplete: true,
+            analyzed: 0,
+            remaining: 0,
+            total: cachedPodcasts.length,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const BATCH_SIZE = 5
+      let analyzedCount = 0
+
+      for (let i = 0; i < podcastsNeedingAi.length; i += BATCH_SIZE) {
+        if (Date.now() - startTime > MAX_RUNTIME_MS) {
+          console.log('[Get Prospect Podcasts] AI Analysis stopping early, analyzed', analyzedCount, 'of', podcastsNeedingAi.length)
+          stoppedEarly = true
+          break
+        }
+
+        const batch = podcastsNeedingAi.slice(i, i + BATCH_SIZE)
+
+        await Promise.all(
+          batch.map(async (podcast) => {
+            if (!prospectName || !prospectBio) return
+
+            console.log('[Get Prospect Podcasts] Running AI analysis for:', podcast.podcast_name)
+            const analysis = await analyzePodcastFit(
+              {
+                name: podcast.podcast_name,
+                description: podcast.podcast_description,
+                url: podcast.podcast_url,
+                publisher: podcast.publisher_name,
+                rating: podcast.itunes_rating,
+                episodes: podcast.episode_count,
+                audience: podcast.audience_size,
+              },
+              prospectName,
+              prospectBio
+            )
+
+            if (analysis) {
+              // Update the cache with AI analysis
+              const { error: updateError } = await supabase
+                .from('prospect_dashboard_podcasts')
+                .update({
+                  ai_clean_description: analysis.clean_description,
+                  ai_fit_reasons: analysis.fit_reasons,
+                  ai_pitch_angles: analysis.pitch_angles,
+                  ai_analyzed_at: new Date().toISOString(),
+                })
+                .eq('prospect_dashboard_id', prospectDashboardId)
+                .eq('podcast_id', podcast.podcast_id)
+
+              if (!updateError) {
+                analyzedCount++
+                stats.aiAnalysesGenerated++
+                console.log('[Get Prospect Podcasts] AI analysis saved for:', podcast.podcast_name)
+              }
+            }
+          })
+        )
+      }
+
+      const remaining = podcastsNeedingAi.length - analyzedCount
+      return new Response(
+        JSON.stringify({
+          success: true,
+          aiComplete: !stoppedEarly && remaining === 0,
+          stoppedEarly,
+          analyzed: analyzedCount,
+          remaining,
+          total: cachedPodcasts.length,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Fetch missing podcasts from Podscan (+ AI analysis if not skipping)
     const newPodcasts: CachedPodcast[] = []
     const startTime = Date.now()
     const MAX_RUNTIME_MS = 50000 // 50 seconds max to avoid timeout
@@ -426,8 +513,8 @@ serve(async (req) => {
                 console.log('[Get Prospect Podcasts] No demographics available')
               }
 
-              // 3. Get AI analysis if we have prospect info
-              if (prospectName && prospectBio) {
+              // 3. Get AI analysis if we have prospect info (and not skipping)
+              if (prospectName && prospectBio && !skipAiAnalysis) {
                 console.log('[Get Prospect Podcasts] Getting AI analysis for:', podcastData.podcast_name)
                 const analysis = await analyzePodcastFit(
                   {

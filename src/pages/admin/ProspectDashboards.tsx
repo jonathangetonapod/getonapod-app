@@ -80,6 +80,7 @@ interface ProspectDashboard {
   spreadsheet_url: string
   created_at: string
   is_active: boolean
+  content_ready: boolean
   view_count: number
   last_viewed_at: string | null
 }
@@ -128,23 +129,23 @@ export default function ProspectDashboards() {
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
   const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
 
-  // Cache building state
-  const [buildingCache, setBuildingCache] = useState(false)
-  const [cacheStatus, setCacheStatus] = useState<{
+  // Cache status state
+  const [checkingStatus, setCheckingStatus] = useState(false)
+  const [cacheStatusData, setCacheStatusData] = useState<{
+    totalInSheet: number
     cached: number
+    missing: number
+    withAi: number
+    withoutAi: number
+    withDemographics: number
+  } | null>(null)
+
+  // Podcast fetching state
+  const [fetchingPodcasts, setFetchingPodcasts] = useState(false)
+  const [fetchStatus, setFetchStatus] = useState<{
     fetched: number
-    total: number
-    stoppedEarly?: boolean
-    remaining?: number
-    stats?: {
-      fromSheet: number
-      fromCache: number
-      podscanFetched: number
-      aiAnalysesGenerated: number
-      demographicsFetched: number
-      cachedWithAi: number
-      cachedWithDemographics: number
-    }
+    stoppedEarly: boolean
+    remaining: number
   } | null>(null)
 
   const appUrl = window.location.origin
@@ -343,12 +344,16 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, and reset bioExpanded when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
       setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
       setBioExpanded(false)
+      // Reset cache status when switching dashboards
+      setCacheStatusData(null)
+      setFetchStatus(null)
+      setAiStatus(null)
     }
   }, [selectedDashboard])
 
@@ -578,18 +583,65 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Build cache for prospect dashboard (pre-warm before sharing)
-  const buildCache = async () => {
+  // Check cache status - just reports stats, doesn't fetch anything
+  const checkCacheStatus = async () => {
     if (!selectedDashboard?.spreadsheet_id) {
       toast.error('Please link a Google Sheet first')
       return
     }
 
-    setBuildingCache(true)
-    setCacheStatus(null)
+    setCheckingStatus(true)
 
     try {
-      toast.info('Building cache... This may take a few minutes for new podcasts.')
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          spreadsheetId: selectedDashboard.spreadsheet_id,
+          prospectDashboardId: selectedDashboard.id,
+          checkStatusOnly: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to check cache status')
+      }
+
+      const data = await response.json()
+      setCacheStatusData(data.status)
+
+      // Clear fetch status when checking fresh
+      setFetchStatus(null)
+      setAiStatus(null)
+
+      if (data.status.missing === 0 && data.status.withoutAi === 0) {
+        toast.success(`All ${data.status.totalInSheet} podcasts ready!`)
+      } else {
+        toast.info(`Found ${data.status.totalInSheet} podcasts: ${data.status.cached} cached, ${data.status.missing} missing, ${data.status.withoutAi} need AI`)
+      }
+    } catch (error) {
+      console.error('Error checking cache status:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to check cache status')
+    } finally {
+      setCheckingStatus(false)
+    }
+  }
+
+  // Fetch missing podcasts from Podscan
+  const fetchMissingPodcasts = async () => {
+    if (!selectedDashboard?.spreadsheet_id) {
+      toast.error('Please link a Google Sheet first')
+      return
+    }
+
+    setFetchingPodcasts(true)
+
+    try {
+      toast.info('Fetching missing podcasts from Podscan...')
 
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
         method: 'POST',
@@ -602,36 +654,149 @@ export default function ProspectDashboards() {
           prospectDashboardId: selectedDashboard.id,
           prospectName: selectedDashboard.prospect_name,
           prospectBio: selectedDashboard.prospect_bio,
+          skipAiAnalysis: true, // Skip AI, just fetch podcast data
         }),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Failed to build cache')
+        throw new Error(error.error || 'Failed to fetch podcasts')
       }
 
       const data = await response.json()
-      setCacheStatus({
-        cached: data.cached || 0,
+      setFetchStatus({
         fetched: data.fetched || 0,
-        total: data.total || 0,
         stoppedEarly: data.stoppedEarly || false,
         remaining: data.remaining || 0,
-        stats: data.stats,
       })
 
       if (data.stoppedEarly) {
-        toast.warning(`Processed ${data.fetched} podcasts. ${data.remaining} remaining - click again to continue.`)
+        toast.warning(`Fetched ${data.fetched} podcasts. ${data.remaining} remaining - click again to continue.`)
       } else if (data.fetched > 0) {
-        toast.success(`Cache built! ${data.fetched} new podcasts processed, ${data.cached} already cached.`)
+        toast.success(`Fetched ${data.fetched} podcasts from Podscan!`)
       } else {
-        toast.success(`Cache ready! All ${data.total} podcasts already cached.`)
+        toast.success('All podcasts already cached!')
+      }
+
+      // Refresh status from DB after fetching completes
+      setFetchingPodcasts(false)
+      await checkCacheStatus()
+      return
+    } catch (error) {
+      console.error('Error fetching podcasts:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch podcasts')
+    } finally {
+      setFetchingPodcasts(false)
+    }
+  }
+
+  // Publish toggle state
+  const [togglingPublish, setTogglingPublish] = useState(false)
+
+  const toggleContentReady = async () => {
+    if (!selectedDashboard) return
+
+    setTogglingPublish(true)
+    try {
+      const newValue = !selectedDashboard.content_ready
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ content_ready: newValue })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id ? { ...d, content_ready: newValue } : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, content_ready: newValue } : null
+      )
+
+      toast.success(newValue ? 'Dashboard published! Prospect can now see content.' : 'Dashboard unpublished. Prospect will see Coming Soon.')
+    } catch (error) {
+      console.error('Error toggling content ready:', error)
+      toast.error('Failed to update publish status')
+    } finally {
+      setTogglingPublish(false)
+    }
+  }
+
+  // AI Analysis state
+  const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
+  const [aiStatus, setAiStatus] = useState<{
+    analyzed: number
+    remaining: number
+    total: number
+    complete: boolean
+    stoppedEarly: boolean
+  } | null>(null)
+
+  // Run AI analysis on cached podcasts
+  const runAiAnalysis = async () => {
+    if (!selectedDashboard?.spreadsheet_id) {
+      toast.error('Please link a Google Sheet first')
+      return
+    }
+
+    setRunningAiAnalysis(true)
+
+    try {
+      toast.info('Running AI analysis...')
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          spreadsheetId: selectedDashboard.spreadsheet_id,
+          prospectDashboardId: selectedDashboard.id,
+          prospectName: selectedDashboard.prospect_name,
+          prospectBio: selectedDashboard.prospect_bio,
+          aiAnalysisOnly: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to run AI analysis')
+      }
+
+      const data = await response.json()
+      setAiStatus({
+        analyzed: data.analyzed || 0,
+        remaining: data.remaining || 0,
+        total: data.total || 0,
+        complete: data.aiComplete || false,
+        stoppedEarly: data.stoppedEarly || false,
+      })
+
+      // Update cache status after AI analysis
+      if (cacheStatusData) {
+        setCacheStatusData({
+          ...cacheStatusData,
+          withAi: cacheStatusData.withAi + (data.analyzed || 0),
+          withoutAi: data.remaining || 0,
+        })
+      }
+
+      if (data.aiComplete) {
+        toast.success(`AI analysis complete! All ${data.total} podcasts analyzed.`)
+      } else if (data.stoppedEarly) {
+        toast.warning(`Analyzed ${data.analyzed} podcasts. ${data.remaining} remaining - click again to continue.`)
+      } else {
+        toast.success(`Analyzed ${data.analyzed} podcasts.`)
       }
     } catch (error) {
-      console.error('Error building cache:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to build cache')
+      console.error('Error running AI analysis:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to run AI analysis')
     } finally {
-      setBuildingCache(false)
+      setRunningAiAnalysis(false)
     }
   }
 
@@ -1132,7 +1297,7 @@ export default function ProspectDashboards() {
 
                   <Separator />
 
-                  {/* Build Cache */}
+                  {/* Prepare for Client - 3 Step Workflow */}
                   <div className="space-y-3">
                     <h3 className="font-semibold flex items-center gap-2">
                       <Sparkles className="h-4 w-4" />
@@ -1142,86 +1307,181 @@ export default function ProspectDashboards() {
                       Build the cache before sharing to ensure instant loading for the client
                     </p>
 
-                    {buildingCache && (
-                      <div className="space-y-2">
-                        <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary rounded-full animate-pulse"
-                            style={{
-                              width: '100%',
-                              animation: 'progress-indeterminate 2s ease-in-out infinite',
-                            }}
-                          />
-                        </div>
-                        <p className="text-xs text-center text-muted-foreground">
-                          Fetching podcasts, demographics & AI analysis...
-                        </p>
-                      </div>
-                    )}
-
+                    {/* Button 1: Check Cache Status */}
                     <Button
-                      onClick={buildCache}
-                      disabled={buildingCache || !selectedDashboard.spreadsheet_id}
+                      onClick={checkCacheStatus}
+                      disabled={checkingStatus || fetchingPodcasts || runningAiAnalysis || !selectedDashboard.spreadsheet_id}
                       className="w-full"
-                      variant={cacheStatus && !cacheStatus.stoppedEarly ? "outline" : "default"}
+                      variant="outline"
+                      size="sm"
                     >
-                      {buildingCache ? (
+                      {checkingStatus ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Building Cache...
-                        </>
-                      ) : cacheStatus?.stoppedEarly ? (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Continue Building ({cacheStatus.remaining} remaining)
-                        </>
-                      ) : cacheStatus ? (
-                        <>
-                          <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
-                          Cache Ready ({cacheStatus.total} podcasts)
+                          Checking...
                         </>
                       ) : (
                         <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Build Cache
+                          <BarChart3 className="h-4 w-4 mr-2" />
+                          Check Cache Status
                         </>
                       )}
                     </Button>
-                    {cacheStatus && !buildingCache && cacheStatus.stoppedEarly && (
-                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                          <Loader2 className="h-4 w-4" />
-                          <span className="text-sm font-medium">In Progress - Click again to continue</span>
+
+                    {/* Status Display */}
+                    {cacheStatusData && (
+                      <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg space-y-2">
+                        <div className="text-sm font-medium">
+                          {cacheStatusData.totalInSheet} podcasts in sheet
                         </div>
-                        <div className="text-xs text-amber-600 dark:text-amber-400">
-                          <p>{cacheStatus.total} of {cacheStatus.stats?.fromSheet} podcasts cached</p>
-                          <p>{cacheStatus.remaining} remaining</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          <span className="text-muted-foreground">Cached:</span>
+                          <span className={cn("font-medium", cacheStatusData.cached === cacheStatusData.totalInSheet ? "text-green-600" : "")}>
+                            {cacheStatusData.cached}
+                          </span>
+                          <span className="text-muted-foreground">Missing:</span>
+                          <span className={cn("font-medium", cacheStatusData.missing > 0 ? "text-amber-600" : "text-green-600")}>
+                            {cacheStatusData.missing}
+                          </span>
+                          <span className="text-muted-foreground">With AI:</span>
+                          <span className={cn("font-medium", cacheStatusData.withAi === cacheStatusData.cached ? "text-green-600" : "")}>
+                            {cacheStatusData.withAi}
+                          </span>
+                          <span className="text-muted-foreground">Need AI:</span>
+                          <span className={cn("font-medium", cacheStatusData.withoutAi > 0 ? "text-purple-600" : "text-green-600")}>
+                            {cacheStatusData.withoutAi}
+                          </span>
                         </div>
                       </div>
                     )}
-                    {cacheStatus && !buildingCache && !cacheStatus.stoppedEarly && (
-                      <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                          <CheckCircle2 className="h-4 w-4" />
-                          <span className="text-sm font-medium">Ready to share!</span>
-                        </div>
-                        <div className="text-xs text-green-600 dark:text-green-400 space-y-1">
-                          <p className="font-medium">{cacheStatus.total} podcasts total</p>
-                          {cacheStatus.stats && (
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-green-600/80 dark:text-green-400/80">
-                              <span>From cache:</span>
-                              <span className="font-medium">{cacheStatus.stats.fromCache}</span>
-                              <span>Podscan fetched:</span>
-                              <span className="font-medium">{cacheStatus.stats.podscanFetched}</span>
-                              <span>AI analyses:</span>
-                              <span className="font-medium">{cacheStatus.stats.aiAnalysesGenerated + cacheStatus.stats.cachedWithAi}</span>
-                              <span>Demographics:</span>
-                              <span className="font-medium">{cacheStatus.stats.demographicsFetched + cacheStatus.stats.cachedWithDemographics}</span>
+
+                    {/* Button 2: Find Missing Podcasts */}
+                    {cacheStatusData && cacheStatusData.missing > 0 && (
+                      <div className="space-y-2">
+                        {fetchingPodcasts && (
+                          <div className="space-y-2">
+                            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full animate-pulse"
+                                style={{
+                                  width: '100%',
+                                  animation: 'progress-indeterminate 2s ease-in-out infinite',
+                                }}
+                              />
                             </div>
+                            <p className="text-xs text-center text-muted-foreground">
+                              Fetching from Podscan...
+                            </p>
+                          </div>
+                        )}
+                        <Button
+                          onClick={fetchMissingPodcasts}
+                          disabled={fetchingPodcasts || runningAiAnalysis || checkingStatus}
+                          className="w-full"
+                          size="sm"
+                        >
+                          {fetchingPodcasts ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Fetching...
+                            </>
+                          ) : fetchStatus?.stoppedEarly ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Continue ({fetchStatus.remaining} remaining)
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Find Missing Podcasts ({cacheStatusData.missing})
+                            </>
                           )}
-                        </div>
+                        </Button>
                       </div>
                     )}
+
+                    {/* Button 3: Run AI Analysis */}
+                    {cacheStatusData && cacheStatusData.withoutAi > 0 && (
+                      <div className="space-y-2">
+                        {runningAiAnalysis && (
+                          <div className="space-y-2">
+                            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-purple-500 rounded-full animate-pulse"
+                                style={{
+                                  width: '100%',
+                                  animation: 'progress-indeterminate 2s ease-in-out infinite',
+                                }}
+                              />
+                            </div>
+                            <p className="text-xs text-center text-muted-foreground">
+                              Generating AI insights...
+                            </p>
+                          </div>
+                        )}
+                        <Button
+                          onClick={runAiAnalysis}
+                          disabled={runningAiAnalysis || fetchingPodcasts || checkingStatus}
+                          className="w-full"
+                          variant="secondary"
+                          size="sm"
+                        >
+                          {runningAiAnalysis ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Analyzing...
+                            </>
+                          ) : aiStatus?.stoppedEarly ? (
+                            <>
+                              <Sparkles className="h-4 w-4 mr-2" />
+                              Continue AI ({aiStatus.remaining} remaining)
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4 mr-2" />
+                              Run AI Analysis ({cacheStatusData.withoutAi})
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Publish Toggle */}
+                    <div className="pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Publish to Client</p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedDashboard.content_ready
+                              ? 'Client can see the dashboard'
+                              : 'Client sees "Coming Soon"'}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={toggleContentReady}
+                          disabled={togglingPublish}
+                          variant={selectedDashboard.content_ready ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            selectedDashboard.content_ready && "bg-green-600 hover:bg-green-700"
+                          )}
+                        >
+                          {togglingPublish ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : selectedDashboard.content_ready ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4 mr-1" />
+                              Published
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4 mr-1" />
+                              Publish
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   <Separator />

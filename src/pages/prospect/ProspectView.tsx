@@ -66,6 +66,7 @@ interface ProspectDashboard {
   spreadsheet_id: string | null
   spreadsheet_url: string | null
   is_active: boolean
+  content_ready: boolean
   personalized_tagline: string | null
 }
 
@@ -204,8 +205,13 @@ export default function ProspectView() {
           })
           .eq('id', dashboardData.id)
 
-        // Fetch podcasts from cache only (admin must build cache first)
-        if (dashboardData.spreadsheet_id) {
+        // Check if admin has published the content
+        if (!dashboardData.content_ready) {
+          console.log('[Dashboard] Content not published yet - showing Coming Soon')
+          setCacheNotReady(true)
+          setPodcasts([])
+        } else if (dashboardData.spreadsheet_id) {
+          // Fetch podcasts from cache
           const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
             method: 'POST',
             headers: {
@@ -227,17 +233,9 @@ export default function ProspectView() {
           }
 
           const data = await response.json()
-
-          // Check if cache is ready
-          if (data.cacheReady === false) {
-            console.log('[Dashboard] Cache not ready - waiting for admin to build cache')
-            setCacheNotReady(true)
-            setPodcasts([])
-          } else {
-            console.log(`[Dashboard] Loaded ${data.total} podcasts from cache`)
-            setCacheNotReady(false)
-            setPodcasts(data.podcasts || [])
-          }
+          console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
+          setCacheNotReady(false)
+          setPodcasts(data.podcasts || [])
         } else {
           // No spreadsheet linked yet - show empty state
           setPodcasts([])
@@ -1156,19 +1154,26 @@ export default function ProspectView() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {console.log('[Render Debug] Rendering', filteredPodcasts.length, 'podcast cards')}
-            {filteredPodcasts.map((podcast, index) => (
+          <>
+            {/* Debug: shows actual count being rendered */}
+            <div className="mb-2 text-xs text-red-500 font-mono">
+              DEBUG: Rendering {filteredPodcasts.length} cards (selectedCategories: {selectedCategories.length}, filter key: {`${selectedCategories.join(',')}-${searchQuery}-${feedbackFilter}-${episodeFilter}-${audienceFilter}`})
+            </div>
+            {/* Key forces complete re-mount when filters change */}
+            <div
+              key={`podcast-grid-${selectedCategories.join(',')}-${searchQuery}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
+              className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {filteredPodcasts.map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
                 "group cursor-pointer border-0 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden",
                 "active:scale-[0.98] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm",
                 "hover:-translate-y-1 hover:scale-[1.02]",
-                "animate-slide-in-bottom",
                 selectedPodcast?.podcast_id === podcast.podcast_id && "ring-2 ring-primary shadow-xl"
               )}
-              style={{ animationDelay: `${index * 50}ms` }}
+              style={{ animationDelay: `${Math.min(index, 10) * 30}ms` }}
               onClick={() => setSelectedPodcast(podcast)}
             >
               <CardContent className="p-0">
@@ -1360,7 +1365,8 @@ export default function ProspectView() {
               </CardContent>
             </Card>
           ))}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
