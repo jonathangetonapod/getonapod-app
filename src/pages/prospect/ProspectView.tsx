@@ -834,22 +834,24 @@ export default function ProspectView() {
             {/* Action CTA */}
             <div className="mt-4 animate-fade-in-up delay-300">
               {(() => {
-                // Only count feedback for podcasts currently in the list
-                const currentPodcastIds = new Set(podcasts.map(p => p.podcast_id))
-                const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status && currentPodcastIds.has(f.podcast_id)).length
-                const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved' && currentPodcastIds.has(f.podcast_id)).length
+                // Count feedback for filtered podcasts (or all if no filter active)
+                const isFiltering = searchQuery || selectedCategories.length > 0 || feedbackFilter !== 'all' || episodeFilter !== 'any' || audienceFilter !== 'any'
+                const displayPodcasts = isFiltering ? filteredPodcasts : podcasts
+                const displayPodcastIds = new Set(displayPodcasts.map(p => p.podcast_id))
+                const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status && displayPodcastIds.has(f.podcast_id)).length
+                const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved' && displayPodcastIds.has(f.podcast_id)).length
 
-                if (reviewedCount > 0) {
+                if (reviewedCount > 0 || isFiltering) {
                   return (
                     <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
                       <div className="w-32 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500"
-                          style={{ width: `${(reviewedCount / podcasts.length) * 100}%` }}
+                          style={{ width: `${displayPodcasts.length > 0 ? (reviewedCount / displayPodcasts.length) * 100 : 0}%` }}
                         />
                       </div>
                       <span className="text-sm font-medium">
-                        {reviewedCount}/{podcasts.length} reviewed
+                        {reviewedCount}/{displayPodcasts.length} reviewed
                         {approvedCount > 0 && <span className="text-green-600 ml-1">• {approvedCount} approved</span>}
                       </span>
                     </div>
