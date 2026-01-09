@@ -351,8 +351,10 @@ serve(async (req) => {
         throw new Error('PODSCAN_API_KEY not configured')
       }
 
-      const BATCH_SIZE = 3 // Smaller batches for AI analysis
-      for (let i = 0; i < missingPodcastIds.length; i += BATCH_SIZE) {
+      const BATCH_SIZE = 5 // Process 5 podcasts in parallel
+      const CONCURRENT_BATCHES = 3 // Run 3 batches concurrently = 15 podcasts at a time
+
+      for (let i = 0; i < missingPodcastIds.length; i += BATCH_SIZE * CONCURRENT_BATCHES) {
         // Check if we're approaching timeout
         if (Date.now() - startTime > MAX_RUNTIME_MS) {
           console.log('[Get Prospect Podcasts] Stopping early to avoid timeout, processed', newPodcasts.length, 'of', missingPodcastIds.length)
@@ -360,10 +362,17 @@ serve(async (req) => {
           break
         }
 
-        const batch = missingPodcastIds.slice(i, i + BATCH_SIZE)
+        // Create multiple batches to run concurrently
+        const batchPromises: Promise<(CachedPodcast | null)[]>[] = []
 
-        const batchResults = await Promise.all(
-          batch.map(async (podcastId): Promise<CachedPodcast | null> => {
+        for (let b = 0; b < CONCURRENT_BATCHES; b++) {
+          const startIdx = i + (b * BATCH_SIZE)
+          if (startIdx >= missingPodcastIds.length) break
+
+          const batch = missingPodcastIds.slice(startIdx, startIdx + BATCH_SIZE)
+
+          const batchPromise = Promise.all(
+            batch.map(async (podcastId): Promise<CachedPodcast | null> => {
             try {
               // 1. Fetch from Podscan
               console.log('[Get Prospect Podcasts] Fetching from Podscan:', podcastId)
@@ -480,7 +489,16 @@ serve(async (req) => {
           })
         )
 
-        newPodcasts.push(...batchResults.filter((p): p is CachedPodcast => p !== null))
+          batchPromises.push(batchPromise)
+        }
+
+        // Wait for all concurrent batches to complete
+        const allBatchResults = await Promise.all(batchPromises)
+        for (const batchResults of allBatchResults) {
+          newPodcasts.push(...batchResults.filter((p): p is CachedPodcast => p !== null))
+        }
+
+        console.log('[Get Prospect Podcasts] Processed batch, total so far:', newPodcasts.length)
       }
     }
 
