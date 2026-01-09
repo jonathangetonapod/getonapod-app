@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -677,65 +677,61 @@ export default function ProspectView() {
     else feedbackStats.notReviewed++
   })
 
-  // Filter podcasts based on search query, categories, and feedback status (memoized)
-  const filteredPodcasts = useMemo(() => {
-    // Create a Set of seen podcast IDs to prevent duplicates
-    const seenIds = new Set<string>()
+  // Filter podcasts based on search query, categories, and feedback status
+  // First dedupe podcasts by ID
+  const uniquePodcasts = podcasts.filter((podcast, index, self) =>
+    index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
+  )
 
-    return podcasts.filter(podcast => {
-      // Skip duplicates
-      if (seenIds.has(podcast.podcast_id)) return false
-      seenIds.add(podcast.podcast_id)
+  const filteredPodcasts = uniquePodcasts.filter(podcast => {
+    // Search filter (use debounced for performance)
+    if (debouncedSearch.trim()) {
+      const query = debouncedSearch.toLowerCase()
+      const matchesSearch = (
+        podcast.podcast_name.toLowerCase().includes(query) ||
+        podcast.podcast_description?.toLowerCase().includes(query) ||
+        podcast.publisher_name?.toLowerCase().includes(query)
+      )
+      if (!matchesSearch) return false
+    }
 
-      // Search filter (use debounced for performance)
-      if (debouncedSearch.trim()) {
-        const query = debouncedSearch.toLowerCase()
-        const matchesSearch = (
-          podcast.podcast_name.toLowerCase().includes(query) ||
-          podcast.podcast_description?.toLowerCase().includes(query) ||
-          podcast.publisher_name?.toLowerCase().includes(query)
-        )
-        if (!matchesSearch) return false
-      }
+    // Category filter
+    if (selectedCategories.length > 0) {
+      const podcastCats = podcast.podcast_categories
+      if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
+      const podcastCatIds = podcastCats.map(c => c.category_id)
+      const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
+      if (!hasMatch) return false
+    }
 
-      // Category filter
-      if (selectedCategories.length > 0) {
-        const podcastCats = podcast.podcast_categories
-        if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
-        const podcastCatIds = podcastCats.map(c => c.category_id)
-        const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
-        if (!hasMatch) return false
-      }
+    // Feedback status filter
+    if (feedbackFilter !== 'all') {
+      const feedback = feedbackMap.get(podcast.podcast_id)
+      if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
+      if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
+      if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
+    }
 
-      // Feedback status filter
-      if (feedbackFilter !== 'all') {
-        const feedback = feedbackMap.get(podcast.podcast_id)
-        if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
-        if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
-        if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
-      }
+    // Episode count filter
+    if (episodeFilter !== 'any') {
+      const eps = podcast.episode_count || 0
+      if (episodeFilter === 'under50' && eps >= 50) return false
+      if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
+      if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
+      if (episodeFilter === '200plus' && eps < 200) return false
+    }
 
-      // Episode count filter
-      if (episodeFilter !== 'any') {
-        const eps = podcast.episode_count || 0
-        if (episodeFilter === 'under50' && eps >= 50) return false
-        if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
-        if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
-        if (episodeFilter === '200plus' && eps < 200) return false
-      }
+    // Audience size filter
+    if (audienceFilter !== 'any') {
+      const aud = podcast.audience_size || 0
+      if (audienceFilter === 'under10k' && aud >= 10000) return false
+      if (audienceFilter === '10kto50k' && (aud < 10000 || aud >= 50000)) return false
+      if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
+      if (audienceFilter === '100kplus' && aud < 100000) return false
+    }
 
-      // Audience size filter
-      if (audienceFilter !== 'any') {
-        const aud = podcast.audience_size || 0
-        if (audienceFilter === 'under10k' && aud >= 10000) return false
-        if (audienceFilter === '10kto50k' && (aud < 10000 || aud >= 50000)) return false
-        if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
-        if (audienceFilter === '100kplus' && aud < 100000) return false
-      }
-
-      return true
-    })
-  }, [podcasts, debouncedSearch, selectedCategories, feedbackFilter, feedbackMap, episodeFilter, audienceFilter])
+    return true
+  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -785,7 +781,7 @@ export default function ProspectView() {
                 {personalizedTagline ? (
                   <span>{personalizedTagline}</span>
                 ) : (
-                  <>We've curated <span className="font-bold text-foreground">{podcasts.length}</span> podcast{podcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
+                  <>We've curated <span className="font-bold text-foreground">{uniquePodcasts.length}</span> podcast{uniquePodcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
                 )}
               </p>
             </div>
@@ -804,23 +800,23 @@ export default function ProspectView() {
               </div>
               <div className="flex items-center gap-2">
                 <Mic className="h-5 w-5 text-primary" />
-                <span className="text-lg sm:text-xl font-bold">{podcasts.length}</span>
+                <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
                 <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
               </div>
             </div>
 
             {/* AI Insights Loading Status */}
-            {preloadingAnalyses && analysisCache.size < podcasts.length && (
+            {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
               <div className="flex items-center justify-center gap-2 pt-2 animate-fade-in">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-100/80 dark:bg-purple-900/30 border border-purple-200/50 dark:border-purple-800/50">
                   <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 animate-pulse" />
                   <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
-                    AI insights ready: {analysisCache.size}/{podcasts.length}
+                    AI insights ready: {analysisCache.size}/{uniquePodcasts.length}
                   </span>
                 </div>
               </div>
             )}
-            {analysisCache.size >= podcasts.length && analysisCache.size > 0 && (
+            {analysisCache.size >= uniquePodcasts.length && analysisCache.size > 0 && (
               <div className="flex items-center justify-center gap-2 pt-2 animate-fade-in">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-100/80 dark:bg-green-900/30 border border-green-200/50 dark:border-green-800/50">
                   <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
@@ -835,8 +831,8 @@ export default function ProspectView() {
             <div className="mt-4 animate-fade-in-up delay-300">
               {(() => {
                 // Count feedback for filtered podcasts (or all if no filter active)
-                const isFiltering = searchQuery || selectedCategories.length > 0 || feedbackFilter !== 'all' || episodeFilter !== 'any' || audienceFilter !== 'any'
-                const displayPodcasts = isFiltering ? filteredPodcasts : podcasts
+                const isFiltering = debouncedSearch || selectedCategories.length > 0 || feedbackFilter !== 'all' || episodeFilter !== 'any' || audienceFilter !== 'any'
+                const displayPodcasts = isFiltering ? filteredPodcasts : uniquePodcasts
                 const displayPodcastIds = new Set(displayPodcasts.map(p => p.podcast_id))
                 const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status && displayPodcastIds.has(f.podcast_id)).length
                 const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved' && displayPodcastIds.has(f.podcast_id)).length
@@ -1001,7 +997,7 @@ export default function ProspectView() {
                   : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
               )}
             >
-              All ({podcasts.length})
+              All ({uniquePodcasts.length})
             </button>
             <button
               onClick={() => setFeedbackFilter('approved')}
@@ -1133,12 +1129,12 @@ export default function ProspectView() {
         {/* Results count when filtering */}
         {(searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
-            Showing {filteredPodcasts.length} of {podcasts.length} podcasts
+            Showing {filteredPodcasts.length} of {uniquePodcasts.length} podcasts
             {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
           </p>
         )}
 
-        {podcasts.length === 0 ? (
+        {uniquePodcasts.length === 0 ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Radio className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
