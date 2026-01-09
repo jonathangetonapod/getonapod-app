@@ -128,6 +128,7 @@ export default function ProspectDashboards() {
   const [loadingFeedback, setLoadingFeedback] = useState(false)
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
   const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
+  const [deletingAllRejected, setDeletingAllRejected] = useState(false)
 
   // Cache status state
   const [checkingStatus, setCheckingStatus] = useState(false)
@@ -332,6 +333,56 @@ export default function ProspectDashboards() {
       toast.error(error instanceof Error ? error.message : 'Failed to delete podcast')
     } finally {
       setDeletingPodcastId(null)
+    }
+  }
+
+  const deleteAllRejectedPodcasts = async () => {
+    if (!selectedDashboard?.id) {
+      toast.error('No dashboard selected')
+      return
+    }
+
+    const rejectedPodcasts = feedback.filter(f => f.status === 'rejected')
+    if (rejectedPodcasts.length === 0) {
+      toast.error('No rejected podcasts to delete')
+      return
+    }
+
+    setDeletingAllRejected(true)
+    try {
+      const podcastIds = rejectedPodcasts.map(f => f.podcast_id)
+
+      // Delete all rejected from cached podcasts table
+      const { error: cacheError } = await supabase
+        .from('prospect_dashboard_podcasts')
+        .delete()
+        .eq('prospect_dashboard_id', selectedDashboard.id)
+        .in('podcast_id', podcastIds)
+
+      if (cacheError) {
+        console.error('Error deleting from cache:', cacheError)
+      }
+
+      // Delete all rejected feedback records
+      const { error: feedbackError } = await supabase
+        .from('prospect_podcast_feedback')
+        .delete()
+        .eq('prospect_dashboard_id', selectedDashboard.id)
+        .in('podcast_id', podcastIds)
+
+      if (feedbackError) {
+        console.error('Error deleting feedback:', feedbackError)
+      }
+
+      // Remove from local feedback state
+      setFeedback(prev => prev.filter(f => f.status !== 'rejected'))
+
+      toast.success(`Deleted ${rejectedPodcasts.length} rejected podcasts`)
+    } catch (error) {
+      console.error('Error deleting rejected podcasts:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to delete rejected podcasts')
+    } finally {
+      setDeletingAllRejected(false)
     }
   }
 
@@ -1608,9 +1659,30 @@ export default function ProspectDashboards() {
                         {/* Rejected Podcasts List */}
                         {expandedFeedbackSection === 'rejected' && feedback.filter(f => f.status === 'rejected').length > 0 && (
                           <div className="space-y-2 mt-4">
-                            <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
-                              Rejected Podcasts
-                            </p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
+                                Rejected Podcasts
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                onClick={deleteAllRejectedPodcasts}
+                                disabled={deletingAllRejected}
+                              >
+                                {deletingAllRejected ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    Deleting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Delete All
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                             <div className="space-y-2 max-h-64 overflow-y-auto pr-4">
                               {feedback.filter(f => f.status === 'rejected').map((fb) => (
                                 <div
