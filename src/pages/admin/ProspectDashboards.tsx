@@ -293,49 +293,40 @@ export default function ProspectDashboards() {
     toast.success(includeTour ? 'Link with welcome tour copied!' : 'Dashboard link copied!')
   }
 
-  const deletePodcastFromSheet = async (podcastId: string, podcastName: string | null) => {
-    if (!selectedDashboard?.spreadsheet_id) {
-      toast.error('No spreadsheet linked to this dashboard')
+  const deletePodcastFromDashboard = async (podcastId: string, podcastName: string | null) => {
+    if (!selectedDashboard?.id) {
+      toast.error('No dashboard selected')
       return
     }
 
     setDeletingPodcastId(podcastId)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        toast.error('Not authenticated')
-        return
+      // Delete from the cached podcasts table
+      const { error: cacheError } = await supabase
+        .from('prospect_dashboard_podcasts')
+        .delete()
+        .eq('prospect_dashboard_id', selectedDashboard.id)
+        .eq('podcast_id', podcastId)
+
+      if (cacheError) {
+        console.error('Error deleting from cache:', cacheError)
       }
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          spreadsheetId: selectedDashboard.spreadsheet_id,
-          podcastId: podcastId,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete podcast')
-      }
-
-      // Also delete the feedback record
-      await supabase
+      // Delete the feedback record
+      const { error: feedbackError } = await supabase
         .from('prospect_podcast_feedback')
         .delete()
         .eq('prospect_dashboard_id', selectedDashboard.id)
         .eq('podcast_id', podcastId)
 
+      if (feedbackError) {
+        console.error('Error deleting feedback:', feedbackError)
+      }
+
       // Remove from local feedback state
       setFeedback(prev => prev.filter(f => f.podcast_id !== podcastId))
 
-      toast.success(`Deleted "${podcastName || podcastId}" from sheet`)
+      toast.success(`Deleted "${podcastName || podcastId}" from dashboard`)
     } catch (error) {
       console.error('Error deleting podcast:', error)
       toast.error(error instanceof Error ? error.message : 'Failed to delete podcast')
@@ -1637,7 +1628,7 @@ export default function ProspectDashboards() {
                                       variant="ghost"
                                       size="sm"
                                       className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
-                                      onClick={() => deletePodcastFromSheet(fb.podcast_id, fb.podcast_name)}
+                                      onClick={() => deletePodcastFromDashboard(fb.podcast_id, fb.podcast_name)}
                                       disabled={deletingPodcastId === fb.podcast_id}
                                     >
                                       {deletingPodcastId === fb.podcast_id ? (
