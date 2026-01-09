@@ -232,6 +232,33 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // FAST PATH: For cacheOnly mode, skip Google Sheets entirely and return cached data directly
+    if (cacheOnly && prospectDashboardId) {
+      console.log('[Get Prospect Podcasts] FAST PATH - querying cache directly, skipping Google Sheets')
+      const { data: cached, error: cacheError } = await supabase
+        .from('prospect_dashboard_podcasts')
+        .select('*')
+        .eq('prospect_dashboard_id', prospectDashboardId)
+
+      if (cacheError) {
+        console.error('[Get Prospect Podcasts] Cache query error:', cacheError)
+        throw cacheError
+      }
+
+      console.log('[Get Prospect Podcasts] FAST PATH - returning', cached?.length || 0, 'cached podcasts')
+      return new Response(
+        JSON.stringify({
+          success: true,
+          podcasts: cached || [],
+          total: cached?.length || 0,
+          cached: cached?.length || 0,
+          missing: 0,
+          fastPath: true,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Get Google access token and fetch podcast IDs from sheet
     const accessToken = await getGoogleAccessToken()
     const sheetResponse = await fetch(
