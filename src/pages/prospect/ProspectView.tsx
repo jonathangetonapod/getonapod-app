@@ -138,8 +138,8 @@ export default function ProspectView() {
   const [episodeFilter, setEpisodeFilter] = useState<string>('any')
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
 
-  // Infinite scroll - show 30 cards initially, load more on scroll
-  const CARDS_PER_PAGE = 30
+  // Infinite scroll - show 60 cards initially, load more on scroll
+  const CARDS_PER_PAGE = 60
   const [visibleCount, setVisibleCount] = useState(CARDS_PER_PAGE)
   const loadMoreRef = useRef<HTMLDivElement>(null)
 
@@ -1456,17 +1456,9 @@ export default function ProspectView() {
             </Card>
           ))}
           </div>
-          {/* Load more trigger for infinite scroll */}
+          {/* Invisible trigger for infinite scroll - loads instantly */}
           {visibleCount < filteredPodcasts.length && (
-            <div
-              ref={loadMoreRef}
-              className="flex items-center justify-center py-8"
-            >
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Loading more...</span>
-              </div>
-            </div>
+            <div ref={loadMoreRef} className="h-4" />
           )}
           </>
         )}
