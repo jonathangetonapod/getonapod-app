@@ -1062,7 +1062,7 @@ export default function ProspectDashboards() {
 
       {/* Side Panel */}
       <Sheet open={!!selectedDashboard} onOpenChange={() => setSelectedDashboard(null)}>
-        <SheetContent className="w-full sm:max-w-lg p-0 overflow-hidden">
+        <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-y-auto overflow-x-hidden">
           {selectedDashboard && (
             <div className="flex flex-col h-full">
               {/* Close button - fixed position */}
@@ -1110,7 +1110,7 @@ export default function ProspectDashboards() {
                     </div>
                   )}
                 </div>
-                <div className="p-6 space-y-6">
+                <div className="p-6 pr-8 space-y-6">
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30">
