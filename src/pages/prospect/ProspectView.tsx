@@ -563,19 +563,57 @@ export default function ProspectView() {
     }
   }
 
-  // Loading state
+  // Loading state - show skeleton UI for snappier feel
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="relative">
-            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+        {/* Skeleton Header */}
+        <div className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10" />
+          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+            <div className="text-center space-y-4">
+              {/* Badge skeleton */}
+              <div className="h-8 w-48 bg-white/60 rounded-full mx-auto animate-pulse" />
+              {/* Title skeleton */}
+              <div className="h-10 w-80 bg-slate-200/60 rounded-lg mx-auto animate-pulse" />
+              {/* Subtitle skeleton */}
+              <div className="h-6 w-96 bg-slate-100/60 rounded-lg mx-auto animate-pulse" />
+              {/* Stats skeleton */}
+              <div className="flex justify-center gap-6 pt-4">
+                <div className="h-8 w-24 bg-white/60 rounded-lg animate-pulse" />
+                <div className="h-8 w-24 bg-white/60 rounded-lg animate-pulse" />
+              </div>
             </div>
           </div>
-          <div className="space-y-1">
-            <p className="font-medium">Loading your opportunities</p>
-            <p className="text-sm text-muted-foreground">Preparing personalized podcast matches...</p>
+        </div>
+
+        {/* Skeleton Content */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Search skeleton */}
+          <div className="h-12 w-full max-w-md bg-white rounded-xl shadow-sm animate-pulse mb-6" />
+
+          {/* Filter tabs skeleton */}
+          <div className="flex gap-2 mb-6">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-9 w-24 bg-white rounded-full animate-pulse" />
+            ))}
+          </div>
+
+          {/* Podcast grid skeleton */}
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-white rounded-xl shadow-lg overflow-hidden animate-pulse">
+                <div className="aspect-[16/10] bg-slate-200" />
+                <div className="p-4 space-y-3">
+                  <div className="h-5 w-3/4 bg-slate-200 rounded" />
+                  <div className="h-4 w-1/2 bg-slate-100 rounded" />
+                  <div className="flex gap-2">
+                    <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                    <div className="h-6 w-16 bg-slate-100 rounded-full" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
