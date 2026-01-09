@@ -1683,19 +1683,17 @@ export default function ProspectDashboards() {
                                 )}
                               </Button>
                             </div>
-                            <div className="space-y-2 max-h-64 overflow-y-auto pr-4">
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
                               {feedback.filter(f => f.status === 'rejected').map((fb) => (
                                 <div
                                   key={fb.id}
-                                  className="p-3 rounded-lg border bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                                  className="p-3 rounded-lg border bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800 overflow-hidden"
                                 >
-                                  <div className="flex items-center justify-between gap-3 mb-1">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                      <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                                      <span className="font-medium text-sm truncate">
-                                        {fb.podcast_name || 'Unknown Podcast'}
-                                      </span>
-                                    </div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                                    <span className="font-medium text-sm truncate flex-1 min-w-0">
+                                      {fb.podcast_name || 'Unknown Podcast'}
+                                    </span>
                                     <Button
                                       variant="ghost"
                                       size="icon"
