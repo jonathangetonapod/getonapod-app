@@ -86,6 +86,12 @@ interface OutreachPodcast {
   audience_size: number | null
   podcast_categories?: PodcastCategory[] | null
   last_posted_at: string | null
+  // Cached AI analysis fields
+  ai_clean_description?: string | null
+  ai_fit_reasons?: string[] | null
+  ai_pitch_angles?: Array<{ title: string; description: string }> | null
+  // Cached demographics
+  demographics?: PodcastDemographics | null
 }
 
 interface PitchAngle {
@@ -127,10 +133,8 @@ export default function ProspectView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
-  const [minEpisodes, setMinEpisodes] = useState<number | null>(null)
-  const [minAudience, setMinAudience] = useState<number | null>(null)
-  const [maxEpisodes, setMaxEpisodes] = useState<number | null>(null)
-  const [maxAudience, setMaxAudience] = useState<number | null>(null)
+  const [episodeFilter, setEpisodeFilter] = useState<string>('any')
+  const [audienceFilter, setAudienceFilter] = useState<string>('any')
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -209,6 +213,9 @@ export default function ProspectView() {
             },
             body: JSON.stringify({
               spreadsheetId: dashboardData.spreadsheet_id,
+              prospectDashboardId: dashboardData.id,
+              prospectName: dashboardData.prospect_name,
+              prospectBio: dashboardData.prospect_bio,
             }),
           })
 
@@ -218,6 +225,7 @@ export default function ProspectView() {
           }
 
           const data = await response.json()
+          console.log(`[Dashboard] Loaded ${data.total} podcasts (${data.cached} cached, ${data.fetched} new)`)
           setPodcasts(data.podcasts || [])
         } else {
           // No spreadsheet linked yet - show empty state
@@ -322,123 +330,52 @@ export default function ProspectView() {
     }
   }
 
-  // Preload all AI analyses AND demographics in parallel with rate limiting
+  // Populate AI analysis cache from database-cached data (instant, no API calls needed)
   useEffect(() => {
-    if (!dashboard?.prospect_bio || podcasts.length === 0 || preloadingAnalyses) return
-    if (analysisCache.size >= podcasts.length && demographicsCache.size >= podcasts.length) return
+    if (podcasts.length === 0) return
 
-    const preloadAll = async () => {
-      setPreloadingAnalyses(true)
-      console.log('[Preload] Starting parallel preload for', podcasts.length, 'podcasts')
+    // Immediately populate analysis cache from podcast data
+    const newCache = new Map(analysisCache)
+    let addedCount = 0
 
-      // Controlled concurrency - max 3 AI analyses (Sonnet is rate-limited) and 10 demographics at once
-      const AI_CONCURRENCY = 3
-      const DEMO_CONCURRENCY = 10
-
-      // Helper for controlled parallel execution
-      const runWithConcurrency = async <T,>(
-        items: T[],
-        fn: (item: T) => Promise<void>,
-        concurrency: number
-      ) => {
-        const queue = [...items]
-        const workers = Array(Math.min(concurrency, items.length))
-          .fill(null)
-          .map(async () => {
-            while (queue.length > 0) {
-              const item = queue.shift()
-              if (item) await fn(item)
-            }
-          })
-        await Promise.all(workers)
+    podcasts.forEach(podcast => {
+      if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
+        newCache.set(podcast.podcast_id, {
+          clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
+          fit_reasons: podcast.ai_fit_reasons || [],
+          pitch_angles: podcast.ai_pitch_angles || [],
+        })
+        addedCount++
       }
+    })
 
-      // AI Analysis preloader
-      const preloadAnalysis = async (podcast: typeof podcasts[0]) => {
-        if (analysisCache.has(podcast.podcast_id)) {
-          console.log('[Preload] AI analysis already cached:', podcast.podcast_name)
-          return
-        }
-
-        console.log('[Preload] 🤖 Fetching AI analysis:', podcast.podcast_name)
-
-        // Retry logic for transient errors (503, etc.)
-        const MAX_RETRIES = 3
-        let lastError: unknown = null
-
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-          try {
-            const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': SUPABASE_ANON_KEY,
-              },
-              body: JSON.stringify({
-                podcastId: podcast.podcast_id,
-                podcastName: podcast.podcast_name,
-                podcastDescription: podcast.podcast_description,
-                podcastUrl: podcast.podcast_url,
-                publisherName: podcast.publisher_name,
-                itunesRating: podcast.itunes_rating,
-                episodeCount: podcast.episode_count,
-                audienceSize: podcast.audience_size,
-                clientId: dashboard.id,
-                clientName: dashboard.prospect_name,
-                clientBio: dashboard.prospect_bio,
-              }),
-            })
-
-            if (response.ok) {
-              const data = await response.json()
-              console.log(`[Preload] ✅ AI analysis ${data.cached ? '(DB cache)' : '(fresh Sonnet)'}:`, podcast.podcast_name)
-              setAnalysisCache(prev => new Map(prev).set(podcast.podcast_id, data.analysis))
-              break // Success, exit retry loop
-            } else if (response.status === 503 && attempt < MAX_RETRIES) {
-              console.log(`[Preload] ⏳ AI analysis 503, retry ${attempt}/${MAX_RETRIES}:`, podcast.podcast_name)
-              await new Promise(r => setTimeout(r, 2000 * attempt)) // Exponential backoff
-            } else {
-              console.error('[Preload] ❌ AI analysis failed:', podcast.podcast_name, response.status)
-              break
-            }
-          } catch (err) {
-            lastError = err
-            if (attempt < MAX_RETRIES) {
-              console.log(`[Preload] ⏳ Network error, retry ${attempt}/${MAX_RETRIES}:`, podcast.podcast_name)
-              await new Promise(r => setTimeout(r, 2000 * attempt))
-            }
-          }
-        }
-
-        if (lastError && !analysisCache.has(podcast.podcast_id)) {
-          console.error('[Preload] Error preloading analysis for:', podcast.podcast_name, lastError)
-        }
-      }
-
-      // Demographics preloader
-      const preloadDemographics = async (podcast: typeof podcasts[0]) => {
-        if (demographicsCache.has(podcast.podcast_id)) return
-
-        try {
-          const data = await getPodcastDemographics(podcast.podcast_id)
-          setDemographicsCache(prev => new Map(prev).set(podcast.podcast_id, data))
-        } catch (err) {
-          setDemographicsCache(prev => new Map(prev).set(podcast.podcast_id, null))
-        }
-      }
-
-      // Run both preloaders in parallel, each with their own concurrency limit
-      await Promise.all([
-        runWithConcurrency(podcasts, preloadAnalysis, AI_CONCURRENCY),
-        runWithConcurrency(podcasts, preloadDemographics, DEMO_CONCURRENCY)
-      ])
-
-      console.log('[Preload] Finished parallel preload')
-      setPreloadingAnalyses(false)
+    if (addedCount > 0) {
+      console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
+      setAnalysisCache(newCache)
     }
+  }, [podcasts])
 
-    preloadAll()
-  }, [dashboard, podcasts, preloadingAnalyses, analysisCache.size, demographicsCache.size])
+  // Populate demographics cache from database-cached data (instant, no API calls)
+  useEffect(() => {
+    if (podcasts.length === 0) return
+
+    const newCache = new Map(demographicsCache)
+    let addedCount = 0
+
+    podcasts.forEach(podcast => {
+      if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
+        newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
+        addedCount++
+      } else if (!newCache.has(podcast.podcast_id)) {
+        newCache.set(podcast.podcast_id, null) // Mark as checked but no data
+      }
+    })
+
+    if (addedCount > 0) {
+      console.log(`[Cache] Loaded ${addedCount} demographics from database`)
+      setDemographicsCache(newCache)
+    }
+  }, [podcasts])
 
   // Analyze podcast fit when side panel opens
   useEffect(() => {
@@ -731,20 +668,22 @@ export default function ProspectView() {
       if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
     }
 
-    // Episode count filters
-    if (minEpisodes !== null) {
-      if (!podcast.episode_count || podcast.episode_count < minEpisodes) return false
-    }
-    if (maxEpisodes !== null) {
-      if (!podcast.episode_count || podcast.episode_count >= maxEpisodes) return false
+    // Episode count filter
+    if (episodeFilter !== 'any') {
+      const eps = podcast.episode_count || 0
+      if (episodeFilter === 'under50' && eps >= 50) return false
+      if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
+      if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
+      if (episodeFilter === '200plus' && eps < 200) return false
     }
 
-    // Audience size filters
-    if (minAudience !== null) {
-      if (!podcast.audience_size || podcast.audience_size < minAudience) return false
-    }
-    if (maxAudience !== null) {
-      if (!podcast.audience_size || podcast.audience_size >= maxAudience) return false
+    // Audience size filter
+    if (audienceFilter !== 'any') {
+      const aud = podcast.audience_size || 0
+      if (audienceFilter === 'under10k' && aud >= 10000) return false
+      if (audienceFilter === '10kto50k' && (aud < 10000 || aud >= 50000)) return false
+      if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
+      if (audienceFilter === '100kplus' && aud < 100000) return false
     }
 
     return true
@@ -1094,164 +1033,55 @@ export default function ProspectView() {
         )}
 
         {/* Episode Count & Audience Size Filters */}
-        <div className="mb-4 sm:mb-6 space-y-4">
-          {/* Episode Count Filters */}
-          <div className="flex flex-wrap gap-4 sm:gap-6">
-            {/* Min Episodes */}
-            <div className="flex-1 min-w-[180px]">
-              <div className="flex items-center gap-2 mb-2">
-                <Mic className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Min episodes</span>
-                {minEpisodes !== null && (
-                  <button
-                    onClick={() => setMinEpisodes(null)}
-                    className="text-xs text-primary hover:text-primary/80 ml-auto"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'Any', value: null },
-                  { label: '50+', value: 50 },
-                  { label: '100+', value: 100 },
-                  { label: '200+', value: 200 },
-                ].map((option) => (
-                  <button
-                    key={option.label}
-                    onClick={() => setMinEpisodes(option.value)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                      minEpisodes === option.value
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Under Episodes (for finding low quality) */}
-            <div className="flex-1 min-w-[180px]">
-              <div className="flex items-center gap-2 mb-2">
-                <Mic className="h-4 w-4 text-orange-500" />
-                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Under episodes</span>
-                {maxEpisodes !== null && (
-                  <button
-                    onClick={() => setMaxEpisodes(null)}
-                    className="text-xs text-orange-600 hover:text-orange-500 ml-auto"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'Any', value: null },
-                  { label: '<25', value: 25 },
-                  { label: '<50', value: 50 },
-                  { label: '<100', value: 100 },
-                ].map((option) => (
-                  <button
-                    key={option.label}
-                    onClick={() => setMaxEpisodes(option.value)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                      maxEpisodes === option.value
-                        ? "bg-orange-600 text-white border-orange-600"
-                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-orange-500 hover:text-orange-600"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+        <div className="mb-4 sm:mb-6 flex flex-wrap gap-3 sm:gap-4">
+          {/* Episode Count Filter */}
+          <div className="flex items-center gap-2">
+            <Mic className="h-4 w-4 text-muted-foreground" />
+            <select
+              value={episodeFilter}
+              onChange={(e) => setEpisodeFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="any">Episodes: Any</option>
+              <option value="under50">Under 50 episodes</option>
+              <option value="50to100">50-100 episodes</option>
+              <option value="100to200">100-200 episodes</option>
+              <option value="200plus">200+ episodes</option>
+            </select>
           </div>
 
-          {/* Audience Size Filters */}
-          <div className="flex flex-wrap gap-4 sm:gap-6">
-            {/* Min Audience */}
-            <div className="flex-1 min-w-[180px]">
-              <div className="flex items-center gap-2 mb-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Min audience</span>
-                {minAudience !== null && (
-                  <button
-                    onClick={() => setMinAudience(null)}
-                    className="text-xs text-primary hover:text-primary/80 ml-auto"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'Any', value: null },
-                  { label: '10K+', value: 10000 },
-                  { label: '50K+', value: 50000 },
-                  { label: '100K+', value: 100000 },
-                ].map((option) => (
-                  <button
-                    key={option.label}
-                    onClick={() => setMinAudience(option.value)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                      minAudience === option.value
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Under Audience (for finding low quality) */}
-            <div className="flex-1 min-w-[180px]">
-              <div className="flex items-center gap-2 mb-2">
-                <Users className="h-4 w-4 text-orange-500" />
-                <span className="text-xs sm:text-sm font-medium text-muted-foreground">Under audience</span>
-                {maxAudience !== null && (
-                  <button
-                    onClick={() => setMaxAudience(null)}
-                    className="text-xs text-orange-600 hover:text-orange-500 ml-auto"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'Any', value: null },
-                  { label: '<5K', value: 5000 },
-                  { label: '<10K', value: 10000 },
-                  { label: '<25K', value: 25000 },
-                ].map((option) => (
-                  <button
-                    key={option.label}
-                    onClick={() => setMaxAudience(option.value)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                      maxAudience === option.value
-                        ? "bg-orange-600 text-white border-orange-600"
-                        : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-orange-500 hover:text-orange-600"
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Audience Size Filter */}
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <select
+              value={audienceFilter}
+              onChange={(e) => setAudienceFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="any">Audience: Any</option>
+              <option value="under10k">Under 10K</option>
+              <option value="10kto50k">10K - 50K</option>
+              <option value="50kto100k">50K - 100K</option>
+              <option value="100kplus">100K+</option>
+            </select>
           </div>
+
+          {/* Clear filters */}
+          {(episodeFilter !== 'any' || audienceFilter !== 'any') && (
+            <button
+              onClick={() => {
+                setEpisodeFilter('any')
+                setAudienceFilter('any')
+              }}
+              className="px-3 py-1.5 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         {/* Results count when filtering */}
-        {(searchQuery || selectedCategories.length > 0 || minEpisodes !== null || minAudience !== null || maxEpisodes !== null || maxAudience !== null) && (
+        {(searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
             Showing {filteredPodcasts.length} of {podcasts.length} podcasts
             {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
@@ -1268,7 +1098,7 @@ export default function ProspectView() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || minEpisodes !== null || minAudience !== null || maxEpisodes !== null || maxAudience !== null) ? (
+        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
@@ -1282,10 +1112,8 @@ export default function ProspectView() {
                 onClick={() => {
                   setSearchQuery('')
                   setSelectedCategories([])
-                  setMinEpisodes(null)
-                  setMinAudience(null)
-                  setMaxEpisodes(null)
-                  setMaxAudience(null)
+                  setEpisodeFilter('any')
+                  setAudienceFilter('any')
                 }}
               >
                 Clear all filters

@@ -128,6 +128,10 @@ export default function ProspectDashboards() {
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
   const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
 
+  // Cache building state
+  const [buildingCache, setBuildingCache] = useState(false)
+  const [cacheStatus, setCacheStatus] = useState<{ cached: number; fetched: number; total: number } | null>(null)
+
   const appUrl = window.location.origin
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
@@ -556,6 +560,58 @@ export default function ProspectDashboards() {
       toast.error('Failed to save spreadsheet URL')
     } finally {
       setSavingSpreadsheet(false)
+    }
+  }
+
+  // Build cache for prospect dashboard (pre-warm before sharing)
+  const buildCache = async () => {
+    if (!selectedDashboard?.spreadsheet_id) {
+      toast.error('Please link a Google Sheet first')
+      return
+    }
+
+    setBuildingCache(true)
+    setCacheStatus(null)
+
+    try {
+      toast.info('Building cache... This may take a few minutes for new podcasts.')
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          spreadsheetId: selectedDashboard.spreadsheet_id,
+          prospectDashboardId: selectedDashboard.id,
+          prospectName: selectedDashboard.prospect_name,
+          prospectBio: selectedDashboard.prospect_bio,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to build cache')
+      }
+
+      const data = await response.json()
+      setCacheStatus({
+        cached: data.cached || 0,
+        fetched: data.fetched || 0,
+        total: data.total || 0,
+      })
+
+      if (data.fetched > 0) {
+        toast.success(`Cache built! ${data.fetched} new podcasts processed, ${data.cached} already cached.`)
+      } else {
+        toast.success(`Cache ready! All ${data.total} podcasts already cached.`)
+      }
+    } catch (error) {
+      console.error('Error building cache:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to build cache')
+    } finally {
+      setBuildingCache(false)
     }
   }
 
@@ -1052,6 +1108,71 @@ export default function ProspectDashboards() {
                         </ol>
                       </div>
                     </details>
+                  </div>
+
+                  <Separator />
+
+                  {/* Build Cache */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Prepare for Client
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Build the cache before sharing to ensure instant loading for the client
+                    </p>
+
+                    {buildingCache && (
+                      <div className="space-y-2">
+                        <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full animate-pulse"
+                            style={{
+                              width: '100%',
+                              animation: 'progress-indeterminate 2s ease-in-out infinite',
+                            }}
+                          />
+                        </div>
+                        <p className="text-xs text-center text-muted-foreground">
+                          Fetching podcasts, demographics & AI analysis...
+                        </p>
+                      </div>
+                    )}
+
+                    <Button
+                      onClick={buildCache}
+                      disabled={buildingCache || !selectedDashboard.spreadsheet_id}
+                      className="w-full"
+                      variant={cacheStatus ? "outline" : "default"}
+                    >
+                      {buildingCache ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Building Cache...
+                        </>
+                      ) : cacheStatus ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+                          Cache Ready ({cacheStatus.total} podcasts)
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Build Cache
+                        </>
+                      )}
+                    </Button>
+                    {cacheStatus && !buildingCache && (
+                      <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                        <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span className="text-sm font-medium">Ready to share!</span>
+                        </div>
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                          {cacheStatus.total} podcasts cached • {cacheStatus.fetched} new, {cacheStatus.cached} existing
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <Separator />
