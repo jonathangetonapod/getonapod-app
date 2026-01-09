@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -126,19 +127,21 @@ export default function ProspectView() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
   const forceTour = searchParams.get('tour') === '1'
+  const queryClient = useQueryClient()
+  const viewCountUpdated = useRef(false)
 
-  const [loading, setLoading] = useState(true)
-  const [loadingPodcasts, setLoadingPodcasts] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [cacheNotReady, setCacheNotReady] = useState(false)
-  const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
-  const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
+  // UI state
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
   const [episodeFilter, setEpisodeFilter] = useState<string>('any')
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
+
+  // Infinite scroll - show 30 cards initially, load more on scroll
+  const CARDS_PER_PAGE = 30
+  const [visibleCount, setVisibleCount] = useState(CARDS_PER_PAGE)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -148,8 +151,7 @@ export default function ProspectView() {
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
   const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(false)
 
-  // Feedback state
-  const [feedbackMap, setFeedbackMap] = useState<Map<string, PodcastFeedback>>(new Map())
+  // Feedback state (for saving)
   const [currentNotes, setCurrentNotes] = useState('')
   const [isSavingFeedback, setIsSavingFeedback] = useState(false)
 
@@ -168,112 +170,98 @@ export default function ProspectView() {
   const [showTutorial, setShowTutorial] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
 
-  // Fetch dashboard data
+  // React Query: Fetch dashboard (cached for 5 minutes)
+  const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
+    queryKey: ['prospect-dashboard', slug],
+    queryFn: async () => {
+      if (!slug) throw new Error('Invalid dashboard link')
+
+      const { data, error } = await supabase
+        .from('prospect_dashboards')
+        .select('*')
+        .eq('slug', slug)
+        .single()
+
+      if (error || !data) throw new Error('Dashboard not found')
+      if (!data.is_active) throw new Error('This dashboard link is no longer active')
+
+      return data as ProspectDashboard
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    enabled: !!slug,
+  })
+
+  // React Query: Fetch podcasts (enabled when dashboard is ready)
+  const { data: podcasts = [], isLoading: podcastsLoading } = useQuery({
+    queryKey: ['prospect-podcasts', dashboard?.id, dashboard?.spreadsheet_id],
+    queryFn: async () => {
+      if (!dashboard?.spreadsheet_id) return []
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          spreadsheetId: dashboard.spreadsheet_id,
+          prospectDashboardId: dashboard.id,
+          prospectName: dashboard.prospect_name,
+          prospectBio: dashboard.prospect_bio,
+          cacheOnly: true,
+        }),
+      })
+
+      if (!response.ok) return []
+      const data = await response.json()
+      console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
+      return data.podcasts || []
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    enabled: !!dashboard?.content_ready && !!dashboard?.spreadsheet_id,
+  })
+
+  // React Query: Fetch feedback (refreshes more often)
+  const { data: feedbackData = [] } = useQuery({
+    queryKey: ['prospect-feedback', dashboard?.id],
+    queryFn: async () => {
+      if (!dashboard?.id) return []
+
+      const { data } = await supabase
+        .from('prospect_podcast_feedback')
+        .select('*')
+        .eq('prospect_dashboard_id', dashboard.id)
+
+      return data || []
+    },
+    staleTime: 30 * 1000, // 30 seconds - feedback changes more often
+    enabled: !!dashboard?.id,
+  })
+
+  // Build feedback map from query data
+  const feedbackMap = new Map<string, PodcastFeedback>(
+    feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
+  )
+
+  // Derived state
+  const loading = dashboardLoading
+  const loadingPodcasts = podcastsLoading
+  const error = dashboardError?.message || null
+  const cacheNotReady = dashboard && !dashboard.content_ready
+
+  // Update view count once (fire and forget)
   useEffect(() => {
-    const fetchDashboard = async () => {
-      if (!slug) {
-        setError('Invalid dashboard link')
-        setLoading(false)
-        return
-      }
-
-      try {
-        const { data: dashboardData, error: dbError } = await supabase
-          .from('prospect_dashboards')
-          .select('*')
-          .eq('slug', slug)
-          .single()
-
-        if (dbError || !dashboardData) {
-          setError('Dashboard not found')
-          setLoading(false)
-          return
-        }
-
-        if (!dashboardData.is_active) {
-          setError('This dashboard link is no longer active')
-          setLoading(false)
-          return
-        }
-
-        setDashboard(dashboardData)
-        setLoading(false) // Show UI immediately with dashboard info
-
-        // Update view count (fire and forget - don't wait)
-        supabase
-          .from('prospect_dashboards')
-          .update({
-            view_count: (dashboardData.view_count || 0) + 1,
-            last_viewed_at: new Date().toISOString()
-          })
-          .eq('id', dashboardData.id)
-
-        // Check if admin has published the content
-        if (!dashboardData.content_ready) {
-          console.log('[Dashboard] Content not published yet - showing Coming Soon')
-          setCacheNotReady(true)
-          setPodcasts([])
-          setLoadingPodcasts(false)
-          return
-        }
-
-        if (!dashboardData.spreadsheet_id) {
-          setPodcasts([])
-          setLoadingPodcasts(false)
-          return
-        }
-
-        // Fetch podcasts and feedback IN PARALLEL for speed
-        const [podcastResponse, feedbackResult] = await Promise.all([
-          fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': SUPABASE_ANON_KEY,
-            },
-            body: JSON.stringify({
-              spreadsheetId: dashboardData.spreadsheet_id,
-              prospectDashboardId: dashboardData.id,
-              prospectName: dashboardData.prospect_name,
-              prospectBio: dashboardData.prospect_bio,
-              cacheOnly: true,
-            }),
-          }),
-          supabase
-            .from('prospect_podcast_feedback')
-            .select('*')
-            .eq('prospect_dashboard_id', dashboardData.id)
-        ])
-
-        // Process podcast response
-        if (podcastResponse.ok) {
-          const data = await podcastResponse.json()
-          console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
-          setPodcasts(data.podcasts || [])
-        } else {
-          console.error('Failed to fetch podcasts')
-          setPodcasts([])
-        }
-        setLoadingPodcasts(false)
-
-        // Process feedback
-        if (feedbackResult.data && feedbackResult.data.length > 0) {
-          const map = new Map<string, PodcastFeedback>()
-          feedbackResult.data.forEach((fb: PodcastFeedback) => {
-            map.set(fb.podcast_id, fb)
-          })
-          setFeedbackMap(map)
-        }
-      } catch (err) {
-        console.error('Error fetching dashboard:', err)
-        setError('Failed to load dashboard')
-      } finally {
-        setLoading(false)
-      }
+    if (dashboard && !viewCountUpdated.current) {
+      viewCountUpdated.current = true
+      supabase
+        .from('prospect_dashboards')
+        .update({
+          view_count: (dashboard.view_count || 0) + 1,
+          last_viewed_at: new Date().toISOString()
+        })
+        .eq('id', dashboard.id)
     }
-
-    fetchDashboard()
-  }, [slug])
+  }, [dashboard])
 
   // Debounce search query for better performance
   useEffect(() => {
@@ -282,6 +270,29 @@ export default function ProspectView() {
     }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
+
+  // Reset visible count when filters change
+  useEffect(() => {
+    setVisibleCount(CARDS_PER_PAGE)
+  }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter])
+
+  // Infinite scroll - load more when user scrolls to bottom
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount(prev => prev + CARDS_PER_PAGE)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [])
 
   // Generate personalized tagline if not already set
   useEffect(() => {
@@ -554,12 +565,8 @@ export default function ProspectView() {
 
       if (error) throw error
 
-      // Update local state
-      setFeedbackMap(prev => {
-        const newMap = new Map(prev)
-        newMap.set(podcastId, data)
-        return newMap
-      })
+      // Invalidate feedback cache to refresh the data
+      queryClient.invalidateQueries({ queryKey: ['prospect-feedback', dashboard.id] })
 
       // Trigger confetti for new approvals
       if (isNewApproval) {
@@ -928,7 +935,7 @@ export default function ProspectView() {
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {highestReachPodcast.podcast_image_url ? (
-                    <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" />
+                    <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
                     <div className="w-full h-full bg-green-200 flex items-center justify-center">
                       <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
@@ -954,7 +961,7 @@ export default function ProspectView() {
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {topRatedPodcast.podcast_image_url ? (
-                    <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" />
+                    <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
                     <div className="w-full h-full bg-amber-200 flex items-center justify-center">
                       <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
@@ -983,7 +990,7 @@ export default function ProspectView() {
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {mostEpisodesPodcast.podcast_image_url ? (
-                    <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" />
+                    <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
                   ) : (
                     <div className="w-full h-full bg-purple-200 flex items-center justify-center">
                       <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
@@ -1231,11 +1238,12 @@ export default function ProspectView() {
             </CardContent>
           </Card>
         ) : (
+          <>
           <div
             key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
             className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
           >
-              {filteredPodcasts.map((podcast, index) => (
+              {filteredPodcasts.slice(0, visibleCount).map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
@@ -1255,6 +1263,7 @@ export default function ProspectView() {
                       src={podcast.podcast_image_url}
                       alt={podcast.podcast_name}
                       className="w-full h-full object-cover"
+                      loading="lazy"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -1437,6 +1446,19 @@ export default function ProspectView() {
             </Card>
           ))}
           </div>
+          {/* Load more trigger for infinite scroll */}
+          {visibleCount < filteredPodcasts.length && (
+            <div
+              ref={loadMoreRef}
+              className="flex items-center justify-center py-8"
+            >
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Loading more...</span>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 
