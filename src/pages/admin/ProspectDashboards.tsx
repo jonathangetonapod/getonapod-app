@@ -1689,9 +1689,9 @@ export default function ProspectDashboards() {
                                   key={fb.id}
                                   className="p-3 rounded-lg border bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
                                 >
-                                  <div className="flex items-center gap-2 mb-1 overflow-hidden">
+                                  <div className="flex items-center gap-2 mb-1">
                                     <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                                    <span className="font-medium text-sm truncate" style={{ maxWidth: 'calc(100% - 60px)' }}>
+                                    <span className="font-medium text-sm truncate max-w-[320px]">
                                       {fb.podcast_name || 'Unknown Podcast'}
                                     </span>
                                     <Button
