@@ -137,7 +137,7 @@ export default function ProspectView() {
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
   const [episodeFilter, setEpisodeFilter] = useState<string>('any')
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
-  const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'episodes_desc'>('default')
+  const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc'>('default')
 
   // Infinite scroll - show 60 cards initially, load more on scroll
   const CARDS_PER_PAGE = 60
@@ -795,10 +795,6 @@ export default function ProspectView() {
         return (b.audience_size || 0) - (a.audience_size || 0)
       case 'audience_asc':
         return (a.audience_size || 0) - (b.audience_size || 0)
-      case 'rating_desc':
-        return (b.itunes_rating || 0) - (a.itunes_rating || 0)
-      case 'episodes_desc':
-        return (b.episode_count || 0) - (a.episode_count || 0)
       default:
         return 0
     }
@@ -1204,8 +1200,6 @@ export default function ProspectView() {
               <option value="default">Sort: Default</option>
               <option value="audience_desc">Audience: High to Low</option>
               <option value="audience_asc">Audience: Low to High</option>
-              <option value="rating_desc">Rating: High to Low</option>
-              <option value="episodes_desc">Episodes: Most First</option>
             </select>
           </div>
 
