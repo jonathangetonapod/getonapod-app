@@ -747,6 +747,27 @@ export default function PodcastFinder() {
     toast.success('Query deleted')
   }
 
+  const handleDeleteChartPodcast = (podcastId: string) => {
+    setChartResults(prev => prev.filter(p => p.podcast_id !== podcastId))
+    // Also remove from scores and reasonings
+    setChartScores(prev => {
+      const updated = { ...prev }
+      delete updated[podcastId]
+      return updated
+    })
+    setChartReasonings(prev => {
+      const updated = { ...prev }
+      delete updated[podcastId]
+      return updated
+    })
+    // Remove from selection if selected
+    setSelectedPodcasts(prev => {
+      const updated = new Set(prev)
+      updated.delete(podcastId)
+      return updated
+    })
+  }
+
   const toggleQueryExpanded = (queryId: string) => {
     setExpandedQueryId(prev => prev === queryId ? null : queryId)
   }
@@ -2470,16 +2491,27 @@ export default function PodcastFinder() {
                               )}
                             </TableCell>
                             <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                asChild
-                                title="View on Podscan"
-                              >
-                                <a href={podcast.podcast_url} target="_blank" rel="noopener noreferrer">
-                                  <ExternalLink className="h-5 w-5" />
-                                </a>
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  asChild
+                                  title="View on Podscan"
+                                >
+                                  <a href={podcast.podcast_url} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="h-5 w-5" />
+                                  </a>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteChartPodcast(podcast.podcast_id)}
+                                  title="Remove from list"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
