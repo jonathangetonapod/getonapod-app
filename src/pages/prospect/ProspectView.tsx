@@ -668,9 +668,6 @@ export default function ProspectView() {
     else feedbackStats.notReviewed++
   })
 
-  // Debug: log category filter state
-  console.log('[Filter Debug] selectedCategories:', selectedCategories, 'allCategories:', allCategories.length)
-
   // Filter podcasts based on search query, categories, and feedback status
   const filteredPodcasts = podcasts.filter(podcast => {
     // Search filter
@@ -1154,16 +1151,10 @@ export default function ProspectView() {
             </CardContent>
           </Card>
         ) : (
-          <>
-            {/* Debug: shows actual count being rendered */}
-            <div className="mb-2 text-xs text-red-500 font-mono">
-              DEBUG: Rendering {filteredPodcasts.length} cards (selectedCategories: {selectedCategories.length}, filter key: {`${selectedCategories.join(',')}-${searchQuery}-${feedbackFilter}-${episodeFilter}-${audienceFilter}`})
-            </div>
-            {/* Key forces complete re-mount when filters change */}
-            <div
-              key={`podcast-grid-${selectedCategories.join(',')}-${searchQuery}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
-              className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-            >
+          <div
+            key={`podcast-grid-${selectedCategories.join(',')}-${searchQuery}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
+            className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          >
               {filteredPodcasts.map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
@@ -1365,8 +1356,7 @@ export default function ProspectView() {
               </CardContent>
             </Card>
           ))}
-            </div>
-          </>
+          </div>
         )}
       </div>
 
