@@ -742,6 +742,11 @@ export default function PodcastFinder() {
     ))
   }
 
+  const handleDeleteQuery = (queryId: string) => {
+    setQueries(prev => prev.filter(q => q.id !== queryId))
+    toast.success('Query deleted')
+  }
+
   const toggleQueryExpanded = (queryId: string) => {
     setExpandedQueryId(prev => prev === queryId ? null : queryId)
   }
@@ -1831,6 +1836,15 @@ export default function PodcastFinder() {
                       title="Regenerate this query"
                     >
                       <RefreshCw className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleDeleteQuery(query.id)}
+                      title="Delete this query"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
 
