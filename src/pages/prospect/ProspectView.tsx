@@ -852,9 +852,9 @@ export default function ProspectView() {
                 {loadingPodcasts ? (
                   <span>Loading your personalized podcast matches...</span>
                 ) : personalizedTagline ? (
-                  <span>{personalizedTagline}</span>
+                  <span>{personalizedTagline.replace(/\d+\s*podcasts?/i, `${sortedPodcasts.length} podcast${sortedPodcasts.length !== 1 ? 's' : ''}`)}</span>
                 ) : (
-                  <>We've curated <span className="font-bold text-foreground">{uniquePodcasts.length}</span> podcast{uniquePodcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
+                  <>We've curated <span className="font-bold text-foreground">{sortedPodcasts.length}</span> podcast{sortedPodcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
                 )}
               </p>
             </div>
