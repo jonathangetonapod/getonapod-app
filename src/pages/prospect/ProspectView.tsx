@@ -1157,6 +1157,7 @@ export default function ProspectView() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {console.log('[Render Debug] Rendering', filteredPodcasts.length, 'podcast cards')}
             {filteredPodcasts.map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
