@@ -140,7 +140,7 @@ export default function ProspectView() {
   const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc'>('default')
 
   // Pagination
-  const CARDS_PER_PAGE = 30
+  const CARDS_PER_PAGE = 18
   const [currentPage, setCurrentPage] = useState(1)
 
   // Side panel state
