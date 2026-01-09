@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -133,6 +133,7 @@ export default function ProspectView() {
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
   const [episodeFilter, setEpisodeFilter] = useState<string>('any')
@@ -264,6 +265,14 @@ export default function ProspectView() {
 
     fetchDashboard()
   }, [slug])
+
+  // Debounce search query for better performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   // Generate personalized tagline if not already set
   useEffect(() => {
@@ -668,56 +677,65 @@ export default function ProspectView() {
     else feedbackStats.notReviewed++
   })
 
-  // Filter podcasts based on search query, categories, and feedback status
-  const filteredPodcasts = podcasts.filter(podcast => {
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      const matchesSearch = (
-        podcast.podcast_name.toLowerCase().includes(query) ||
-        podcast.podcast_description?.toLowerCase().includes(query) ||
-        podcast.publisher_name?.toLowerCase().includes(query)
-      )
-      if (!matchesSearch) return false
-    }
+  // Filter podcasts based on search query, categories, and feedback status (memoized)
+  const filteredPodcasts = useMemo(() => {
+    // Create a Set of seen podcast IDs to prevent duplicates
+    const seenIds = new Set<string>()
 
-    // Category filter
-    if (selectedCategories.length > 0) {
-      const podcastCats = podcast.podcast_categories
-      if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
-      const podcastCatIds = podcastCats.map(c => c.category_id)
-      const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
-      if (!hasMatch) return false
-    }
+    return podcasts.filter(podcast => {
+      // Skip duplicates
+      if (seenIds.has(podcast.podcast_id)) return false
+      seenIds.add(podcast.podcast_id)
 
-    // Feedback status filter
-    if (feedbackFilter !== 'all') {
-      const feedback = feedbackMap.get(podcast.podcast_id)
-      if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
-      if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
-      if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
-    }
+      // Search filter (use debounced for performance)
+      if (debouncedSearch.trim()) {
+        const query = debouncedSearch.toLowerCase()
+        const matchesSearch = (
+          podcast.podcast_name.toLowerCase().includes(query) ||
+          podcast.podcast_description?.toLowerCase().includes(query) ||
+          podcast.publisher_name?.toLowerCase().includes(query)
+        )
+        if (!matchesSearch) return false
+      }
 
-    // Episode count filter
-    if (episodeFilter !== 'any') {
-      const eps = podcast.episode_count || 0
-      if (episodeFilter === 'under50' && eps >= 50) return false
-      if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
-      if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
-      if (episodeFilter === '200plus' && eps < 200) return false
-    }
+      // Category filter
+      if (selectedCategories.length > 0) {
+        const podcastCats = podcast.podcast_categories
+        if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
+        const podcastCatIds = podcastCats.map(c => c.category_id)
+        const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
+        if (!hasMatch) return false
+      }
 
-    // Audience size filter
-    if (audienceFilter !== 'any') {
-      const aud = podcast.audience_size || 0
-      if (audienceFilter === 'under10k' && aud >= 10000) return false
-      if (audienceFilter === '10kto50k' && (aud < 10000 || aud >= 50000)) return false
-      if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
-      if (audienceFilter === '100kplus' && aud < 100000) return false
-    }
+      // Feedback status filter
+      if (feedbackFilter !== 'all') {
+        const feedback = feedbackMap.get(podcast.podcast_id)
+        if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
+        if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
+        if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
+      }
 
-    return true
-  })
+      // Episode count filter
+      if (episodeFilter !== 'any') {
+        const eps = podcast.episode_count || 0
+        if (episodeFilter === 'under50' && eps >= 50) return false
+        if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
+        if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
+        if (episodeFilter === '200plus' && eps < 200) return false
+      }
+
+      // Audience size filter
+      if (audienceFilter !== 'any') {
+        const aud = podcast.audience_size || 0
+        if (audienceFilter === 'under10k' && aud >= 10000) return false
+        if (audienceFilter === '10kto50k' && (aud < 10000 || aud >= 50000)) return false
+        if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
+        if (audienceFilter === '100kplus' && aud < 100000) return false
+      }
+
+      return true
+    })
+  }, [podcasts, debouncedSearch, selectedCategories, feedbackFilter, feedbackMap, episodeFilter, audienceFilter])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -1152,7 +1170,7 @@ export default function ProspectView() {
           </Card>
         ) : (
           <div
-            key={`podcast-grid-${selectedCategories.join(',')}-${searchQuery}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
+            key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
             className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
           >
               {filteredPodcasts.map((podcast, index) => (
