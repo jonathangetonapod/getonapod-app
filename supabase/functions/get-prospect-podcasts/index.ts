@@ -215,7 +215,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { spreadsheetId, prospectDashboardId, prospectName, prospectBio } = body
+    const { spreadsheetId, prospectDashboardId, prospectName, prospectBio, cacheOnly } = body
 
     if (!spreadsheetId) {
       return new Response(
@@ -224,7 +224,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId)
+    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '')
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -287,6 +287,55 @@ serve(async (req) => {
       aiAnalysesGenerated: 0,
       cachedWithAi: cachedPodcasts.filter(p => p.ai_fit_reasons && p.ai_fit_reasons.length > 0).length,
       cachedWithDemographics: cachedPodcasts.filter(p => p.demographics).length,
+    }
+
+    // If cacheOnly mode, return only cached data (don't fetch anything)
+    if (cacheOnly) {
+      // Check if cache is ready (all podcasts are cached with AI analysis)
+      const cacheReady = missingPodcastIds.length === 0 && stats.cachedWithAi === cachedPodcasts.length
+
+      if (!cacheReady) {
+        console.log('[Get Prospect Podcasts] Cache not ready - missing:', missingPodcastIds.length, 'without AI:', cachedPodcasts.length - stats.cachedWithAi)
+        return new Response(
+          JSON.stringify({
+            success: true,
+            cacheReady: false,
+            podcasts: [],
+            total: podcastIds.length,
+            cached: cachedPodcasts.length,
+            missing: missingPodcastIds.length,
+            withoutAi: cachedPodcasts.length - stats.cachedWithAi,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Cache is ready - return cached podcasts
+      const orderedPodcasts = podcastIds
+        .map(id => cachedPodcasts.find(p => p.podcast_id === id))
+        .filter((p): p is CachedPodcast => p !== undefined)
+
+      console.log('[Get Prospect Podcasts] Cache ready - returning', orderedPodcasts.length, 'podcasts')
+      return new Response(
+        JSON.stringify({
+          success: true,
+          cacheReady: true,
+          podcasts: orderedPodcasts,
+          total: orderedPodcasts.length,
+          cached: cachedPodcasts.length,
+          fetched: 0,
+          stats: {
+            fromSheet: podcastIds.length,
+            fromCache: cachedPodcasts.length,
+            podscanFetched: 0,
+            aiAnalysesGenerated: 0,
+            demographicsFetched: 0,
+            cachedWithAi: stats.cachedWithAi,
+            cachedWithDemographics: stats.cachedWithDemographics,
+          },
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Fetch missing podcasts from Podscan + AI analysis

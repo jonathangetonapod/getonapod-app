@@ -128,6 +128,7 @@ export default function ProspectView() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [cacheNotReady, setCacheNotReady] = useState(false)
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
   const [podcasts, setPodcasts] = useState<OutreachPodcast[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -203,7 +204,7 @@ export default function ProspectView() {
           })
           .eq('id', dashboardData.id)
 
-        // Fetch podcasts from Google Sheet via edge function (only if spreadsheet exists)
+        // Fetch podcasts from cache only (admin must build cache first)
         if (dashboardData.spreadsheet_id) {
           const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
             method: 'POST',
@@ -216,6 +217,7 @@ export default function ProspectView() {
               prospectDashboardId: dashboardData.id,
               prospectName: dashboardData.prospect_name,
               prospectBio: dashboardData.prospect_bio,
+              cacheOnly: true, // Only return cached data, don't fetch from APIs
             }),
           })
 
@@ -225,8 +227,17 @@ export default function ProspectView() {
           }
 
           const data = await response.json()
-          console.log(`[Dashboard] Loaded ${data.total} podcasts (${data.cached} cached, ${data.fetched} new)`)
-          setPodcasts(data.podcasts || [])
+
+          // Check if cache is ready
+          if (data.cacheReady === false) {
+            console.log('[Dashboard] Cache not ready - waiting for admin to build cache')
+            setCacheNotReady(true)
+            setPodcasts([])
+          } else {
+            console.log(`[Dashboard] Loaded ${data.total} podcasts from cache`)
+            setCacheNotReady(false)
+            setPodcasts(data.podcasts || [])
+          }
         } else {
           // No spreadsheet linked yet - show empty state
           setPodcasts([])
@@ -576,6 +587,27 @@ export default function ProspectView() {
             <div className="space-y-2">
               <h2 className="text-xl font-semibold">Dashboard Not Available</h2>
               <p className="text-muted-foreground">{error || 'This dashboard could not be found.'}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Cache not ready state - admin hasn't built the cache yet
+  if (cacheNotReady) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full border-0 shadow-xl">
+          <CardContent className="pt-8 pb-8 text-center space-y-4">
+            <div className="h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mx-auto">
+              <Clock className="h-8 w-8 text-amber-600" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">Coming Soon!</h2>
+              <p className="text-muted-foreground">
+                Hi {dashboard.prospect_name}! Your personalized podcast opportunities are being prepared. Check back shortly!
+              </p>
             </div>
           </CardContent>
         </Card>
