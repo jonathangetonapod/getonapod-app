@@ -670,6 +670,9 @@ export default function ProspectView() {
     else feedbackStats.notReviewed++
   })
 
+  // Debug: log category filter state
+  console.log('[Filter Debug] selectedCategories:', selectedCategories, 'allCategories:', allCategories.length)
+
   // Filter podcasts based on search query, categories, and feedback status
   const filteredPodcasts = podcasts.filter(podcast => {
     // Search filter
