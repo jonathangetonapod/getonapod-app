@@ -191,34 +191,28 @@ export default function ProspectView() {
     enabled: !!slug,
   })
 
-  // React Query: Fetch podcasts (enabled when dashboard is ready)
+  // React Query: Fetch podcasts DIRECTLY from Supabase (no Edge Function = much faster!)
   const { data: podcasts = [], isLoading: podcastsLoading } = useQuery({
-    queryKey: ['prospect-podcasts', dashboard?.id, dashboard?.spreadsheet_id],
+    queryKey: ['prospect-podcasts', dashboard?.id],
     queryFn: async () => {
-      if (!dashboard?.spreadsheet_id) return []
+      if (!dashboard?.id) return []
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          spreadsheetId: dashboard.spreadsheet_id,
-          prospectDashboardId: dashboard.id,
-          prospectName: dashboard.prospect_name,
-          prospectBio: dashboard.prospect_bio,
-          cacheOnly: true,
-        }),
-      })
+      // Query cached podcasts directly from Supabase - no Edge Function needed!
+      const { data, error } = await supabase
+        .from('prospect_dashboard_podcasts')
+        .select('*')
+        .eq('prospect_dashboard_id', dashboard.id)
 
-      if (!response.ok) return []
-      const data = await response.json()
-      console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
-      return data.podcasts || []
+      if (error) {
+        console.error('[Dashboard] Error fetching podcasts:', error)
+        return []
+      }
+
+      console.log(`[Dashboard] Loaded ${data?.length || 0} podcasts directly from Supabase`)
+      return data || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    enabled: !!dashboard?.content_ready && !!dashboard?.spreadsheet_id,
+    enabled: !!dashboard?.content_ready && !!dashboard?.id,
   })
 
   // React Query: Fetch feedback (refreshes more often)
