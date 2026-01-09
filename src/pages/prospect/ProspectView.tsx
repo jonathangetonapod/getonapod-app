@@ -137,6 +137,7 @@ export default function ProspectView() {
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
   const [episodeFilter, setEpisodeFilter] = useState<string>('any')
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
+  const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'episodes_desc'>('default')
 
   // Infinite scroll - show 60 cards initially, load more on scroll
   const CARDS_PER_PAGE = 60
@@ -787,6 +788,22 @@ export default function ProspectView() {
     return true
   })
 
+  // Sort filtered podcasts
+  const sortedPodcasts = [...filteredPodcasts].sort((a, b) => {
+    switch (sortBy) {
+      case 'audience_desc':
+        return (b.audience_size || 0) - (a.audience_size || 0)
+      case 'audience_asc':
+        return (a.audience_size || 0) - (b.audience_size || 0)
+      case 'rating_desc':
+        return (b.itunes_rating || 0) - (a.itunes_rating || 0)
+      case 'episodes_desc':
+        return (b.episode_count || 0) - (a.episode_count || 0)
+      default:
+        return 0
+    }
+  })
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* Hero Header */}
@@ -896,7 +913,7 @@ export default function ProspectView() {
               {(() => {
                 // Count feedback for filtered podcasts (or all if no filter active)
                 const isFiltering = debouncedSearch || selectedCategories.length > 0 || feedbackFilter !== 'all' || episodeFilter !== 'any' || audienceFilter !== 'any'
-                const displayPodcasts = isFiltering ? filteredPodcasts : uniquePodcasts
+                const displayPodcasts = isFiltering ? sortedPodcasts : uniquePodcasts
                 const displayPodcastIds = new Set(displayPodcasts.map(p => p.podcast_id))
                 const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status && displayPodcastIds.has(f.podcast_id)).length
                 const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved' && displayPodcastIds.has(f.podcast_id)).length
@@ -1176,12 +1193,29 @@ export default function ProspectView() {
             </select>
           </div>
 
+          {/* Sort By */}
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="default">Sort: Default</option>
+              <option value="audience_desc">Audience: High to Low</option>
+              <option value="audience_asc">Audience: Low to High</option>
+              <option value="rating_desc">Rating: High to Low</option>
+              <option value="episodes_desc">Episodes: Most First</option>
+            </select>
+          </div>
+
           {/* Clear filters */}
-          {(episodeFilter !== 'any' || audienceFilter !== 'any') && (
+          {(episodeFilter !== 'any' || audienceFilter !== 'any' || sortBy !== 'default') && (
             <button
               onClick={() => {
                 setEpisodeFilter('any')
                 setAudienceFilter('any')
+                setSortBy('default')
               }}
               className="px-3 py-1.5 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors"
             >
@@ -1193,7 +1227,7 @@ export default function ProspectView() {
         {/* Results count when filtering */}
         {!loadingPodcasts && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') && (
           <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
-            Showing {filteredPodcasts.length} of {uniquePodcasts.length} podcasts
+            Showing {sortedPodcasts.length} of {uniquePodcasts.length} podcasts
             {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
           </p>
         )}
@@ -1225,7 +1259,7 @@ export default function ProspectView() {
               </p>
             </CardContent>
           </Card>
-        ) : filteredPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') ? (
+        ) : sortedPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
@@ -1250,10 +1284,10 @@ export default function ProspectView() {
         ) : (
           <>
           <div
-            key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${filteredPodcasts.length}`}
+            key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${sortBy}-${sortedPodcasts.length}`}
             className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
           >
-              {filteredPodcasts.slice(0, visibleCount).map((podcast, index) => (
+              {sortedPodcasts.slice(0, visibleCount).map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
@@ -1457,7 +1491,7 @@ export default function ProspectView() {
           ))}
           </div>
           {/* Invisible trigger for infinite scroll - loads instantly */}
-          {visibleCount < filteredPodcasts.length && (
+          {visibleCount < sortedPodcasts.length && (
             <div ref={loadMoreRef} className="h-4" />
           )}
           </>
