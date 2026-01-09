@@ -139,10 +139,9 @@ export default function ProspectView() {
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
   const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc'>('default')
 
-  // Infinite scroll - show 60 cards initially, load more on scroll
-  const CARDS_PER_PAGE = 60
-  const [visibleCount, setVisibleCount] = useState(CARDS_PER_PAGE)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
+  // Pagination
+  const CARDS_PER_PAGE = 30
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Side panel state
   const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
@@ -272,28 +271,10 @@ export default function ProspectView() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Reset visible count when filters change
+  // Reset to page 1 when filters change
   useEffect(() => {
-    setVisibleCount(CARDS_PER_PAGE)
-  }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter])
-
-  // Infinite scroll - load more when user scrolls to bottom
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount(prev => prev + CARDS_PER_PAGE)
-        }
-      },
-      { threshold: 0.1 }
-    )
-
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current)
-    }
-
-    return () => observer.disconnect()
-  }, [])
+    setCurrentPage(1)
+  }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter, sortBy])
 
   // Generate personalized tagline if not already set
   useEffect(() => {
@@ -800,6 +781,11 @@ export default function ProspectView() {
     }
   })
 
+  // Pagination
+  const totalPages = Math.ceil(sortedPodcasts.length / CARDS_PER_PAGE)
+  const startIndex = (currentPage - 1) * CARDS_PER_PAGE
+  const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* Hero Header */}
@@ -1278,10 +1264,10 @@ export default function ProspectView() {
         ) : (
           <>
           <div
-            key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${sortBy}-${sortedPodcasts.length}`}
+            key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${sortBy}-${currentPage}`}
             className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
           >
-              {sortedPodcasts.slice(0, visibleCount).map((podcast, index) => (
+              {paginatedPodcasts.map((podcast, index) => (
             <Card
               key={podcast.podcast_id}
               className={cn(
@@ -1484,9 +1470,52 @@ export default function ProspectView() {
             </Card>
           ))}
           </div>
-          {/* Invisible trigger for infinite scroll - loads instantly */}
-          {visibleCount < sortedPodcasts.length && (
-            <div ref={loadMoreRef} className="h-4" />
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8 pb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(page => {
+                    // Show first, last, current, and pages near current
+                    if (page === 1 || page === totalPages) return true
+                    if (Math.abs(page - currentPage) <= 1) return true
+                    return false
+                  })
+                  .map((page, idx, arr) => {
+                    // Add ellipsis between gaps
+                    const showEllipsisBefore = idx > 0 && page - arr[idx - 1] > 1
+                    return (
+                      <div key={page} className="flex items-center gap-1">
+                        {showEllipsisBefore && <span className="px-2 text-muted-foreground">...</span>}
+                        <Button
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                          className="min-w-[40px]"
+                        >
+                          {page}
+                        </Button>
+                      </div>
+                    )
+                  })}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
           )}
           </>
         )}
