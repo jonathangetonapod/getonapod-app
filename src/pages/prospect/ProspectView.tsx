@@ -128,6 +128,7 @@ export default function ProspectView() {
   const forceTour = searchParams.get('tour') === '1'
 
   const [loading, setLoading] = useState(true)
+  const [loadingPodcasts, setLoadingPodcasts] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cacheNotReady, setCacheNotReady] = useState(false)
   const [dashboard, setDashboard] = useState<ProspectDashboard | null>(null)
@@ -196,9 +197,10 @@ export default function ProspectView() {
         }
 
         setDashboard(dashboardData)
+        setLoading(false) // Show UI immediately with dashboard info
 
-        // Update view count
-        await supabase
+        // Update view count (fire and forget - don't wait)
+        supabase
           .from('prospect_dashboards')
           .update({
             view_count: (dashboardData.view_count || 0) + 1,
@@ -211,9 +213,19 @@ export default function ProspectView() {
           console.log('[Dashboard] Content not published yet - showing Coming Soon')
           setCacheNotReady(true)
           setPodcasts([])
-        } else if (dashboardData.spreadsheet_id) {
-          // Fetch podcasts from cache
-          const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+          setLoadingPodcasts(false)
+          return
+        }
+
+        if (!dashboardData.spreadsheet_id) {
+          setPodcasts([])
+          setLoadingPodcasts(false)
+          return
+        }
+
+        // Fetch podcasts and feedback IN PARALLEL for speed
+        const [podcastResponse, feedbackResult] = await Promise.all([
+          fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -224,33 +236,30 @@ export default function ProspectView() {
               prospectDashboardId: dashboardData.id,
               prospectName: dashboardData.prospect_name,
               prospectBio: dashboardData.prospect_bio,
-              cacheOnly: true, // Only return cached data, don't fetch from APIs
+              cacheOnly: true,
             }),
-          })
+          }),
+          supabase
+            .from('prospect_podcast_feedback')
+            .select('*')
+            .eq('prospect_dashboard_id', dashboardData.id)
+        ])
 
-          if (!response.ok) {
-            const errorData = await response.json()
-            throw new Error(errorData.error || 'Failed to fetch podcasts')
-          }
-
-          const data = await response.json()
+        // Process podcast response
+        if (podcastResponse.ok) {
+          const data = await podcastResponse.json()
           console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
-          setCacheNotReady(false)
           setPodcasts(data.podcasts || [])
         } else {
-          // No spreadsheet linked yet - show empty state
+          console.error('Failed to fetch podcasts')
           setPodcasts([])
         }
+        setLoadingPodcasts(false)
 
-        // Fetch existing feedback for this prospect
-        const { data: feedbackData } = await supabase
-          .from('prospect_podcast_feedback')
-          .select('*')
-          .eq('prospect_dashboard_id', dashboardData.id)
-
-        if (feedbackData && feedbackData.length > 0) {
+        // Process feedback
+        if (feedbackResult.data && feedbackResult.data.length > 0) {
           const map = new Map<string, PodcastFeedback>()
-          feedbackData.forEach((fb: PodcastFeedback) => {
+          feedbackResult.data.forEach((fb: PodcastFeedback) => {
             map.set(fb.podcast_id, fb)
           })
           setFeedbackMap(map)
@@ -1172,7 +1181,24 @@ export default function ProspectView() {
           </p>
         )}
 
-        {uniquePodcasts.length === 0 ? (
+        {loadingPodcasts ? (
+          /* Podcast grid skeleton while loading */
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-white dark:bg-slate-900 rounded-xl shadow-lg overflow-hidden animate-pulse">
+                <div className="aspect-[16/10] bg-slate-200 dark:bg-slate-800" />
+                <div className="p-4 space-y-3">
+                  <div className="h-5 w-3/4 bg-slate-200 dark:bg-slate-700 rounded" />
+                  <div className="h-4 w-1/2 bg-slate-100 dark:bg-slate-800 rounded" />
+                  <div className="flex gap-2">
+                    <div className="h-6 w-16 bg-slate-100 dark:bg-slate-800 rounded-full" />
+                    <div className="h-6 w-16 bg-slate-100 dark:bg-slate-800 rounded-full" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : uniquePodcasts.length === 0 ? (
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Radio className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
