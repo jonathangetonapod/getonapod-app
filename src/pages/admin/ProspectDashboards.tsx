@@ -134,6 +134,8 @@ export default function ProspectDashboards() {
     cached: number
     fetched: number
     total: number
+    stoppedEarly?: boolean
+    remaining?: number
     stats?: {
       fromSheet: number
       fromCache: number
@@ -613,10 +615,14 @@ export default function ProspectDashboards() {
         cached: data.cached || 0,
         fetched: data.fetched || 0,
         total: data.total || 0,
+        stoppedEarly: data.stoppedEarly || false,
+        remaining: data.remaining || 0,
         stats: data.stats,
       })
 
-      if (data.fetched > 0) {
+      if (data.stoppedEarly) {
+        toast.warning(`Processed ${data.fetched} podcasts. ${data.remaining} remaining - click again to continue.`)
+      } else if (data.fetched > 0) {
         toast.success(`Cache built! ${data.fetched} new podcasts processed, ${data.cached} already cached.`)
       } else {
         toast.success(`Cache ready! All ${data.total} podcasts already cached.`)
@@ -1157,12 +1163,17 @@ export default function ProspectDashboards() {
                       onClick={buildCache}
                       disabled={buildingCache || !selectedDashboard.spreadsheet_id}
                       className="w-full"
-                      variant={cacheStatus ? "outline" : "default"}
+                      variant={cacheStatus && !cacheStatus.stoppedEarly ? "outline" : "default"}
                     >
                       {buildingCache ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Building Cache...
+                        </>
+                      ) : cacheStatus?.stoppedEarly ? (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Continue Building ({cacheStatus.remaining} remaining)
                         </>
                       ) : cacheStatus ? (
                         <>
@@ -1176,7 +1187,19 @@ export default function ProspectDashboards() {
                         </>
                       )}
                     </Button>
-                    {cacheStatus && !buildingCache && (
+                    {cacheStatus && !buildingCache && cacheStatus.stoppedEarly && (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg space-y-2">
+                        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                          <Loader2 className="h-4 w-4" />
+                          <span className="text-sm font-medium">In Progress - Click again to continue</span>
+                        </div>
+                        <div className="text-xs text-amber-600 dark:text-amber-400">
+                          <p>{cacheStatus.total} of {cacheStatus.stats?.fromSheet} podcasts cached</p>
+                          <p>{cacheStatus.remaining} remaining</p>
+                        </div>
+                      </div>
+                    )}
+                    {cacheStatus && !buildingCache && !cacheStatus.stoppedEarly && (
                       <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg space-y-2">
                         <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                           <CheckCircle2 className="h-4 w-4" />

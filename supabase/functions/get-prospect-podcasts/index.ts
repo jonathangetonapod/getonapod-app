@@ -341,6 +341,9 @@ serve(async (req) => {
 
     // Fetch missing podcasts from Podscan + AI analysis
     const newPodcasts: CachedPodcast[] = []
+    const startTime = Date.now()
+    const MAX_RUNTIME_MS = 50000 // 50 seconds max to avoid timeout
+    let stoppedEarly = false
 
     if (missingPodcastIds.length > 0) {
       const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
@@ -350,6 +353,13 @@ serve(async (req) => {
 
       const BATCH_SIZE = 3 // Smaller batches for AI analysis
       for (let i = 0; i < missingPodcastIds.length; i += BATCH_SIZE) {
+        // Check if we're approaching timeout
+        if (Date.now() - startTime > MAX_RUNTIME_MS) {
+          console.log('[Get Prospect Podcasts] Stopping early to avoid timeout, processed', newPodcasts.length, 'of', missingPodcastIds.length)
+          stoppedEarly = true
+          break
+        }
+
         const batch = missingPodcastIds.slice(i, i + BATCH_SIZE)
 
         const batchResults = await Promise.all(
@@ -483,7 +493,8 @@ serve(async (req) => {
       .map(id => allPodcastsMap.get(id))
       .filter((p): p is CachedPodcast => p !== undefined)
 
-    console.log('[Get Prospect Podcasts] Returning', orderedPodcasts.length, 'podcasts (' + cachedPodcasts.length + ' cached, ' + newPodcasts.length + ' new)')
+    const remaining = missingPodcastIds.length - newPodcasts.length
+    console.log('[Get Prospect Podcasts] Returning', orderedPodcasts.length, 'podcasts (' + cachedPodcasts.length + ' cached, ' + newPodcasts.length + ' new)', stoppedEarly ? `- stopped early, ${remaining} remaining` : '')
     console.log('[Get Prospect Podcasts] Stats:', stats)
 
     return new Response(
@@ -493,6 +504,8 @@ serve(async (req) => {
         total: orderedPodcasts.length,
         cached: cachedPodcasts.length,
         fetched: newPodcasts.length,
+        stoppedEarly,
+        remaining: stoppedEarly ? remaining : 0,
         stats: {
           fromSheet: podcastIds.length,
           fromCache: cachedPodcasts.length,
