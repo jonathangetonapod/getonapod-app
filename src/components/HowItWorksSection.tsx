@@ -65,17 +65,17 @@ const HowItWorksSection = () => {
           }`}
         >
           {/* Header */}
-          <div className="text-center mb-12 md:mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-3 sm:mb-4">
               How It Works
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
               From first call to published episode—we handle everything so you can focus on showing up and delivering value.
             </p>
           </div>
 
           {/* Steps */}
-          <div className="max-w-6xl mx-auto space-y-6 md:space-y-8">
+          <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6 md:space-y-8">
             {steps.map((step, index) => {
               const Icon = step.icon;
               return (
@@ -84,7 +84,7 @@ const HowItWorksSection = () => {
                   className="relative"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
-                  <div className="group relative bg-background rounded-2xl border-2 border-border p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl">
+                  <div className="group relative bg-background rounded-xl sm:rounded-2xl border-2 border-border p-4 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl">
                     <div className="flex flex-col md:flex-row gap-4 md:gap-8">
                       {/* Number & Icon */}
                       <div className="flex items-start gap-4">
@@ -122,8 +122,8 @@ const HowItWorksSection = () => {
 
                   {/* Arrow Connector */}
                   {index < steps.length - 1 && (
-                    <div className="flex justify-center py-4">
-                      <ArrowRight className="w-6 h-6 md:w-8 md:h-8 text-primary animate-bounce" style={{ animationDuration: '2s' }} />
+                    <div className="flex justify-center py-2 sm:py-4">
+                      <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-primary animate-bounce" style={{ animationDuration: '2s' }} />
                     </div>
                   )}
                 </div>
@@ -132,16 +132,16 @@ const HowItWorksSection = () => {
           </div>
 
           {/* Bottom CTA */}
-          <div className="text-center mt-12 md:mt-16">
-            <p className="text-lg text-muted-foreground mb-6">
+          <div className="text-center mt-8 sm:mt-12 md:mt-16">
+            <p className="text-base sm:text-lg text-muted-foreground mb-4 sm:mb-6">
               Simple, proven, and completely done-for-you.
             </p>
             <a
               href="#pricing"
-              className="inline-flex items-center gap-2 text-primary font-semibold text-lg hover:gap-3 transition-all"
+              className="inline-flex items-center gap-2 text-primary font-semibold text-base sm:text-lg hover:gap-3 transition-all"
             >
               See Pricing & Plans
-              <ArrowRight className="w-5 h-5" />
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </a>
           </div>
         </div>

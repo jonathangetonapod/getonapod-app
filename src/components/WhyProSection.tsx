@@ -4,7 +4,7 @@ const WhyProSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-8 md:py-16">
+    <section className="py-8 md:py-16 px-4">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -12,11 +12,11 @@ const WhyProSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-8">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-6 sm:mb-8">
             Why Pro?
           </h2>
-          
-          <div className="text-lg md:text-xl text-muted-foreground leading-relaxed space-y-6 text-left">
+
+          <div className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed space-y-4 sm:space-y-6 text-left">
             <p>
               <span className="text-foreground font-medium">Podcasts build your audience. Content extends your reach.</span>{' '}
               Pro gives you both.

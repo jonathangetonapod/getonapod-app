@@ -76,23 +76,23 @@ const Resources = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="pt-28 pb-16 md:pt-36 md:pb-24">
+      <section className="pt-24 pb-12 md:pt-36 md:pb-24 px-4">
         <div className="container mx-auto">
           <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-6">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-foreground mb-4 md:mb-6 leading-tight">
               Free Authority Building Resources
             </h1>
-            <p className="text-xl text-muted-foreground mb-8">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-6 md:mb-8 leading-relaxed px-2">
               Everything you need to start building authority through podcasts and press.
               No fluff. Just proven templates, frameworks, and tools.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center">
               <Input
                 type="email"
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="max-w-xs"
+                className="w-full sm:max-w-xs min-h-[48px]"
               />
               <p className="text-sm text-muted-foreground">
                 Enter once, download everything below
@@ -103,7 +103,7 @@ const Resources = () => {
       </section>
 
       {/* Resources Grid */}
-      <section className="pb-20 md:pb-32">
+      <section className="pb-16 md:pb-32 px-4">
         <div className="container mx-auto">
           <div
             ref={ref}
@@ -111,18 +111,18 @@ const Resources = () => {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
               {leadMagnets.map((resource, index) => {
                 const Icon = resource.icon;
                 return (
                   <div
                     key={index}
-                    className="p-8 bg-surface-subtle rounded-xl border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg"
+                    className="p-5 md:p-8 bg-surface-subtle rounded-xl border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg"
                     style={{ transitionDelay: `${index * 100}ms` }}
                   >
-                    <div className="flex items-start gap-4 mb-4">
-                      <div className="p-3 bg-primary/10 rounded-lg">
-                        <Icon className="h-6 w-6 text-primary" />
+                    <div className="flex items-start gap-3 md:gap-4 mb-3 md:mb-4">
+                      <div className="p-2.5 md:p-3 bg-primary/10 rounded-lg flex-shrink-0">
+                        <Icon className="h-5 w-5 md:h-6 md:w-6 text-primary" />
                       </div>
                       <div className="flex-1">
                         <span className="text-xs font-medium text-primary uppercase tracking-wider">
@@ -131,17 +131,17 @@ const Resources = () => {
                       </div>
                     </div>
 
-                    <h3 className="text-xl font-bold text-foreground mb-3">
+                    <h3 className="text-lg md:text-xl font-bold text-foreground mb-2 md:mb-3">
                       {resource.title}
                     </h3>
 
-                    <p className="text-muted-foreground mb-6">
+                    <p className="text-sm md:text-base text-muted-foreground mb-4 md:mb-6">
                       {resource.description}
                     </p>
 
                     <Button
                       variant="outline"
-                      className="w-full"
+                      className="w-full min-h-[48px]"
                       disabled
                     >
                       <Clock className="h-4 w-4 mr-2" />
@@ -156,16 +156,16 @@ const Resources = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-10 md:py-20 bg-primary text-primary-foreground">
+      <section className="py-10 md:py-20 bg-primary text-primary-foreground px-4">
         <div className="container mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 md:mb-6 leading-tight">
             Want Us To Do It For You?
           </h2>
-          <p className="text-xl mb-8 max-w-2xl mx-auto opacity-90">
+          <p className="text-base sm:text-lg md:text-xl mb-6 md:mb-8 max-w-2xl mx-auto opacity-90 leading-relaxed">
             These resources will help you get started. But if you'd rather have experts handle
             everything—research, pitching, booking, prep, and content—that's what we do.
           </p>
-          <Button variant="secondary" size="lg" asChild>
+          <Button variant="secondary" size="lg" asChild className="min-h-[48px]">
             <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Schedule a Call</a>
           </Button>
         </div>

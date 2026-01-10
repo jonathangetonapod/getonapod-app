@@ -24,7 +24,7 @@ const GuaranteeSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-8 md:py-16 bg-gradient-to-b from-primary/5 via-background to-background" id="guarantee">
+    <section className="py-8 md:py-16 bg-gradient-to-b from-primary/5 via-background to-background px-4" id="guarantee">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -33,44 +33,44 @@ const GuaranteeSection = () => {
           }`}
         >
           {/* Header */}
-          <div className="text-center mb-12">
+          <div className="text-center mb-8 sm:mb-12">
             <Badge className="mb-4 bg-success/10 text-success border-success/20">
               Results Guaranteed
             </Badge>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 sm:mb-6">
               Our Iron-Clad Guarantee
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
               You get every podcast placement we promise—no matter how long it takes us to deliver.
             </p>
           </div>
 
           {/* Guarantee Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto mb-8 sm:mb-12">
             {guarantees.map((guarantee, index) => {
               const Icon = guarantee.icon;
               return (
                 <div
                   key={index}
-                  className="relative bg-background rounded-2xl border-2 border-border p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl"
+                  className="relative bg-background rounded-2xl border-2 border-border p-5 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
                   {/* Icon */}
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 mb-6">
-                    <Icon className="h-8 w-8 text-primary" />
+                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 mb-4 sm:mb-6">
+                    <Icon className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-primary" />
                   </div>
 
                   {/* Content */}
-                  <h3 className="text-xl font-bold text-foreground mb-3">
+                  <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2 sm:mb-3 pr-8">
                     {guarantee.title}
                   </h3>
-                  <p className="text-muted-foreground leading-relaxed">
+                  <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
                     {guarantee.description}
                   </p>
 
                   {/* Checkmark */}
-                  <div className="absolute top-6 right-6">
-                    <CheckCircle2 className="h-6 w-6 text-success" />
+                  <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+                    <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6 text-success" />
                   </div>
                 </div>
               );
@@ -78,27 +78,27 @@ const GuaranteeSection = () => {
           </div>
 
           {/* Trust Badge */}
-          <div className="max-w-3xl mx-auto text-center p-6 md:p-8 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 rounded-2xl border-2 border-primary/20">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
-              <Shield className="h-8 w-8 md:h-10 md:w-10 text-primary flex-shrink-0" />
-              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">
+          <div className="max-w-3xl mx-auto text-center p-5 sm:p-6 md:p-8 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 rounded-2xl border-2 border-primary/20">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mb-4">
+              <Shield className="h-7 w-7 sm:h-8 sm:w-8 md:h-10 md:w-10 text-primary flex-shrink-0" />
+              <h3 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-foreground text-center">
                 If We Don't Hit Your Number, We Work For Free
               </h3>
             </div>
-            <p className="text-base md:text-lg text-muted-foreground mb-6 px-2">
+            <p className="text-sm sm:text-base md:text-lg text-muted-foreground mb-4 sm:mb-6">
               Miss the deadline? We keep going—for free—until every promised placement is delivered. You paid for X podcasts, you get X podcasts. Period.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
                 <span>Get every placement promised</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
                 <span>We work free until delivered</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
                 <span>No excuses, just results</span>
               </div>
             </div>

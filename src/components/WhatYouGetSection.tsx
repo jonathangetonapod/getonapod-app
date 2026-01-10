@@ -70,50 +70,50 @@ const WhatYouGetSection = () => {
           }`}
         >
           {/* Header */}
-          <div className="text-center mb-12 md:mb-16">
-            <div className="inline-flex items-center gap-2 mb-4">
-              <Sparkles className="w-6 h-6 text-primary" />
-              <Badge variant="outline" className="text-sm">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
+            <div className="inline-flex items-center gap-2 mb-3 sm:mb-4">
+              <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+              <Badge variant="outline" className="text-xs sm:text-sm">
                 Full Transparency
               </Badge>
             </div>
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-3 sm:mb-4">
               Your Podcast Command Center
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
               Most agencies send you a monthly PDF. We give you a live dashboard where you control everything.
             </p>
           </div>
 
           {/* Features Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto">
             {features.map((feature, index) => {
               const Icon = feature.icon;
               return (
                 <div
                   key={index}
-                  className="group relative bg-background rounded-2xl border-2 border-border p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                  className="group relative bg-background rounded-xl sm:rounded-2xl border-2 border-border p-4 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
                   {/* Badge */}
-                  <div className="absolute -top-3 right-6">
-                    <Badge className="bg-primary/10 text-primary border-primary/20">
+                  <div className="absolute -top-3 right-4 sm:right-6">
+                    <Badge className="bg-primary/10 text-primary border-primary/20 text-xs sm:text-sm">
                       {feature.badge}
                     </Badge>
                   </div>
 
                   {/* Icon */}
-                  <div className="mb-6">
-                    <div className={`inline-flex w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br ${feature.color} items-center justify-center`}>
-                      <Icon className="w-7 h-7 md:w-8 md:h-8 text-foreground" strokeWidth={1.5} />
+                  <div className="mb-4 sm:mb-6">
+                    <div className={`inline-flex w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br ${feature.color} items-center justify-center`}>
+                      <Icon className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-foreground" strokeWidth={1.5} />
                     </div>
                   </div>
 
                   {/* Content */}
-                  <h3 className="text-xl sm:text-2xl font-bold text-foreground mb-2">
+                  <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground mb-1 sm:mb-2">
                     {feature.title}
                   </h3>
-                  <p className="text-sm sm:text-base text-muted-foreground mb-4">
+                  <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                     {feature.description}
                   </p>
 
@@ -135,8 +135,8 @@ const WhatYouGetSection = () => {
           </div>
 
           {/* Bottom Note */}
-          <div className="text-center mt-12 md:mt-16">
-            <p className="text-lg text-muted-foreground">
+          <div className="text-center mt-8 sm:mt-12 md:mt-16 px-2">
+            <p className="text-base sm:text-lg text-muted-foreground">
               <span className="font-semibold text-foreground">Pro clients</span> get the full content package—video clips, blog posts, and guest prep kits for every episode.
             </p>
           </div>

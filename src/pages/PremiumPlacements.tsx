@@ -265,23 +265,23 @@ const PremiumPlacements = () => {
       </section>
 
       {/* Filter & Search Section */}
-      <section className="pb-8 border-b">
-        <div className="container mx-auto space-y-4">
+      <section className="pb-6 md:pb-8 border-b px-4">
+        <div className="container mx-auto space-y-3 md:space-y-4">
           {/* Search and Sort */}
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4">
             {/* Search Bar */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search podcasts by name, category, or description..."
+                placeholder="Search podcasts..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-10"
+                className="pl-10 pr-10 min-h-[48px]"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2"
                 >
                   <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
                 </button>
@@ -290,7 +290,7 @@ const PremiumPlacements = () => {
 
             {/* Sort Dropdown */}
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-full md:w-[220px]">
+              <SelectTrigger className="w-full md:w-[220px] min-h-[48px]">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -305,7 +305,7 @@ const PremiumPlacements = () => {
             {/* Mobile Filter Button */}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" className="md:hidden">
+                <Button variant="outline" className="md:hidden min-h-[48px]">
                   <SlidersHorizontal className="h-4 w-4 mr-2" />
                   Filters
                   {hasActiveFilters && (
@@ -323,11 +323,29 @@ const PremiumPlacements = () => {
                   </SheetDescription>
                 </SheetHeader>
                 <div className="space-y-6 mt-6">
-                  {/* Mobile Filters */}
+                  {/* Mobile Category Filter */}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Category</label>
+                    <Select value={selectedCategory || "all"} onValueChange={(v) => setSelectedCategory(v === "all" ? null : v)}>
+                      <SelectTrigger className="min-h-[48px]">
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {PODCAST_CATEGORIES.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Mobile Audience Filter */}
                   <div>
                     <label className="text-sm font-medium mb-2 block">Audience Size</label>
                     <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
-                      <SelectTrigger>
+                      <SelectTrigger className="min-h-[48px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -343,7 +361,7 @@ const PremiumPlacements = () => {
                   <div>
                     <label className="text-sm font-medium mb-2 block">Price Range</label>
                     <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
-                      <SelectTrigger>
+                      <SelectTrigger className="min-h-[48px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -357,7 +375,7 @@ const PremiumPlacements = () => {
                   </div>
 
                   {hasActiveFilters && (
-                    <Button onClick={clearFilters} variant="outline" className="w-full">
+                    <Button onClick={clearFilters} variant="outline" className="w-full min-h-[48px]">
                       <X className="h-4 w-4 mr-2" />
                       Clear Filters
                     </Button>
@@ -449,7 +467,7 @@ const PremiumPlacements = () => {
       </section>
 
       {/* Placements Grid */}
-      <section className="pb-20 md:pb-32">
+      <section className="py-6 md:py-10 pb-16 md:pb-32 px-4">
         <div className="container mx-auto">
           <div
             ref={ref}
@@ -477,7 +495,7 @@ const PremiumPlacements = () => {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
                 {filteredAndSortedPodcasts.map((podcast, index) => (
                     <div
                       key={podcast.id}
@@ -646,41 +664,41 @@ const PremiumPlacements = () => {
       </section>
 
       {/* FAQ Section */}
-      <section className="py-10 md:py-20 bg-surface-subtle">
+      <section className="py-10 md:py-20 bg-surface-subtle px-4">
         <div className="container mx-auto max-w-3xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-foreground text-center mb-12">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground text-center mb-8 md:mb-12 leading-tight">
             How Premium Placements Work
           </h2>
-          <div className="space-y-6">
+          <div className="space-y-5 md:space-y-6">
             <div>
-              <h3 className="text-xl font-bold text-foreground mb-2">
+              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
                 What's the difference between Premium Placements and your retainer plans?
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Retainer plans involve us researching and pitching shows that match your niche—you don't choose the specific shows. Premium Placements let you pick exactly which shows you want to be on from our pre-vetted menu, with guaranteed booking.
               </p>
             </div>
             <div>
-              <h3 className="text-xl font-bold text-foreground mb-2">
+              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
                 How quickly can I get booked?
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Most Premium Placements are booked within 2-3 weeks. Recording typically happens within 4-6 weeks, and episodes air 4-8 weeks after recording (varies by show).
               </p>
             </div>
             <div>
-              <h3 className="text-xl font-bold text-foreground mb-2">
+              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
                 Can I book multiple shows at once?
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Absolutely. Many clients book 3-5 Premium Placements upfront to create a consistent content pipeline. We'll coordinate timing to avoid overlap.
               </p>
             </div>
             <div>
-              <h3 className="text-xl font-bold text-foreground mb-2">
+              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
                 What if I want a show that's not on this list?
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Book a call with us. We may be able to add specific shows to your package or recommend similar alternatives. Our menu is constantly growing.
               </p>
             </div>
@@ -689,15 +707,15 @@ const PremiumPlacements = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-10 md:py-20 bg-primary text-primary-foreground">
+      <section className="py-10 md:py-20 bg-primary text-primary-foreground px-4">
         <div className="container mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 md:mb-6 leading-tight">
             Ready To Pick Your Shows?
           </h2>
-          <p className="text-xl mb-8 max-w-2xl mx-auto opacity-90">
+          <p className="text-base sm:text-lg md:text-xl mb-6 md:mb-8 max-w-2xl mx-auto opacity-90 leading-relaxed">
             Book a call to discuss which shows are the best fit for your message and goals.
           </p>
-          <Button variant="secondary" size="lg" asChild>
+          <Button variant="secondary" size="lg" asChild className="min-h-[48px]">
             <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book Your Call</a>
           </Button>
         </div>
@@ -712,14 +730,14 @@ const PremiumPlacements = () => {
 
       {/* Why This Show Modal */}
       <Dialog open={!!modalPodcast} onOpenChange={(open) => !open && setModalPodcast(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto mx-4 sm:mx-auto">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-              <Award className="h-6 w-6 text-purple-500" />
-              Why {modalPodcast?.podcast_name}?
+            <DialogTitle className="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <Award className="h-5 w-5 md:h-6 md:w-6 text-purple-500 flex-shrink-0" />
+              <span className="line-clamp-2">Why {modalPodcast?.podcast_name}?</span>
             </DialogTitle>
           </DialogHeader>
-          <DialogDescription className="text-base text-foreground leading-relaxed pt-4">
+          <DialogDescription className="text-sm md:text-base text-foreground leading-relaxed pt-4">
             {modalPodcast?.why_this_show}
           </DialogDescription>
         </DialogContent>

@@ -70,42 +70,42 @@ const Course = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="pt-28 pb-16 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background">
+      <section className="pt-24 pb-12 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
         <div className="container mx-auto">
           <div className="max-w-3xl mx-auto text-center">
             <Badge className="mb-4">Coming Soon</Badge>
-            <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-6">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-foreground mb-4 md:mb-6 leading-tight">
               DIY Podcast Guesting Masterclass
             </h1>
-            <p className="text-xl text-muted-foreground mb-8">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-6 md:mb-8 leading-relaxed px-2">
               Everything you need to get booked on podcasts and build authority—without hiring an agency.
               The complete system we use for our clients, now available for you to do yourself.
             </p>
 
-            <form onSubmit={handleJoinWaitlist} className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-lg mx-auto mb-8">
+            <form onSubmit={handleJoinWaitlist} className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center max-w-lg mx-auto mb-6 md:mb-8 px-2">
               <Input
                 type="email"
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="max-w-xs"
+                className="w-full sm:max-w-xs min-h-[48px]"
               />
-              <Button type="submit" size="lg">
+              <Button type="submit" size="lg" className="w-full sm:w-auto min-h-[48px]">
                 Join Waitlist
               </Button>
             </form>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
                 6 in-depth modules
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
                 Templates & swipe files
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
                 Real pitch examples
               </div>
             </div>
@@ -114,13 +114,13 @@ const Course = () => {
       </section>
 
       {/* What's Included Section */}
-      <section className="py-10 md:py-20">
+      <section className="py-10 md:py-20 px-4">
         <div className="container mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+          <div className="text-center mb-10 md:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-3 md:mb-4">
               What You'll Learn
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed px-2">
               The exact process we use to book our clients on podcasts every month.
               No theory. Just proven frameworks and templates.
             </p>
@@ -132,24 +132,24 @@ const Course = () => {
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
               {modules.map((module, index) => {
                 const Icon = module.icon;
                 return (
                   <div
                     key={index}
-                    className="p-8 bg-surface-subtle rounded-xl border border-border"
+                    className="p-5 md:p-8 bg-surface-subtle rounded-xl border border-border"
                     style={{ transitionDelay: `${index * 100}ms` }}
                   >
-                    <div className="p-3 bg-primary/10 rounded-lg w-fit mb-4">
-                      <Icon className="h-6 w-6 text-primary" />
+                    <div className="p-3 bg-primary/10 rounded-lg w-fit mb-3 md:mb-4">
+                      <Icon className="h-5 w-5 md:h-6 md:w-6 text-primary" />
                     </div>
 
-                    <h3 className="text-xl font-bold text-foreground mb-3">
+                    <h3 className="text-lg md:text-xl font-bold text-foreground mb-2 md:mb-3">
                       {module.title}
                     </h3>
 
-                    <p className="text-muted-foreground">
+                    <p className="text-sm md:text-base text-muted-foreground">
                       {module.description}
                     </p>
                   </div>
@@ -161,47 +161,47 @@ const Course = () => {
       </section>
 
       {/* Bonuses Section */}
-      <section className="py-10 md:py-20 bg-surface-subtle">
+      <section className="py-10 md:py-20 bg-surface-subtle px-4">
         <div className="container mx-auto max-w-4xl">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
+          <div className="text-center mb-10 md:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-3 md:mb-4">
               Plus These Bonuses
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-6 bg-background rounded-xl border border-border">
-              <h3 className="text-lg font-bold text-foreground mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <div className="p-4 md:p-6 bg-background rounded-xl border border-border">
+              <h3 className="text-base md:text-lg font-bold text-foreground mb-2">
                 50+ Podcast Pitch Templates
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Copy-paste email templates for every scenario: cold pitches, warm intros, follow-ups, and thank-yous.
               </p>
             </div>
 
-            <div className="p-6 bg-background rounded-xl border border-border">
-              <h3 className="text-lg font-bold text-foreground mb-2">
+            <div className="p-4 md:p-6 bg-background rounded-xl border border-border">
+              <h3 className="text-base md:text-lg font-bold text-foreground mb-2">
                 Guest One-Sheet Template
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 The exact template we use to position our clients. Fill-in-the-blank format, ready to customize.
               </p>
             </div>
 
-            <div className="p-6 bg-background rounded-xl border border-border">
-              <h3 className="text-lg font-bold text-foreground mb-2">
+            <div className="p-4 md:p-6 bg-background rounded-xl border border-border">
+              <h3 className="text-base md:text-lg font-bold text-foreground mb-2">
                 Content Repurposing Playbook
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Turn every podcast appearance into 30+ pieces of content across LinkedIn, Twitter, email, and more.
               </p>
             </div>
 
-            <div className="p-6 bg-background rounded-xl border border-border">
-              <h3 className="text-lg font-bold text-foreground mb-2">
+            <div className="p-4 md:p-6 bg-background rounded-xl border border-border">
+              <h3 className="text-base md:text-lg font-bold text-foreground mb-2">
                 Curated Podcast Lists by Niche
               </h3>
-              <p className="text-muted-foreground">
+              <p className="text-sm md:text-base text-muted-foreground">
                 Hundreds of vetted podcasts organized by industry, so you can start pitching immediately.
               </p>
             </div>
@@ -210,24 +210,25 @@ const Course = () => {
       </section>
 
       {/* Timeline Section */}
-      <section className="py-10 md:py-20">
+      <section className="py-10 md:py-20 px-4">
         <div className="container mx-auto max-w-3xl text-center">
-          <div className="p-8 bg-surface-subtle rounded-xl border border-border">
-            <Clock className="h-12 w-12 text-primary mx-auto mb-4" />
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-4">
+          <div className="p-5 md:p-8 bg-surface-subtle rounded-xl border border-border">
+            <Clock className="h-10 w-10 md:h-12 md:w-12 text-primary mx-auto mb-3 md:mb-4" />
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground mb-3 md:mb-4">
               Launching Q1 2025
             </h2>
-            <p className="text-muted-foreground mb-6">
+            <p className="text-sm md:text-base text-muted-foreground mb-5 md:mb-6">
               Join the waitlist to get early access pricing and exclusive bonuses when we launch.
             </p>
-            <form onSubmit={handleJoinWaitlist} className="flex flex-col sm:flex-row gap-4 justify-center items-center max-w-md mx-auto">
+            <form onSubmit={handleJoinWaitlist} className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center max-w-md mx-auto">
               <Input
                 type="email"
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="w-full sm:flex-1 min-h-[48px]"
               />
-              <Button type="submit">
+              <Button type="submit" className="w-full sm:w-auto min-h-[48px]">
                 Notify Me
               </Button>
             </form>
@@ -236,16 +237,16 @@ const Course = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-10 md:py-20 bg-primary text-primary-foreground">
+      <section className="py-10 md:py-20 bg-primary text-primary-foreground px-4">
         <div className="container mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 md:mb-6 leading-tight">
             Don't Want To Wait? We'll Do It For You.
           </h2>
-          <p className="text-xl mb-8 max-w-2xl mx-auto opacity-90">
+          <p className="text-base sm:text-lg md:text-xl mb-6 md:mb-8 max-w-2xl mx-auto opacity-90 leading-relaxed">
             If you'd rather have experts handle everything while you focus on your business,
             check out our done-for-you services.
           </p>
-          <Button variant="secondary" size="lg" asChild>
+          <Button variant="secondary" size="lg" asChild className="min-h-[48px]">
             <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Schedule a Call</a>
           </Button>
         </div>

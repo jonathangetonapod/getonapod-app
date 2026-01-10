@@ -14,34 +14,34 @@ const ProblemSection = () => {
 
   return (
     <section className="py-8 md:py-16 bg-surface-subtle">
-      <div className="container mx-auto">
+      <div className="container mx-auto px-4 sm:px-6">
         <div
           ref={ref}
           className={`max-w-3xl mx-auto transition-all duration-700 ${
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+          <p className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 sm:mb-4">
             The Problem
           </p>
-          
-          <p className="text-2xl md:text-3xl text-foreground leading-relaxed mb-12">
+
+          <p className="text-xl sm:text-2xl md:text-3xl text-foreground leading-relaxed mb-8 sm:mb-12">
             You know visibility works. You've seen competitors build authority,
             generate leads, and close deals—all from being on the right podcasts
             and positioning themselves as the go-to expert.
           </p>
           
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {painPoints.map((point, index) => (
               <div
                 key={index}
-                className={`flex items-start gap-4 p-4 bg-background rounded-lg border border-border transition-all duration-500`}
+                className={`flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-background rounded-lg border border-border transition-all duration-500`}
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-destructive/10 flex items-center justify-center">
-                  <X className="w-4 h-4 text-destructive" />
+                <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <X className="w-3 h-3 sm:w-4 sm:h-4 text-destructive" />
                 </div>
-                <p className="text-foreground">{point}</p>
+                <p className="text-sm sm:text-base text-foreground">{point}</p>
               </div>
             ))}
           </div>

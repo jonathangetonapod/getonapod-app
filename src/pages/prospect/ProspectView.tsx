@@ -1775,46 +1775,63 @@ export default function ProspectView() {
       {dashboard?.show_pricing_section !== false && (
         <div
           className={cn(
-            "fixed bottom-0 left-0 right-0 z-50 transition-all duration-300 transform",
+            "fixed bottom-0 left-0 right-0 z-50 transition-all duration-500 transform",
             showCtaBar && !ctaBarDismissed
               ? "translate-y-0 opacity-100"
               : "translate-y-full opacity-0 pointer-events-none"
           )}
         >
-          <div className="relative overflow-hidden border-t border-white/20 shadow-2xl">
-            <div className="absolute inset-0 bg-gradient-to-r from-primary via-purple-600 to-pink-600" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
-            <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="relative overflow-hidden shadow-[0_-8px_30px_rgba(0,0,0,0.15)] animate-pulse-glow">
+            {/* Animated gradient background */}
+            <div
+              className="absolute inset-0 bg-gradient-to-r from-violet-600 via-fuchsia-500 via-pink-500 to-orange-400 bg-[length:200%_100%] animate-gradient-shift"
+            />
+            {/* Shimmer overlay effect */}
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+            </div>
+            {/* Sparkle decorations */}
+            <div className="absolute top-2 left-[10%] w-1 h-1 bg-white rounded-full opacity-60 animate-pulse" />
+            <div className="absolute bottom-3 left-[25%] w-1.5 h-1.5 bg-white rounded-full opacity-40 animate-pulse" style={{ animationDelay: '0.5s' }} />
+            <div className="absolute top-3 right-[30%] w-1 h-1 bg-white rounded-full opacity-50 animate-pulse" style={{ animationDelay: '1s' }} />
+            <div className="absolute bottom-2 right-[15%] w-1.5 h-1.5 bg-white rounded-full opacity-40 animate-pulse" style={{ animationDelay: '0.3s' }} />
+
+            <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
               <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <div className="hidden sm:flex p-2 rounded-full bg-white/20">
-                  <Rocket className="h-5 w-5 text-white" />
+                {/* Animated icon container */}
+                <div className="hidden sm:flex p-2.5 rounded-xl bg-white/20 backdrop-blur-sm animate-bounce-gentle shadow-lg">
+                  <Sparkles className="h-5 w-5 text-white drop-shadow-lg" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white font-medium text-xs sm:text-sm md:text-base truncate">
-                    Like what you see?
+                  <p className="text-white font-bold text-sm sm:text-base md:text-lg truncate drop-shadow-md flex items-center gap-1.5">
+                    <span className="sm:hidden">Ready to grow?</span>
+                    <span className="hidden sm:inline">Ready to 10x Your Reach?</span>
+                    <span className="hidden md:inline text-lg">🎙️</span>
                   </p>
-                  <p className="text-white/70 text-[10px] sm:text-xs md:text-sm truncate">
-                    Let's get you booked on these podcasts
+                  <p className="text-white/90 text-[11px] sm:text-sm md:text-base truncate font-medium">
+                    <span className="sm:hidden">Get booked now</span>
+                    <span className="hidden sm:inline">Let's get you on these podcasts — spots fill fast!</span>
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
                 <Button
                   size="sm"
-                  className="gap-1 sm:gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90 text-xs sm:text-sm h-8 sm:h-9 px-2.5 sm:px-3"
+                  className="gap-1.5 sm:gap-2 whitespace-nowrap bg-white text-violet-700 hover:bg-yellow-300 hover:text-violet-900 text-xs sm:text-sm font-bold h-9 sm:h-11 px-3 sm:px-5 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
                   onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
                 >
-                  <Phone className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Book a Call</span>
-                  <span className="sm:hidden">Book</span>
+                  <Calendar className="h-4 w-4 sm:h-5 sm:w-5 group-hover:animate-bounce-gentle" />
+                  <span className="hidden sm:inline">Book Your Free Call</span>
+                  <span className="sm:hidden">Book Call</span>
+                  <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 sm:h-8 sm:w-8 text-white/70 hover:text-white hover:bg-white/20"
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-white/60 hover:text-white hover:bg-white/20 rounded-full transition-all"
                   onClick={() => setCtaBarDismissed(true)}
                 >
-                  <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <X className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
               </div>
             </div>

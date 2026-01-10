@@ -45,15 +45,15 @@ const PricingSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <h2 className="text-4xl sm:text-4xl md:text-5xl font-bold text-foreground text-center mb-8 sm:mb-12 md:mb-16 px-4">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground text-center mb-6 sm:mb-12 md:mb-16">
             Choose Your Plan
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-3xl mx-auto">
             {plans.map((plan, index) => (
               <div
                 key={index}
-                className={`relative p-6 sm:p-8 rounded-xl border transition-all duration-300 ${
+                className={`relative p-5 sm:p-6 md:p-8 rounded-xl border transition-all duration-300 ${
                   plan.popular
                     ? 'bg-primary text-primary-foreground border-primary md:scale-105'
                     : 'bg-background border-border hover:border-foreground/20'
@@ -61,43 +61,43 @@ const PricingSection = () => {
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
                 {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background text-foreground text-xs font-semibold rounded-full">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background text-foreground text-xs font-semibold rounded-full whitespace-nowrap">
                     Most Popular
                   </div>
                 )}
 
-                <h3 className={`text-xl font-semibold mb-2 ${
+                <h3 className={`text-lg sm:text-xl font-semibold mb-2 ${
                   plan.popular ? 'text-primary-foreground' : 'text-foreground'
                 }`}>
                   {plan.name}
                 </h3>
 
-                <div className="mb-6">
-                  <span className={`text-4xl font-bold ${
+                <div className="mb-4 sm:mb-6">
+                  <span className={`text-3xl sm:text-4xl font-bold ${
                     plan.popular ? 'text-primary-foreground' : 'text-foreground'
                   }`}>
                     {plan.price}
                   </span>
-                  <span className={plan.popular ? 'text-primary-foreground/70' : 'text-muted-foreground'}>
+                  <span className={`text-sm sm:text-base ${plan.popular ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                     {plan.period}
                   </span>
                 </div>
 
-                <ul className="space-y-3 mb-8">
+                <ul className="space-y-2 sm:space-y-3 mb-6 sm:mb-8">
                   {plan.features.map((feature, i) => (
                     <li
                       key={i}
-                      className={`flex items-start gap-3 cursor-pointer group transition-all duration-200 rounded-lg -mx-2 px-2 py-1 ${
+                      className={`flex items-start gap-2 sm:gap-3 cursor-pointer group transition-all duration-200 rounded-lg -mx-2 px-2 py-1.5 sm:py-1 ${
                         plan.popular
                           ? 'hover:bg-primary-foreground/10'
                           : 'hover:bg-muted'
                       }`}
                       onClick={() => setSelectedFeature(feature)}
                     >
-                      <Check className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                      <Check className={`w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5 ${
                         plan.popular ? 'text-primary-foreground' : 'text-foreground'
                       }`} />
-                      <span className={`flex-1 ${plan.popular ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
+                      <span className={`flex-1 text-sm sm:text-base ${plan.popular ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
                         {feature}
                       </span>
                       <Info className={`w-4 h-4 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
@@ -111,13 +111,13 @@ const PricingSection = () => {
                   <Button
                     variant={plan.popular ? 'secondary' : 'hero'}
                     size="lg"
-                    className="w-full min-h-[48px]"
+                    className="w-full min-h-[48px] text-sm sm:text-base"
                     asChild
                   >
                     <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
                   </Button>
 
-                  <div className="flex justify-center">
+                  <div className="flex justify-center [&>stripe-buy-button]:w-full [&>stripe-buy-button]:max-w-full">
                     {/* @ts-ignore */}
                     <stripe-buy-button
                       buy-button-id={plan.name === "Starter" ? "buy_btn_1So6wjDUPtBnbWkaAkoqwcLf" : "buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"}
@@ -129,7 +129,7 @@ const PricingSection = () => {
             ))}
           </div>
 
-          <p className="text-center text-muted-foreground mt-8">
+          <p className="text-center text-sm sm:text-base text-muted-foreground mt-6 sm:mt-8">
             All plans require a 3-month minimum commitment.
           </p>
         </div>
