@@ -8,38 +8,23 @@ const plans = [
     price: "$1,000",
     period: "/month",
     features: [
-      "2 podcasts/month",
-      "Guest prep kit",
-      "Content package",
-      "Monthly report",
+      "2 podcast bookings/month",
+      "Access to reporting & analytics",
     ],
     popular: false,
-  },
-  {
-    name: "Growth",
-    price: "$2,000",
-    period: "/month",
-    features: [
-      "4 podcasts/month",
-      "Guest prep kit",
-      "Content package",
-      "Monthly report",
-    ],
-    popular: true,
   },
   {
     name: "Pro",
-    price: "$4,000",
+    price: "$1,500",
     period: "/month",
     features: [
-      "4 podcasts/month + PR",
-      "Everything in Growth, plus:",
-      "Done-for-you PR outreach",
-      "2-3 media angles monthly",
-      "Custom media list",
-      "Monthly strategy call",
+      "Minimum 3 bookings/month",
+      "2 blog posts",
+      "Guest prep kit",
+      "Monthly report",
+      "9 video clips (3 per podcast)",
     ],
-    popular: false,
+    popular: true,
   },
 ];
 
@@ -59,7 +44,7 @@ const PricingSection = () => {
             Choose Your Plan
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {plans.map((plan, index) => (
               <div
                 key={index}
