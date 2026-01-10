@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 
 const painPoints = [
-  "You spend hours researching podcasts and publications",
+  "You spend hours researching podcasts that might be a fit",
   "You craft the perfect pitch... and hear nothing back",
   "You follow up. Still nothing.",
   "Months go by. Your competitors keep showing up everywhere.",
@@ -26,9 +26,9 @@ const ProblemSection = () => {
           </p>
           
           <p className="text-2xl md:text-3xl text-foreground leading-relaxed mb-12">
-            You know visibility works. You've seen competitors build authority, 
-            generate leads, and close deals—all from being on the right podcasts 
-            and getting featured in the right publications.
+            You know visibility works. You've seen competitors build authority,
+            generate leads, and close deals—all from being on the right podcasts
+            and positioning themselves as the go-to expert.
           </p>
           
           <div className="space-y-4">

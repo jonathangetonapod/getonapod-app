@@ -22,11 +22,10 @@ const SolutionSection = () => {
           </h2>
           
           <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-10">
-            Get On A Pod handles everything—researching shows, writing pitches, 
-            following up, booking interviews, and coordinating your calendar. 
-            For our Pro clients, we go further: pitching journalists and publications 
-            to get you featured in the press. You pick a plan. We do the work. 
-            You show up and talk.
+            Get On A Pod handles everything—researching shows, writing pitches,
+            following up, booking interviews, and coordinating your calendar.
+            Pro clients get a full content package to maximize every appearance.
+            You pick a plan. We do the work. You show up and talk.
           </p>
           
           <Button variant="hero" size="lg" asChild>
