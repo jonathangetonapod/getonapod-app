@@ -67,7 +67,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   MessageSquare,
-  DollarSign
+  DollarSign,
+  FileText
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -87,6 +88,7 @@ interface ProspectDashboard {
   view_count: number
   last_viewed_at: string | null
   personalized_tagline: string | null
+  media_kit_url: string | null
 }
 
 interface PodcastFeedback {
@@ -131,6 +133,10 @@ export default function ProspectDashboards() {
   const [editTagline, setEditTagline] = useState('')
   const [savingTagline, setSavingTagline] = useState(false)
   const [generatingTagline, setGeneratingTagline] = useState(false)
+
+  // Edit media kit URL
+  const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
+  const [savingMediaKit, setSavingMediaKit] = useState(false)
 
   // Feedback state
   const [feedback, setFeedback] = useState<PodcastFeedback[]>([])
@@ -456,11 +462,12 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, editTagline and reset state when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
       setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
+      setEditMediaKitUrl(selectedDashboard.media_kit_url || '')
       // Extract the custom part of tagline (after "perfect for ")
       const tagline = selectedDashboard.personalized_tagline || ''
       const match = tagline.match(/perfect for\s+(.+)$/i)
@@ -728,6 +735,39 @@ export default function ProspectDashboards() {
       toast.error('Failed to save tagline')
     } finally {
       setSavingTagline(false)
+    }
+  }
+
+  const saveMediaKitUrl = async () => {
+    if (!selectedDashboard) return
+
+    setSavingMediaKit(true)
+    try {
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ media_kit_url: editMediaKitUrl.trim() || null })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, media_kit_url: editMediaKitUrl.trim() || null }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, media_kit_url: editMediaKitUrl.trim() || null } : null
+      )
+
+      toast.success('Media kit URL saved!')
+    } catch (error) {
+      console.error('Error saving media kit URL:', error)
+      toast.error('Failed to save media kit URL')
+    } finally {
+      setSavingMediaKit(false)
     }
   }
 
@@ -1629,6 +1669,49 @@ export default function ProspectDashboards() {
                         Add a prospect bio to enable AI generation
                       </p>
                     )}
+                  </div>
+
+                  <Separator />
+
+                  {/* Media Kit / One Pager URL */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Media Kit / One Pager
+                    </h3>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste media kit URL..."
+                        value={editMediaKitUrl}
+                        onChange={(e) => setEditMediaKitUrl(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={saveMediaKitUrl}
+                        disabled={savingMediaKit || editMediaKitUrl === (selectedDashboard.media_kit_url || '')}
+                      >
+                        {savingMediaKit ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    {editMediaKitUrl && (
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-xs"
+                        onClick={() => window.open(editMediaKitUrl, '_blank')}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        Preview Media Kit
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Link to the prospect's media kit or one-pager document (Google Doc, PDF, etc.)
+                    </p>
                   </div>
 
                   <Separator />

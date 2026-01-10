@@ -55,7 +55,8 @@ import {
   Info,
   Phone,
   Calendar,
-  DollarSign
+  DollarSign,
+  FileText
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -77,6 +78,7 @@ interface ProspectDashboard {
   content_ready: boolean
   show_pricing_section: boolean
   personalized_tagline: string | null
+  media_kit_url: string | null
 }
 
 interface PodcastCategory {
@@ -896,6 +898,21 @@ export default function ProspectView() {
                 <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
               </div>
             </div>
+
+            {/* Media Kit Button */}
+            {dashboard?.media_kit_url && (
+              <div className="mt-4 animate-fade-in-up delay-200">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800"
+                  onClick={() => window.open(dashboard.media_kit_url!, '_blank')}
+                >
+                  <FileText className="h-4 w-4" />
+                  View My Media Kit
+                </Button>
+              </div>
+            )}
 
             {/* AI Insights Loading Status */}
             {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
