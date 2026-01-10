@@ -4,7 +4,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -1340,7 +1341,10 @@ export default function ProspectDashboards() {
 
       {/* Side Panel */}
       <Sheet open={!!selectedDashboard} onOpenChange={() => setSelectedDashboard(null)}>
-        <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-y-auto overflow-x-hidden">
+        <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-y-auto overflow-x-hidden" aria-describedby={undefined}>
+          <VisuallyHidden>
+            <SheetTitle>Prospect Dashboard Details</SheetTitle>
+          </VisuallyHidden>
           {selectedDashboard && (
             <div className="flex flex-col h-full">
               {/* Close button - fixed position */}
