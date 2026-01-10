@@ -46,6 +46,7 @@ import PortalAuth from "./pages/portal/Auth";
 import PortalDashboard from "./pages/portal/Dashboard";
 import PortalResources from "./pages/portal/Resources";
 import ProspectView from "./pages/prospect/ProspectView";
+import ClientApprovalView from "./pages/client/ClientApprovalView";
 
 const queryClient = new QueryClient();
 
@@ -80,6 +81,8 @@ const App = () => (
             <Route path="/portal/auth" element={<PortalAuth />} />
             {/* Public prospect dashboard */}
             <Route path="/prospect/:slug" element={<ProspectView />} />
+            {/* Public client approval dashboard */}
+            <Route path="/client/:slug" element={<ClientApprovalView />} />
             <Route
               path="/portal/dashboard"
               element={

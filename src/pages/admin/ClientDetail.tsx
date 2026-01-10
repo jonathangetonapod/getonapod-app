@@ -53,7 +53,10 @@ import {
   RefreshCw,
   Package,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Mic,
+  ListChecks,
+  Brain
 } from 'lucide-react'
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient, setClientPassword, clearClientPassword, generatePassword } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
@@ -62,7 +65,9 @@ import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPorta
 import { createClientGoogleSheet } from '@/services/googleSheets'
 import { getClientAddons, updateBookingAddonStatus, deleteBookingAddon, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
 import type { BookingAddon } from '@/services/addonServices'
-import { useToast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase'
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
 type TimeRange = 30 | 60 | 90 | 180
 
@@ -94,6 +99,10 @@ export default function ClientDetail() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [creatingSheet, setCreatingSheet] = useState(false)
   const [bioExpanded, setBioExpanded] = useState(false)
+  // Podcast Approval Dashboard state
+  const [dashboardCacheLoading, setDashboardCacheLoading] = useState(false)
+  const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
+  const [dashboardCacheStatus, setDashboardCacheStatus] = useState<{ cached: number; aiAnalyzed: number; total: number } | null>(null)
   const [editBookingForm, setEditBookingForm] = useState({
     podcast_name: '',
     host_name: '',
@@ -776,6 +785,195 @@ export default function ClientDetail() {
     }
   }
 
+  // Dashboard management helpers
+  const extractSpreadsheetId = (url: string | null): string | null => {
+    if (!url) return null
+    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    return match ? match[1] : null
+  }
+
+  const handleCheckDashboardCache = async () => {
+    if (!client || !client.google_sheet_url) return
+
+    const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
+    if (!spreadsheetId) {
+      toast({
+        title: 'Invalid Google Sheet URL',
+        description: 'Could not extract spreadsheet ID from the URL',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setDashboardCacheLoading(true)
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.session?.access_token || ''}`
+        },
+        body: JSON.stringify({
+          spreadsheetId,
+          clientId: client.id,
+          clientName: client.name,
+          clientBio: client.bio || '',
+          checkStatusOnly: true
+        })
+      })
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to check cache status')
+
+      const cached = result.podcasts?.length || 0
+      const aiAnalyzed = result.podcasts?.filter((p: any) => p.ai_analyzed_at)?.length || 0
+      setDashboardCacheStatus({ cached, aiAnalyzed, total: result.totalPodcastIds || 0 })
+
+      toast({
+        title: 'Cache Status',
+        description: `${cached} podcasts cached, ${aiAnalyzed} with AI analysis`
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to check cache',
+        variant: 'destructive'
+      })
+    } finally {
+      setDashboardCacheLoading(false)
+    }
+  }
+
+  const handleFetchDashboardPodcasts = async () => {
+    if (!client || !client.google_sheet_url) return
+
+    const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
+    if (!spreadsheetId) {
+      toast({
+        title: 'Invalid Google Sheet URL',
+        description: 'Could not extract spreadsheet ID from the URL',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setDashboardCacheLoading(true)
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.session?.access_token || ''}`
+        },
+        body: JSON.stringify({
+          spreadsheetId,
+          clientId: client.id,
+          clientName: client.name,
+          clientBio: client.bio || '',
+          skipAiAnalysis: true
+        })
+      })
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
+
+      const cached = result.podcasts?.length || 0
+      const aiAnalyzed = result.podcasts?.filter((p: any) => p.ai_analyzed_at)?.length || 0
+      setDashboardCacheStatus({ cached, aiAnalyzed, total: result.totalPodcastIds || cached })
+
+      toast({
+        title: 'Podcasts Cached',
+        description: `Successfully cached ${cached} podcasts`
+      })
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to fetch podcasts',
+        variant: 'destructive'
+      })
+    } finally {
+      setDashboardCacheLoading(false)
+    }
+  }
+
+  const handleRunAiAnalysis = async () => {
+    if (!client || !client.google_sheet_url) return
+
+    const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
+    if (!spreadsheetId) return
+
+    setDashboardAiLoading(true)
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.session?.access_token || ''}`
+        },
+        body: JSON.stringify({
+          spreadsheetId,
+          clientId: client.id,
+          clientName: client.name,
+          clientBio: client.bio || '',
+          aiAnalysisOnly: true
+        })
+      })
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to run AI analysis')
+
+      const cached = result.podcasts?.length || 0
+      const aiAnalyzed = result.podcasts?.filter((p: any) => p.ai_analyzed_at)?.length || 0
+      setDashboardCacheStatus({ cached, aiAnalyzed, total: result.totalPodcastIds || cached })
+
+      toast({
+        title: 'AI Analysis Complete',
+        description: `Analyzed ${aiAnalyzed} podcasts`
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to run AI analysis',
+        variant: 'destructive'
+      })
+    } finally {
+      setDashboardAiLoading(false)
+    }
+  }
+
+  const handleCopyDashboardUrl = () => {
+    if (!client?.dashboard_slug) {
+      toast({
+        title: 'No Dashboard URL',
+        description: 'Client does not have a dashboard slug yet',
+        variant: 'destructive'
+      })
+      return
+    }
+    const url = `${window.location.origin}/client/${client.dashboard_slug}`
+    navigator.clipboard.writeText(url)
+    toast({
+      title: 'Copied!',
+      description: 'Dashboard URL copied to clipboard'
+    })
+  }
+
+  const handleViewDashboard = () => {
+    if (!client?.dashboard_slug) {
+      toast({
+        title: 'No Dashboard URL',
+        description: 'Client does not have a dashboard slug yet',
+        variant: 'destructive'
+      })
+      return
+    }
+    window.open(`/client/${client.dashboard_slug}`, '_blank')
+  }
+
   if (clientLoading || bookingsLoading) {
     return (
       <DashboardLayout>
@@ -1348,6 +1546,131 @@ export default function ClientDetail() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Podcast Approval Dashboard */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mic className="h-5 w-5 text-primary" />
+                Podcast Approval Dashboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {client.google_sheet_url ? (
+                <>
+                  {/* Dashboard URL */}
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">Dashboard URL</Label>
+                    {client.dashboard_slug ? (
+                      <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                        <code className="flex-1 text-xs truncate">
+                          {window.location.origin}/client/{client.dashboard_slug}
+                        </code>
+                        <Button size="icon" variant="ghost" onClick={handleCopyDashboardUrl}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Dashboard slug will be generated when data is saved
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Cache Status */}
+                  {dashboardCacheStatus && (
+                    <div className="grid grid-cols-3 gap-2 p-3 bg-muted rounded-lg">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{dashboardCacheStatus.total}</p>
+                        <p className="text-xs text-muted-foreground">In Sheet</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-green-600">{dashboardCacheStatus.cached}</p>
+                        <p className="text-xs text-muted-foreground">Cached</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-600">{dashboardCacheStatus.aiAnalyzed}</p>
+                        <p className="text-xs text-muted-foreground">AI Analyzed</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleCheckDashboardCache}
+                      disabled={dashboardCacheLoading}
+                    >
+                      {dashboardCacheLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <ListChecks className="mr-2 h-4 w-4" />
+                      )}
+                      Check Cache Status
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleFetchDashboardPodcasts}
+                      disabled={dashboardCacheLoading}
+                    >
+                      {dashboardCacheLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
+                      Fetch & Cache Podcasts
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleRunAiAnalysis}
+                      disabled={dashboardAiLoading || !dashboardCacheStatus?.cached}
+                    >
+                      {dashboardAiLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Brain className="mr-2 h-4 w-4" />
+                      )}
+                      Run AI Analysis
+                    </Button>
+
+                    <div className="pt-2 border-t">
+                      <Button
+                        className="w-full bg-primary/5 hover:bg-primary/10"
+                        variant="outline"
+                        onClick={handleViewDashboard}
+                        disabled={!client.dashboard_slug}
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        View Dashboard as Client
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Info text */}
+                  <p className="text-xs text-muted-foreground">
+                    The dashboard shows podcasts from the Google Sheet. Clients can approve/reject podcasts before outreach.
+                  </p>
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <Mic className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    Set up a Google Sheet first to enable the approval dashboard
+                  </p>
+                  <Button variant="link" onClick={handleEditClient} className="mt-2">
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Client to Add Google Sheet
+                  </Button>
                 </div>
               )}
             </CardContent>
