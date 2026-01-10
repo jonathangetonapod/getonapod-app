@@ -1533,120 +1533,123 @@ export default function ProspectView() {
         </div>
       </footer>
 
-      {/* Floating Review Button */}
+      {/* Floating Info Button */}
       <button
         onClick={() => setShowReviewPanel(true)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-4 rounded-l-lg shadow-lg transition-all hover:pr-5 group"
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-slate-800 hover:bg-slate-700 text-white px-2 py-4 rounded-l-lg shadow-lg transition-all hover:pr-4 group"
         style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
       >
-        <span className="flex items-center gap-2 text-sm font-semibold">
-          <ListChecks className="h-4 w-4 rotate-90" />
-          Please Review
+        <span className="flex items-center gap-2 text-xs font-medium">
+          <BarChart3 className="h-4 w-4 rotate-90" />
+          About Our Data
         </span>
       </button>
 
-      {/* Review Panel */}
+      {/* Data Methodology Panel */}
       <Sheet open={showReviewPanel} onOpenChange={setShowReviewPanel}>
-        <SheetContent side="right" className="!w-full sm:!max-w-md p-0 overflow-hidden">
+        <SheetContent side="right" className="!w-full sm:!max-w-lg p-0 overflow-hidden">
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="p-6 border-b bg-gradient-to-r from-primary/10 to-purple-500/10">
+            <div className="p-6 border-b bg-gradient-to-r from-green-500/10 via-blue-500/10 to-purple-500/10">
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2 text-xl">
-                  <ListChecks className="h-5 w-5 text-primary" />
-                  Review Your Selections
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  Understanding Our Data
                 </SheetTitle>
               </SheetHeader>
               <p className="text-sm text-muted-foreground mt-2">
-                Review the podcasts you've approved or rejected
+                How we estimate audience size and listener demographics
               </p>
             </div>
 
             {/* Content */}
-            <ScrollArea className="flex-1 p-6">
-              <div className="space-y-6">
-                {/* Approved Section */}
-                <div>
-                  <h3 className="font-semibold text-green-600 dark:text-green-400 flex items-center gap-2 mb-3">
-                    <ThumbsUp className="h-4 w-4" />
-                    Approved ({feedbackMap ? Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length : 0})
-                  </h3>
-                  <div className="space-y-2">
-                    {uniquePodcasts
-                      .filter(p => feedbackMap.get(p.podcast_id)?.status === 'approved')
-                      .map(podcast => (
-                        <div
-                          key={podcast.podcast_id}
-                          className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
-                        >
-                          {podcast.podcast_image_url ? (
-                            <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 rounded-md object-cover" />
-                          ) : (
-                            <div className="h-10 w-10 rounded-md bg-green-200 dark:bg-green-800 flex items-center justify-center">
-                              <Mic className="h-5 w-5 text-green-600" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">{podcast.podcast_name}</p>
-                            {podcast.audience_size && (
-                              <p className="text-xs text-muted-foreground">{formatNumber(podcast.audience_size)} listeners</p>
-                            )}
-                          </div>
-                          <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
-                        </div>
-                      ))}
-                    {Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length === 0 && (
-                      <p className="text-sm text-muted-foreground italic">No approved podcasts yet</p>
-                    )}
+            <ScrollArea className="flex-1">
+              <div className="p-6 space-y-6">
+                {/* Key Highlight */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-green-500/20">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-green-800 dark:text-green-300">Verified Estimates</p>
+                      <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                        Our audience numbers are <span className="font-medium">per-episode listener estimates</span>, making them easily comparable across all podcasts.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Rejected Section */}
+                {/* Data Sources */}
                 <div>
-                  <h3 className="font-semibold text-red-600 dark:text-red-400 flex items-center gap-2 mb-3">
-                    <ThumbsDown className="h-4 w-4" />
-                    Rejected ({feedbackMap ? Array.from(feedbackMap.values()).filter(f => f.status === 'rejected').length : 0})
+                  <h3 className="font-semibold flex items-center gap-2 mb-3">
+                    <Globe className="h-4 w-4 text-blue-500" />
+                    Data Sources
                   </h3>
-                  <div className="space-y-2">
-                    {uniquePodcasts
-                      .filter(p => feedbackMap.get(p.podcast_id)?.status === 'rejected')
-                      .map(podcast => (
-                        <div
-                          key={podcast.podcast_id}
-                          className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
-                        >
-                          {podcast.podcast_image_url ? (
-                            <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 rounded-md object-cover" />
-                          ) : (
-                            <div className="h-10 w-10 rounded-md bg-red-200 dark:bg-red-800 flex items-center justify-center">
-                              <Mic className="h-5 w-5 text-red-600" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">{podcast.podcast_name}</p>
-                            {feedbackMap.get(podcast.podcast_id)?.notes && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                {feedbackMap.get(podcast.podcast_id)?.notes}
-                              </p>
-                            )}
-                          </div>
-                          <X className="h-5 w-5 text-red-600 flex-shrink-0" />
-                        </div>
-                      ))}
-                    {Array.from(feedbackMap.values()).filter(f => f.status === 'rejected').length === 0 && (
-                      <p className="text-sm text-muted-foreground italic">No rejected podcasts yet</p>
-                    )}
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { icon: '📊', label: 'Chart Rankings' },
+                      { icon: '⭐', label: 'Review Volume' },
+                      { icon: '👥', label: 'Social Following' },
+                      { icon: '📈', label: 'Engagement Metrics' },
+                      { icon: '🎯', label: 'Category Performance' },
+                      { icon: '📅', label: 'Publishing Frequency' },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 text-sm">
+                        <span>{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Pending Section */}
+                {/* How It Works */}
                 <div>
-                  <h3 className="font-semibold text-muted-foreground flex items-center gap-2 mb-3">
-                    <Clock className="h-4 w-4" />
-                    Pending Review ({uniquePodcasts.filter(p => !feedbackMap.get(p.podcast_id)?.status).length})
+                  <h3 className="font-semibold flex items-center gap-2 mb-3">
+                    <Sparkles className="h-4 w-4 text-purple-500" />
+                    How It Works
                   </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {uniquePodcasts.filter(p => !feedbackMap.get(p.podcast_id)?.status).length} podcasts still need your feedback
+                  <div className="space-y-3">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">1</div>
+                      <p className="text-sm text-muted-foreground">We analyze chart rankings from Apple Podcasts, Spotify, and other major platforms</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">2</div>
+                      <p className="text-sm text-muted-foreground">Our ML models process multiple data points to identify patterns and correlations</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">3</div>
+                      <p className="text-sm text-muted-foreground">Estimates are validated against known audience sizes when available</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Use Cases */}
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2 mb-3">
+                    <Target className="h-4 w-4 text-orange-500" />
+                    What These Numbers Help With
+                  </h3>
+                  <ul className="space-y-2">
+                    {[
+                      'Identify high-reach podcast opportunities',
+                      'Compare shows within similar categories',
+                      'Prioritize outreach based on audience size',
+                      'Track growth trends over time',
+                    ].map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Disclaimer */}
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    <span className="font-semibold">Note:</span> While no third-party service can provide exact listener counts, our estimates consistently align with numbers reported by podcast hosts. Use these as reliable benchmarks for comparison.
                   </p>
                 </div>
               </div>
@@ -1658,7 +1661,7 @@ export default function ProspectView() {
                 className="w-full"
                 onClick={() => setShowReviewPanel(false)}
               >
-                Continue Reviewing
+                Got It
               </Button>
             </div>
           </div>
