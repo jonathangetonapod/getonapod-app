@@ -3341,7 +3341,30 @@ export default function PortalDashboard() {
 
           {/* OUTREACH LIST TAB */}
           <TabsContent value="podcast-list" className="space-y-6">
-            {client?.google_sheet_url ? (
+            {client?.prospect_dashboard_slug ? (
+              <Card className="bg-gradient-to-br from-primary/5 to-purple-500/5 border-primary/20">
+                <CardContent className="flex flex-col items-center justify-center py-12 sm:py-16 text-center px-4">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+                    <Mic className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-3">Your Podcast Opportunities</h2>
+                  <p className="text-muted-foreground max-w-md mb-6 text-sm sm:text-base">
+                    View your personalized list of podcast opportunities, track your approvals, and see detailed analytics — all in your custom dashboard.
+                  </p>
+                  <Button
+                    size="lg"
+                    className="gap-2 min-h-[48px]"
+                    onClick={() => window.open(`/p/${client.prospect_dashboard_slug}`, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open Your Dashboard
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Opens in a new tab
+                  </p>
+                </CardContent>
+              </Card>
+            ) : client?.google_sheet_url ? (
               <>
                 {/* Podcasts from Sheet */}
                 <Card>
@@ -5301,7 +5324,9 @@ export default function PortalDashboard() {
                     </CardHeader>
                     <CardContent className="pb-3">
                       <p className="text-sm text-muted-foreground mb-4">
-                        {service.short_description}
+                        {service.name.toLowerCase().includes('clip')
+                          ? 'Get 3 professionally edited clips optimized for social media'
+                          : service.short_description}
                       </p>
                       <div className="flex items-baseline justify-between mb-4">
                         <div className="text-2xl font-bold text-primary">
@@ -5311,21 +5336,30 @@ export default function PortalDashboard() {
                           {service.delivery_days}d delivery
                         </div>
                       </div>
-                      <Button
-                        onClick={() => {
-                          setSelectedService(service)
-                          setShowEpisodeSelector(true)
-                        }}
-                        disabled={availableEpisodes.length === 0}
-                        className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white`}
-                      >
-                        {availableEpisodes.length === 0 ? 'Sold Out' : (
-                          <>
-                            <ShoppingCart className="mr-2 h-4 w-4" />
-                            Add to Cart
-                          </>
-                        )}
-                      </Button>
+                      {service.name.toLowerCase().includes('clip') ? (
+                        <Button
+                          disabled
+                          className="w-full bg-muted text-muted-foreground cursor-not-allowed"
+                        >
+                          Coming Soon
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            setSelectedService(service)
+                            setShowEpisodeSelector(true)
+                          }}
+                          disabled={availableEpisodes.length === 0}
+                          className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white`}
+                        >
+                          {availableEpisodes.length === 0 ? 'Sold Out' : (
+                            <>
+                              <ShoppingCart className="mr-2 h-4 w-4" />
+                              Add to Cart
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 )

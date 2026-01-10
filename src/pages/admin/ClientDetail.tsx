@@ -146,7 +146,8 @@ export default function ClientDetail() {
     status: 'active' as const,
     notes: '',
     bio: '',
-    google_sheet_url: ''
+    google_sheet_url: '',
+    prospect_dashboard_slug: ''
   })
 
   const queryClient = useQueryClient()
@@ -189,6 +190,19 @@ export default function ClientDetail() {
       return data || []
     },
     enabled: !!id
+  })
+
+  // Fetch prospect dashboards for linking
+  const { data: prospectDashboards = [] } = useQuery({
+    queryKey: ['prospect-dashboards-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prospect_dashboards')
+        .select('id, slug, prospect_name, is_active')
+        .order('prospect_name', { ascending: true })
+      if (error) throw error
+      return data || []
+    }
   })
 
   // Create booking mutation
@@ -539,7 +553,8 @@ export default function ClientDetail() {
         status: client.status,
         notes: client.notes || '',
         bio: client.bio || '',
-        google_sheet_url: client.google_sheet_url || ''
+        google_sheet_url: client.google_sheet_url || '',
+        prospect_dashboard_slug: client.prospect_dashboard_slug || ''
       })
       setIsEditClientModalOpen(true)
     }
@@ -2898,6 +2913,49 @@ export default function ClientDetail() {
                   ? 'Podcast Finder results will be exported to this Google Sheet.'
                   : 'Click Auto-Create to generate a formatted Google Sheet with headers automatically.'}
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-prospect-dashboard" className="flex items-center gap-2">
+                <Mic className="h-4 w-4" />
+                Linked Prospect Dashboard
+              </Label>
+              <Select
+                value={editClientForm.prospect_dashboard_slug || 'none'}
+                onValueChange={(value) =>
+                  setEditClientForm({ ...editClientForm, prospect_dashboard_slug: value === 'none' ? '' : value })
+                }
+              >
+                <SelectTrigger id="edit-prospect-dashboard">
+                  <SelectValue placeholder="Select a prospect dashboard" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No dashboard linked</SelectItem>
+                  {prospectDashboards.map((dashboard) => (
+                    <SelectItem key={dashboard.id} value={dashboard.slug}>
+                      {dashboard.prospect_name} ({dashboard.slug})
+                      {!dashboard.is_active && ' [Inactive]'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {editClientForm.prospect_dashboard_slug
+                  ? 'This dashboard will be shown in the client portal\'s Outreach List tab.'
+                  : 'Link a prospect dashboard to replace the outreach list in the client portal.'}
+              </p>
+              {editClientForm.prospect_dashboard_slug && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/p/${editClientForm.prospect_dashboard_slug}`, '_blank')}
+                  className="gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Preview Dashboard
+                </Button>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t mt-4">
