@@ -848,35 +848,20 @@ export default function ProspectView() {
 
             {/* Compact Stats Row */}
             <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-              <div className="flex items-center gap-2 group relative">
+              <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-green-500" />
                 <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
                 <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
-                <Info className="h-3 w-3 text-muted-foreground/40 cursor-help" />
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-popover border rounded-md shadow-md text-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 w-64">
-                  <p className="font-semibold mb-1">Verified Audience Estimates</p>
-                  <p className="text-xs text-muted-foreground">Per-episode listener counts from Podscan, calculated using chart rankings, reviews, and ML models.</p>
-                </div>
               </div>
-              <div className="flex items-center gap-2 group relative">
+              <div className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
                 <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
                 <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
-                <Info className="h-3 w-3 text-muted-foreground/40 cursor-help" />
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-popover border rounded-md shadow-md text-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 w-64">
-                  <p className="font-semibold mb-1">Average iTunes Rating</p>
-                  <p className="text-xs text-muted-foreground">Aggregated star ratings from Apple Podcasts reviews across all curated shows.</p>
-                </div>
               </div>
-              <div className="flex items-center gap-2 group relative">
+              <div className="flex items-center gap-2">
                 <Mic className="h-5 w-5 text-primary" />
                 <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
                 <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
-                <Info className="h-3 w-3 text-muted-foreground/40 cursor-help" />
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-popover border rounded-md shadow-md text-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 w-64">
-                  <p className="font-semibold mb-1">Curated Opportunities</p>
-                  <p className="text-xs text-muted-foreground">Hand-picked shows matched to your expertise, vetted for active publishing.</p>
-                </div>
               </div>
             </div>
 
@@ -1278,7 +1263,6 @@ export default function ProspectView() {
           </Card>
         ) : (
           <>
-          <TooltipProvider delayDuration={300}>
           <div
             key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${sortBy}-${currentPage}`}
             className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
@@ -1364,20 +1348,10 @@ export default function ProspectView() {
                   <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center justify-between">
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       {podcast.audience_size && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5 cursor-help">
-                              <Users className="h-3 w-3 mr-1" />
-                              {formatNumber(podcast.audience_size)}
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-xs p-3">
-                            <p className="font-semibold text-sm mb-1">Verified Audience Estimate</p>
-                            <p className="text-xs text-muted-foreground">
-                              Per-episode listeners from Podscan, derived from chart rankings, reviews, and ML analysis.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
+                          <Users className="h-3 w-3 mr-1" />
+                          {formatNumber(podcast.audience_size)}
+                        </Badge>
                       )}
                       {podcast.last_posted_at && (
                         <Badge className="bg-green-600/90 hover:bg-green-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
@@ -1496,7 +1470,6 @@ export default function ProspectView() {
             </Card>
           ))}
           </div>
-          </TooltipProvider>
           {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-8 pb-4">
