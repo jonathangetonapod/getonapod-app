@@ -1457,7 +1457,8 @@ export default function ProspectView() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          saveFeedback(podcast.podcast_id, 'approved', undefined, podcast.podcast_name)
+                          const currentStatus = feedbackMap.get(podcast.podcast_id)?.status
+                          saveFeedback(podcast.podcast_id, currentStatus === 'approved' ? null : 'approved', undefined, podcast.podcast_name)
                         }}
                         className={cn(
                           "p-1.5 rounded-full transition-all duration-200",
@@ -1465,14 +1466,15 @@ export default function ProspectView() {
                             ? "bg-green-500 text-white shadow-md"
                             : "hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600"
                         )}
-                        title="Approve"
+                        title={feedbackMap.get(podcast.podcast_id)?.status === 'approved' ? "Click to unselect" : "Approve"}
                       >
                         <ThumbsUp className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          saveFeedback(podcast.podcast_id, 'rejected', undefined, podcast.podcast_name)
+                          const currentStatus = feedbackMap.get(podcast.podcast_id)?.status
+                          saveFeedback(podcast.podcast_id, currentStatus === 'rejected' ? null : 'rejected', undefined, podcast.podcast_name)
                         }}
                         className={cn(
                           "p-1.5 rounded-full transition-all duration-200",
@@ -1480,7 +1482,7 @@ export default function ProspectView() {
                             ? "bg-red-500 text-white shadow-md"
                             : "hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600"
                         )}
-                        title="Reject"
+                        title={feedbackMap.get(podcast.podcast_id)?.status === 'rejected' ? "Click to unselect" : "Reject"}
                       >
                         <ThumbsDown className="h-4 w-4" />
                       </button>
@@ -2521,11 +2523,14 @@ export default function ProspectView() {
                             ? "bg-green-600 hover:bg-green-700 text-white"
                             : "hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30"
                         )}
-                        onClick={() => saveFeedback(selectedPodcast.podcast_id, 'approved')}
+                        onClick={() => {
+                          const currentStatus = feedbackMap.get(selectedPodcast.podcast_id)?.status
+                          saveFeedback(selectedPodcast.podcast_id, currentStatus === 'approved' ? null : 'approved')
+                        }}
                         disabled={isSavingFeedback}
                       >
                         <ThumbsUp className="h-4 w-4" />
-                        Approve
+                        {feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved' ? 'Approved ✓' : 'Approve'}
                       </Button>
                       <Button
                         variant={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected' ? 'default' : 'outline'}
@@ -2535,11 +2540,14 @@ export default function ProspectView() {
                             ? "bg-red-600 hover:bg-red-700 text-white"
                             : "hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/30"
                         )}
-                        onClick={() => saveFeedback(selectedPodcast.podcast_id, 'rejected')}
+                        onClick={() => {
+                          const currentStatus = feedbackMap.get(selectedPodcast.podcast_id)?.status
+                          saveFeedback(selectedPodcast.podcast_id, currentStatus === 'rejected' ? null : 'rejected')
+                        }}
                         disabled={isSavingFeedback}
                       >
                         <ThumbsDown className="h-4 w-4" />
-                        Reject
+                        {feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected' ? 'Rejected ✓' : 'Reject'}
                       </Button>
                     </div>
 
