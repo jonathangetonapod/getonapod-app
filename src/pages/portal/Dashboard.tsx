@@ -1595,8 +1595,13 @@ export default function PortalDashboard() {
               <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">
-                {enhancedStats?.totalAudienceReach.toLocaleString() || 0}
+              <div className="text-2xl sm:text-3xl font-bold text-purple-900 dark:text-purple-100 truncate">
+                {(() => {
+                  const num = enhancedStats?.totalAudienceReach || 0
+                  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+                  if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
+                  return num.toLocaleString()
+                })()}
               </div>
               <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
                 <TrendingUp className="h-3 w-3 inline mr-1" />
@@ -1685,8 +1690,13 @@ export default function PortalDashboard() {
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">Estimated Reach</p>
                   </div>
-                  <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                    {enhancedStats.totalAudienceReach.toLocaleString()}
+                  <p className="text-2xl sm:text-3xl font-bold text-blue-600 dark:text-blue-400 truncate">
+                    {(() => {
+                      const num = enhancedStats.totalAudienceReach
+                      if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+                      if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
+                      return num.toLocaleString()
+                    })()}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Total potential listeners</p>
                   <div className="mt-3 pt-3 border-t">
@@ -1704,8 +1714,13 @@ export default function PortalDashboard() {
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">Avg Audience</p>
                   </div>
-                  <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
-                    {stats.total > 0 ? Math.round(enhancedStats.totalAudienceReach / stats.total).toLocaleString() : 0}
+                  <p className="text-2xl sm:text-3xl font-bold text-purple-600 dark:text-purple-400 truncate">
+                    {(() => {
+                      const num = stats.total > 0 ? Math.round(enhancedStats.totalAudienceReach / stats.total) : 0
+                      if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+                      if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
+                      return num.toLocaleString()
+                    })()}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Listeners per episode</p>
                   <div className="mt-3 pt-3 border-t">
@@ -1723,7 +1738,7 @@ export default function PortalDashboard() {
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">Total Episodes</p>
                   </div>
-                  <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                  <p className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
                     {stats.total}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Podcast appearances</p>
