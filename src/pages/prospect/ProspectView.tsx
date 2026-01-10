@@ -1548,59 +1548,165 @@ export default function ProspectView() {
       </div>
 
       {/* CTA Section */}
-      <section className="py-12 sm:py-16 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Rocket className="h-4 w-4" />
-            Ready to Get Started?
+      <section className="py-12 sm:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10 sm:mb-12">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
+              <Rocket className="h-4 w-4" />
+              Ready to Get Started?
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">
+              Let's Turn These Opportunities Into Bookings
+            </h2>
+
+            <p className="text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto">
+              We've curated {podcasts.length} podcasts perfect for you. Our team handles everything —
+              you just show up and share your expertise.
+            </p>
           </div>
 
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">
-            Let's Turn These Opportunities Into Bookings
-          </h2>
-
-          <p className="text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto mb-8">
-            We've curated {podcasts.length} podcasts perfect for you. Our team will handle the outreach,
-            pitching, and scheduling — you just show up and share your expertise.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-2xl mx-auto mb-8">
-            <div className="flex flex-col items-center p-4 rounded-xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
-              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30 mb-2">
-                <DollarSign className="h-5 w-5 text-green-600" />
+          {/* Pricing Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 mb-10">
+            {/* Starter */}
+            <div className="relative flex flex-col p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-slate-900 dark:text-white">$1,000</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
               </div>
-              <p className="font-semibold text-sm">No Upfront Costs</p>
-              <p className="text-xs text-muted-foreground">Pay only for results</p>
+              <ul className="space-y-3 mb-6 flex-1">
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">2 podcasts/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Content package</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
+                </li>
+              </ul>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => window.open('https://getonapod.com', '_blank')}
+              >
+                Book a Call
+              </Button>
             </div>
-            <div className="flex flex-col items-center p-4 rounded-xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 mb-2">
-                <Target className="h-5 w-5 text-blue-600" />
+
+            {/* Growth - Most Popular */}
+            <div className="relative flex flex-col p-6 rounded-2xl bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl scale-[1.02] md:scale-105">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <span className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-full">
+                  Most Popular
+                </span>
               </div>
-              <p className="font-semibold text-sm">Hand-Picked Shows</p>
-              <p className="text-xs text-muted-foreground">Aligned with your goals</p>
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Growth</h3>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
+                  <span className="text-muted-foreground">/month</span>
+                </div>
+              </div>
+              <ul className="space-y-3 mb-6 flex-1">
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">4 podcasts/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Content package</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
+                </li>
+              </ul>
+              <Button
+                className="w-full"
+                onClick={() => window.open('https://getonapod.com', '_blank')}
+              >
+                Book a Call
+              </Button>
             </div>
-            <div className="flex flex-col items-center p-4 rounded-xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30 mb-2">
-                <Calendar className="h-5 w-5 text-purple-600" />
+
+            {/* Pro */}
+            <div className="relative flex flex-col p-6 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-800 border border-slate-700 shadow-lg text-white">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold">Pro</h3>
+                <div className="mt-2 flex items-baseline gap-1">
+                  <span className="text-3xl font-bold">$4,000</span>
+                  <span className="text-slate-400">/month</span>
+                </div>
               </div>
-              <p className="font-semibold text-sm">3-5 Bookings/Month</p>
-              <p className="text-xs text-muted-foreground">Average client results</p>
+              <ul className="space-y-3 mb-6 flex-1">
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-300 font-medium">4 podcasts/month + PR</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-300">Everything in Growth, plus:</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-300">Done-for-you PR outreach</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-300">2-3 media angles monthly</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-300">Custom media list</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-sm text-slate-300">Monthly strategy call</span>
+                </li>
+              </ul>
+              <Button
+                variant="outline"
+                className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20"
+                onClick={() => window.open('https://getonapod.com', '_blank')}
+              >
+                Book a Call
+              </Button>
             </div>
           </div>
 
-          <Button
-            size="lg"
-            className="gap-2 px-8 py-6 text-base font-semibold shadow-lg hover:shadow-xl transition-all"
-            onClick={() => window.open('https://getonapod.com', '_blank')}
-          >
-            <Phone className="h-5 w-5" />
-            Book Your Free Strategy Call
-            <ArrowRight className="h-5 w-5" />
-          </Button>
-
-          <p className="text-xs text-muted-foreground mt-4">
-            No commitment required • 15-minute call • See if we're a fit
-          </p>
+          {/* Bottom CTA */}
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground mb-4">
+              Not sure which plan is right for you?
+            </p>
+            <Button
+              size="lg"
+              variant="outline"
+              className="gap-2"
+              onClick={() => window.open('https://getonapod.com', '_blank')}
+            >
+              <Phone className="h-5 w-5" />
+              Schedule a Free Strategy Call
+            </Button>
+            <p className="text-xs text-muted-foreground mt-3">
+              15-minute call • No commitment • Custom plans available
+            </p>
+          </div>
         </div>
       </section>
 
@@ -1634,17 +1740,19 @@ export default function ProspectView() {
             : "translate-y-full opacity-0 pointer-events-none"
         )}
       >
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-t border-slate-700 shadow-2xl">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <div className="relative overflow-hidden border-t border-white/20 shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary via-purple-600 to-pink-600" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
+          <div className="relative max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="hidden sm:flex p-2 rounded-full bg-primary/20">
-                <Rocket className="h-5 w-5 text-primary" />
+              <div className="hidden sm:flex p-2 rounded-full bg-white/20">
+                <Rocket className="h-5 w-5 text-white" />
               </div>
               <div className="min-w-0">
                 <p className="text-white font-medium text-sm sm:text-base truncate">
                   Like what you see?
                 </p>
-                <p className="text-slate-400 text-xs sm:text-sm truncate">
+                <p className="text-white/70 text-xs sm:text-sm truncate">
                   Let's get you booked on these podcasts
                 </p>
               </div>
@@ -1652,7 +1760,7 @@ export default function ProspectView() {
             <div className="flex items-center gap-2 flex-shrink-0">
               <Button
                 size="sm"
-                className="gap-1.5 whitespace-nowrap"
+                className="gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90"
                 onClick={() => window.open('https://getonapod.com', '_blank')}
               >
                 <Phone className="h-4 w-4" />
@@ -1662,7 +1770,7 @@ export default function ProspectView() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-slate-400 hover:text-white hover:bg-slate-700"
+                className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/20"
                 onClick={() => setCtaBarDismissed(true)}
               >
                 <X className="h-4 w-4" />
