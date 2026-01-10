@@ -53,63 +53,59 @@ const PricingSection = () => {
             {plans.map((plan, index) => (
               <div
                 key={index}
-                className={`relative p-5 sm:p-6 md:p-8 rounded-xl border transition-all duration-300 ${
+                className={`relative flex flex-col p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl transition-all duration-300 ${
                   plan.popular
-                    ? 'bg-primary text-primary-foreground border-primary md:scale-105'
-                    : 'bg-background border-border hover:border-foreground/20'
+                    ? 'bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl md:scale-105 order-first md:order-none'
+                    : 'bg-background border border-border hover:border-foreground/20'
                 }`}
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
                 {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-background text-foreground text-xs font-semibold rounded-full whitespace-nowrap">
-                    Most Popular
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <span className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-full whitespace-nowrap">
+                      Most Popular
+                    </span>
                   </div>
                 )}
 
-                <h3 className={`text-lg sm:text-xl font-semibold mb-2 ${
-                  plan.popular ? 'text-primary-foreground' : 'text-foreground'
-                }`}>
-                  {plan.name}
-                </h3>
-
-                <div className="mb-4 sm:mb-6">
-                  <span className={`text-3xl sm:text-4xl font-bold ${
-                    plan.popular ? 'text-primary-foreground' : 'text-foreground'
-                  }`}>
-                    {plan.price}
-                  </span>
-                  <span className={`text-sm sm:text-base ${plan.popular ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                    {plan.period}
-                  </span>
+                <div className="mb-3 sm:mb-4 mt-1 sm:mt-0">
+                  <h3 className="text-lg sm:text-xl font-semibold text-foreground">
+                    {plan.name}
+                  </h3>
+                  <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
+                    <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">
+                      {plan.price}
+                    </span>
+                    <span className="text-sm sm:text-base text-muted-foreground">
+                      {plan.period}
+                    </span>
+                  </div>
                 </div>
 
-                <ul className="space-y-2 sm:space-y-3 mb-6 sm:mb-8">
+                <ul className="space-y-2 sm:space-y-3 mb-6 sm:mb-8 flex-1">
                   {plan.features.map((feature, i) => (
                     <li
                       key={i}
                       className={`flex items-start gap-2 sm:gap-3 cursor-pointer group transition-all duration-200 rounded-lg -mx-2 px-2 py-1.5 sm:py-1 ${
                         plan.popular
-                          ? 'hover:bg-primary-foreground/10'
+                          ? 'hover:bg-primary/10'
                           : 'hover:bg-muted'
                       }`}
                       onClick={() => setSelectedFeature(feature)}
                     >
                       <Check className={`w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5 ${
-                        plan.popular ? 'text-primary-foreground' : 'text-foreground'
+                        plan.popular ? 'text-primary' : 'text-green-500'
                       }`} />
-                      <span className={`flex-1 text-sm sm:text-base ${plan.popular ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
+                      <span className={`flex-1 text-sm sm:text-base text-muted-foreground ${plan.popular ? 'font-medium' : ''}`}>
                         {feature}
                       </span>
-                      <Info className={`w-4 h-4 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
-                        plan.popular ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                      }`} />
+                      <Info className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
                     </li>
                   ))}
                 </ul>
 
                 <div className="space-y-3">
                   <Button
-                    variant={plan.popular ? 'secondary' : 'hero'}
                     size="lg"
                     className="w-full min-h-[48px] text-sm sm:text-base"
                     asChild
