@@ -61,7 +61,11 @@ import {
   List,
   Trash2,
   Eye,
-  Tag
+  Tag,
+  ListChecks,
+  ThumbsUp,
+  Brain,
+  Rocket
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
