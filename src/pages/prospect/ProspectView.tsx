@@ -854,8 +854,8 @@ export default function ProspectView() {
                 <div className="h-7 w-28 bg-slate-200/60 rounded-lg animate-pulse" />
               </div>
             ) : (
-              <TooltipProvider delayDuration={200}>
-                <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+                <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
@@ -873,6 +873,8 @@ export default function ProspectView() {
                       </p>
                     </TooltipContent>
                   </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
@@ -889,6 +891,8 @@ export default function ProspectView() {
                       </p>
                     </TooltipContent>
                   </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
@@ -905,8 +909,8 @@ export default function ProspectView() {
                       </p>
                     </TooltipContent>
                   </Tooltip>
-                </div>
-              </TooltipProvider>
+                </TooltipProvider>
+              </div>
             )}
 
             {/* AI Insights Loading Status */}
