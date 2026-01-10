@@ -107,14 +107,26 @@ const PricingSection = () => {
                   ))}
                 </ul>
 
-                <Button
-                  variant={plan.popular ? 'secondary' : 'hero'}
-                  size="lg"
-                  className="w-full min-h-[48px]"
-                  asChild
-                >
-                  <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
-                </Button>
+                <div className="space-y-3">
+                  <Button
+                    variant={plan.popular ? 'secondary' : 'hero'}
+                    size="lg"
+                    className="w-full min-h-[48px]"
+                    asChild
+                  >
+                    <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
+                  </Button>
+
+                  {plan.name === "Starter" && (
+                    <div className="flex justify-center">
+                      {/* @ts-ignore */}
+                      <stripe-buy-button
+                        buy-button-id="buy_btn_1So6wjDUPtBnbWkaAkoqwcLf"
+                        publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

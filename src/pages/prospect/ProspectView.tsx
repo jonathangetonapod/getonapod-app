@@ -1612,14 +1612,23 @@ export default function ProspectView() {
                   <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
               </ul>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full sm:h-10"
-                onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
-              >
-                Book a Call
-              </Button>
+              <div className="space-y-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:h-10"
+                  onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
+                >
+                  Book a Call
+                </Button>
+                <div className="flex justify-center">
+                  {/* @ts-ignore */}
+                  <stripe-buy-button
+                    buy-button-id="buy_btn_1So6wjDUPtBnbWkaAkoqwcLf"
+                    publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Pro - Most Popular */}
