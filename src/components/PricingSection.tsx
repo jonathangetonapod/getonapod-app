@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { Check, Sparkles, ArrowRight } from 'lucide-react';
+import { Check, Sparkles, ArrowRight, Info } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { useState } from 'react';
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
