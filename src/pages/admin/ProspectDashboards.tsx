@@ -975,7 +975,7 @@ export default function ProspectDashboards() {
     stoppedEarly: boolean
   } | null>(null)
 
-  // Run AI analysis on cached podcasts
+  // Run AI analysis on cached podcasts - automatically continues until complete
   const runAiAnalysis = async () => {
     if (!selectedDashboard?.spreadsheet_id) {
       toast.error('Please link a Google Sheet first')
@@ -983,73 +983,90 @@ export default function ProspectDashboards() {
     }
 
     setRunningAiAnalysis(true)
+    let totalAnalyzed = 0
+    let isComplete = false
+    let batchNumber = 0
 
-    // Create abort controller with 50 second timeout
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 50000)
+    toast.info('Starting AI analysis...')
 
-    try {
-      toast.info('Running AI analysis...')
+    while (!isComplete) {
+      batchNumber++
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          spreadsheetId: selectedDashboard.spreadsheet_id,
-          prospectDashboardId: selectedDashboard.id,
-          prospectName: selectedDashboard.prospect_name,
-          prospectBio: selectedDashboard.prospect_bio,
-          aiAnalysisOnly: true,
-        }),
-        signal: controller.signal,
-      })
+      // Create abort controller with 50 second timeout per batch
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 50000)
 
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to run AI analysis')
-      }
-
-      const data = await response.json()
-      setAiStatus({
-        analyzed: data.analyzed || 0,
-        remaining: data.remaining || 0,
-        total: data.total || 0,
-        complete: data.aiComplete || false,
-        stoppedEarly: data.stoppedEarly || false,
-      })
-
-      // Update cache status after AI analysis
-      if (cacheStatusData) {
-        setCacheStatusData({
-          ...cacheStatusData,
-          withAi: cacheStatusData.withAi + (data.analyzed || 0),
-          withoutAi: data.remaining || 0,
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            spreadsheetId: selectedDashboard.spreadsheet_id,
+            prospectDashboardId: selectedDashboard.id,
+            prospectName: selectedDashboard.prospect_name,
+            prospectBio: selectedDashboard.prospect_bio,
+            aiAnalysisOnly: true,
+          }),
+          signal: controller.signal,
         })
-      }
 
-      if (data.aiComplete) {
-        toast.success(`AI analysis complete! All ${data.total} podcasts analyzed.`)
-      } else if (data.stoppedEarly) {
-        toast.warning(`Analyzed ${data.analyzed} podcasts. ${data.remaining} remaining - click again to continue.`)
-      } else {
-        toast.success(`Analyzed ${data.analyzed} podcasts.`)
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to run AI analysis')
+        }
+
+        const data = await response.json()
+        totalAnalyzed += data.analyzed || 0
+
+        setAiStatus({
+          analyzed: totalAnalyzed,
+          remaining: data.remaining || 0,
+          total: data.total || 0,
+          complete: data.aiComplete || false,
+          stoppedEarly: data.stoppedEarly || false,
+        })
+
+        // Update cache status after each batch
+        if (cacheStatusData) {
+          setCacheStatusData({
+            ...cacheStatusData,
+            withAi: cacheStatusData.withAi + (data.analyzed || 0),
+            withoutAi: data.remaining || 0,
+          })
+        }
+
+        if (data.aiComplete) {
+          isComplete = true
+          toast.success(`AI analysis complete! All ${data.total} podcasts analyzed.`)
+        } else if (data.stoppedEarly && data.remaining > 0) {
+          // Continue automatically - show progress
+          toast.info(`Batch ${batchNumber}: Analyzed ${data.analyzed} podcasts. ${data.remaining} remaining, continuing...`)
+          // Small delay between batches to prevent rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        } else {
+          isComplete = true
+          toast.success(`Analyzed ${totalAnalyzed} podcasts.`)
+        }
+      } catch (error) {
+        clearTimeout(timeoutId)
+        console.error('Error running AI analysis:', error)
+        if (error instanceof Error && error.name === 'AbortError') {
+          toast.warning(`Batch ${batchNumber} timed out. Retrying...`)
+          // Continue trying on timeout
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        } else {
+          toast.error(error instanceof Error ? error.message : 'Failed to run AI analysis')
+          break // Stop on other errors
+        }
       }
-    } catch (error) {
-      clearTimeout(timeoutId)
-      console.error('Error running AI analysis:', error)
-      if (error instanceof Error && error.name === 'AbortError') {
-        toast.error('AI analysis timed out after 50 seconds. Try again to continue.')
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Failed to run AI analysis')
-      }
-    } finally {
-      setRunningAiAnalysis(false)
     }
+
+    setRunningAiAnalysis(false)
   }
 
   const filteredDashboards = dashboards.filter(d =>
