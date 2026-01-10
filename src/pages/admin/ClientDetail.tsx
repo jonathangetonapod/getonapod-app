@@ -826,9 +826,11 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to check cache status')
 
-      const cached = result.podcasts?.length || 0
-      const aiAnalyzed = result.podcasts?.filter((p: any) => p.ai_analyzed_at)?.length || 0
-      setDashboardCacheStatus({ cached, aiAnalyzed, total: result.totalPodcastIds || 0 })
+      const status = result.status || {}
+      const cached = status.cached || 0
+      const aiAnalyzed = status.withAi || 0
+      const total = status.totalInSheet || 0
+      setDashboardCacheStatus({ cached, aiAnalyzed, total })
 
       toast({
         title: 'Cache Status',
@@ -879,9 +881,11 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
 
-      const cached = result.podcasts?.length || 0
-      const aiAnalyzed = result.podcasts?.filter((p: any) => p.ai_analyzed_at)?.length || 0
-      setDashboardCacheStatus({ cached, aiAnalyzed, total: result.totalPodcastIds || cached })
+      const status = result.status || {}
+      const cached = status.cached || result.podcasts?.length || 0
+      const aiAnalyzed = status.withAi || 0
+      const total = status.totalInSheet || cached
+      setDashboardCacheStatus({ cached, aiAnalyzed, total })
 
       toast({
         title: 'Podcasts Cached',
@@ -926,9 +930,11 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to run AI analysis')
 
-      const cached = result.podcasts?.length || 0
-      const aiAnalyzed = result.podcasts?.filter((p: any) => p.ai_analyzed_at)?.length || 0
-      setDashboardCacheStatus({ cached, aiAnalyzed, total: result.totalPodcastIds || cached })
+      const status = result.status || {}
+      const cached = status.cached || result.podcasts?.length || 0
+      const aiAnalyzed = status.withAi || 0
+      const total = status.totalInSheet || cached
+      setDashboardCacheStatus({ cached, aiAnalyzed, total })
 
       toast({
         title: 'AI Analysis Complete',
