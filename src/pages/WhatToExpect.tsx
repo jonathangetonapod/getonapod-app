@@ -7,11 +7,8 @@ import {
   Calendar,
   FileText,
   Mic,
-  Video,
   BarChart3,
   ArrowRight,
-  Clock,
-  Users,
   Sparkles,
   MessageSquare,
   Send,
@@ -20,7 +17,6 @@ import {
   ThumbsUp,
   Bell,
   PlayCircle,
-  Share2,
   BookOpen
 } from 'lucide-react';
 
@@ -191,33 +187,33 @@ const WhatToExpect = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="pt-24 pb-12 sm:pt-32 sm:pb-16 bg-gradient-to-b from-primary/5 via-purple-500/5 to-transparent">
+      <section className="pt-20 pb-8 sm:pt-28 sm:pb-12 md:pt-32 md:pb-16 bg-gradient-to-b from-primary/5 via-purple-500/5 to-transparent">
         <div className="container mx-auto px-4 sm:px-6 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Sparkles className="h-4 w-4" />
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-medium mb-4 sm:mb-6">
+            <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             Your Journey With Us
           </div>
 
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-foreground mb-4 sm:mb-6 px-2">
             What Happens After You Sign Up?
           </h1>
 
-          <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+          <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-6 sm:mb-8 px-2">
             Full transparency on our process. You approve everything before it goes out,
             and you have real-time visibility every step of the way.
           </p>
 
-          <div className="flex flex-wrap justify-center gap-4 sm:gap-8 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <ThumbsUp className="h-4 w-4 text-primary" />
+          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-6 md:gap-8 text-xs sm:text-sm text-muted-foreground px-4">
+            <div className="flex items-center justify-center gap-2">
+              <ThumbsUp className="h-4 w-4 text-primary flex-shrink-0" />
               <span>You approve everything</span>
             </div>
-            <div className="flex items-center gap-2">
-              <LayoutDashboard className="h-4 w-4 text-primary" />
+            <div className="flex items-center justify-center gap-2">
+              <LayoutDashboard className="h-4 w-4 text-primary flex-shrink-0" />
               <span>Real-time dashboard access</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Bell className="h-4 w-4 text-primary" />
+            <div className="flex items-center justify-center gap-2">
+              <Bell className="h-4 w-4 text-primary flex-shrink-0" />
               <span>Notified at every step</span>
             </div>
           </div>
@@ -225,54 +221,54 @@ const WhatToExpect = () => {
       </section>
 
       {/* Timeline Section */}
-      <section className="py-12 sm:py-20">
+      <section className="py-8 sm:py-12 md:py-20">
         <div className="container mx-auto px-4 sm:px-6">
           <div className="max-w-4xl mx-auto">
             {steps.map((step, index) => (
               <div key={index} className="relative">
                 {/* Connector Line */}
                 {index < steps.length - 1 && (
-                  <div className="absolute left-6 sm:left-8 top-20 bottom-0 w-0.5 bg-gradient-to-b from-primary/30 to-primary/10" />
+                  <div className="absolute left-5 sm:left-6 md:left-8 top-16 sm:top-20 bottom-0 w-0.5 bg-gradient-to-b from-primary/30 to-primary/10" />
                 )}
 
-                <div className="flex gap-4 sm:gap-6 mb-8 sm:mb-12">
+                <div className="flex gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8 md:mb-12">
                   {/* Step Number Circle */}
                   <div className="flex-shrink-0 relative z-10">
-                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center">
-                      <step.icon className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center">
+                      <step.icon className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-primary" />
                     </div>
                   </div>
 
                   {/* Content */}
-                  <div className="flex-1 pt-1">
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
-                      <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                  <div className="flex-1 min-w-0 pt-0.5 sm:pt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 md:gap-3 mb-1.5 sm:mb-2">
+                      <span className="text-[10px] sm:text-xs font-bold text-primary bg-primary/10 px-1.5 sm:px-2 py-0.5 rounded">
                         STEP {step.number}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground">
                         {step.duration}
                       </span>
                       {step.proBadge && (
-                        <span className="text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 px-2 py-0.5 rounded">
+                        <span className="text-[10px] sm:text-xs font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 px-1.5 sm:px-2 py-0.5 rounded">
                           PRO
                         </span>
                       )}
                     </div>
 
-                    <h3 className="text-xl sm:text-2xl font-bold text-foreground mb-2">
+                    <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-foreground mb-1.5 sm:mb-2">
                       {step.title}
                     </h3>
 
-                    <p className="text-muted-foreground mb-4">
+                    <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                       {step.description}
                     </p>
 
                     <Card className="bg-muted/30 border-muted">
-                      <CardContent className="p-4">
-                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <CardContent className="p-3 sm:p-4">
+                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
                           {step.details.map((detail, i) => (
-                            <li key={i} className="flex items-start gap-2 text-sm">
-                              <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                            <li key={i} className="flex items-start gap-1.5 sm:gap-2 text-xs sm:text-sm">
+                              <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 flex-shrink-0 mt-0.5" />
                               <span className="text-muted-foreground">{detail}</span>
                             </li>
                           ))}
@@ -288,42 +284,42 @@ const WhatToExpect = () => {
       </section>
 
       {/* Key Highlights Section */}
-      <section className="py-12 sm:py-16 bg-muted/30">
+      <section className="py-8 sm:py-12 md:py-16 bg-muted/30">
         <div className="container mx-auto px-4 sm:px-6">
           <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-center mb-6 sm:mb-8">
               What Sets Us Apart
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
               <Card>
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <ThumbsUp className="h-6 w-6 text-primary" />
+                <CardContent className="p-4 sm:p-6 text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                    <ThumbsUp className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                   </div>
-                  <h3 className="font-semibold mb-2">You Approve Everything</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="font-semibold text-sm sm:text-base mb-1.5 sm:mb-2">You Approve Everything</h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Podcasts, messaging, blog posts, video clips — nothing goes out without your approval first.
                   </p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <LayoutDashboard className="h-6 w-6 text-primary" />
+                <CardContent className="p-4 sm:p-6 text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                    <LayoutDashboard className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                   </div>
-                  <h3 className="font-semibold mb-2">Full Visibility</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="font-semibold text-sm sm:text-base mb-1.5 sm:mb-2">Full Visibility</h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Your dashboard shows everything in real-time — every outreach, every response, every booking.
                   </p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <BookOpen className="h-6 w-6 text-primary" />
+                <CardContent className="p-4 sm:p-6 text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                    <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                   </div>
-                  <h3 className="font-semibold mb-2">Resources Included</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="font-semibold text-sm sm:text-base mb-1.5 sm:mb-2">Resources Included</h3>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
                     Access guides on equipment, speaking strategy, and how to be the best podcast guest.
                   </p>
                 </CardContent>
@@ -334,22 +330,22 @@ const WhatToExpect = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-12 sm:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
+      <section className="py-10 sm:py-16 md:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
         <div className="container mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-4">
+          <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-foreground mb-3 sm:mb-4">
             Ready to Get Started?
           </h2>
-          <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
+          <p className="text-sm sm:text-base text-muted-foreground mb-6 sm:mb-8 max-w-xl mx-auto px-2">
             Book a free strategy call to discuss your goals and see if we're a good fit.
           </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Button size="lg" className="gap-2" asChild>
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
+            <Button size="lg" className="gap-2 min-h-[48px] text-sm sm:text-base" asChild>
               <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">
                 Book a Free Call
                 <ArrowRight className="h-4 w-4" />
               </a>
             </Button>
-            <Button size="lg" variant="outline" asChild>
+            <Button size="lg" variant="outline" className="min-h-[48px] text-sm sm:text-base" asChild>
               <a href="/#pricing">View Pricing</a>
             </Button>
           </div>
