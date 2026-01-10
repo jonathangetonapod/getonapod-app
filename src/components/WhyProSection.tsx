@@ -18,23 +18,23 @@ const WhyProSection = () => {
           
           <div className="text-lg md:text-xl text-muted-foreground leading-relaxed space-y-6 text-left">
             <p>
-              <span className="text-foreground font-medium">Podcasts build your audience. Press builds your credibility.</span>{' '}
+              <span className="text-foreground font-medium">Podcasts build your audience. Content extends your reach.</span>{' '}
               Pro gives you both.
             </p>
-            
+
             <p>
-              Every month, we develop 2-3 media angles tailored to your expertise—the kind 
-              journalists actually want to cover. Then we pitch on your behalf to publications 
-              in your niche.
+              Every episode comes with a full content package—9 short-form video clips,
+              2 blog posts, and a guest prep kit so you show up confident and leave with
+              assets ready to repurpose.
             </p>
-            
+
             <p>
-              Plus, you get a monthly strategy call where we review what's working, refine 
-              your angles, and plan your growth together.
+              No more letting great conversations disappear after they air. Turn every
+              appearance into weeks of content for LinkedIn, Twitter, your blog, and beyond.
             </p>
-            
+
             <p className="text-foreground font-medium">
-              You don't just show up on podcasts. You show up everywhere.
+              You don't just appear on podcasts. You turn every appearance into a content engine.
             </p>
           </div>
         </div>
