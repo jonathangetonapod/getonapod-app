@@ -292,8 +292,8 @@ export default function ClientApprovalView() {
   // Generate personalized tagline if not already set
   useEffect(() => {
     if (!dashboard?.bio || !podcasts.length) return
-    if (dashboard.personalized_tagline) {
-      setPersonalizedTagline(dashboard.personalized_tagline)
+    if (dashboard.dashboard_tagline) {
+      setPersonalizedTagline(dashboard.dashboard_tagline)
       return
     }
     if (isGeneratingTagline || personalizedTagline) return
@@ -308,18 +308,16 @@ export default function ClientApprovalView() {
             'apikey': SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
-            clientName: dashboard.name,
-            clientBio: dashboard.bio,
+            prospectName: dashboard.name,
+            prospectBio: dashboard.bio,
             podcastCount: podcasts.length,
-            dashboardId: dashboard.id,
+            // Don't pass dashboardId - let it generate without saving to DB
           }),
         })
 
         if (response.ok) {
           const data = await response.json()
           setPersonalizedTagline(data.tagline)
-          // Update local dashboard state to prevent regeneration
-          setDashboard(prev => prev ? { ...prev, personalized_tagline: data.tagline } : null)
         }
       } catch (err) {
         console.error('Error generating tagline:', err)
