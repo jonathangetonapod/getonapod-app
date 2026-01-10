@@ -1,59 +1,59 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Calendar, FileText, Video, BarChart3, CheckCircle2, Sparkles } from 'lucide-react';
+import { Monitor, FileText, Video, BarChart3, CheckCircle2, Sparkles, ThumbsUp, Brain } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const features = [
   {
-    icon: Calendar,
-    title: "Done-For-You Placements",
-    description: "We handle everything from discovery to booking—you just show up.",
+    icon: Monitor,
+    title: "Podcast Command Center",
+    description: "Your personal dashboard to review and approve every podcast before we pitch.",
     items: [
-      "Custom podcast research & targeting",
-      "Personalized pitch writing",
-      "Persistent follow-up until yes",
-      "Full calendar coordination"
+      "See 50+ hand-picked podcasts for you",
+      "AI explains why each show fits your expertise",
+      "View audience demographics per podcast",
+      "Approve or reject with one click"
     ],
     color: "from-blue-500/20 to-blue-600/20",
-    badge: "Zero Effort"
+    badge: "Full Transparency"
   },
   {
-    icon: FileText,
-    title: "Guest Prep Kit",
-    description: "Show up confident and ready to deliver value to every audience.",
+    icon: ThumbsUp,
+    title: "You're In Control",
+    description: "No spray-and-pray outreach. We only pitch shows YOU approve.",
     items: [
-      "Host & show research brief",
-      "Talking points tailored to audience",
-      "Pre-interview prep notes",
-      "Key questions to expect"
+      "Review every podcast before outreach",
+      "Add notes on your preferences",
+      "Quality over quantity approach",
+      "Your brand, your choice"
     ],
     color: "from-purple-500/20 to-purple-600/20",
-    badge: "Included"
+    badge: "Your Call"
   },
   {
     icon: Video,
     title: "Content Package",
     description: "Maximize every appearance with ready-to-post promotional assets.",
     items: [
-      "3 short-form video clips",
-      "1 audiogram for social",
-      "2 quote graphics",
-      "Optimized for LinkedIn & Twitter"
+      "9 short-form video clips (3 per podcast)",
+      "2 blog posts per episode",
+      "Optimized for LinkedIn & social",
+      "Ready to repurpose everywhere"
     ],
     color: "from-green-500/20 to-green-600/20",
-    badge: "After Every Episode"
+    badge: "Pro Plan"
   },
   {
     icon: BarChart3,
-    title: "Monthly Report",
-    description: "Track your growth with clear metrics and insights every month.",
+    title: "Reporting & Analytics",
+    description: "Track your podcast journey with real-time insights and metrics.",
     items: [
       "Shows booked and aired",
       "Total audience reach",
-      "Content performance metrics",
-      "Next month's pipeline"
+      "Campaign progress tracking",
+      "Pipeline visibility"
     ],
     color: "from-orange-500/20 to-orange-600/20",
-    badge: "Monthly"
+    badge: "Real-Time"
   },
 ];
 
@@ -74,14 +74,14 @@ const WhatYouGetSection = () => {
             <div className="inline-flex items-center gap-2 mb-4">
               <Sparkles className="w-6 h-6 text-primary" />
               <Badge variant="outline" className="text-sm">
-                Everything Included
+                Full Transparency
               </Badge>
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
-              What You Get
+              Your Podcast Command Center
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Every plan includes our complete white-glove service—from booking to content delivery.
+              Most agencies send you a monthly PDF. We give you a live dashboard where you control everything.
             </p>
           </div>
 
@@ -137,7 +137,7 @@ const WhatYouGetSection = () => {
           {/* Bottom Note */}
           <div className="text-center mt-12 md:mt-16">
             <p className="text-lg text-muted-foreground">
-              <span className="font-semibold text-foreground">Pro clients</span> also get dedicated PR outreach, custom media lists, and monthly strategy calls.
+              <span className="font-semibold text-foreground">Pro clients</span> get the full content package—video clips, blog posts, and guest prep kits for every episode.
             </p>
           </div>
         </div>

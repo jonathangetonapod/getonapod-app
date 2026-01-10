@@ -9,7 +9,8 @@ const plans = [
     period: "/month",
     features: [
       "2 podcast bookings/month",
-      "Access to reporting & analytics",
+      "Podcast Command Center access",
+      "Reporting & analytics dashboard",
     ],
     popular: false,
   },
@@ -19,10 +20,11 @@ const plans = [
     period: "/month",
     features: [
       "Minimum 3 bookings/month",
-      "2 blog posts",
+      "Podcast Command Center access",
+      "2 blog posts per episode",
       "Guest prep kit",
-      "Monthly report",
       "9 video clips (3 per podcast)",
+      "Reporting & analytics dashboard",
     ],
     popular: true,
   },
