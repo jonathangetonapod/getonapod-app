@@ -73,6 +73,7 @@ interface ProspectDashboard {
   spreadsheet_url: string | null
   is_active: boolean
   content_ready: boolean
+  show_pricing_section: boolean
   personalized_tagline: string | null
 }
 
@@ -1548,6 +1549,7 @@ export default function ProspectView() {
       </div>
 
       {/* CTA Section */}
+      {dashboard?.show_pricing_section !== false && (
       <section className="py-12 sm:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-10 sm:mb-12">
@@ -1709,6 +1711,7 @@ export default function ProspectView() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Footer */}
       <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
@@ -1732,53 +1735,55 @@ export default function ProspectView() {
       </button>
 
       {/* Floating CTA Bar */}
-      <div
-        className={cn(
-          "fixed bottom-0 left-0 right-0 z-50 transition-all duration-300 transform",
-          showCtaBar && !ctaBarDismissed
-            ? "translate-y-0 opacity-100"
-            : "translate-y-full opacity-0 pointer-events-none"
-        )}
-      >
-        <div className="relative overflow-hidden border-t border-white/20 shadow-2xl">
-          <div className="absolute inset-0 bg-gradient-to-r from-primary via-purple-600 to-pink-600" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
-          <div className="relative max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="hidden sm:flex p-2 rounded-full bg-white/20">
-                <Rocket className="h-5 w-5 text-white" />
+      {dashboard?.show_pricing_section !== false && (
+        <div
+          className={cn(
+            "fixed bottom-0 left-0 right-0 z-50 transition-all duration-300 transform",
+            showCtaBar && !ctaBarDismissed
+              ? "translate-y-0 opacity-100"
+              : "translate-y-full opacity-0 pointer-events-none"
+          )}
+        >
+          <div className="relative overflow-hidden border-t border-white/20 shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary via-purple-600 to-pink-600" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
+            <div className="relative max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="hidden sm:flex p-2 rounded-full bg-white/20">
+                  <Rocket className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white font-medium text-sm sm:text-base truncate">
+                    Like what you see?
+                  </p>
+                  <p className="text-white/70 text-xs sm:text-sm truncate">
+                    Let's get you booked on these podcasts
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-white font-medium text-sm sm:text-base truncate">
-                  Like what you see?
-                </p>
-                <p className="text-white/70 text-xs sm:text-sm truncate">
-                  Let's get you booked on these podcasts
-                </p>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  size="sm"
+                  className="gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90"
+                  onClick={() => window.open('https://getonapod.com', '_blank')}
+                >
+                  <Phone className="h-4 w-4" />
+                  <span className="hidden sm:inline">Book a Call</span>
+                  <span className="sm:hidden">Call</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/20"
+                  onClick={() => setCtaBarDismissed(true)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Button
-                size="sm"
-                className="gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90"
-                onClick={() => window.open('https://getonapod.com', '_blank')}
-              >
-                <Phone className="h-4 w-4" />
-                <span className="hidden sm:inline">Book a Call</span>
-                <span className="sm:hidden">Call</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/20"
-                onClick={() => setCtaBarDismissed(true)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Data Methodology Panel */}
       <Sheet open={showReviewPanel} onOpenChange={setShowReviewPanel}>

@@ -2,10 +2,10 @@ const { Client } = require('pg');
 const fs = require('fs');
 
 async function run() {
-  // Try connection through Supavisor session mode (port 5432)
+  // Try connection through Supavisor transaction mode (port 6543)
   const client = new Client({
     host: 'aws-0-us-west-1.pooler.supabase.com',
-    port: 5432,
+    port: 6543,
     user: 'postgres.ysjwveqnwjysldpfqzov',
     password: '06Garc1210.',
     database: 'postgres',
@@ -17,7 +17,7 @@ async function run() {
     await client.connect();
     console.log('Connected!');
 
-    const sql = fs.readFileSync('supabase/migrations/20260109_client_podcast_approval_dashboard.sql', 'utf8');
+    const sql = fs.readFileSync('supabase/migrations/20260110_add_show_pricing_section.sql', 'utf8');
     console.log('Running migration...');
     await client.query(sql);
     console.log('Migration completed successfully!');

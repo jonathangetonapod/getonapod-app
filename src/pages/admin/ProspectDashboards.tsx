@@ -65,7 +65,8 @@ import {
   Pencil,
   ThumbsUp,
   ThumbsDown,
-  MessageSquare
+  MessageSquare,
+  DollarSign
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -81,6 +82,7 @@ interface ProspectDashboard {
   created_at: string
   is_active: boolean
   content_ready: boolean
+  show_pricing_section: boolean
   view_count: number
   last_viewed_at: string | null
   personalized_tagline: string | null
@@ -928,6 +930,41 @@ export default function ProspectDashboards() {
     }
   }
 
+  // Pricing section toggle state
+  const [togglingPricing, setTogglingPricing] = useState(false)
+
+  const togglePricingSection = async () => {
+    if (!selectedDashboard) return
+
+    setTogglingPricing(true)
+    try {
+      const newValue = !selectedDashboard.show_pricing_section
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ show_pricing_section: newValue })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id ? { ...d, show_pricing_section: newValue } : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, show_pricing_section: newValue } : null
+      )
+
+      toast.success(newValue ? 'Pricing section enabled' : 'Pricing section hidden')
+    } catch (error) {
+      console.error('Error toggling pricing section:', error)
+      toast.error('Failed to update pricing section visibility')
+    } finally {
+      setTogglingPricing(false)
+    }
+  }
+
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -1743,6 +1780,43 @@ export default function ProspectDashboards() {
                             <>
                               <Eye className="h-4 w-4 mr-1" />
                               Publish
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Pricing Section Toggle */}
+                    <div className="pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Show Pricing</p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedDashboard.show_pricing_section !== false
+                              ? 'Pricing CTA section visible'
+                              : 'Pricing section hidden'}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={togglePricingSection}
+                          disabled={togglingPricing}
+                          variant={selectedDashboard.show_pricing_section !== false ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            selectedDashboard.show_pricing_section !== false && "bg-purple-600 hover:bg-purple-700"
+                          )}
+                        >
+                          {togglingPricing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : selectedDashboard.show_pricing_section !== false ? (
+                            <>
+                              <DollarSign className="h-4 w-4 mr-1" />
+                              Showing
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="h-4 w-4 mr-1" />
+                              Hidden
                             </>
                           )}
                         </Button>
