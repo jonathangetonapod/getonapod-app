@@ -1784,7 +1784,7 @@ export default function ProspectView() {
                 <Button
                   size="sm"
                   className="gap-1 sm:gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90 text-xs sm:text-sm h-8 sm:h-9 px-2.5 sm:px-3"
-                  onClick={() => window.open('https://getonapod.com', '_blank')}
+                  onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
                 >
                   <Phone className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="hidden sm:inline">Book a Call</span>
