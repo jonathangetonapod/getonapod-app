@@ -1735,13 +1735,14 @@ export default function ProspectView() {
           </p>
           <div className="text-center mb-8 sm:mb-12">
             <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
+              variant="ghost"
+              size="default"
+              className="gap-2 text-primary hover:text-primary hover:bg-primary/10 border border-primary/20 hover:border-primary/40 transition-all duration-300 group"
               onClick={() => window.open('/what-to-expect', '_blank')}
             >
-              <Info className="h-4 w-4" />
-              What happens after you sign up?
+              <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              Curious what happens after you sign up?
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </Button>
           </div>
 

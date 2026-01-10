@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { Check, Info } from 'lucide-react';
+import { Check, Sparkles, ArrowRight } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { useState } from 'react';
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
@@ -128,11 +128,17 @@ const PricingSection = () => {
           <p className="text-center text-sm sm:text-base text-muted-foreground mt-6 sm:mt-8">
             All plans require a 3-month minimum commitment.
           </p>
-          <div className="text-center mt-6">
-            <Button variant="outline" size="sm" className="gap-2" asChild>
+          <div className="text-center mt-8">
+            <Button
+              variant="ghost"
+              size="lg"
+              className="gap-2 text-primary hover:text-primary hover:bg-primary/10 border border-primary/20 hover:border-primary/40 transition-all duration-300 group"
+              asChild
+            >
               <a href="/what-to-expect">
-                <Info className="h-4 w-4" />
-                What happens after you sign up?
+                <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                Curious what happens after you sign up?
+                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </a>
             </Button>
           </div>
