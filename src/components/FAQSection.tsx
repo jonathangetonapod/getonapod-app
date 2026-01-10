@@ -24,49 +24,45 @@ const faqCategories = [
       },
       {
         question: "Can I approve shows before you pitch me?",
-        answer: "Yes. We'll share our target list with you upfront, and you can veto any shows that don't feel like a fit.",
+        answer: "Absolutely. Your Podcast Command Center shows you every podcast we've hand-picked for you. You'll see AI-powered insights on why each show fits, audience demographics, and you approve or reject with one click. We only pitch shows YOU greenlight.",
       },
     ],
   },
   {
-    category: "PR & Media (Pro Tier)",
+    category: "Command Center & Analytics",
     faqs: [
       {
-        question: "What's included in the PR outreach?",
-        answer: "We develop 2-3 pitchable angles each month based on your expertise and current trends. Then we build a media list of relevant publications, journalists, and contributors—and pitch them on your behalf.",
+        question: "What is the Podcast Command Center?",
+        answer: "It's your personal dashboard where you control everything. See 50+ hand-picked podcasts curated for you, review AI-powered fit analysis, check audience demographics, and approve or reject shows before we pitch. No more mystery spreadsheets—full transparency.",
       },
       {
-        question: "What's a 'media angle'?",
-        answer: "A media angle is a newsworthy hook that makes journalists want to cover you. It could be a contrarian take, a timely insight, a data-backed trend, or a compelling personal story. We help you find and package these.",
+        question: "How does the AI analysis work?",
+        answer: "Our AI reviews each podcast and explains exactly why it's a fit for your expertise and goals. You'll see talking points, audience insights, and potential pitch angles—so you can make informed decisions.",
       },
       {
-        question: "Do you guarantee press placements?",
-        answer: "No—journalists make their own decisions. What we guarantee is the work: developing strong angles, building your media list, and pitching on your behalf consistently. Most Pro clients see 1-3 media mentions per quarter.",
+        question: "What's included in reporting & analytics?",
+        answer: "Track your entire podcast journey: shows booked, episodes recorded, episodes aired, total audience reach, and your campaign pipeline. Everything updates in real-time in your dashboard.",
       },
     ],
   },
   {
-    category: "Pricing & Logistics",
+    category: "Pricing & Plans",
     faqs: [
       {
-        question: "What's the difference between Growth and Pro?",
-        answer: "Growth gives you 4 podcast placements per month with all the prep and content. Pro adds done-for-you PR: we develop media angles, build your target publication list, and pitch journalists on your behalf. Plus a monthly strategy call to review and plan.",
+        question: "What's the difference between Starter and Pro?",
+        answer: "Starter ($1,000/mo) gets you 2 podcast bookings per month plus full Command Center and analytics access. Pro ($1,500/mo) gets you 3+ bookings plus a full content package: 9 video clips, 2 blog posts, and a guest prep kit for every episode.",
       },
       {
         question: "Why the 3-month minimum?",
-        answer: "Authority isn't built in 30 days. Podcast episodes take time to book, record, and air. PR takes time to land. The 3-month minimum ensures you see real results and build momentum.",
+        answer: "Authority isn't built in 30 days. Podcast episodes take time to book, record, and air. The 3-month minimum ensures you see real results and build momentum.",
       },
       {
-        question: "What happens on the monthly strategy call?",
-        answer: "We review your placement metrics, content performance, and PR outreach results. Then we map out the next month—which shows to target, what angles to pitch, and how to maximize your authority.",
+        question: "What's included in the Pro content package?",
+        answer: "For every podcast episode: 9 short-form video clips (3 per podcast), 2 blog posts, and a guest prep kit so you show up confident. Everything is optimized for LinkedIn, Twitter, and repurposing.",
       },
       {
-        question: "Can I upgrade or downgrade my plan?",
-        answer: "Yes. You can move between plans at any time after your initial 3 months.",
-      },
-      {
-        question: "What are Premium Placements?",
-        answer: "Guaranteed spots on specific podcasts from our curated menu. You pick the show, we book it. Priced per placement. Ask about the menu on your call.",
+        question: "Can I upgrade from Starter to Pro?",
+        answer: "Yes. You can upgrade at any time after your initial 3 months to get the full content package.",
       },
     ],
   },
