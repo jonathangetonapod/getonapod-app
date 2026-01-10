@@ -1582,7 +1582,7 @@ export default function ProspectView() {
               <div className="mb-3 sm:mb-4">
                 <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
                 <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$1,000</span>
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
                   <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>
@@ -1614,7 +1614,6 @@ export default function ProspectView() {
               </ul>
               <div className="space-y-3">
                 <Button
-                  variant="outline"
                   size="sm"
                   className="w-full sm:h-10"
                   onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
