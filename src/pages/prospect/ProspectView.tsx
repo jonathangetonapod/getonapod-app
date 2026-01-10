@@ -1640,7 +1640,7 @@ export default function ProspectView() {
               <div className="mb-3 sm:mb-4 mt-1 sm:mt-0">
                 <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Pro</h3>
                 <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$1,500</span>
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
                   <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>

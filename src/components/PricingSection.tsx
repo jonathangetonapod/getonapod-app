@@ -18,7 +18,7 @@ const plans = [
   },
   {
     name: "Pro",
-    price: "$1,500",
+    price: "$2,000",
     period: "/month",
     features: [
       "Minimum 3 bookings/month",
