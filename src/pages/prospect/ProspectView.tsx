@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
@@ -50,7 +51,8 @@ import {
   HelpCircle,
   MousePointerClick,
   ListChecks,
-  Rocket
+  Rocket,
+  Info
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -852,23 +854,59 @@ export default function ProspectView() {
                 <div className="h-7 w-28 bg-slate-200/60 rounded-lg animate-pulse" />
               </div>
             ) : (
-              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-                <div className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-green-500" />
-                  <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
-                  <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
+              <TooltipProvider delayDuration={200}>
+                <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
+                        <Users className="h-5 w-5 text-green-500" />
+                        <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
+                        <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs p-3">
+                      <p className="font-semibold text-sm mb-1">Verified Audience Estimates</p>
+                      <p className="text-xs text-muted-foreground">
+                        Per-episode listener counts from Podscan, calculated using chart rankings, reviews,
+                        social engagement, and ML models validated against real data.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
+                        <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                        <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
+                        <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs p-3">
+                      <p className="font-semibold text-sm mb-1">Average iTunes Rating</p>
+                      <p className="text-xs text-muted-foreground">
+                        Aggregated star ratings from Apple Podcasts reviews across all curated shows.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
+                        <Mic className="h-5 w-5 text-primary" />
+                        <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
+                        <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs p-3">
+                      <p className="font-semibold text-sm mb-1">Curated Podcast Opportunities</p>
+                      <p className="text-xs text-muted-foreground">
+                        Hand-picked shows matched to your expertise and target audience, vetted for active publishing and guest acceptance.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                  <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
-                  <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Mic className="h-5 w-5 text-primary" />
-                  <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
-                  <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
-                </div>
-              </div>
+              </TooltipProvider>
             )}
 
             {/* AI Insights Loading Status */}
@@ -1269,6 +1307,7 @@ export default function ProspectView() {
           </Card>
         ) : (
           <>
+          <TooltipProvider delayDuration={300}>
           <div
             key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${sortBy}-${currentPage}`}
             className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
@@ -1354,10 +1393,20 @@ export default function ProspectView() {
                   <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center justify-between">
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       {podcast.audience_size && (
-                        <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                          <Users className="h-3 w-3 mr-1" />
-                          {formatNumber(podcast.audience_size)}
-                        </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5 cursor-help">
+                              <Users className="h-3 w-3 mr-1" />
+                              {formatNumber(podcast.audience_size)}
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs p-3">
+                            <p className="font-semibold text-sm mb-1">Verified Audience Estimate</p>
+                            <p className="text-xs text-muted-foreground">
+                              Per-episode listeners from Podscan, derived from chart rankings, reviews, and ML analysis.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
                       )}
                       {podcast.last_posted_at && (
                         <Badge className="bg-green-600/90 hover:bg-green-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
@@ -1476,6 +1525,7 @@ export default function ProspectView() {
             </Card>
           ))}
           </div>
+          </TooltipProvider>
           {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-8 pb-4">
