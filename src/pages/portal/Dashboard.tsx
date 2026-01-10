@@ -3368,32 +3368,24 @@ export default function PortalDashboard() {
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-                    {client?.prospect_dashboard_slug ? (
-                      <Button
-                        size="lg"
-                        className="gap-2 min-h-[52px] px-8 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg shadow-primary/25"
-                        onClick={() => window.open(`https://getonapod.com/client/${client.prospect_dashboard_slug}`, '_blank')}
-                      >
-                        <ExternalLink className="h-5 w-5" />
-                        Open Your Dashboard
-                      </Button>
-                    ) : (
-                      <Button
-                        size="lg"
-                        disabled
-                        className="gap-2 min-h-[52px] px-8"
-                      >
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Dashboard Being Prepared...
-                      </Button>
-                    )}
+                    <Button
+                      size="lg"
+                      className="gap-2 min-h-[52px] px-8 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg shadow-primary/25"
+                      onClick={() => {
+                        const slug = client?.prospect_dashboard_slug || client?.name?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                        if (slug) {
+                          window.open(`https://getonapod.com/client/${slug}`, '_blank')
+                        }
+                      }}
+                    >
+                      <ExternalLink className="h-5 w-5" />
+                      Open Your Dashboard
+                    </Button>
                   </div>
 
-                  {client?.prospect_dashboard_slug && (
-                    <p className="text-xs text-muted-foreground mt-4">
-                      Opens in a new tab
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Opens in a new tab
+                  </p>
 
                   {/* Feature highlights */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-12 max-w-2xl mx-auto">
