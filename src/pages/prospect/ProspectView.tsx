@@ -187,6 +187,9 @@ export default function ProspectView() {
   const [showCtaBar, setShowCtaBar] = useState(false)
   const [ctaBarDismissed, setCtaBarDismissed] = useState(false)
 
+  // Stripe ready state
+  const [stripeReady, setStripeReady] = useState(false)
+
   // Pricing feature modal state
   const [selectedPricingFeature, setSelectedPricingFeature] = useState<string | null>(null)
 
@@ -311,6 +314,12 @@ export default function ProspectView() {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [ctaBarDismissed])
+
+  // Wait for Stripe script to be ready
+  useEffect(() => {
+    const timer = setTimeout(() => setStripeReady(true), 1000)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Generate personalized tagline if not already set
   useEffect(() => {
@@ -1637,13 +1646,15 @@ export default function ProspectView() {
                 >
                   Book a Call
                 </Button>
-                <div className="flex justify-center">
-                  {/* @ts-ignore */}
-                  <stripe-buy-button
-                    buy-button-id="buy_btn_1So6wjDUPtBnbWkaAkoqwcLf"
-                    publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                  />
-                </div>
+                {stripeReady && (
+                  <div className="flex justify-center">
+                    {/* @ts-ignore */}
+                    <stripe-buy-button
+                      buy-button-id="buy_btn_1So6wjDUPtBnbWkaAkoqwcLf"
+                      publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1719,13 +1730,15 @@ export default function ProspectView() {
                 >
                   Book a Call
                 </Button>
-                <div className="flex justify-center">
-                  {/* @ts-ignore */}
-                  <stripe-buy-button
-                    buy-button-id="buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"
-                    publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                  />
-                </div>
+                {stripeReady && (
+                  <div className="flex justify-center">
+                    {/* @ts-ignore */}
+                    <stripe-buy-button
+                      buy-button-id="buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"
+                      publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

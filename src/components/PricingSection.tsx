@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Check, Sparkles, ArrowRight, Info } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
 
 const plans = [
@@ -35,6 +35,24 @@ const plans = [
 const PricingSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
+  const [stripeReady, setStripeReady] = useState(false);
+
+  useEffect(() => {
+    // Wait for Stripe script to be ready
+    const checkStripe = () => {
+      if (typeof window !== 'undefined' && (window as any).Stripe) {
+        setStripeReady(true);
+      }
+    };
+
+    // Check immediately
+    checkStripe();
+
+    // Also check after a short delay to ensure script is loaded
+    const timer = setTimeout(() => setStripeReady(true), 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <section id="pricing" className="py-8 md:py-16 bg-surface-subtle px-4">
@@ -113,13 +131,15 @@ const PricingSection = () => {
                     <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
                   </Button>
 
-                  <div className="flex justify-center [&>stripe-buy-button]:w-full [&>stripe-buy-button]:max-w-full">
-                    {/* @ts-ignore */}
-                    <stripe-buy-button
-                      buy-button-id={plan.name === "Starter" ? "buy_btn_1So6wjDUPtBnbWkaAkoqwcLf" : "buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"}
-                      publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                    />
-                  </div>
+                  {stripeReady && (
+                    <div className="flex justify-center [&>stripe-buy-button]:w-full [&>stripe-buy-button]:max-w-full">
+                      {/* @ts-ignore */}
+                      <stripe-buy-button
+                        buy-button-id={plan.name === "Starter" ? "buy_btn_1So6wjDUPtBnbWkaAkoqwcLf" : "buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"}
+                        publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
