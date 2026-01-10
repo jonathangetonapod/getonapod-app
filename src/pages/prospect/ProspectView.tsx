@@ -847,71 +847,23 @@ export default function ProspectView() {
             </div>
 
             {/* Compact Stats Row */}
-            {loadingPodcasts ? (
-              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-                <div className="h-7 w-32 bg-slate-200/60 rounded-lg animate-pulse" />
-                <div className="h-7 w-28 bg-slate-200/60 rounded-lg animate-pulse" />
-                <div className="h-7 w-28 bg-slate-200/60 rounded-lg animate-pulse" />
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-green-500" />
+                <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
               </div>
-            ) : (
-              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
-                        <Users className="h-5 w-5 text-green-500" />
-                        <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
-                        <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs p-3">
-                      <p className="font-semibold text-sm mb-1">Verified Audience Estimates</p>
-                      <p className="text-xs text-muted-foreground">
-                        Per-episode listener counts from Podscan, calculated using chart rankings, reviews,
-                        social engagement, and ML models validated against real data.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
-                        <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                        <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
-                        <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs p-3">
-                      <p className="font-semibold text-sm mb-1">Average iTunes Rating</p>
-                      <p className="text-xs text-muted-foreground">
-                        Aggregated star ratings from Apple Podcasts reviews across all curated shows.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
-                        <Mic className="h-5 w-5 text-primary" />
-                        <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
-                        <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
-                        <Info className="h-3.5 w-3.5 text-muted-foreground/50" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs p-3">
-                      <p className="font-semibold text-sm mb-1">Curated Podcast Opportunities</p>
-                      <p className="text-xs text-muted-foreground">
-                        Hand-picked shows matched to your expertise and target audience, vetted for active publishing and guest acceptance.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+              <div className="flex items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <Mic className="h-5 w-5 text-primary" />
+                <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
+              </div>
+            </div>
 
             {/* AI Insights Loading Status */}
             {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
