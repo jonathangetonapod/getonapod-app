@@ -172,6 +172,9 @@ export default function ProspectView() {
   const [showTutorial, setShowTutorial] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
 
+  // Review panel state
+  const [showReviewPanel, setShowReviewPanel] = useState(false)
+
   // React Query: Fetch dashboard (cached for 5 minutes)
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
     queryKey: ['prospect-dashboard', slug],
@@ -1529,6 +1532,138 @@ export default function ProspectView() {
           </p>
         </div>
       </footer>
+
+      {/* Floating Review Button */}
+      <button
+        onClick={() => setShowReviewPanel(true)}
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-4 rounded-l-lg shadow-lg transition-all hover:pr-5 group"
+        style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          <ListChecks className="h-4 w-4 rotate-90" />
+          Please Review
+        </span>
+      </button>
+
+      {/* Review Panel */}
+      <Sheet open={showReviewPanel} onOpenChange={setShowReviewPanel}>
+        <SheetContent side="right" className="!w-full sm:!max-w-md p-0 overflow-hidden">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="p-6 border-b bg-gradient-to-r from-primary/10 to-purple-500/10">
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2 text-xl">
+                  <ListChecks className="h-5 w-5 text-primary" />
+                  Review Your Selections
+                </SheetTitle>
+              </SheetHeader>
+              <p className="text-sm text-muted-foreground mt-2">
+                Review the podcasts you've approved or rejected
+              </p>
+            </div>
+
+            {/* Content */}
+            <ScrollArea className="flex-1 p-6">
+              <div className="space-y-6">
+                {/* Approved Section */}
+                <div>
+                  <h3 className="font-semibold text-green-600 dark:text-green-400 flex items-center gap-2 mb-3">
+                    <ThumbsUp className="h-4 w-4" />
+                    Approved ({feedbackMap ? Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length : 0})
+                  </h3>
+                  <div className="space-y-2">
+                    {uniquePodcasts
+                      .filter(p => feedbackMap.get(p.podcast_id)?.status === 'approved')
+                      .map(podcast => (
+                        <div
+                          key={podcast.podcast_id}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+                        >
+                          {podcast.podcast_image_url ? (
+                            <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 rounded-md object-cover" />
+                          ) : (
+                            <div className="h-10 w-10 rounded-md bg-green-200 dark:bg-green-800 flex items-center justify-center">
+                              <Mic className="h-5 w-5 text-green-600" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{podcast.podcast_name}</p>
+                            {podcast.audience_size && (
+                              <p className="text-xs text-muted-foreground">{formatNumber(podcast.audience_size)} listeners</p>
+                            )}
+                          </div>
+                          <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                        </div>
+                      ))}
+                    {Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length === 0 && (
+                      <p className="text-sm text-muted-foreground italic">No approved podcasts yet</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rejected Section */}
+                <div>
+                  <h3 className="font-semibold text-red-600 dark:text-red-400 flex items-center gap-2 mb-3">
+                    <ThumbsDown className="h-4 w-4" />
+                    Rejected ({feedbackMap ? Array.from(feedbackMap.values()).filter(f => f.status === 'rejected').length : 0})
+                  </h3>
+                  <div className="space-y-2">
+                    {uniquePodcasts
+                      .filter(p => feedbackMap.get(p.podcast_id)?.status === 'rejected')
+                      .map(podcast => (
+                        <div
+                          key={podcast.podcast_id}
+                          className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+                        >
+                          {podcast.podcast_image_url ? (
+                            <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 rounded-md object-cover" />
+                          ) : (
+                            <div className="h-10 w-10 rounded-md bg-red-200 dark:bg-red-800 flex items-center justify-center">
+                              <Mic className="h-5 w-5 text-red-600" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{podcast.podcast_name}</p>
+                            {feedbackMap.get(podcast.podcast_id)?.notes && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {feedbackMap.get(podcast.podcast_id)?.notes}
+                              </p>
+                            )}
+                          </div>
+                          <X className="h-5 w-5 text-red-600 flex-shrink-0" />
+                        </div>
+                      ))}
+                    {Array.from(feedbackMap.values()).filter(f => f.status === 'rejected').length === 0 && (
+                      <p className="text-sm text-muted-foreground italic">No rejected podcasts yet</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Pending Section */}
+                <div>
+                  <h3 className="font-semibold text-muted-foreground flex items-center gap-2 mb-3">
+                    <Clock className="h-4 w-4" />
+                    Pending Review ({uniquePodcasts.filter(p => !feedbackMap.get(p.podcast_id)?.status).length})
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {uniquePodcasts.filter(p => !feedbackMap.get(p.podcast_id)?.status).length} podcasts still need your feedback
+                  </p>
+                </div>
+              </div>
+            </ScrollArea>
+
+            {/* Footer */}
+            <div className="p-4 border-t bg-slate-50 dark:bg-slate-900">
+              <Button
+                className="w-full"
+                onClick={() => setShowReviewPanel(false)}
+              >
+                Continue Reviewing
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Side Panel */}
       <Sheet open={!!selectedPodcast} onOpenChange={() => setSelectedPodcast(null)}>
