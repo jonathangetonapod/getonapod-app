@@ -117,15 +117,13 @@ const PricingSection = () => {
                     <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
                   </Button>
 
-                  {plan.name === "Starter" && (
-                    <div className="flex justify-center">
-                      {/* @ts-ignore */}
-                      <stripe-buy-button
-                        buy-button-id="buy_btn_1So6wjDUPtBnbWkaAkoqwcLf"
-                        publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                      />
-                    </div>
-                  )}
+                  <div className="flex justify-center">
+                    {/* @ts-ignore */}
+                    <stripe-buy-button
+                      buy-button-id={plan.name === "Starter" ? "buy_btn_1So6wjDUPtBnbWkaAkoqwcLf" : "buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"}
+                      publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
