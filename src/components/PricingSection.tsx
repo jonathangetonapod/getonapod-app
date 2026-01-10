@@ -7,7 +7,7 @@ import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
 const plans = [
   {
     name: "Starter",
-    price: "$2,000",
+    price: "$1,000",
     period: "/month",
     features: [
       "2 podcast bookings/month",
