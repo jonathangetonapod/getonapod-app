@@ -128,14 +128,14 @@ const PricingSection = () => {
           <p className="text-center text-sm sm:text-base text-muted-foreground mt-6 sm:mt-8">
             All plans require a 3-month minimum commitment.
           </p>
-          <p className="text-center mt-3">
-            <a
-              href="/what-to-expect"
-              className="text-sm text-primary hover:text-primary/80 underline underline-offset-4 transition-colors"
-            >
-              Want to know what happens after you sign up?
-            </a>
-          </p>
+          <div className="text-center mt-6">
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <a href="/what-to-expect">
+                <Info className="h-4 w-4" />
+                What happens after you sign up?
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
 

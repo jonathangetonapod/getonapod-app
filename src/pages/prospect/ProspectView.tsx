@@ -1733,16 +1733,17 @@ export default function ProspectView() {
           <p className="text-center text-xs sm:text-sm text-muted-foreground mb-4">
             All plans require a 3-month minimum commitment.
           </p>
-          <p className="text-center mb-8 sm:mb-12">
-            <a
-              href="/what-to-expect"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs sm:text-sm text-primary hover:text-primary/80 underline underline-offset-4 transition-colors"
+          <div className="text-center mb-8 sm:mb-12">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => window.open('/what-to-expect', '_blank')}
             >
-              Want to know what happens after you sign up?
-            </a>
-          </p>
+              <Info className="h-4 w-4" />
+              What happens after you sign up?
+            </Button>
+          </div>
 
           {/* FAQ Section */}
           <div className="mt-12 sm:mt-16">
