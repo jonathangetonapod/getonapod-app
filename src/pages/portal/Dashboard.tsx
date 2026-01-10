@@ -4959,30 +4959,12 @@ export default function PortalDashboard() {
                           {service.delivery_days}d delivery
                         </div>
                       </div>
-                      {service.name.toLowerCase().includes('clip') ? (
-                        <Button
-                          disabled
-                          className="w-full bg-muted text-muted-foreground cursor-not-allowed"
-                        >
-                          Coming Soon
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={() => {
-                            setSelectedService(service)
-                            setShowEpisodeSelector(true)
-                          }}
-                          disabled={availableEpisodes.length === 0}
-                          className={`w-full bg-gradient-to-r ${gradient} hover:opacity-90 text-white`}
-                        >
-                          {availableEpisodes.length === 0 ? 'Sold Out' : (
-                            <>
-                              <ShoppingCart className="mr-2 h-4 w-4" />
-                              Add to Cart
-                            </>
-                          )}
-                        </Button>
-                      )}
+                      <Button
+                        disabled
+                        className="w-full bg-muted text-muted-foreground cursor-not-allowed"
+                      >
+                        Coming Soon
+                      </Button>
                     </CardContent>
                   </Card>
                 )
