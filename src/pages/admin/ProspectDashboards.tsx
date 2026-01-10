@@ -984,6 +984,10 @@ export default function ProspectDashboards() {
 
     setRunningAiAnalysis(true)
 
+    // Create abort controller with 50 second timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 50000)
+
     try {
       toast.info('Running AI analysis...')
 
@@ -1000,7 +1004,10 @@ export default function ProspectDashboards() {
           prospectBio: selectedDashboard.prospect_bio,
           aiAnalysisOnly: true,
         }),
+        signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const error = await response.json()
@@ -1033,8 +1040,13 @@ export default function ProspectDashboards() {
         toast.success(`Analyzed ${data.analyzed} podcasts.`)
       }
     } catch (error) {
+      clearTimeout(timeoutId)
       console.error('Error running AI analysis:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to run AI analysis')
+      if (error instanceof Error && error.name === 'AbortError') {
+        toast.error('AI analysis timed out after 50 seconds. Try again to continue.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Failed to run AI analysis')
+      }
     } finally {
       setRunningAiAnalysis(false)
     }
