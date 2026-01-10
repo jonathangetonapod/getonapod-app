@@ -62,6 +62,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal'
+import { PricingFAQ } from '@/components/pricing/PricingFAQ'
 
 interface ProspectDashboard {
   id: string
@@ -182,6 +184,9 @@ export default function ProspectView() {
   // CTA bar state (shows after scrolling)
   const [showCtaBar, setShowCtaBar] = useState(false)
   const [ctaBarDismissed, setCtaBarDismissed] = useState(false)
+
+  // Pricing feature modal state
+  const [selectedPricingFeature, setSelectedPricingFeature] = useState<string | null>(null)
 
   // React Query: Fetch dashboard (cached for 5 minutes)
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
@@ -1571,7 +1576,7 @@ export default function ProspectView() {
           </div>
 
           {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 lg:gap-8 mb-8 sm:mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 lg:gap-8 max-w-3xl mx-auto mb-8 sm:mb-10">
             {/* Starter */}
             <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg">
               <div className="mb-3 sm:mb-4">
@@ -1582,34 +1587,42 @@ export default function ProspectView() {
                 </div>
               </div>
               <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  onClick={() => setSelectedPricingFeature('2 podcasts/month')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">2 podcasts/month</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2 podcasts/month</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  onClick={() => setSelectedPricingFeature('Podcast Command Center')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Podcast Command Center</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  onClick={() => setSelectedPricingFeature('Reporting & analytics')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Content package</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Reporting & analytics</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
               </ul>
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full sm:h-10"
-                onClick={() => window.open('https://getonapod.com', '_blank')}
+                onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
               >
                 Book a Call
               </Button>
             </div>
 
-            {/* Growth - Most Popular */}
+            {/* Pro - Most Popular */}
             <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl md:scale-105 order-first md:order-none">
               <div className="absolute -top-2.5 sm:-top-3 left-1/2 -translate-x-1/2">
                 <span className="px-2.5 sm:px-3 py-1 text-[10px] sm:text-xs font-semibold bg-primary text-white rounded-full whitespace-nowrap">
@@ -1617,87 +1630,88 @@ export default function ProspectView() {
                 </span>
               </div>
               <div className="mb-3 sm:mb-4 mt-1 sm:mt-0">
-                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Growth</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Pro</h3>
                 <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$1,500</span>
                   <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>
               <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
+                  onClick={() => setSelectedPricingFeature('3+ podcasts/month')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">4 podcasts/month</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium flex-1">3+ podcasts/month</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
+                  onClick={() => setSelectedPricingFeature('Podcast Command Center')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Podcast Command Center</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
+                  onClick={() => setSelectedPricingFeature('2 blog posts/episode')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Content package</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2 blog posts/episode</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
-                <li className="flex items-start gap-2">
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
+                  onClick={() => setSelectedPricingFeature('Guest prep kit')}
+                >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Guest prep kit</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
+                </li>
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
+                  onClick={() => setSelectedPricingFeature('9 video clips/month')}
+                >
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">9 video clips/month</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
+                </li>
+                <li
+                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
+                  onClick={() => setSelectedPricingFeature('Reporting & analytics')}
+                >
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Reporting & analytics</span>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
               </ul>
               <Button
                 size="sm"
                 className="w-full sm:h-10"
-                onClick={() => window.open('https://getonapod.com', '_blank')}
-              >
-                Book a Call
-              </Button>
-            </div>
-
-            {/* Pro */}
-            <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-gradient-to-b from-slate-900 to-slate-800 border border-slate-700 shadow-lg text-white">
-              <div className="mb-3 sm:mb-4">
-                <h3 className="text-base sm:text-lg font-semibold">Pro</h3>
-                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold">$4,000</span>
-                  <span className="text-sm text-slate-400">/month</span>
-                </div>
-              </div>
-              <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-300 font-medium">4 podcasts/month + PR</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-300">Everything in Growth, plus:</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-300">Done-for-you PR outreach</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-300">2-3 media angles monthly</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-300">Custom media list</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-300">Monthly strategy call</span>
-                </li>
-              </ul>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full sm:h-10 bg-white/10 border-white/20 text-white hover:bg-white/20"
-                onClick={() => window.open('https://getonapod.com', '_blank')}
+                onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
               >
                 Book a Call
               </Button>
             </div>
           </div>
 
+          <p className="text-center text-xs sm:text-sm text-muted-foreground mb-8 sm:mb-12">
+            All plans require a 3-month minimum commitment.
+          </p>
+
+          {/* FAQ Section */}
+          <div className="mt-12 sm:mt-16">
+            <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 sm:mb-8">
+              Common Questions
+            </h3>
+            <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-700">
+              <PricingFAQ variant="compact" />
+            </div>
+          </div>
+
           {/* Bottom CTA */}
-          <div className="text-center px-2">
+          <div className="text-center px-2 mt-8 sm:mt-12">
             <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
               Not sure which plan is right for you?
             </p>
@@ -1705,7 +1719,7 @@ export default function ProspectView() {
               size="default"
               variant="outline"
               className="gap-2 text-sm sm:text-base"
-              onClick={() => window.open('https://getonapod.com', '_blank')}
+              onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
             >
               <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
               Schedule a Free Strategy Call
@@ -2764,6 +2778,12 @@ export default function ProspectView() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Pricing Feature Detail Modal */}
+      <FeatureDetailModal
+        selectedFeature={selectedPricingFeature}
+        onClose={() => setSelectedPricingFeature(null)}
+      />
     </div>
   )
 }
