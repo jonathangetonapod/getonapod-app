@@ -1730,8 +1730,18 @@ export default function ProspectView() {
             </div>
           </div>
 
-          <p className="text-center text-xs sm:text-sm text-muted-foreground mb-8 sm:mb-12">
+          <p className="text-center text-xs sm:text-sm text-muted-foreground mb-4">
             All plans require a 3-month minimum commitment.
+          </p>
+          <p className="text-center mb-8 sm:mb-12">
+            <a
+              href="/what-to-expect"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs sm:text-sm text-primary hover:text-primary/80 underline underline-offset-4 transition-colors"
+            >
+              Want to know what happens after you sign up?
+            </a>
           </p>
 
           {/* FAQ Section */}
