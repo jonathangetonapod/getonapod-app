@@ -113,7 +113,7 @@ const PricingSection = () => {
                   className="w-full min-h-[48px]"
                   asChild
                 >
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Book a Call</a>
+                  <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
                 </Button>
               </div>
             ))}

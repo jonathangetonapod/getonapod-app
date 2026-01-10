@@ -1616,7 +1616,7 @@ export default function ProspectView() {
                 variant="outline"
                 size="sm"
                 className="w-full sm:h-10"
-                onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
               >
                 Book a Call
               </Button>
@@ -1689,7 +1689,7 @@ export default function ProspectView() {
               <Button
                 size="sm"
                 className="w-full sm:h-10"
-                onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
               >
                 Book a Call
               </Button>
@@ -1719,7 +1719,7 @@ export default function ProspectView() {
               size="default"
               variant="outline"
               className="gap-2 text-sm sm:text-base"
-              onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+              onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
             >
               <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
               Schedule a Free Strategy Call

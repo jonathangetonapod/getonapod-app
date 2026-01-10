@@ -246,7 +246,7 @@ const Course = () => {
             check out our done-for-you services.
           </p>
           <Button variant="secondary" size="lg" asChild>
-            <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Schedule a Call</a>
+            <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Schedule a Call</a>
           </Button>
         </div>
       </section>

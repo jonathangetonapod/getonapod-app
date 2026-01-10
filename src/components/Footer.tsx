@@ -3,7 +3,7 @@ const Footer = () => {
     { href: '#how-it-works', label: 'How It Works' },
     { href: '#pricing', label: 'Pricing' },
     { href: '#faq', label: 'FAQ' },
-    { href: 'https://calendly.com/getonapodjg/30min', label: 'Book a Call' },
+    { href: 'https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', label: 'Book a Call' },
   ];
 
   return (
