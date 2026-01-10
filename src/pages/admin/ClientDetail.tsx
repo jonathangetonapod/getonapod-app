@@ -107,6 +107,8 @@ export default function ClientDetail() {
   const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
   const [dashboardCacheStatus, setDashboardCacheStatus] = useState<{ cached: number; aiAnalyzed: number; total: number } | null>(null)
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
+  const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
+  const [deletingAllRejected, setDeletingAllRejected] = useState(false)
   const [editBookingForm, setEditBookingForm] = useState({
     podcast_name: '',
     host_name: '',
@@ -999,6 +1001,139 @@ export default function ClientDetail() {
     window.open(`/client/${client.dashboard_slug}`, '_blank')
   }
 
+  const deletePodcastFromDashboard = async (podcastId: string, podcastName: string | null) => {
+    if (!client?.id || !client?.google_sheet_url) return
+
+    setDeletingPodcastId(podcastId)
+    try {
+      const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
+
+      // Delete from Google Sheet first
+      if (spreadsheetId) {
+        try {
+          const { data: session } = await supabase.auth.getSession()
+          const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.session?.access_token}`,
+            },
+            body: JSON.stringify({ spreadsheetId, podcastId }),
+          })
+
+          if (!response.ok) {
+            console.warn('Failed to delete from Google Sheet')
+          }
+        } catch (sheetError) {
+          console.warn('Error deleting from Google Sheet:', sheetError)
+        }
+      }
+
+      // Delete from cached podcasts table
+      await supabase
+        .from('client_dashboard_podcasts')
+        .delete()
+        .eq('client_id', client.id)
+        .eq('podcast_id', podcastId)
+
+      // Delete the feedback record
+      await supabase
+        .from('client_podcast_feedback')
+        .delete()
+        .eq('client_id', client.id)
+        .eq('podcast_id', podcastId)
+
+      queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
+
+      toast({
+        title: 'Podcast Deleted',
+        description: `"${podcastName || podcastId}" has been removed`
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete podcast',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeletingPodcastId(null)
+    }
+  }
+
+  const deleteAllRejectedPodcasts = async () => {
+    if (!client?.id || !client?.google_sheet_url) return
+
+    const rejectedPodcasts = clientFeedback.filter((f: any) => f.status === 'rejected')
+    if (rejectedPodcasts.length === 0) {
+      toast({
+        title: 'No Rejected Podcasts',
+        description: 'There are no rejected podcasts to delete'
+      })
+      return
+    }
+
+    setDeletingAllRejected(true)
+    try {
+      const podcastIds = rejectedPodcasts.map((f: any) => f.podcast_id)
+      const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
+
+      // Delete from Google Sheet first
+      if (spreadsheetId) {
+        const { data: session } = await supabase.auth.getSession()
+        let sheetDeleteCount = 0
+
+        for (const podcastId of podcastIds) {
+          try {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-podcast-from-sheet`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session?.session?.access_token}`,
+              },
+              body: JSON.stringify({ spreadsheetId, podcastId }),
+            })
+
+            if (response.ok) {
+              sheetDeleteCount++
+            }
+          } catch (sheetError) {
+            console.warn('Error deleting from Google Sheet:', podcastId)
+          }
+        }
+        console.log(`Deleted ${sheetDeleteCount}/${podcastIds.length} from Google Sheet`)
+      }
+
+      // Delete all rejected from cached podcasts table
+      await supabase
+        .from('client_dashboard_podcasts')
+        .delete()
+        .eq('client_id', client.id)
+        .in('podcast_id', podcastIds)
+
+      // Delete all rejected feedback records
+      await supabase
+        .from('client_podcast_feedback')
+        .delete()
+        .eq('client_id', client.id)
+        .in('podcast_id', podcastIds)
+
+      queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
+
+      toast({
+        title: 'All Rejected Deleted',
+        description: `Removed ${rejectedPodcasts.length} rejected podcasts`
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete rejected podcasts',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeletingAllRejected(false)
+    }
+  }
+
   if (clientLoading || bookingsLoading) {
     return (
       <DashboardLayout>
@@ -1808,9 +1943,30 @@ export default function ClientDetail() {
                       {/* Rejected List */}
                       {expandedFeedbackSection === 'rejected' && clientFeedback.filter((f: any) => f.status === 'rejected').length > 0 && (
                         <div className="space-y-2">
-                          <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
-                            Rejected Podcasts
-                          </p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
+                              Rejected Podcasts
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              onClick={deleteAllRejectedPodcasts}
+                              disabled={deletingAllRejected}
+                            >
+                              {deletingAllRejected ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Deleting...
+                                </>
+                              ) : (
+                                <>
+                                  <Trash2 className="h-3 w-3 mr-1" />
+                                  Delete All
+                                </>
+                              )}
+                            </Button>
+                          </div>
                           <div className="space-y-2 max-h-48 overflow-y-auto">
                             {clientFeedback.filter((f: any) => f.status === 'rejected').map((fb: any) => (
                               <div
@@ -1819,9 +1975,22 @@ export default function ClientDetail() {
                               >
                                 <div className="flex items-center gap-2">
                                   <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
-                                  <span className="font-medium text-sm truncate">
+                                  <span className="font-medium text-sm truncate flex-1">
                                     {fb.podcast_name || 'Unknown Podcast'}
                                   </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
+                                    onClick={() => deletePodcastFromDashboard(fb.podcast_id, fb.podcast_name)}
+                                    disabled={deletingPodcastId === fb.podcast_id}
+                                  >
+                                    {deletingPodcastId === fb.podcast_id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3 w-3" />
+                                    )}
+                                  </Button>
                                 </div>
                                 {fb.notes && (
                                   <p className="text-xs text-muted-foreground mt-1 italic pl-5">
