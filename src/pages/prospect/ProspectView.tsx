@@ -847,58 +847,38 @@ export default function ProspectView() {
             </div>
 
             {/* Compact Stats Row */}
-            <TooltipProvider delayDuration={300}>
-              <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-2 cursor-help">
-                      <Users className="h-5 w-5 text-green-500" />
-                      <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
-                      <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
-                      <Info className="h-3 w-3 text-muted-foreground/40" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[280px]">
-                    <p className="font-semibold mb-1">Verified Audience Estimates</p>
-                    <p className="text-xs text-muted-foreground">
-                      Per-episode listener counts from Podscan, calculated using chart rankings, reviews, and ML models.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-2 cursor-help">
-                      <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                      <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
-                      <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
-                      <Info className="h-3 w-3 text-muted-foreground/40" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[280px]">
-                    <p className="font-semibold mb-1">Average iTunes Rating</p>
-                    <p className="text-xs text-muted-foreground">
-                      Aggregated star ratings from Apple Podcasts reviews across all curated shows.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-2 cursor-help">
-                      <Mic className="h-5 w-5 text-primary" />
-                      <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
-                      <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
-                      <Info className="h-3 w-3 text-muted-foreground/40" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[280px]">
-                    <p className="font-semibold mb-1">Curated Opportunities</p>
-                    <p className="text-xs text-muted-foreground">
-                      Hand-picked shows matched to your expertise, vetted for active publishing.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
+              <div className="flex items-center gap-2 group relative">
+                <Users className="h-5 w-5 text-green-500" />
+                <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
+                <Info className="h-3 w-3 text-muted-foreground/40 cursor-help" />
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-popover border rounded-md shadow-md text-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 w-64">
+                  <p className="font-semibold mb-1">Verified Audience Estimates</p>
+                  <p className="text-xs text-muted-foreground">Per-episode listener counts from Podscan, calculated using chart rankings, reviews, and ML models.</p>
+                </div>
               </div>
-            </TooltipProvider>
+              <div className="flex items-center gap-2 group relative">
+                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+                <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
+                <Info className="h-3 w-3 text-muted-foreground/40 cursor-help" />
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-popover border rounded-md shadow-md text-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 w-64">
+                  <p className="font-semibold mb-1">Average iTunes Rating</p>
+                  <p className="text-xs text-muted-foreground">Aggregated star ratings from Apple Podcasts reviews across all curated shows.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 group relative">
+                <Mic className="h-5 w-5 text-primary" />
+                <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
+                <Info className="h-3 w-3 text-muted-foreground/40 cursor-help" />
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-popover border rounded-md shadow-md text-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 w-64">
+                  <p className="font-semibold mb-1">Curated Opportunities</p>
+                  <p className="text-xs text-muted-foreground">Hand-picked shows matched to your expertise, vetted for active publishing.</p>
+                </div>
+              </div>
+            </div>
 
             {/* AI Insights Loading Status */}
             {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
