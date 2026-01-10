@@ -52,7 +52,10 @@ import {
   MousePointerClick,
   ListChecks,
   Rocket,
-  Info
+  Info,
+  Phone,
+  Calendar,
+  DollarSign
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -175,6 +178,10 @@ export default function ProspectView() {
   // Review panel state
   const [showReviewPanel, setShowReviewPanel] = useState(false)
 
+  // CTA bar state (shows after scrolling)
+  const [showCtaBar, setShowCtaBar] = useState(false)
+  const [ctaBarDismissed, setCtaBarDismissed] = useState(false)
+
   // React Query: Fetch dashboard (cached for 5 minutes)
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
     queryKey: ['prospect-dashboard', slug],
@@ -280,6 +287,22 @@ export default function ProspectView() {
   useEffect(() => {
     setCurrentPage(1)
   }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter, sortBy])
+
+  // Show CTA bar after scrolling down
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY
+      const threshold = 600 // Show after scrolling 600px
+      if (scrollY > threshold && !ctaBarDismissed) {
+        setShowCtaBar(true)
+      } else if (scrollY <= threshold) {
+        setShowCtaBar(false)
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [ctaBarDismissed])
 
   // Generate personalized tagline if not already set
   useEffect(() => {
@@ -1524,8 +1547,65 @@ export default function ProspectView() {
         )}
       </div>
 
+      {/* CTA Section */}
+      <section className="py-12 sm:py-16 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
+            <Rocket className="h-4 w-4" />
+            Ready to Get Started?
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">
+            Let's Turn These Opportunities Into Bookings
+          </h2>
+
+          <p className="text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto mb-8">
+            We've curated {podcasts.length} podcasts perfect for you. Our team will handle the outreach,
+            pitching, and scheduling — you just show up and share your expertise.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-2xl mx-auto mb-8">
+            <div className="flex flex-col items-center p-4 rounded-xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30 mb-2">
+                <DollarSign className="h-5 w-5 text-green-600" />
+              </div>
+              <p className="font-semibold text-sm">No Upfront Costs</p>
+              <p className="text-xs text-muted-foreground">Pay only for results</p>
+            </div>
+            <div className="flex flex-col items-center p-4 rounded-xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 mb-2">
+                <Target className="h-5 w-5 text-blue-600" />
+              </div>
+              <p className="font-semibold text-sm">Hand-Picked Shows</p>
+              <p className="text-xs text-muted-foreground">Aligned with your goals</p>
+            </div>
+            <div className="flex flex-col items-center p-4 rounded-xl bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm">
+              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30 mb-2">
+                <Calendar className="h-5 w-5 text-purple-600" />
+              </div>
+              <p className="font-semibold text-sm">3-5 Bookings/Month</p>
+              <p className="text-xs text-muted-foreground">Average client results</p>
+            </div>
+          </div>
+
+          <Button
+            size="lg"
+            className="gap-2 px-8 py-6 text-base font-semibold shadow-lg hover:shadow-xl transition-all"
+            onClick={() => window.open('https://getonapod.com', '_blank')}
+          >
+            <Phone className="h-5 w-5" />
+            Book Your Free Strategy Call
+            <ArrowRight className="h-5 w-5" />
+          </Button>
+
+          <p className="text-xs text-muted-foreground mt-4">
+            No commitment required • 15-minute call • See if we're a fit
+          </p>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm mt-8 sm:mt-12">
+      <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 text-center">
           <p className="text-xs sm:text-sm text-muted-foreground">
             Powered by <span className="font-semibold text-foreground">Authority Built</span>
@@ -1544,6 +1624,53 @@ export default function ProspectView() {
           About Our Data
         </span>
       </button>
+
+      {/* Floating CTA Bar */}
+      <div
+        className={cn(
+          "fixed bottom-0 left-0 right-0 z-50 transition-all duration-300 transform",
+          showCtaBar && !ctaBarDismissed
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none"
+        )}
+      >
+        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-t border-slate-700 shadow-2xl">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="hidden sm:flex p-2 rounded-full bg-primary/20">
+                <Rocket className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-white font-medium text-sm sm:text-base truncate">
+                  Like what you see?
+                </p>
+                <p className="text-slate-400 text-xs sm:text-sm truncate">
+                  Let's get you booked on these podcasts
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                size="sm"
+                className="gap-1.5 whitespace-nowrap"
+                onClick={() => window.open('https://getonapod.com', '_blank')}
+              >
+                <Phone className="h-4 w-4" />
+                <span className="hidden sm:inline">Book a Call</span>
+                <span className="sm:hidden">Call</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-slate-400 hover:text-white hover:bg-slate-700"
+                onClick={() => setCtaBarDismissed(true)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Data Methodology Panel */}
       <Sheet open={showReviewPanel} onOpenChange={setShowReviewPanel}>
