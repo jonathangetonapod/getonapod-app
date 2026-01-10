@@ -1550,56 +1550,57 @@ export default function ProspectView() {
 
       {/* CTA Section */}
       {dashboard?.show_pricing_section !== false && (
-      <section className="py-12 sm:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10 sm:mb-12">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-              <Rocket className="h-4 w-4" />
+      <section className="py-10 sm:py-16 lg:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="text-center mb-8 sm:mb-12">
+            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-medium mb-4 sm:mb-6">
+              <Rocket className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Ready to Get Started?
             </div>
 
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">
+            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 px-2">
               Let's Turn These Opportunities Into Bookings
             </h2>
 
-            <p className="text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto">
+            <p className="text-muted-foreground text-sm sm:text-base lg:text-lg max-w-2xl mx-auto px-2">
               We've curated {podcasts.length} podcasts perfect for you. Our team handles everything —
               you just show up and share your expertise.
             </p>
           </div>
 
           {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 lg:gap-8 mb-8 sm:mb-10">
             {/* Starter */}
-            <div className="relative flex flex-col p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
-                <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-slate-900 dark:text-white">$1,000</span>
-                  <span className="text-muted-foreground">/month</span>
+            <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg">
+              <div className="mb-3 sm:mb-4">
+                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
+                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$1,000</span>
+                  <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>
-              <ul className="space-y-3 mb-6 flex-1">
+              <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">2 podcasts/month</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">2 podcasts/month</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Content package</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Content package</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
                 </li>
               </ul>
               <Button
                 variant="outline"
-                className="w-full"
+                size="sm"
+                className="w-full sm:h-10"
                 onClick={() => window.open('https://getonapod.com', '_blank')}
               >
                 Book a Call
@@ -1607,39 +1608,40 @@ export default function ProspectView() {
             </div>
 
             {/* Growth - Most Popular */}
-            <div className="relative flex flex-col p-6 rounded-2xl bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl scale-[1.02] md:scale-105">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-full">
+            <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl md:scale-105 order-first md:order-none">
+              <div className="absolute -top-2.5 sm:-top-3 left-1/2 -translate-x-1/2">
+                <span className="px-2.5 sm:px-3 py-1 text-[10px] sm:text-xs font-semibold bg-primary text-white rounded-full whitespace-nowrap">
                   Most Popular
                 </span>
               </div>
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Growth</h3>
-                <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
-                  <span className="text-muted-foreground">/month</span>
+              <div className="mb-3 sm:mb-4 mt-1 sm:mt-0">
+                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Growth</h3>
+                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
+                  <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>
-              <ul className="space-y-3 mb-6 flex-1">
+              <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">4 podcasts/month</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium">4 podcasts/month</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Guest prep kit</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Content package</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Content package</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">Monthly report</span>
                 </li>
               </ul>
               <Button
-                className="w-full"
+                size="sm"
+                className="w-full sm:h-10"
                 onClick={() => window.open('https://getonapod.com', '_blank')}
               >
                 Book a Call
@@ -1647,43 +1649,44 @@ export default function ProspectView() {
             </div>
 
             {/* Pro */}
-            <div className="relative flex flex-col p-6 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-800 border border-slate-700 shadow-lg text-white">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold">Pro</h3>
-                <div className="mt-2 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">$4,000</span>
-                  <span className="text-slate-400">/month</span>
+            <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-gradient-to-b from-slate-900 to-slate-800 border border-slate-700 shadow-lg text-white">
+              <div className="mb-3 sm:mb-4">
+                <h3 className="text-base sm:text-lg font-semibold">Pro</h3>
+                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl font-bold">$4,000</span>
+                  <span className="text-sm text-slate-400">/month</span>
                 </div>
               </div>
-              <ul className="space-y-3 mb-6 flex-1">
+              <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-300 font-medium">4 podcasts/month + PR</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-300 font-medium">4 podcasts/month + PR</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-300">Everything in Growth, plus:</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-300">Everything in Growth, plus:</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-300">Done-for-you PR outreach</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-300">Done-for-you PR outreach</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-300">2-3 media angles monthly</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-300">2-3 media angles monthly</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-300">Custom media list</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-300">Custom media list</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-slate-300">Monthly strategy call</span>
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs sm:text-sm text-slate-300">Monthly strategy call</span>
                 </li>
               </ul>
               <Button
                 variant="outline"
-                className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20"
+                size="sm"
+                className="w-full sm:h-10 bg-white/10 border-white/20 text-white hover:bg-white/20"
                 onClick={() => window.open('https://getonapod.com', '_blank')}
               >
                 Book a Call
@@ -1692,20 +1695,20 @@ export default function ProspectView() {
           </div>
 
           {/* Bottom CTA */}
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground mb-4">
+          <div className="text-center px-2">
+            <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
               Not sure which plan is right for you?
             </p>
             <Button
-              size="lg"
+              size="default"
               variant="outline"
-              className="gap-2"
+              className="gap-2 text-sm sm:text-base"
               onClick={() => window.open('https://getonapod.com', '_blank')}
             >
-              <Phone className="h-5 w-5" />
+              <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
               Schedule a Free Strategy Call
             </Button>
-            <p className="text-xs text-muted-foreground mt-3">
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-2 sm:mt-3">
               15-minute call • No commitment • Custom plans available
             </p>
           </div>
@@ -1747,37 +1750,37 @@ export default function ProspectView() {
           <div className="relative overflow-hidden border-t border-white/20 shadow-2xl">
             <div className="absolute inset-0 bg-gradient-to-r from-primary via-purple-600 to-pink-600" />
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent" />
-            <div className="relative max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                 <div className="hidden sm:flex p-2 rounded-full bg-white/20">
                   <Rocket className="h-5 w-5 text-white" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white font-medium text-sm sm:text-base truncate">
+                  <p className="text-white font-medium text-xs sm:text-sm md:text-base truncate">
                     Like what you see?
                   </p>
-                  <p className="text-white/70 text-xs sm:text-sm truncate">
+                  <p className="text-white/70 text-[10px] sm:text-xs md:text-sm truncate">
                     Let's get you booked on these podcasts
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                 <Button
                   size="sm"
-                  className="gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90"
+                  className="gap-1 sm:gap-1.5 whitespace-nowrap bg-white text-primary hover:bg-white/90 text-xs sm:text-sm h-8 sm:h-9 px-2.5 sm:px-3"
                   onClick={() => window.open('https://getonapod.com', '_blank')}
                 >
-                  <Phone className="h-4 w-4" />
+                  <Phone className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="hidden sm:inline">Book a Call</span>
-                  <span className="sm:hidden">Call</span>
+                  <span className="sm:hidden">Book</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/20"
+                  className="h-7 w-7 sm:h-8 sm:w-8 text-white/70 hover:text-white hover:bg-white/20"
                   onClick={() => setCtaBarDismissed(true)}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </Button>
               </div>
             </div>
