@@ -3341,459 +3341,86 @@ export default function PortalDashboard() {
 
           {/* OUTREACH LIST TAB */}
           <TabsContent value="podcast-list" className="space-y-6">
-            {client?.prospect_dashboard_slug ? (
-              <Card className="bg-gradient-to-br from-primary/5 to-purple-500/5 border-primary/20">
-                <CardContent className="flex flex-col items-center justify-center py-12 sm:py-16 text-center px-4">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-                    <Mic className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
+            <Card className="bg-gradient-to-br from-primary/5 via-purple-500/5 to-pink-500/5 border-primary/20 overflow-hidden">
+              <CardContent className="flex flex-col items-center justify-center py-16 sm:py-24 text-center px-4 relative">
+                {/* Background decoration */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
+                  <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl" />
+                </div>
+
+                <div className="relative z-10">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center mb-8 shadow-xl shadow-primary/20 mx-auto">
+                    <Mic className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
                   </div>
-                  <h2 className="text-xl sm:text-2xl font-bold mb-3">Your Podcast Opportunities</h2>
-                  <p className="text-muted-foreground max-w-md mb-6 text-sm sm:text-base">
-                    View your personalized list of podcast opportunities, track your approvals, and see detailed analytics — all in your custom dashboard.
+
+                  <h2 className="text-2xl sm:text-3xl font-bold mb-4 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                    Your Podcast Command Center
+                  </h2>
+
+                  <p className="text-muted-foreground max-w-lg mb-8 text-sm sm:text-base leading-relaxed">
+                    Access your personalized dashboard to view curated podcast opportunities,
+                    approve shows for outreach, track your campaign progress, and see detailed analytics.
                   </p>
-                  <Button
-                    size="lg"
-                    className="gap-2 min-h-[48px]"
-                    onClick={() => window.open(`/p/${client.prospect_dashboard_slug}`, '_blank')}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open Your Dashboard
-                  </Button>
-                  <p className="text-xs text-muted-foreground mt-4">
-                    Opens in a new tab
-                  </p>
-                </CardContent>
-              </Card>
-            ) : client?.google_sheet_url ? (
-              <>
-                {/* Podcasts from Sheet */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex-1">
-                        <CardTitle>Your Outreach Podcasts</CardTitle>
-                        <CardDescription>
-                          {outreachLoading ? 'Loading podcasts...' :
-                           outreachData?.total ? `${outreachData.total} podcast${outreachData.total === 1 ? '' : 's'} in your outreach list` :
-                           'Podcasts from your Google Sheet'}
-                        </CardDescription>
-                        {/* AI Analysis Preloading Progress */}
-                        {preloadProgress.isLoading && preloadProgress.total > 0 && (
-                          <div className="mt-3">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                              <div className="h-2 w-2 bg-primary rounded-full animate-pulse" />
-                              <span>Loading AI insights... {preloadProgress.loaded}/{preloadProgress.total}</span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="h-full bg-primary transition-all duration-300 ease-out"
-                                style={{ width: `${(preloadProgress.loaded / preloadProgress.total) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                        {!preloadProgress.isLoading && preloadProgress.loaded > 0 && preloadProgress.loaded === preloadProgress.total && (
-                          <div className="mt-2 flex items-center gap-1.5 text-sm text-green-600">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            <span>AI insights ready</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-2 flex-wrap">
-                        {/* View Toggle */}
-                        <div className="flex border rounded-md overflow-hidden">
-                          <Button
-                            variant={outreachViewMode === 'grid' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setOutreachViewMode('grid')}
-                            className="rounded-none px-3"
-                            title="Grid view"
-                          >
-                            <LayoutGrid className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant={outreachViewMode === 'list' ? 'default' : 'ghost'}
-                            size="sm"
-                            onClick={() => setOutreachViewMode('list')}
-                            className="rounded-none px-3"
-                            title="List view"
-                          >
-                            <List className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => refetchOutreach()}
-                          disabled={outreachLoading}
-                          className="flex-1 sm:flex-none"
-                        >
-                          <RefreshCw className={`h-4 w-4 sm:mr-2 ${outreachLoading ? 'animate-spin' : ''}`} />
-                          <span className="hidden sm:inline">Refresh</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => window.open(client.google_sheet_url!, '_blank', 'noopener,noreferrer')}
-                          className="flex-1 sm:flex-none"
-                        >
-                          <ExternalLink className="h-4 w-4 sm:mr-2" />
-                          <span className="hidden sm:inline">Open in Google Sheets</span>
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {outreachLoading ? (
-                      <div className="flex items-center justify-center py-20">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary mr-3" />
-                        <span className="text-muted-foreground">Loading podcasts from your outreach list...</span>
-                      </div>
-                    ) : outreachError ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <AlertCircle className="h-12 w-12 text-destructive mb-3" />
-                        <h3 className="text-lg font-semibold mb-2">Failed to Load Podcasts</h3>
-                        <p className="text-sm text-muted-foreground max-w-md">
-                          There was an error loading your outreach list. Please try refreshing the page or contact support if the issue persists.
-                        </p>
-                      </div>
-                    ) : outreachData?.podcasts && outreachData.podcasts.length > 0 ? (
-                      <>
-                        {/* Impact Stats */}
-                        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-8">
-                          {/* Total Potential Reach */}
-                          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-                            <CardContent className="pt-6">
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-muted-foreground">Total Potential Reach</p>
-                                <p className="text-3xl font-bold text-primary">
-                                  {(() => {
-                                    const totalReach = outreachData.podcasts.reduce((sum, p) => sum + (p.audience_size || 0), 0)
-                                    if (totalReach >= 1000000) {
-                                      return `${(totalReach / 1000000).toFixed(1)}M`
-                                    } else if (totalReach >= 1000) {
-                                      return `${(totalReach / 1000).toFixed(0)}K`
-                                    }
-                                    return totalReach.toLocaleString()
-                                  })()}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Combined audience</p>
-                              </div>
-                            </CardContent>
-                          </Card>
 
-                          {/* Average Rating */}
-                          <Card className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
-                            <CardContent className="pt-6">
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-muted-foreground">Average Rating</p>
-                                <p className="text-3xl font-bold text-amber-600">
-                                  {(() => {
-                                    const rated = outreachData.podcasts.filter(p => {
-                                      const rating = Number(p.itunes_rating)
-                                      return !isNaN(rating) && rating > 0
-                                    })
-                                    if (rated.length === 0) return 'N/A'
-                                    const avg = rated.reduce((sum, p) => sum + Number(p.itunes_rating), 0) / rated.length
-                                    return `⭐ ${avg.toFixed(1)}`
-                                  })()}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Quality shows</p>
-                              </div>
-                            </CardContent>
-                          </Card>
-
-                          {/* Total Podcasts */}
-                          <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
-                            <CardContent className="pt-6">
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-muted-foreground">Total Podcasts</p>
-                                <p className="text-3xl font-bold text-green-600">
-                                  {outreachData.podcasts.length}
-                                </p>
-                                <p className="text-xs text-muted-foreground">In your outreach</p>
-                              </div>
-                            </CardContent>
-                          </Card>
-
-                          {/* Total Episodes */}
-                          <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-500/20">
-                            <CardContent className="pt-6">
-                              <div className="space-y-2">
-                                <p className="text-sm font-medium text-muted-foreground">Total Episodes</p>
-                                <p className="text-3xl font-bold text-purple-600">
-                                  {(() => {
-                                    const totalEpisodes = outreachData.podcasts.reduce((sum, p) => sum + (p.episode_count || 0), 0)
-                                    if (totalEpisodes >= 1000) {
-                                      return `${(totalEpisodes / 1000).toFixed(1)}K`
-                                    }
-                                    return totalEpisodes.toLocaleString()
-                                  })()}
-                                </p>
-                                <p className="text-xs text-muted-foreground">Content library</p>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
-
-                        {/* Grid View */}
-                        {outreachViewMode === 'grid' && (
-                          <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                            {outreachData.podcasts
-                              .slice((outreachPage - 1) * outreachPerPage, outreachPage * outreachPerPage)
-                              .map((podcast) => (
-                            <div
-                              key={podcast.podcast_id}
-                              className="flex flex-col gap-3 p-3 sm:p-4 sm:gap-4 rounded-lg border bg-card hover:shadow-lg transition-shadow cursor-pointer"
-                              onClick={() => setViewingOutreachPodcast(podcast)}
-                            >
-                              {podcast.podcast_image_url && (
-                                <img
-                                  src={podcast.podcast_image_url}
-                                  alt={podcast.podcast_name}
-                                  className="w-full h-40 sm:h-48 object-cover rounded-md"
-                                />
-                              )}
-                              <div className="flex-1 space-y-2">
-                                <h3 className="font-semibold text-lg line-clamp-2">{podcast.podcast_name}</h3>
-
-                                {(preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description) && (
-                                  <p className="text-sm text-muted-foreground line-clamp-3">
-                                    {preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description}
-                                  </p>
-                                )}
-
-                                <div className="flex flex-wrap gap-2 pt-2">
-                                  {podcast.audience_size && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      👥 {podcast.audience_size.toLocaleString()}
-                                    </Badge>
-                                  )}
-                                  {podcast.itunes_rating && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      ⭐ {Number(podcast.itunes_rating).toFixed(1)}
-                                    </Badge>
-                                  )}
-                                  {podcast.episode_count && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      🎙️ {podcast.episode_count} eps
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                {podcast.publisher_name && (
-                                  <p className="text-xs text-muted-foreground">
-                                    By {podcast.publisher_name}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="flex-1"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setViewingOutreachPodcast(podcast)
-                                  }}
-                                >
-                                  Learn more
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setDeletingOutreachPodcast(podcast)
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                              ))}
-                          </div>
-                        )}
-
-                        {/* List View */}
-                        {outreachViewMode === 'list' && (
-                          <div className="border rounded-lg overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow className="bg-muted/50">
-                                  <TableHead className="w-[80px]"></TableHead>
-                                  <TableHead>Podcast</TableHead>
-                                  <TableHead className="hidden sm:table-cell">Publisher</TableHead>
-                                  <TableHead className="text-right">Audience</TableHead>
-                                  <TableHead className="text-right hidden md:table-cell">Episodes</TableHead>
-                                  <TableHead className="text-right hidden md:table-cell">Rating</TableHead>
-                                  <TableHead className="w-[100px]"></TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {outreachData.podcasts
-                                  .slice((outreachPage - 1) * outreachPerPage, outreachPage * outreachPerPage)
-                                  .map((podcast) => (
-                                  <TableRow
-                                    key={podcast.podcast_id}
-                                    className="cursor-pointer hover:bg-muted/50"
-                                    onClick={() => setViewingOutreachPodcast(podcast)}
-                                  >
-                                    <TableCell className="py-3">
-                                      {podcast.podcast_image_url ? (
-                                        <img
-                                          src={podcast.podcast_image_url}
-                                          alt={podcast.podcast_name}
-                                          className="w-16 h-16 rounded-lg object-cover shadow-sm"
-                                        />
-                                      ) : (
-                                        <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
-                                          <Mic className="h-6 w-6 text-muted-foreground" />
-                                        </div>
-                                      )}
-                                    </TableCell>
-                                    <TableCell>
-                                      <div className="space-y-1">
-                                        <p className="font-medium line-clamp-1">{podcast.podcast_name}</p>
-                                        {(preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description) && (
-                                          <p className="text-xs text-muted-foreground line-clamp-1 max-w-md">
-                                            {preloadedAnalyses.get(podcast.podcast_id)?.clean_description || podcast.podcast_description}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </TableCell>
-                                    <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                                      {podcast.publisher_name || '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      <span className="font-medium">
-                                        {podcast.audience_size ? podcast.audience_size.toLocaleString() : '-'}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-right hidden md:table-cell">
-                                      {podcast.episode_count || '-'}
-                                    </TableCell>
-                                    <TableCell className="text-right hidden md:table-cell">
-                                      {podcast.itunes_rating ? (
-                                        <span className="inline-flex items-center gap-1">
-                                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                                          {Number(podcast.itunes_rating).toFixed(1)}
-                                        </span>
-                                      ) : '-'}
-                                    </TableCell>
-                                    <TableCell onClick={(e) => e.stopPropagation()}>
-                                      <div className="flex items-center gap-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => setViewingOutreachPodcast(podcast)}
-                                        >
-                                          <Eye className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                          onClick={() => setDeletingOutreachPodcast(podcast)}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
-
-                        {/* Pagination */}
-                        {outreachData.podcasts.length > outreachPerPage && (
-                          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t">
-                            <div className="text-sm text-muted-foreground text-center sm:text-left">
-                              Showing {((outreachPage - 1) * outreachPerPage) + 1}-{Math.min(outreachPage * outreachPerPage, outreachData.podcasts.length)} of {outreachData.podcasts.length} podcasts
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap justify-center">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setOutreachPage(p => Math.max(1, p - 1))}
-                                disabled={outreachPage === 1}
-                                className="gap-1"
-                              >
-                                <ChevronLeft className="h-4 w-4" />
-                                <span className="hidden sm:inline">Previous</span>
-                              </Button>
-                              <div className="flex gap-1">
-                                {Array.from({ length: Math.ceil(outreachData.podcasts.length / outreachPerPage) }, (_, i) => i + 1)
-                                  .filter(page => {
-                                    // Show first page, last page, current page, and pages adjacent to current
-                                    const totalPages = Math.ceil(outreachData.podcasts.length / outreachPerPage)
-                                    return page === 1 ||
-                                           page === totalPages ||
-                                           Math.abs(page - outreachPage) <= 1
-                                  })
-                                  .map((page, idx, arr) => {
-                                    // Add ellipsis if there's a gap
-                                    const prevPage = arr[idx - 1]
-                                    const showEllipsis = prevPage && page - prevPage > 1
-
-                                    return (
-                                      <div key={page} className="flex gap-1">
-                                        {showEllipsis && (
-                                          <span className="px-3 py-1 text-sm text-muted-foreground">...</span>
-                                        )}
-                                        <Button
-                                          variant={outreachPage === page ? "default" : "outline"}
-                                          size="sm"
-                                          onClick={() => setOutreachPage(page)}
-                                          className="w-9"
-                                        >
-                                          {page}
-                                        </Button>
-                                      </div>
-                                    )
-                                  })}
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setOutreachPage(p => Math.min(Math.ceil(outreachData.podcasts.length / outreachPerPage), p + 1))}
-                                disabled={outreachPage === Math.ceil(outreachData.podcasts.length / outreachPerPage)}
-                                className="gap-1"
-                              >
-                                <span className="hidden sm:inline">Next</span>
-                                <ChevronRight className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </>
+                  <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+                    {client?.prospect_dashboard_slug ? (
+                      <Button
+                        size="lg"
+                        className="gap-2 min-h-[52px] px-8 bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 shadow-lg shadow-primary/25"
+                        onClick={() => window.open(`https://getonapod.com/client/${client.prospect_dashboard_slug}`, '_blank')}
+                      >
+                        <ExternalLink className="h-5 w-5" />
+                        Open Your Dashboard
+                      </Button>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <FileText className="h-12 w-12 text-muted-foreground/50 mb-3" />
-                        <h3 className="text-lg font-semibold mb-2">No Podcasts Found</h3>
-                        <p className="text-sm text-muted-foreground max-w-md">
-                          No podcast IDs found in column E of your Google Sheet. Add podcast IDs to see them here!
-                        </p>
-                      </div>
+                      <Button
+                        size="lg"
+                        disabled
+                        className="gap-2 min-h-[52px] px-8"
+                      >
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Dashboard Being Prepared...
+                      </Button>
                     )}
-                  </CardContent>
-                </Card>
-              </>
-            ) : (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-                  <FileText className="h-16 w-16 text-muted-foreground/50 mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">No Outreach List Yet</h3>
-                  <p className="text-muted-foreground max-w-md">
-                    Your personalized outreach list hasn't been created yet. Contact your account manager to get started.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+                  </div>
+
+                  {client?.prospect_dashboard_slug && (
+                    <p className="text-xs text-muted-foreground mt-4">
+                      Opens in a new tab
+                    </p>
+                  )}
+
+                  {/* Feature highlights */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-12 max-w-2xl mx-auto">
+                    <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <ListChecks className="h-5 w-5 text-primary" />
+                      </div>
+                      <span className="text-xs font-medium text-center">Curated Podcasts</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
+                      <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                        <ThumbsUp className="h-5 w-5 text-green-600" />
+                      </div>
+                      <span className="text-xs font-medium text-center">Easy Approvals</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
+                      <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
+                        <Brain className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <span className="text-xs font-medium text-center">AI Insights</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
+                      <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                        <Rocket className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <span className="text-xs font-medium text-center">Track Progress</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* PREMIUM PLACEMENTS TAB */}
