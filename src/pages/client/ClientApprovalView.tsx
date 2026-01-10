@@ -70,6 +70,7 @@ interface ClientDashboard {
   dashboard_tagline: string | null
   dashboard_view_count: number
   dashboard_last_viewed_at: string | null
+  dashboard_enabled: boolean | null
 }
 
 interface PodcastCategory {
@@ -230,7 +231,7 @@ export default function ClientApprovalView() {
       return data.podcasts || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    enabled: !!dashboard?.content_ready && !!dashboard?.spreadsheet_id,
+    enabled: !!dashboard?.id && !!spreadsheetId,
   })
 
   // React Query: Fetch feedback (refreshes more often)
@@ -259,7 +260,7 @@ export default function ClientApprovalView() {
   const loading = dashboardLoading
   const loadingPodcasts = podcastsLoading
   const error = dashboardError?.message || null
-  const cacheNotReady = dashboard && !dashboard.content_ready
+  const cacheNotReady = dashboard && dashboard.dashboard_enabled === false
 
   // Update view count once (fire and forget)
   useEffect(() => {

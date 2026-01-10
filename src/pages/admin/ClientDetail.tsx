@@ -1560,6 +1560,41 @@ export default function ClientDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Enable Toggle */}
+              <div className="flex items-center justify-between pb-3 border-b">
+                <div className="space-y-0.5">
+                  <Label htmlFor="dashboard-enabled">Enable Dashboard</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Allow client to view approval dashboard
+                  </p>
+                </div>
+                <Switch
+                  id="dashboard-enabled"
+                  checked={client.dashboard_enabled || false}
+                  onCheckedChange={async (checked) => {
+                    try {
+                      await supabase
+                        .from('clients')
+                        .update({ dashboard_enabled: checked })
+                        .eq('id', client.id)
+                      queryClient.invalidateQueries({ queryKey: ['client', id] })
+                      toast({
+                        title: checked ? 'Dashboard Enabled' : 'Dashboard Disabled',
+                        description: checked
+                          ? 'Client can now view their approval dashboard'
+                          : 'Dashboard is hidden from client'
+                      })
+                    } catch (error) {
+                      toast({
+                        title: 'Error',
+                        description: 'Failed to update dashboard status',
+                        variant: 'destructive'
+                      })
+                    }
+                  }}
+                />
+              </div>
+
               {client.google_sheet_url ? (
                 <>
                   {/* Dashboard URL */}

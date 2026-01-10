@@ -17,7 +17,7 @@ async function run() {
     await client.connect();
     console.log('Connected!');
 
-    const sql = fs.readFileSync('supabase/migrations/20260109_prospect_dashboard_podcasts_cache.sql', 'utf8');
+    const sql = fs.readFileSync('supabase/migrations/20260109_client_podcast_approval_dashboard.sql', 'utf8');
     console.log('Running migration...');
     await client.query(sql);
     console.log('Migration completed successfully!');
