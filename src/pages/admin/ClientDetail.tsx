@@ -1088,20 +1088,29 @@ export default function ClientDetail() {
       }
 
       // Delete from cached podcasts table
-      await supabase
+      const { error: cacheError } = await supabase
         .from('client_dashboard_podcasts')
         .delete()
         .eq('client_id', client.id)
         .eq('podcast_id', podcastId)
 
+      if (cacheError) {
+        console.error('Error deleting from cache:', cacheError)
+      }
+
       // Delete the feedback record
-      await supabase
+      const { error: feedbackError } = await supabase
         .from('client_podcast_feedback')
         .delete()
         .eq('client_id', client.id)
         .eq('podcast_id', podcastId)
 
-      queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
+      if (feedbackError) {
+        throw feedbackError
+      }
+
+      // Invalidate queries to refresh the UI
+      await queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
 
       toast({
         title: 'Podcast Deleted',
@@ -1162,20 +1171,29 @@ export default function ClientDetail() {
       }
 
       // Delete all rejected from cached podcasts table
-      await supabase
+      const { error: cacheError } = await supabase
         .from('client_dashboard_podcasts')
         .delete()
         .eq('client_id', client.id)
         .in('podcast_id', podcastIds)
 
+      if (cacheError) {
+        console.error('Error deleting from cache:', cacheError)
+      }
+
       // Delete all rejected feedback records
-      await supabase
+      const { error: feedbackError } = await supabase
         .from('client_podcast_feedback')
         .delete()
         .eq('client_id', client.id)
         .in('podcast_id', podcastIds)
 
-      queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
+      if (feedbackError) {
+        throw feedbackError
+      }
+
+      // Invalidate queries to refresh the UI
+      await queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
 
       toast({
         title: 'All Rejected Deleted',
