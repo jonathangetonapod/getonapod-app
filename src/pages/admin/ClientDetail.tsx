@@ -1099,27 +1099,32 @@ export default function ClientDetail() {
       }
 
       // Delete the feedback record
-      const { error: feedbackError } = await supabase
+      const { data: deletedData, error: feedbackError } = await supabase
         .from('client_podcast_feedback')
         .delete()
         .eq('client_id', client.id)
         .eq('podcast_id', podcastId)
 
+      console.log('Delete result:', { deletedData, feedbackError, client_id: client.id, podcast_id: podcastId })
+
       if (feedbackError) {
+        console.error('Feedback deletion error:', feedbackError)
         throw feedbackError
       }
 
-      // Invalidate queries to refresh the UI
-      await queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
+      // Force refetch the feedback data
+      console.log('Refetching feedback with id:', id)
+      await queryClient.refetchQueries({ queryKey: ['client-feedback', id] })
 
       toast({
         title: 'Podcast Deleted',
         description: `"${podcastName || podcastId}" has been removed`
       })
     } catch (error) {
+      console.error('Delete podcast error:', error)
       toast({
         title: 'Error',
-        description: 'Failed to delete podcast',
+        description: error instanceof Error ? error.message : 'Failed to delete podcast',
         variant: 'destructive'
       })
     } finally {
@@ -1189,20 +1194,22 @@ export default function ClientDetail() {
         .in('podcast_id', podcastIds)
 
       if (feedbackError) {
+        console.error('Feedback deletion error:', feedbackError)
         throw feedbackError
       }
 
-      // Invalidate queries to refresh the UI
-      await queryClient.invalidateQueries({ queryKey: ['client-feedback', id] })
+      // Force refetch the feedback data
+      await queryClient.refetchQueries({ queryKey: ['client-feedback', id] })
 
       toast({
         title: 'All Rejected Deleted',
         description: `Removed ${rejectedPodcasts.length} rejected podcasts`
       })
     } catch (error) {
+      console.error('Delete all rejected error:', error)
       toast({
         title: 'Error',
-        description: 'Failed to delete rejected podcasts',
+        description: error instanceof Error ? error.message : 'Failed to delete rejected podcasts',
         variant: 'destructive'
       })
     } finally {
