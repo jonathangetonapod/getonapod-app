@@ -156,8 +156,23 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     try {
       const { session: newSession, client: newClient } = await apiLoginWithPassword(email, password)
 
+      console.log('[ClientPortal] Login successful, storing session:', {
+        sessionToken: newSession.session_token.substring(0, 20) + '...',
+        tokenLength: newSession.session_token.length,
+        clientId: newSession.client_id,
+        expiresAt: newSession.expires_at
+      })
+
       // Store in localStorage
       sessionStorage.save(newSession, newClient)
+
+      // Verify it was saved correctly
+      const { session: savedSession } = sessionStorage.get()
+      console.log('[ClientPortal] Session saved to localStorage:', {
+        saved: !!savedSession,
+        tokenMatch: savedSession?.session_token === newSession.session_token,
+        savedToken: savedSession?.session_token.substring(0, 20) + '...'
+      })
 
       // Update state
       setSession(newSession)

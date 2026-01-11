@@ -65,7 +65,31 @@ serve(async (req) => {
     // If session token provided, validate it
     // If no session token, allow it (for admin impersonation)
     if (sessionToken) {
-      console.log('[Get Client Bookings] Validating session token:', sessionToken.substring(0, 10) + '...')
+      console.log('[Get Client Bookings] Validating session token:', {
+        tokenPreview: sessionToken.substring(0, 20) + '...',
+        tokenLength: sessionToken.length,
+        tokenType: typeof sessionToken
+      })
+
+      // First, let's check if ANY sessions exist for debugging
+      const { data: allSessions, error: countError } = await supabase
+        .from('client_portal_sessions')
+        .select('session_token, client_id, expires_at, created_at')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      console.log('[Get Client Bookings] Recent sessions for client:', {
+        clientId,
+        sessionCount: allSessions?.length || 0,
+        sessions: allSessions?.map(s => ({
+          tokenPreview: s.session_token.substring(0, 20) + '...',
+          clientId: s.client_id,
+          expiresAt: s.expires_at,
+          createdAt: s.created_at
+        })),
+        countError: countError?.message
+      })
 
       const { data: session, error: sessionError } = await supabase
         .from('client_portal_sessions')
@@ -78,8 +102,12 @@ serve(async (req) => {
         hasError: !!sessionError,
         errorCode: sessionError?.code,
         errorMessage: sessionError?.message,
+        errorDetails: sessionError?.details,
+        errorHint: sessionError?.hint,
         sessionClientId: session?.client_id,
-        expiresAt: session?.expires_at
+        expiresAt: session?.expires_at,
+        requestedToken: sessionToken.substring(0, 20) + '...',
+        matchFound: !!session
       })
 
       if (sessionError || !session) {
