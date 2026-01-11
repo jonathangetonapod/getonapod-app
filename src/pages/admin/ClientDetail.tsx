@@ -1062,6 +1062,13 @@ export default function ClientDetail() {
   const deletePodcastFromDashboard = async (podcastId: string, podcastName: string | null) => {
     if (!client?.id || !client?.google_sheet_url) return
 
+    console.log('=== DELETE PODCAST START ===')
+    console.log('Attempting to delete:', { podcastId, podcastName, client_id: client.id })
+
+    // Check current feedback state before deletion
+    const feedbackBeforeDelete = clientFeedback.find((f: any) => f.podcast_id === podcastId)
+    console.log('Feedback record before delete:', feedbackBeforeDelete)
+
     setDeletingPodcastId(podcastId)
     try {
       const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
@@ -1114,7 +1121,13 @@ export default function ClientDetail() {
 
       // Force refetch the feedback data
       console.log('Refetching feedback with id:', id)
-      await queryClient.refetchQueries({ queryKey: ['client-feedback', id] })
+      const refetchResult = await queryClient.refetchQueries({ queryKey: ['client-feedback', id] })
+      console.log('Refetch result:', refetchResult)
+
+      // Log the current feedback state after refetch
+      const currentFeedback = queryClient.getQueryData(['client-feedback', id])
+      console.log('Current feedback after refetch:', currentFeedback)
+      console.log('Looking for podcast_id:', podcastId)
 
       toast({
         title: 'Podcast Deleted',
