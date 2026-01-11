@@ -18,6 +18,7 @@ import {
   Users,
   Star,
   ExternalLink,
+  FileText,
   Loader2,
   Sparkles,
   Target,
@@ -67,6 +68,7 @@ interface ClientDashboard {
   bio: string | null
   photo_url: string | null
   google_sheet_url: string | null
+  media_kit_url: string | null
   dashboard_tagline: string | null
   dashboard_view_count: number
   dashboard_last_viewed_at: string | null
@@ -873,6 +875,21 @@ export default function ClientApprovalView() {
                 <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
               </div>
             </div>
+
+            {/* Media Kit Button */}
+            {dashboard.media_kit_url && (
+              <div className="mt-4 animate-fade-in-up delay-200">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800"
+                  onClick={() => window.open(dashboard.media_kit_url!, '_blank')}
+                >
+                  <FileText className="h-4 w-4" />
+                  View My Media Kit
+                </Button>
+              </div>
+            )}
 
             {/* AI Insights Loading Status */}
             {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
@@ -42,6 +42,7 @@ import {
   Unlock,
   Copy,
   Send,
+  Save,
   Upload,
   Image,
   X,
@@ -102,6 +103,8 @@ export default function ClientDetail() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [creatingSheet, setCreatingSheet] = useState(false)
   const [bioExpanded, setBioExpanded] = useState(false)
+  const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
+  const [savingMediaKit, setSavingMediaKit] = useState(false)
   // Podcast Approval Dashboard state
   const [dashboardCacheLoading, setDashboardCacheLoading] = useState(false)
   const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
@@ -147,6 +150,7 @@ export default function ClientDetail() {
     notes: '',
     bio: '',
     google_sheet_url: '',
+    media_kit_url: '',
     prospect_dashboard_slug: ''
   })
 
@@ -393,6 +397,13 @@ export default function ClientDetail() {
     })
     .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
 
+  // Initialize editMediaKitUrl when client data loads
+  useEffect(() => {
+    if (client) {
+      setEditMediaKitUrl(client.media_kit_url || '')
+    }
+  }, [client])
+
   const goToPreviousMonth = () => {
     setSelectedDate(new Date(selectedYear, selectedMonth - 1, 1))
   }
@@ -554,6 +565,7 @@ export default function ClientDetail() {
         notes: client.notes || '',
         bio: client.bio || '',
         google_sheet_url: client.google_sheet_url || '',
+        media_kit_url: client.media_kit_url || '',
         prospect_dashboard_slug: client.prospect_dashboard_slug || ''
       })
       setIsEditClientModalOpen(true)
@@ -685,6 +697,37 @@ export default function ClientDetail() {
       })
     } finally {
       setCreatingSheet(false)
+    }
+  }
+
+  const saveMediaKitUrl = async () => {
+    if (!client || !id) return
+
+    setSavingMediaKit(true)
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ media_kit_url: editMediaKitUrl.trim() || null })
+        .eq('id', id)
+
+      if (error) throw error
+
+      // Refresh client data
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+
+      toast({
+        title: 'Media Kit URL Saved!',
+        description: 'Media kit link has been updated'
+      })
+    } catch (error) {
+      console.error('Error saving media kit URL:', error)
+      toast({
+        title: 'Save Failed',
+        description: error instanceof Error ? error.message : 'Failed to save media kit URL',
+        variant: 'destructive'
+      })
+    } finally {
+      setSavingMediaKit(false)
     }
   }
 
@@ -1453,6 +1496,53 @@ export default function ClientDetail() {
                   </Button>
                 </div>
               )}
+
+              {/* Media Kit / One Pager */}
+              <div className="flex items-start gap-3 pt-4 border-t">
+                <FileText className="h-4 w-4 text-muted-foreground mt-1" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium mb-2">Media Kit / One Pager</p>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Paste media kit URL..."
+                      value={editMediaKitUrl}
+                      onChange={(e) => setEditMediaKitUrl(e.target.value)}
+                      className="text-sm"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={saveMediaKitUrl}
+                      disabled={savingMediaKit || editMediaKitUrl === (client.media_kit_url || '')}
+                    >
+                      {savingMediaKit ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {editMediaKitUrl && (
+                    <Button
+                      variant="link"
+                      className="h-auto p-0 text-xs mt-2"
+                      onClick={() => window.open(editMediaKitUrl, '_blank')}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      Preview Media Kit
+                    </Button>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Link to the client's media kit or one-pager document (Google Doc, PDF, etc.)
+                  </p>
+                </div>
+              </div>
 
               {/* Client Bio */}
               {client.bio && (
