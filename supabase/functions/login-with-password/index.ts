@@ -12,18 +12,38 @@ interface LoginRequest {
 }
 
 serve(async (req) => {
+  console.log('[LOGIN] ========== FUNCTION INVOKED ==========')
+  console.log('[LOGIN] Method:', req.method)
+  console.log('[LOGIN] URL:', req.url)
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
+    console.log('[LOGIN] CORS preflight request')
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    // Get environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('[LOGIN] Missing environment variables!')
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
 
     const { email, password }: LoginRequest = await req.json()
+    console.log('[LOGIN] Request received for email:', email)
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
     const userAgent = req.headers.get('user-agent') || 'unknown'
 
@@ -145,6 +165,12 @@ serve(async (req) => {
     const sessionToken = crypto.randomUUID()
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
+    console.log('[Login] Creating session:', {
+      clientId: client.id,
+      sessionToken: sessionToken.substring(0, 20) + '...',
+      expiresAt: expiresAt.toISOString()
+    })
+
     const { data: session, error: sessionError } = await supabase
       .from('client_portal_sessions')
       .insert({
@@ -154,11 +180,19 @@ serve(async (req) => {
         ip_address: ip,
         user_agent: userAgent
       })
-      .select()
+      .select('id')
       .single()
 
+    console.log('[Login] Session creation result:', {
+      hasError: !!sessionError,
+      errorCode: sessionError?.code,
+      errorMessage: sessionError?.message,
+      errorDetails: sessionError?.details,
+      sessionId: session?.id
+    })
+
     if (sessionError) {
-      console.error('Error creating session:', sessionError)
+      console.error('[Login] Error creating session:', sessionError)
       return new Response(
         JSON.stringify({ error: 'Failed to create session' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
