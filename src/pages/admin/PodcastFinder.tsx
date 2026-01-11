@@ -11,6 +11,14 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Search,
   Sparkles,
   RefreshCw,
@@ -27,7 +35,8 @@ import {
   X,
   Trash2,
   FileText,
-  Plus
+  Plus,
+  MoreVertical
 } from 'lucide-react'
 import { getClients } from '@/services/clients'
 import { generatePodcastQueries, regenerateQuery } from '@/services/queryGeneration'
@@ -144,6 +153,11 @@ export default function PodcastFinder() {
   const [searchFields, setSearchFields] = useState('name,description')
   const [activeOnly, setActiveOnly] = useState(false)
   const [bioExpanded, setBioExpanded] = useState(false)
+
+  // Bulk actions state
+  const [customThresholdDialogOpen, setCustomThresholdDialogOpen] = useState(false)
+  const [customThresholdValue, setCustomThresholdValue] = useState('')
+  const [customThresholdQueryId, setCustomThresholdQueryId] = useState<string | null>(null)
 
   // Fetch clients
   const { data: clientsData } = useQuery({
@@ -877,6 +891,190 @@ export default function PodcastFinder() {
       }
       return newSet
     })
+  }
+
+  // Bulk actions handlers
+  const handleRemovePodcastsBelowScore = (queryId: string, threshold: number) => {
+    const query = queries.find(q => q.id === queryId)
+    if (!query) return
+
+    const podcastsToRemove = query.results.filter(podcast => {
+      const score = query.compatibilityScores[podcast.podcast_id]
+      return score !== undefined && score !== null && score < threshold
+    })
+
+    if (podcastsToRemove.length === 0) {
+      toast.info(`No podcasts found with score below ${threshold}`)
+      return
+    }
+
+    setQueries(prev => prev.map(q => {
+      if (q.id === queryId) {
+        const updatedResults = q.results.filter(podcast => {
+          const score = q.compatibilityScores[podcast.podcast_id]
+          return score === undefined || score === null || score >= threshold
+        })
+
+        // Also clean up scores and reasonings
+        const updatedScores = { ...q.compatibilityScores }
+        const updatedReasonings = { ...q.scoreReasonings }
+        podcastsToRemove.forEach(podcast => {
+          delete updatedScores[podcast.podcast_id]
+          delete updatedReasonings[podcast.podcast_id]
+        })
+
+        return {
+          ...q,
+          results: updatedResults,
+          compatibilityScores: updatedScores,
+          scoreReasonings: updatedReasonings
+        }
+      }
+      return q
+    }))
+
+    toast.success(`Removed ${podcastsToRemove.length} podcast${podcastsToRemove.length !== 1 ? 's' : ''} with score below ${threshold}`)
+  }
+
+  const handleRemoveUnscoredPodcasts = (queryId: string) => {
+    const query = queries.find(q => q.id === queryId)
+    if (!query) return
+
+    const podcastsToRemove = query.results.filter(podcast => {
+      const score = query.compatibilityScores[podcast.podcast_id]
+      return score === undefined || score === null
+    })
+
+    if (podcastsToRemove.length === 0) {
+      toast.info('No unscored podcasts found')
+      return
+    }
+
+    setQueries(prev => prev.map(q => {
+      if (q.id === queryId) {
+        const updatedResults = q.results.filter(podcast => {
+          const score = q.compatibilityScores[podcast.podcast_id]
+          return score !== undefined && score !== null
+        })
+
+        return {
+          ...q,
+          results: updatedResults
+        }
+      }
+      return q
+    }))
+
+    toast.success(`Removed ${podcastsToRemove.length} unscored podcast${podcastsToRemove.length !== 1 ? 's' : ''}`)
+  }
+
+  const handleOpenCustomThresholdDialog = (queryId: string) => {
+    setCustomThresholdQueryId(queryId)
+    setCustomThresholdValue('')
+    setCustomThresholdDialogOpen(true)
+  }
+
+  const handleApplyCustomThreshold = () => {
+    const threshold = parseFloat(customThresholdValue)
+
+    if (isNaN(threshold) || threshold < 1 || threshold > 10) {
+      toast.error('Please enter a valid score between 1 and 10')
+      return
+    }
+
+    if (customThresholdQueryId) {
+      handleRemovePodcastsBelowScore(customThresholdQueryId, threshold)
+    }
+
+    setCustomThresholdDialogOpen(false)
+    setCustomThresholdValue('')
+    setCustomThresholdQueryId(null)
+  }
+
+  // Chart mode bulk actions
+  const handleRemoveChartPodcastsBelowScore = (threshold: number) => {
+    const podcastsToRemove = chartResults.filter(podcast => {
+      const score = chartScores[podcast.podcast_id]
+      return score !== undefined && score !== null && score < threshold
+    })
+
+    if (podcastsToRemove.length === 0) {
+      toast.info(`No podcasts found with score below ${threshold}`)
+      return
+    }
+
+    setChartResults(prev => prev.filter(podcast => {
+      const score = chartScores[podcast.podcast_id]
+      return score === undefined || score === null || score >= threshold
+    }))
+
+    // Clean up scores and reasonings
+    setChartScores(prev => {
+      const updated = { ...prev }
+      podcastsToRemove.forEach(podcast => delete updated[podcast.podcast_id])
+      return updated
+    })
+    setChartReasonings(prev => {
+      const updated = { ...prev }
+      podcastsToRemove.forEach(podcast => delete updated[podcast.podcast_id])
+      return updated
+    })
+
+    // Remove from selection if selected
+    setSelectedPodcasts(prev => {
+      const updated = new Set(prev)
+      podcastsToRemove.forEach(podcast => updated.delete(podcast.podcast_id))
+      return updated
+    })
+
+    toast.success(`Removed ${podcastsToRemove.length} podcast${podcastsToRemove.length !== 1 ? 's' : ''} with score below ${threshold}`)
+  }
+
+  const handleRemoveUnscoredChartPodcasts = () => {
+    const podcastsToRemove = chartResults.filter(podcast => {
+      const score = chartScores[podcast.podcast_id]
+      return score === undefined || score === null
+    })
+
+    if (podcastsToRemove.length === 0) {
+      toast.info('No unscored podcasts found')
+      return
+    }
+
+    setChartResults(prev => prev.filter(podcast => {
+      const score = chartScores[podcast.podcast_id]
+      return score !== undefined && score !== null
+    }))
+
+    // Remove from selection if selected
+    setSelectedPodcasts(prev => {
+      const updated = new Set(prev)
+      podcastsToRemove.forEach(podcast => updated.delete(podcast.podcast_id))
+      return updated
+    })
+
+    toast.success(`Removed ${podcastsToRemove.length} unscored podcast${podcastsToRemove.length !== 1 ? 's' : ''}`)
+  }
+
+  const handleOpenCustomThresholdDialogChart = () => {
+    setCustomThresholdQueryId('chart')
+    setCustomThresholdValue('')
+    setCustomThresholdDialogOpen(true)
+  }
+
+  const handleApplyCustomThresholdChart = () => {
+    const threshold = parseFloat(customThresholdValue)
+
+    if (isNaN(threshold) || threshold < 1 || threshold > 10) {
+      toast.error('Please enter a valid score between 1 and 10')
+      return
+    }
+
+    handleRemoveChartPodcastsBelowScore(threshold)
+
+    setCustomThresholdDialogOpen(false)
+    setCustomThresholdValue('')
+    setCustomThresholdQueryId(null)
   }
 
   const handleExportToGoogleSheets = async () => {
@@ -1927,6 +2125,48 @@ export default function PodcastFinder() {
                             </>
                           )}
                         </Button>
+
+                        {/* Bulk Actions Dropdown */}
+                        {Object.keys(query.compatibilityScores).length > 0 && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="icon" title="Bulk Actions">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuLabel>Remove Podcasts</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleRemovePodcastsBelowScore(query.id, 7)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Remove all below 7
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleRemovePodcastsBelowScore(query.id, 8)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Remove all below 8
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleOpenCustomThresholdDialog(query.id)}
+                              >
+                                <Filter className="h-4 w-4 mr-2" />
+                                Remove below custom score...
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleRemoveUnscoredPodcasts(query.id)}
+                                className="text-muted-foreground"
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                Remove unscored
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </>
                     )}
                   </div>
@@ -2299,6 +2539,49 @@ export default function PodcastFinder() {
                           </>
                         )}
                       </Button>
+
+                      {/* Bulk Actions Dropdown for Charts */}
+                      {Object.keys(chartScores).length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" title="Bulk Actions">
+                              <MoreVertical className="h-4 w-4 mr-2" />
+                              Actions
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel>Remove Podcasts</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleRemoveChartPodcastsBelowScore(7)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remove all below 7
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleRemoveChartPodcastsBelowScore(8)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remove all below 8
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={handleOpenCustomThresholdDialogChart}
+                            >
+                              <Filter className="h-4 w-4 mr-2" />
+                              Remove below custom score...
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={handleRemoveUnscoredChartPodcasts}
+                              className="text-muted-foreground"
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Remove unscored
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
 
@@ -3082,6 +3365,66 @@ export default function PodcastFinder() {
                 No podcast details available
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Custom Threshold Dialog */}
+        <Dialog open={customThresholdDialogOpen} onOpenChange={setCustomThresholdDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Filter className="h-5 w-5 text-primary" />
+                Remove Podcasts Below Score
+              </DialogTitle>
+              <DialogDescription>
+                Enter a score threshold (1-10). All podcasts with scores below this value will be removed.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="custom-threshold">Score Threshold</Label>
+                <Input
+                  id="custom-threshold"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="0.1"
+                  placeholder="e.g., 7.5"
+                  value={customThresholdValue}
+                  onChange={(e) => setCustomThresholdValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (customThresholdQueryId === 'chart') {
+                        handleApplyCustomThresholdChart()
+                      } else {
+                        handleApplyCustomThreshold()
+                      }
+                    }
+                  }}
+                  autoFocus
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter a number between 1 and 10
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCustomThresholdDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={customThresholdQueryId === 'chart' ? handleApplyCustomThresholdChart : handleApplyCustomThreshold}
+                disabled={!customThresholdValue}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remove Podcasts
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
