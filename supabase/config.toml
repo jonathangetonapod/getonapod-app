@@ -4,6 +4,9 @@ verify_jwt = false
 [functions.create-checkout-session]
 verify_jwt = false
 
+[functions.login-with-password]
+verify_jwt = false
+
 [functions.create-client-account]
 enabled = true
 verify_jwt = true
