@@ -1530,7 +1530,7 @@ export default function PortalDashboard() {
             {/* Time Range Selector */}
             <Card>
           <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   variant={timeRange === 7 ? 'default' : 'outline'}
@@ -1576,12 +1576,13 @@ export default function PortalDashboard() {
                 </Button>
               </div>
 
-              <div className="min-w-[150px] text-center font-semibold">
-                {getDisplayDate()}
-              </div>
-
-              <div className="text-sm text-muted-foreground">
-                Showing {stats.total} {stats.total === 1 ? 'booking' : 'bookings'}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+                <div className="font-semibold">
+                  {getDisplayDate()}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Showing {stats.total} {stats.total === 1 ? 'booking' : 'bookings'}
+                </div>
               </div>
             </div>
           </CardContent>
