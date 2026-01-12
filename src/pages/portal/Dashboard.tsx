@@ -1588,7 +1588,7 @@ export default function PortalDashboard() {
         </Card>
 
         {/* Enhanced Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">Total Reach</CardTitle>
