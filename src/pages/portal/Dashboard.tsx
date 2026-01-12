@@ -1681,7 +1681,7 @@ export default function PortalDashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {/* Estimated Total Impressions */}
                 <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-blue-100">
                   <div className="flex items-center gap-2 mb-2">
