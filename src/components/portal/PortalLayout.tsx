@@ -1,6 +1,6 @@
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { LogOut, User, LayoutDashboard, BookOpen, Eye, X } from 'lucide-react'
 import {
@@ -77,6 +77,7 @@ export function PortalLayout({ children }: PortalLayoutProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
+                    {client?.photo_url && <AvatarImage src={client.photo_url} alt={client.name} />}
                     <AvatarFallback className="bg-primary/10 text-primary text-xs">
                       {client ? getInitials(client.name) : <User className="h-4 w-4" />}
                     </AvatarFallback>

@@ -89,7 +89,7 @@ serve(async (req) => {
     // Find client by email
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('id, name, email, portal_access_enabled, portal_password')
+      .select('id, name, email, portal_access_enabled, portal_password, photo_url')
       .eq('email', email)
       .single()
 
@@ -222,7 +222,8 @@ serve(async (req) => {
         client: {
           id: client.id,
           name: client.name,
-          email: client.email
+          email: client.email,
+          photo_url: client.photo_url
         },
         expires_at: expiresAt.toISOString()
       }),
