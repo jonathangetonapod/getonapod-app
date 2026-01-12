@@ -1515,7 +1515,7 @@ export default function PortalDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full max-w-6xl grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-1">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-1">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
@@ -2731,45 +2731,47 @@ export default function PortalDashboard() {
                     <CardDescription>Detailed breakdown of your podcast growth</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Month</TableHead>
-                          <TableHead className="text-right">Episodes</TableHead>
-                          <TableHead className="text-right">Total Reach</TableHead>
-                          <TableHead className="text-right">Avg Rating</TableHead>
-                          <TableHead className="text-right">Growth</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {analyticsData.monthlyData.slice().reverse().map((month) => (
-                          <TableRow key={month.key}>
-                            <TableCell className="font-medium">
-                              {month.month} {month.year}
-                            </TableCell>
-                            <TableCell className="text-right">{month.episodes}</TableCell>
-                            <TableCell className="text-right">
-                              {month.totalReach >= 1000000
-                                ? `${(month.totalReach / 1000000).toFixed(1)}M`
-                                : month.totalReach >= 1000
-                                ? `${(month.totalReach / 1000).toFixed(0)}K`
-                                : month.totalReach.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {month.avgRating > 0 ? `⭐ ${month.avgRating.toFixed(1)}` : 'N/A'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {month.growth !== 0 && (
-                                <span className={month.growth >= 0 ? 'text-green-600' : 'text-red-600'}>
-                                  {month.growth >= 0 ? '↑' : '↓'} {Math.abs(month.growth).toFixed(0)}%
-                                </span>
-                              )}
-                              {month.growth === 0 && <span className="text-muted-foreground">-</span>}
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Month</TableHead>
+                            <TableHead className="text-right">Episodes</TableHead>
+                            <TableHead className="text-right">Total Reach</TableHead>
+                            <TableHead className="text-right">Avg Rating</TableHead>
+                            <TableHead className="text-right">Growth</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {analyticsData.monthlyData.slice().reverse().map((month) => (
+                            <TableRow key={month.key}>
+                              <TableCell className="font-medium whitespace-nowrap">
+                                {month.month} {month.year}
+                              </TableCell>
+                              <TableCell className="text-right">{month.episodes}</TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                {month.totalReach >= 1000000
+                                  ? `${(month.totalReach / 1000000).toFixed(1)}M`
+                                  : month.totalReach >= 1000
+                                  ? `${(month.totalReach / 1000).toFixed(0)}K`
+                                  : month.totalReach.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                {month.avgRating > 0 ? `⭐ ${month.avgRating.toFixed(1)}` : 'N/A'}
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                {month.growth !== 0 && (
+                                  <span className={month.growth >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                    {month.growth >= 0 ? '↑' : '↓'} {Math.abs(month.growth).toFixed(0)}%
+                                  </span>
+                                )}
+                                {month.growth === 0 && <span className="text-muted-foreground">-</span>}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </CardContent>
                 </Card>
 
