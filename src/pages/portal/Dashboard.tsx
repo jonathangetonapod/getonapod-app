@@ -1489,9 +1489,9 @@ export default function PortalDashboard() {
 
   return (
     <PortalLayout>
-      <div className="flex gap-6">
+      <div className="flex flex-col xl:flex-row gap-6">
         {/* Main Content */}
-        <div className="flex-1 space-y-6">
+        <div className="flex-1 space-y-6 min-w-0">
           {/* Welcome Header */}
           <div className="flex items-center gap-4">
           {client?.photo_url ? (
@@ -4920,7 +4920,7 @@ export default function PortalDashboard() {
 
         {/* Sidebar - Upsells */}
         {addonServices && addonServices.length > 0 && publishedBookings.length > 0 && client && (
-          <div className="hidden lg:block w-80 flex-shrink-0">
+          <div className="hidden xl:block w-80 flex-shrink-0">
             <div className="sticky top-6 space-y-4 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2">
               {addonServices.map((service, index) => {
                 const availableEpisodes = publishedBookings.filter(booking =>
