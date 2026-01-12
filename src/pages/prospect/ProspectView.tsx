@@ -538,7 +538,7 @@ export default function ProspectView() {
     } else {
       setCurrentNotes('')
     }
-  }, [selectedPodcast, feedbackMap])
+  }, [selectedPodcast?.podcast_id])
 
 
   // Confetti celebration for approvals
