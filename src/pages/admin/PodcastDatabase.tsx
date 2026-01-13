@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,7 @@ import {
   Edit,
   Trash2,
   Download,
+  Upload,
 } from 'lucide-react'
 
 type ViewMode = 'table' | 'grid'
@@ -125,14 +127,20 @@ export default function PodcastDatabase() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Podcast Database</h1>
-        <p className="text-muted-foreground mt-2">
-          Manage and explore your podcast database
-        </p>
-      </div>
+    <DashboardLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold">Podcast Database</h1>
+          <p className="text-muted-foreground mt-2">
+            Manage and explore your podcast database
+          </p>
+        </div>
+
+      {/* Main Content with Sidebar Layout */}
+      <div className="flex flex-col xl:flex-row gap-6">
+        {/* Main Content Area */}
+        <div className="flex-1 min-w-0 space-y-6">
 
       {/* Quick Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -460,6 +468,123 @@ export default function PodcastDatabase() {
           ))}
         </div>
       )}
-    </div>
+        </div>
+        {/* End Main Content Area */}
+
+        {/* Sidebar */}
+        <div className="hidden xl:block w-80 flex-shrink-0">
+          <div className="sticky top-6 space-y-4 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2">
+
+            {/* Quick Filters */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Quick Filters
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="outline" className="w-full justify-start" size="sm">
+                  <Star className="h-4 w-4 mr-2 fill-amber-400 text-amber-400" />
+                  Top Rated (4.5+)
+                </Button>
+                <Button variant="outline" className="w-full justify-start" size="sm">
+                  <Users className="h-4 w-4 mr-2 text-purple-600" />
+                  Large Audience (1M+)
+                </Button>
+                <Button variant="outline" className="w-full justify-start" size="sm">
+                  <TrendingUp className="h-4 w-4 mr-2 text-green-600" />
+                  Recently Added
+                </Button>
+                <Button variant="outline" className="w-full justify-start" size="sm">
+                  <Mic className="h-4 w-4 mr-2 text-blue-600" />
+                  Active Shows
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Top Categories */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="h-4 w-4" />
+                  Top Categories
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {[
+                  { name: 'Business', count: 234, color: 'blue' },
+                  { name: 'Technology', count: 189, color: 'purple' },
+                  { name: 'Comedy', count: 156, color: 'pink' },
+                  { name: 'Health & Fitness', count: 142, color: 'green' },
+                  { name: 'News', count: 98, color: 'red' },
+                ].map((cat) => (
+                  <button
+                    key={cat.name}
+                    className="w-full flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors text-left"
+                  >
+                    <span className="text-sm font-medium">{cat.name}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {cat.count}
+                    </Badge>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Recently Viewed */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Eye className="h-4 w-4" />
+                  Recently Viewed
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {mockPodcasts.slice(0, 3).map((podcast) => (
+                  <div key={podcast.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors cursor-pointer">
+                    <img
+                      src={podcast.image}
+                      alt={podcast.name}
+                      className="w-10 h-10 rounded object-cover flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{podcast.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{podcast.host}</p>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Quick Actions */}
+            <Card className="bg-gradient-to-br from-primary/5 to-purple-600/5">
+              <CardHeader>
+                <CardTitle className="text-base">Quick Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button className="w-full bg-gradient-to-r from-primary to-purple-600" size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add New Podcast
+                </Button>
+                <Button variant="outline" className="w-full" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Database
+                </Button>
+                <Button variant="outline" className="w-full" size="sm">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import Podcasts
+                </Button>
+              </CardContent>
+            </Card>
+
+          </div>
+        </div>
+        {/* End Sidebar */}
+
+      </div>
+      {/* End Main Content with Sidebar Layout */}
+      </div>
+    </DashboardLayout>
   )
 }
