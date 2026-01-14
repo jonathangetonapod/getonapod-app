@@ -138,6 +138,11 @@ export default function ProspectDashboards() {
   const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
   const [savingMediaKit, setSavingMediaKit] = useState(false)
 
+  // Edit prospect name
+  const [editProspectName, setEditProspectName] = useState('')
+  const [savingProspectName, setSavingProspectName] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+
   // Feedback state
   const [feedback, setFeedback] = useState<PodcastFeedback[]>([])
   const [loadingFeedback, setLoadingFeedback] = useState(false)
@@ -462,17 +467,19 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl and reset state when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editProspectName and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
       setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
       setEditMediaKitUrl(selectedDashboard.media_kit_url || '')
+      setEditProspectName(selectedDashboard.prospect_name || '')
       // Extract the custom part of tagline (after "perfect for ")
       const tagline = selectedDashboard.personalized_tagline || ''
       const match = tagline.match(/perfect for\s+(.+)$/i)
       setEditTagline(match ? match[1] : '')
       setBioExpanded(false)
+      setIsEditingName(false)
       // Reset cache status when switching dashboards
       setCacheStatusData(null)
       setFetchStatus(null)
@@ -768,6 +775,40 @@ export default function ProspectDashboards() {
       toast.error('Failed to save media kit URL')
     } finally {
       setSavingMediaKit(false)
+    }
+  }
+
+  const saveProspectName = async () => {
+    if (!selectedDashboard || !editProspectName.trim()) return
+
+    setSavingProspectName(true)
+    try {
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ prospect_name: editProspectName.trim() })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, prospect_name: editProspectName.trim() }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, prospect_name: editProspectName.trim() } : null
+      )
+
+      setIsEditingName(false)
+      toast.success('Prospect name updated!')
+    } catch (error) {
+      console.error('Error saving prospect name:', error)
+      toast.error('Failed to save prospect name')
+    } finally {
+      setSavingProspectName(false)
     }
   }
 
@@ -1412,7 +1453,57 @@ export default function ProspectDashboards() {
                       {selectedDashboard.is_active ? 'Active' : 'Disabled'}
                     </Badge>
                   </div>
-                  <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
+                  {isEditingName ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editProspectName}
+                        onChange={(e) => setEditProspectName(e.target.value)}
+                        className="text-2xl font-bold h-auto py-2"
+                        placeholder="Enter prospect name"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveProspectName()
+                          if (e.key === 'Escape') {
+                            setIsEditingName(false)
+                            setEditProspectName(selectedDashboard.prospect_name)
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={saveProspectName}
+                        disabled={savingProspectName || !editProspectName.trim()}
+                      >
+                        {savingProspectName ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditingName(false)
+                          setEditProspectName(selectedDashboard.prospect_name)
+                        }}
+                        disabled={savingProspectName}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setIsEditingName(true)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                   {selectedDashboard.prospect_bio && (
                     <div className="mt-2">
                       <p className={cn(

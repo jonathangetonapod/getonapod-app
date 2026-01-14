@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -56,9 +56,7 @@ import {
   Phone,
   Calendar,
   DollarSign,
-  FileText,
-  Edit,
-  Save
+  FileText
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -150,10 +148,6 @@ export default function ProspectView() {
   const [episodeFilter, setEpisodeFilter] = useState<string>('any')
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
   const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc'>('default')
-
-  // Name editing state
-  const [isEditingName, setIsEditingName] = useState(false)
-  const [editedName, setEditedName] = useState('')
 
   // Pagination
   const CARDS_PER_PAGE = 18
@@ -265,26 +259,6 @@ export default function ProspectView() {
     },
     staleTime: 30 * 1000, // 30 seconds - feedback changes more often
     enabled: !!dashboard?.id,
-  })
-
-  // Mutation: Update prospect name
-  const updateProspectNameMutation = useMutation({
-    mutationFn: async (newName: string) => {
-      if (!dashboard?.id) throw new Error('No dashboard ID')
-
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ prospect_name: newName })
-        .eq('id', dashboard.id)
-
-      if (error) throw error
-      return newName
-    },
-    onSuccess: () => {
-      // Invalidate and refetch dashboard data
-      queryClient.invalidateQueries({ queryKey: ['prospect-dashboard', slug] })
-      setIsEditingName(false)
-    },
   })
 
   // Build feedback map from query data
@@ -566,25 +540,6 @@ export default function ProspectView() {
     }
   }, [selectedPodcast?.podcast_id])
 
-
-  // Handle name editing
-  const handleStartEditName = () => {
-    if (dashboard) {
-      setEditedName(dashboard.prospect_name)
-      setIsEditingName(true)
-    }
-  }
-
-  const handleSaveName = () => {
-    if (editedName.trim() && dashboard) {
-      updateProspectNameMutation.mutate(editedName.trim())
-    }
-  }
-
-  const handleCancelEditName = () => {
-    setIsEditingName(false)
-    setEditedName('')
-  }
 
   // Confetti celebration for approvals
   const triggerConfetti = () => {
@@ -919,58 +874,10 @@ export default function ProspectView() {
             )}
 
             {/* Greeting */}
-            <div className="space-y-1 animate-fade-in-up group">
-              {isEditingName ? (
-                <div className="flex items-center justify-center gap-2 px-2">
-                  <span className="text-2xl sm:text-3xl lg:text-4xl font-bold">Hi,</span>
-                  <Input
-                    value={editedName}
-                    onChange={(e) => setEditedName(e.target.value)}
-                    className="max-w-xs text-2xl sm:text-3xl lg:text-4xl font-bold h-auto py-2 bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent border-primary"
-                    placeholder="Enter name"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveName()
-                      if (e.key === 'Escape') handleCancelEditName()
-                    }}
-                  />
-                  <span className="text-2xl sm:text-3xl lg:text-4xl font-bold">!</span>
-                  <Button
-                    size="sm"
-                    onClick={handleSaveName}
-                    disabled={updateProspectNameMutation.isPending || !editedName.trim()}
-                    className="ml-2"
-                  >
-                    {updateProspectNameMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCancelEditName}
-                    disabled={updateProspectNameMutation.isPending}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2">
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-2">
-                    Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
-                  </h1>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleStartEditName}
-                    className="opacity-0 hover:opacity-100 transition-opacity group-hover:opacity-100"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+            <div className="space-y-1 animate-fade-in-up">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-2">
+                Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
+              </h1>
               <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2 transition-opacity duration-300">
                 {loadingPodcasts ? (
                   <span>Loading your personalized podcast matches...</span>
