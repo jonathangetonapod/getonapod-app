@@ -92,6 +92,7 @@ interface ProspectDashboard {
   media_kit_url: string | null
   loom_video_url: string | null
   loom_thumbnail_url: string | null
+  loom_video_title: string | null
   show_loom_video: boolean
 }
 
@@ -145,6 +146,7 @@ export default function ProspectDashboards() {
   // Edit Loom video URL
   const [editLoomVideoUrl, setEditLoomVideoUrl] = useState('')
   const [editLoomThumbnailUrl, setEditLoomThumbnailUrl] = useState('')
+  const [editLoomVideoTitle, setEditLoomVideoTitle] = useState('')
   const [savingLoomVideo, setSavingLoomVideo] = useState(false)
 
   // Edit prospect name
@@ -476,7 +478,7 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editLoomVideoUrl, editLoomThumbnailUrl, editProspectName and reset state when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editLoomVideoUrl, editLoomThumbnailUrl, editLoomVideoTitle, editProspectName and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
@@ -484,6 +486,7 @@ export default function ProspectDashboards() {
       setEditMediaKitUrl(selectedDashboard.media_kit_url || '')
       setEditLoomVideoUrl(selectedDashboard.loom_video_url || '')
       setEditLoomThumbnailUrl(selectedDashboard.loom_thumbnail_url || '')
+      setEditLoomVideoTitle(selectedDashboard.loom_video_title || 'Your Personal Video Message')
       setEditProspectName(selectedDashboard.prospect_name || '')
       // Extract the custom part of tagline (after "perfect for ")
       const tagline = selectedDashboard.personalized_tagline || ''
@@ -798,7 +801,8 @@ export default function ProspectDashboards() {
         .from('prospect_dashboards')
         .update({
           loom_video_url: editLoomVideoUrl.trim() || null,
-          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null
+          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+          loom_video_title: editLoomVideoTitle.trim() || null
         })
         .eq('id', selectedDashboard.id)
 
@@ -811,7 +815,8 @@ export default function ProspectDashboards() {
             ? {
                 ...d,
                 loom_video_url: editLoomVideoUrl.trim() || null,
-                loom_thumbnail_url: editLoomThumbnailUrl.trim() || null
+                loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+                loom_video_title: editLoomVideoTitle.trim() || null
               }
             : d
         )
@@ -820,7 +825,8 @@ export default function ProspectDashboards() {
         prev ? {
           ...prev,
           loom_video_url: editLoomVideoUrl.trim() || null,
-          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null
+          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+          loom_video_title: editLoomVideoTitle.trim() || null
         } : null
       )
 
@@ -1919,11 +1925,19 @@ export default function ProspectDashboards() {
                           onChange={(e) => setEditLoomThumbnailUrl(e.target.value)}
                           className="text-sm"
                         />
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Video title (e.g., Your Personal Video Message)..."
+                          value={editLoomVideoTitle}
+                          onChange={(e) => setEditLoomVideoTitle(e.target.value)}
+                          className="text-sm"
+                        />
                         <Button
                           variant="outline"
                           size="icon"
                           onClick={saveLoomVideoUrl}
-                          disabled={savingLoomVideo || (editLoomVideoUrl === (selectedDashboard.loom_video_url || '') && editLoomThumbnailUrl === (selectedDashboard.loom_thumbnail_url || ''))}
+                          disabled={savingLoomVideo || (editLoomVideoUrl === (selectedDashboard.loom_video_url || '') && editLoomThumbnailUrl === (selectedDashboard.loom_thumbnail_url || '') && editLoomVideoTitle === (selectedDashboard.loom_video_title || ''))}
                         >
                           {savingLoomVideo ? (
                             <Loader2 className="h-4 w-4 animate-spin" />

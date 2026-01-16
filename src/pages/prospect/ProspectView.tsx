@@ -81,6 +81,7 @@ interface ProspectDashboard {
   media_kit_url: string | null
   loom_video_url: string | null
   loom_thumbnail_url: string | null
+  loom_video_title: string | null
   show_loom_video: boolean
 }
 
@@ -894,26 +895,15 @@ export default function ProspectView() {
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20" />
                   )}
-
-                  {/* Play button overlay */}
-                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-                  <div className="relative z-10 w-20 h-20 rounded-full bg-primary flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
-                    <div className="w-0 h-0 border-l-[24px] border-l-white border-t-[14px] border-t-transparent border-b-[14px] border-b-transparent ml-1.5" />
-                  </div>
-
-                  {/* Name overlay on thumbnail */}
-                  <div className="absolute top-4 left-4 px-4 py-2 rounded-lg bg-white/95 backdrop-blur-sm shadow-lg">
-                    <p className="text-base font-bold text-foreground">Hey {dashboard.prospect_name}! 👋</p>
-                  </div>
                 </div>
 
                 {/* Video label */}
                 <div className="bg-gradient-to-br from-primary/5 to-purple-500/5 px-5 py-4 border-t-2 border-primary/20">
                   <p className="text-base font-bold text-center mb-1">
-                    Your Personal Video Message
+                    {dashboard.loom_video_title || 'Your Personal Video Message'}
                   </p>
                   <p className="text-xs text-center text-muted-foreground">
-                    Click to watch your custom intro (2 min)
+                    Click to watch your custom intro
                   </p>
                 </div>
               </div>
