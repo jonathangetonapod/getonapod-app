@@ -22,6 +22,11 @@ interface RequestBody {
   status?: 'active' | 'paused' | 'churned'
   notes?: string
 
+  // Headshot file (base64 encoded)
+  headshot_base64?: string
+  headshot_filename?: string
+  headshot_content_type?: string
+
   // Portal access options
   enable_portal_access?: boolean
   password?: string // If not provided, will use magic link only
@@ -73,6 +78,9 @@ serve(async (req) => {
       first_invoice_paid_date,
       status = 'active',
       notes,
+      headshot_base64,
+      headshot_filename,
+      headshot_content_type,
       enable_portal_access = true,
       password,
       send_invitation_email = true,
@@ -188,6 +196,56 @@ serve(async (req) => {
     }
 
     console.log(`[Create Client] Client created successfully: ${client.id}`)
+
+    // Upload headshot if provided
+    let headshotUrl: string | undefined
+    if (headshot_base64 && headshot_filename && headshot_content_type) {
+      try {
+        console.log(`[Create Client] Uploading headshot for ${client.name}`)
+
+        // Convert base64 to Uint8Array
+        const base64Data = headshot_base64.split(',')[1] || headshot_base64
+        const binaryString = atob(base64Data)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+
+        // Create filename with timestamp to avoid collisions
+        const timestamp = Date.now()
+        const fileExtension = headshot_filename.split('.').pop() || 'jpg'
+        const storagePath = `client-photos/${client.id}_${timestamp}.${fileExtension}`
+
+        // Upload to storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('client-assets')
+          .upload(storagePath, bytes, {
+            contentType: headshot_content_type,
+            upsert: false
+          })
+
+        if (uploadError) {
+          console.error('[Create Client] Headshot upload error:', uploadError)
+        } else {
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('client-assets')
+            .getPublicUrl(storagePath)
+
+          headshotUrl = publicUrl
+          console.log(`[Create Client] Headshot uploaded: ${headshotUrl}`)
+
+          // Update client with photo URL
+          await supabase
+            .from('clients')
+            .update({ photo_url: headshotUrl })
+            .eq('id', client.id)
+        }
+      } catch (headshotError) {
+        console.error('[Create Client] Error uploading headshot:', headshotError)
+        // Don't fail the whole request if headshot upload fails
+      }
+    }
 
     // Create Google Sheet if requested
     let googleSheetUrl: string | undefined

@@ -332,6 +332,27 @@ export default function Onboarding() {
     setLoading(true)
 
     try {
+      // Convert headshot to base64 if provided
+      let headshotBase64: string | undefined
+      let headshotFilename: string | undefined
+      let headshotContentType: string | undefined
+
+      if (data.headshotFile) {
+        try {
+          const reader = new FileReader()
+          headshotBase64 = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string)
+            reader.onerror = reject
+            reader.readAsDataURL(data.headshotFile!)
+          })
+          headshotFilename = data.headshotFile.name
+          headshotContentType = data.headshotFile.type
+        } catch (fileError) {
+          console.error('Error reading headshot file:', fileError)
+          toast.error('Failed to process headshot image')
+        }
+      }
+
       // Generate AI bio from all the onboarding information
       toast.info('Generating your professional bio...')
 
@@ -431,6 +452,9 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             password: generatedPassword,
             send_invitation_email: true,
             create_google_sheet: true,
+            headshot_base64: headshotBase64,
+            headshot_filename: headshotFilename,
+            headshot_content_type: headshotContentType,
           }),
         }
       )
@@ -481,9 +505,6 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
         console.error('Google Sheet creation error:', result.google_sheet_error)
         toast.error(`Google Sheet creation failed: ${result.google_sheet_error}`)
       }
-
-      // TODO: Upload headshot if provided
-      // This would require a separate endpoint or storage bucket access
 
     } catch (error) {
       console.error('Onboarding error:', error)
