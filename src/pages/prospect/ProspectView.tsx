@@ -882,9 +882,9 @@ export default function ProspectView() {
                 onClick={() => setShowLoomVideo(true)}
                 className="block group w-full text-left cursor-pointer"
               >
-              <div className="relative rounded-xl overflow-hidden shadow-2xl border-3 border-primary/30 hover:border-primary/60 transition-all duration-300 hover:scale-[1.02] bg-white dark:bg-slate-900">
+              <div className="relative rounded-xl overflow-hidden shadow-2xl border-3 border-primary/30 hover:border-primary/60 transition-all duration-300 hover:scale-[1.02] bg-white dark:bg-slate-900 p-[2px]">
                 {/* Video Thumbnail */}
-                <div className="relative aspect-video flex items-center justify-center">
+                <div className="relative aspect-video flex items-center justify-center rounded-lg overflow-hidden">
                   {/* Background - thumbnail image or gradient */}
                   {dashboard.loom_thumbnail_url ? (
                     <img
