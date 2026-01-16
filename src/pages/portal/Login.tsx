@@ -4,27 +4,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Mail, Loader2, CheckCircle2, Lock, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Lock, Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function PortalLogin() {
-  const [activeTab, setActiveTab] = useState('password')
-
-  // Magic Link state
-  const [mlEmail, setMlEmail] = useState('')
-  const [mlLoading, setMlLoading] = useState(false)
-  const [mlSuccess, setMlSuccess] = useState(false)
-  const [mlError, setMlError] = useState('')
-
-  // Password state
-  const [pwEmail, setPwEmail] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [pwLoading, setPwLoading] = useState(false)
-  const [pwError, setPwError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const { requestMagicLink, loginWithPassword, client } = useClientPortal()
+  const { loginWithPassword, client } = useClientPortal()
   const navigate = useNavigate()
 
   // If already logged in, redirect to dashboard
@@ -33,35 +23,19 @@ export default function PortalLogin() {
     return null
   }
 
-  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setMlError('')
-    setMlLoading(true)
+    setError('')
+    setLoading(true)
 
     try {
-      await requestMagicLink(mlEmail)
-      setMlSuccess(true)
-    } catch (err) {
-      console.error('Failed to request magic link:', err)
-      setMlError(err instanceof Error ? err.message : 'Failed to send login link. Please try again.')
-    } finally {
-      setMlLoading(false)
-    }
-  }
-
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPwError('')
-    setPwLoading(true)
-
-    try {
-      await loginWithPassword(pwEmail, password)
+      await loginWithPassword(email, password)
       // Context will handle navigation
     } catch (err) {
-      console.error('Failed to login with password:', err)
-      setPwError(err instanceof Error ? err.message : 'Login failed. Please try again.')
+      console.error('Failed to login:', err)
+      setError(err instanceof Error ? err.message : 'Login failed. Please check your credentials and try again.')
     } finally {
-      setPwLoading(false)
+      setLoading(false)
     }
   }
 
@@ -74,187 +48,80 @@ export default function PortalLogin() {
           </div>
           <CardTitle className="text-2xl">Client Portal Login</CardTitle>
           <CardDescription>
-            Choose your preferred login method
+            Sign in with your email and password
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="password">Password</TabsTrigger>
-              <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
-            </TabsList>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+                className="w-full"
+                autoFocus
+              />
+            </div>
 
-            {/* Password Login Tab */}
-            <TabsContent value="password">
-              <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pw-email">Email Address</Label>
-                  <Input
-                    id="pw-email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={pwEmail}
-                    onChange={(e) => setPwEmail(e.target.value)}
-                    required
-                    disabled={pwLoading}
-                    className="w-full"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      disabled={pwLoading}
-                      className="w-full pr-10"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {pwError && (
-                  <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                    {pwError}
-                  </div>
-                )}
-
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="w-full pr-10"
+                />
                 <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={pwLoading || !pwEmail || !password}
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
                 >
-                  {pwLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Logging in...
-                    </>
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <>
-                      <Lock className="mr-2 h-4 w-4" />
-                      Login
-                    </>
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
+              </div>
+            </div>
 
-                <div className="text-center text-xs text-muted-foreground space-y-1">
-                  <p>
-                    Don't have a password?{' '}
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('magic-link')}
-                      className="text-primary hover:underline"
-                    >
-                      Use Magic Link
-                    </button>
-                  </p>
-                </div>
-              </form>
-            </TabsContent>
+            {error && (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
+                {error}
+              </div>
+            )}
 
-            {/* Magic Link Tab */}
-            <TabsContent value="magic-link">
-              {mlSuccess ? (
-                <div className="space-y-4 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="font-semibold text-lg">Check your email!</h3>
-                    <p className="text-sm text-muted-foreground">
-                      We've sent a login link to <strong>{mlEmail}</strong>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      The link will expire in 15 minutes for your security.
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setMlSuccess(false)
-                      setMlEmail('')
-                    }}
-                    className="w-full"
-                  >
-                    Use a different email
-                  </Button>
-                </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || !email || !password}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logging in...
+                </>
               ) : (
-                <form onSubmit={handleMagicLinkSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="ml-email">Email Address</Label>
-                    <Input
-                      id="ml-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={mlEmail}
-                      onChange={(e) => setMlEmail(e.target.value)}
-                      required
-                      disabled={mlLoading}
-                      className="w-full"
-                    />
-                  </div>
-
-                  {mlError && (
-                    <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                      {mlError}
-                    </div>
-                  )}
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={mlLoading || !mlEmail}
-                  >
-                    {mlLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sending login link...
-                      </>
-                    ) : (
-                      <>
-                        <Mail className="mr-2 h-4 w-4" />
-                        Send Login Link
-                      </>
-                    )}
-                  </Button>
-
-                  <div className="text-center text-xs text-muted-foreground space-y-1">
-                    <p>No password required. We'll email you a secure login link.</p>
-                    <p>
-                      Have a password?{' '}
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('password')}
-                        className="text-primary hover:underline"
-                      >
-                        Login with password
-                      </button>
-                    </p>
-                  </div>
-                </form>
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Login
+                </>
               )}
-            </TabsContent>
-          </Tabs>
+            </Button>
+          </form>
 
           <div className="mt-6 text-center text-xs text-muted-foreground border-t pt-4">
             <p>
