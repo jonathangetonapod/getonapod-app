@@ -164,6 +164,9 @@ export default function ProspectView() {
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
   const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(false)
 
+  // Loom video modal state
+  const [showLoomVideo, setShowLoomVideo] = useState(false)
+
   // Feedback state (for saving)
   const [currentNotes, setCurrentNotes] = useState('')
   const [isSavingFeedback, setIsSavingFeedback] = useState(false)
@@ -274,6 +277,18 @@ export default function ProspectView() {
   const loadingPodcasts = podcastsLoading
   const error = dashboardError?.message || null
   const cacheNotReady = dashboard && !dashboard.content_ready
+
+  // Helper function to extract Loom video ID from URL
+  const getLoomEmbedUrl = (url: string) => {
+    // Extract video ID from URLs like:
+    // https://www.loom.com/share/d1ca4850d5be49c282d7eb178efd1974
+    // https://www.loom.com/embed/d1ca4850d5be49c282d7eb178efd1974
+    const match = url.match(/loom\.com\/(share|embed)\/([a-zA-Z0-9]+)/)
+    if (match) {
+      return `https://www.loom.com/embed/${match[2]}`
+    }
+    return url
+  }
 
   // Update view count once (fire and forget)
   useEffect(() => {
@@ -861,11 +876,9 @@ export default function ProspectView() {
                 <Sparkles className="h-4 w-4" />
               </div>
 
-              <a
-                href={dashboard.loom_video_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block group"
+              <button
+                onClick={() => setShowLoomVideo(true)}
+                className="block group w-full text-left cursor-pointer"
               >
               <div className="relative rounded-xl overflow-hidden shadow-2xl border-3 border-primary/30 hover:border-primary/60 transition-all duration-300 hover:scale-[1.02] bg-white dark:bg-slate-900">
                 {/* Video Thumbnail */}
@@ -903,7 +916,7 @@ export default function ProspectView() {
                   </p>
                 </div>
               </div>
-              </a>
+              </button>
             </div>
           )}
 
@@ -2925,6 +2938,24 @@ export default function ProspectView() {
         selectedFeature={selectedPricingFeature}
         onClose={() => setSelectedPricingFeature(null)}
       />
+
+      {/* Loom Video Modal */}
+      {dashboard && dashboard.loom_video_url && (
+        <Dialog open={showLoomVideo} onOpenChange={setShowLoomVideo}>
+          <DialogContent className="max-w-4xl w-full p-0">
+            <DialogTitle className="sr-only">Personal Video Message</DialogTitle>
+            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+              <iframe
+                src={getLoomEmbedUrl(dashboard.loom_video_url)}
+                frameBorder="0"
+                allowFullScreen
+                className="absolute top-0 left-0 w-full h-full rounded-lg"
+                allow="autoplay; fullscreen; picture-in-picture"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
