@@ -269,10 +269,12 @@ export default function ProspectView() {
     enabled: !!dashboard?.id,
   })
 
-  // Build feedback map from query data
-  const feedbackMap = new Map<string, PodcastFeedback>(
-    feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
-  )
+  // Build feedback map from query data (memoized to prevent creating new Map reference on every render)
+  const feedbackMap = useMemo(() => {
+    return new Map<string, PodcastFeedback>(
+      feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
+    )
+  }, [feedbackData])
 
   // Derived state
   const loading = dashboardLoading
@@ -766,10 +768,12 @@ export default function ProspectView() {
   allCategories.sort((a, b) => a.category_name.localeCompare(b.category_name))
 
   // Filter podcasts based on search query, categories, and feedback status
-  // First dedupe podcasts by ID
-  const uniquePodcasts = podcasts.filter((podcast, index, self) =>
-    index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
-  )
+  // First dedupe podcasts by ID (memoized to prevent creating new array reference on every render)
+  const uniquePodcasts = useMemo(() => {
+    return podcasts.filter((podcast, index, self) =>
+      index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
+    )
+  }, [podcasts])
 
   // Count feedback stats (from deduplicated list)
   const feedbackStats = {
