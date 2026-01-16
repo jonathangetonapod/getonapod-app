@@ -873,7 +873,7 @@ export default function ProspectView() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16">
           {/* Video Card - Right Side (stays in hero section) */}
           {dashboard.loom_video_url && dashboard.show_loom_video && (
-            <div className="hidden xl:block absolute top-8 -right-32 w-80 z-10 animate-fade-in">
+            <div className="hidden xl:block absolute top-8 xl:-right-16 2xl:-right-32 w-80 z-10 animate-fade-in">
               {/* Attention Banner */}
               <div className="mb-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg animate-pulse">
                 <Sparkles className="h-4 w-4" />
