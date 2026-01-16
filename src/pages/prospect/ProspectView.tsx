@@ -1070,6 +1070,12 @@ export default function ProspectView() {
             </Card>
           )}
         </div>
+
+        {/* Scroll Down Indicator */}
+        <div className="flex justify-center items-center gap-4 mt-6">
+          <ChevronDown className="h-5 w-5 text-muted-foreground/50 animate-bounce" />
+          <ChevronDown className="h-5 w-5 text-muted-foreground/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+        </div>
       </div>
 
       {/* Podcast Grid */}
