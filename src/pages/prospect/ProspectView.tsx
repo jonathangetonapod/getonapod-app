@@ -926,7 +926,7 @@ export default function ProspectView() {
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-2">
                 Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
               </h1>
-              <p className="text-base sm:text-lg text-muted-foreground max-w-3xl mx-auto px-2 transition-opacity duration-300">
+              <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto px-2 transition-opacity duration-300">
                 {loadingPodcasts ? (
                   <span>Loading your personalized podcast matches...</span>
                 ) : personalizedTagline ? (
