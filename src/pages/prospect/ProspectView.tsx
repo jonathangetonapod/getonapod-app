@@ -80,6 +80,7 @@ interface ProspectDashboard {
   personalized_tagline: string | null
   media_kit_url: string | null
   loom_video_url: string | null
+  loom_thumbnail_url: string | null
   show_loom_video: boolean
 }
 
@@ -868,7 +869,18 @@ export default function ProspectView() {
               >
               <div className="relative rounded-xl overflow-hidden shadow-2xl border-3 border-primary/30 hover:border-primary/60 transition-all duration-300 hover:scale-[1.02] bg-white dark:bg-slate-900">
                 {/* Video Thumbnail */}
-                <div className="relative aspect-video bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                <div className="relative aspect-video flex items-center justify-center">
+                  {/* Background - thumbnail image or gradient */}
+                  {dashboard.loom_thumbnail_url ? (
+                    <img
+                      src={dashboard.loom_thumbnail_url}
+                      alt="Video thumbnail"
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20" />
+                  )}
+
                   {/* Play button overlay */}
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
                   <div className="relative z-10 w-20 h-20 rounded-full bg-primary flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">

@@ -91,6 +91,7 @@ interface ProspectDashboard {
   personalized_tagline: string | null
   media_kit_url: string | null
   loom_video_url: string | null
+  loom_thumbnail_url: string | null
   show_loom_video: boolean
 }
 
@@ -143,6 +144,7 @@ export default function ProspectDashboards() {
 
   // Edit Loom video URL
   const [editLoomVideoUrl, setEditLoomVideoUrl] = useState('')
+  const [editLoomThumbnailUrl, setEditLoomThumbnailUrl] = useState('')
   const [savingLoomVideo, setSavingLoomVideo] = useState(false)
 
   // Edit prospect name
@@ -474,13 +476,14 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editLoomVideoUrl, editProspectName and reset state when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editLoomVideoUrl, editLoomThumbnailUrl, editProspectName and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
       setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
       setEditMediaKitUrl(selectedDashboard.media_kit_url || '')
       setEditLoomVideoUrl(selectedDashboard.loom_video_url || '')
+      setEditLoomThumbnailUrl(selectedDashboard.loom_thumbnail_url || '')
       setEditProspectName(selectedDashboard.prospect_name || '')
       // Extract the custom part of tagline (after "perfect for ")
       const tagline = selectedDashboard.personalized_tagline || ''
@@ -793,7 +796,10 @@ export default function ProspectDashboards() {
     try {
       const { error } = await supabase
         .from('prospect_dashboards')
-        .update({ loom_video_url: editLoomVideoUrl.trim() || null })
+        .update({
+          loom_video_url: editLoomVideoUrl.trim() || null,
+          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null
+        })
         .eq('id', selectedDashboard.id)
 
       if (error) throw error
@@ -802,18 +808,26 @@ export default function ProspectDashboards() {
       setDashboards(prev =>
         prev.map(d =>
           d.id === selectedDashboard.id
-            ? { ...d, loom_video_url: editLoomVideoUrl.trim() || null }
+            ? {
+                ...d,
+                loom_video_url: editLoomVideoUrl.trim() || null,
+                loom_thumbnail_url: editLoomThumbnailUrl.trim() || null
+              }
             : d
         )
       )
       setSelectedDashboard(prev =>
-        prev ? { ...prev, loom_video_url: editLoomVideoUrl.trim() || null } : null
+        prev ? {
+          ...prev,
+          loom_video_url: editLoomVideoUrl.trim() || null,
+          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null
+        } : null
       )
 
-      toast.success('Loom video URL saved!')
+      toast.success('Loom video saved!')
     } catch (error) {
-      console.error('Error saving Loom video URL:', error)
-      toast.error('Failed to save Loom video URL')
+      console.error('Error saving Loom video:', error)
+      toast.error('Failed to save Loom video')
     } finally {
       setSavingLoomVideo(false)
     }
@@ -1889,25 +1903,35 @@ export default function ProspectDashboards() {
                       <Video className="h-4 w-4" />
                       Loom Video
                     </h3>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Paste Loom video URL..."
-                        value={editLoomVideoUrl}
-                        onChange={(e) => setEditLoomVideoUrl(e.target.value)}
-                        className="text-sm"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={saveLoomVideoUrl}
-                        disabled={savingLoomVideo || editLoomVideoUrl === (selectedDashboard.loom_video_url || '')}
-                      >
-                        {savingLoomVideo ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="h-4 w-4" />
-                        )}
-                      </Button>
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Paste Loom video URL..."
+                          value={editLoomVideoUrl}
+                          onChange={(e) => setEditLoomVideoUrl(e.target.value)}
+                          className="text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Paste Loom thumbnail URL (optional)..."
+                          value={editLoomThumbnailUrl}
+                          onChange={(e) => setEditLoomThumbnailUrl(e.target.value)}
+                          className="text-sm"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={saveLoomVideoUrl}
+                          disabled={savingLoomVideo || (editLoomVideoUrl === (selectedDashboard.loom_video_url || '') && editLoomThumbnailUrl === (selectedDashboard.loom_thumbnail_url || ''))}
+                        >
+                          {savingLoomVideo ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
                     {editLoomVideoUrl && (
                       <Button
@@ -1920,7 +1944,7 @@ export default function ProspectDashboards() {
                       </Button>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Personalized Loom video that will appear in the hero section
+                      Video URL from Loom share link. Thumbnail URL is optional (e.g., https://cdn.loom.com/sessions/thumbnails/...)
                     </p>
 
                     {/* Toggle Show/Hide Video */}
