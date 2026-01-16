@@ -23,7 +23,8 @@ import {
   BookOpen,
   Package,
   Database,
-  Share2
+  Share2,
+  ClipboardList
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -58,6 +59,7 @@ interface NavItem {
 
 const defaultNavItems: NavItem[] = [
   { id: 'overview', name: 'Overview', href: '/admin/dashboard', icon: LayoutDashboard },
+  { id: 'onboarding', name: 'Onboarding', href: '/admin/onboarding', icon: ClipboardList },
   { id: 'podcast-finder', name: 'Podcast Finder', href: '/admin/podcast-finder', icon: Search },
   { id: 'prospect-dashboards', name: 'Prospect Dashboards', href: '/admin/prospect-dashboards', icon: Share2 },
   { id: 'podcast-database', name: 'Podcast Database', href: '/admin/podcast-database', icon: Database },

@@ -21,6 +21,7 @@ import CheckoutSuccess from "./pages/CheckoutSuccess";
 import CheckoutCanceled from "./pages/CheckoutCanceled";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
+import AdminOnboarding from "./pages/admin/Onboarding";
 import PodcastFinder from "./pages/admin/PodcastFinder";
 import ProspectDashboards from "./pages/admin/ProspectDashboards";
 import PodcastDatabase from "./pages/admin/PodcastDatabase";
@@ -111,6 +112,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/onboarding"
+              element={
+                <ProtectedRoute>
+                  <AdminOnboarding />
                 </ProtectedRoute>
               }
             />
