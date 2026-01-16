@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -269,12 +269,10 @@ export default function ProspectView() {
     enabled: !!dashboard?.id,
   })
 
-  // Build feedback map from query data (memoized to prevent creating new Map reference on every render)
-  const feedbackMap = useMemo(() => {
-    return new Map<string, PodcastFeedback>(
-      feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
-    )
-  }, [feedbackData])
+  // Build feedback map from query data
+  const feedbackMap = new Map<string, PodcastFeedback>(
+    feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
+  )
 
   // Derived state
   const loading = dashboardLoading
@@ -768,12 +766,10 @@ export default function ProspectView() {
   allCategories.sort((a, b) => a.category_name.localeCompare(b.category_name))
 
   // Filter podcasts based on search query, categories, and feedback status
-  // First dedupe podcasts by ID (memoized to prevent creating new array reference on every render)
-  const uniquePodcasts = useMemo(() => {
-    return podcasts.filter((podcast, index, self) =>
-      index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
-    )
-  }, [podcasts])
+  // First dedupe podcasts by ID
+  const uniquePodcasts = podcasts.filter((podcast, index, self) =>
+    index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
+  )
 
   // Count feedback stats (from deduplicated list)
   const feedbackStats = {
@@ -788,82 +784,75 @@ export default function ProspectView() {
     else feedbackStats.notReviewed++
   })
 
-  // Filter podcasts (memoized to prevent unnecessary re-renders)
-  const filteredPodcasts = useMemo(() => {
-    return uniquePodcasts.filter(podcast => {
-      // Search filter (use debounced for performance)
-      if (debouncedSearch.trim()) {
-        const query = debouncedSearch.toLowerCase()
-        const matchesSearch = (
-          podcast.podcast_name.toLowerCase().includes(query) ||
-          podcast.podcast_description?.toLowerCase().includes(query) ||
-          podcast.publisher_name?.toLowerCase().includes(query)
-        )
-        if (!matchesSearch) return false
-      }
+  const filteredPodcasts = uniquePodcasts.filter(podcast => {
+    // Search filter (use debounced for performance)
+    if (debouncedSearch.trim()) {
+      const query = debouncedSearch.toLowerCase()
+      const matchesSearch = (
+        podcast.podcast_name.toLowerCase().includes(query) ||
+        podcast.podcast_description?.toLowerCase().includes(query) ||
+        podcast.publisher_name?.toLowerCase().includes(query)
+      )
+      if (!matchesSearch) return false
+    }
 
-      // Category filter
-      if (selectedCategories.length > 0) {
-        const podcastCats = podcast.podcast_categories
-        if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
-        const podcastCatIds = podcastCats.map(c => c.category_id)
-        const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
-        if (!hasMatch) return false
-      }
+    // Category filter
+    if (selectedCategories.length > 0) {
+      const podcastCats = podcast.podcast_categories
+      if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
+      const podcastCatIds = podcastCats.map(c => c.category_id)
+      const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
+      if (!hasMatch) return false
+    }
 
-      // Feedback status filter
-      if (feedbackFilter !== 'all') {
-        const feedback = feedbackMap.get(podcast.podcast_id)
-        if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
-        if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
-        if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
-      }
+    // Feedback status filter
+    if (feedbackFilter !== 'all') {
+      const feedback = feedbackMap.get(podcast.podcast_id)
+      if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
+      if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
+      if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
+    }
 
-      // Episode count filter
-      if (episodeFilter !== 'any') {
-        const eps = podcast.episode_count || 0
-        if (episodeFilter === 'under50' && eps >= 50) return false
-        if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
-        if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
-        if (episodeFilter === '200plus' && eps < 200) return false
-      }
+    // Episode count filter
+    if (episodeFilter !== 'any') {
+      const eps = podcast.episode_count || 0
+      if (episodeFilter === 'under50' && eps >= 50) return false
+      if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
+      if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
+      if (episodeFilter === '200plus' && eps < 200) return false
+    }
 
-      // Audience size filter
-      if (audienceFilter !== 'any') {
-        const aud = podcast.audience_size || 0
-        if (audienceFilter === 'under1k' && aud >= 1000) return false
-        if (audienceFilter === '1kto5k' && (aud < 1000 || aud >= 5000)) return false
-        if (audienceFilter === '5kto10k' && (aud < 5000 || aud >= 10000)) return false
-        if (audienceFilter === '10kto25k' && (aud < 10000 || aud >= 25000)) return false
-        if (audienceFilter === '25kto50k' && (aud < 25000 || aud >= 50000)) return false
-        if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
-        if (audienceFilter === '100kplus' && aud < 100000) return false
-      }
+    // Audience size filter
+    if (audienceFilter !== 'any') {
+      const aud = podcast.audience_size || 0
+      if (audienceFilter === 'under1k' && aud >= 1000) return false
+      if (audienceFilter === '1kto5k' && (aud < 1000 || aud >= 5000)) return false
+      if (audienceFilter === '5kto10k' && (aud < 5000 || aud >= 10000)) return false
+      if (audienceFilter === '10kto25k' && (aud < 10000 || aud >= 25000)) return false
+      if (audienceFilter === '25kto50k' && (aud < 25000 || aud >= 50000)) return false
+      if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
+      if (audienceFilter === '100kplus' && aud < 100000) return false
+    }
 
-      return true
-    })
-  }, [uniquePodcasts, debouncedSearch, selectedCategories, feedbackMap, feedbackFilter, episodeFilter, audienceFilter])
+    return true
+  })
 
-  // Sort filtered podcasts (memoized to prevent unnecessary re-renders)
-  const sortedPodcasts = useMemo(() => {
-    return [...filteredPodcasts].sort((a, b) => {
-      switch (sortBy) {
-        case 'audience_desc':
-          return (b.audience_size || 0) - (a.audience_size || 0)
-        case 'audience_asc':
-          return (a.audience_size || 0) - (b.audience_size || 0)
-        default:
-          return 0
-      }
-    })
-  }, [filteredPodcasts, sortBy])
+  // Sort filtered podcasts
+  const sortedPodcasts = [...filteredPodcasts].sort((a, b) => {
+    switch (sortBy) {
+      case 'audience_desc':
+        return (b.audience_size || 0) - (a.audience_size || 0)
+      case 'audience_asc':
+        return (a.audience_size || 0) - (b.audience_size || 0)
+      default:
+        return 0
+    }
+  })
 
-  // Pagination (memoized to prevent unnecessary re-renders)
+  // Pagination
   const totalPages = Math.ceil(sortedPodcasts.length / CARDS_PER_PAGE)
   const startIndex = (currentPage - 1) * CARDS_PER_PAGE
-  const paginatedPodcasts = useMemo(() => {
-    return sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  }, [sortedPodcasts, startIndex])
+  const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
