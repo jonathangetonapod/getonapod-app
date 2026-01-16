@@ -1,15 +1,35 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { useQuery } from '@tanstack/react-query';
 import { getFeaturedTestimonials, getEmbedUrl } from '@/services/testimonials';
+import { supabase } from '@/lib/supabase';
 import { Loader2 } from 'lucide-react';
 
-const SocialProofSection = () => {
+interface SocialProofSectionProps {
+  testimonialIds?: string[];
+}
+
+const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
-  // Fetch featured testimonials from database
+  // Fetch testimonials - either specific ones or featured ones
   const { data: testimonials = [], isLoading } = useQuery({
-    queryKey: ['featured-testimonials'],
-    queryFn: getFeaturedTestimonials
+    queryKey: testimonialIds ? ['prospect-testimonials', testimonialIds] : ['featured-testimonials'],
+    queryFn: async () => {
+      // If specific testimonial IDs provided, fetch those
+      if (testimonialIds && testimonialIds.length > 0) {
+        const { data } = await supabase
+          .from('testimonials')
+          .select('*')
+          .in('id', testimonialIds)
+          .eq('is_active', true)
+          .order('display_order', { ascending: true });
+
+        return data || [];
+      }
+
+      // Otherwise fetch featured testimonials
+      return getFeaturedTestimonials();
+    }
   });
 
   // Show nothing if no testimonials

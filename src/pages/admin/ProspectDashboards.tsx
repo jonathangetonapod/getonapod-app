@@ -94,6 +94,8 @@ interface ProspectDashboard {
   loom_thumbnail_url: string | null
   loom_video_title: string | null
   show_loom_video: boolean
+  testimonial_ids: string[] | null
+  show_testimonials: boolean
 }
 
 interface PodcastFeedback {
@@ -111,6 +113,7 @@ export default function ProspectDashboards() {
   const [dashboards, setDashboards] = useState<ProspectDashboard[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [allTestimonials, setAllTestimonials] = useState<any[]>([])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [dashboardToDelete, setDashboardToDelete] = useState<ProspectDashboard | null>(null)
   const [selectedDashboard, setSelectedDashboard] = useState<ProspectDashboard | null>(null)
@@ -148,6 +151,9 @@ export default function ProspectDashboards() {
   const [editLoomThumbnailUrl, setEditLoomThumbnailUrl] = useState('')
   const [editLoomVideoTitle, setEditLoomVideoTitle] = useState('')
   const [savingLoomVideo, setSavingLoomVideo] = useState(false)
+  const [selectedTestimonials, setSelectedTestimonials] = useState<string[]>([])
+  const [savingTestimonials, setSavingTestimonials] = useState(false)
+  const [togglingTestimonials, setTogglingTestimonials] = useState(false)
 
   // Edit prospect name
   const [editProspectName, setEditProspectName] = useState('')
@@ -185,6 +191,7 @@ export default function ProspectDashboards() {
 
   useEffect(() => {
     fetchDashboards()
+    fetchTestimonials()
   }, [])
 
   // Fetch feedback when a dashboard is selected
@@ -263,6 +270,21 @@ export default function ProspectDashboards() {
       toast.error('Failed to load prospect dashboards')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTestimonials = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('testimonials')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
+
+      if (error) throw error
+      setAllTestimonials(data || [])
+    } catch (error) {
+      console.error('Error fetching testimonials:', error)
     }
   }
 
@@ -488,6 +510,7 @@ export default function ProspectDashboards() {
       setEditLoomThumbnailUrl(selectedDashboard.loom_thumbnail_url || '')
       setEditLoomVideoTitle(selectedDashboard.loom_video_title || 'Your Personal Video Message')
       setEditProspectName(selectedDashboard.prospect_name || '')
+      setSelectedTestimonials(selectedDashboard.testimonial_ids || [])
       // Extract the custom part of tagline (after "perfect for ")
       const tagline = selectedDashboard.personalized_tagline || ''
       const match = tagline.match(/perfect for\s+(.+)$/i)
@@ -1178,6 +1201,71 @@ export default function ProspectDashboards() {
       toast.error('Failed to update Loom video visibility')
     } finally {
       setTogglingLoomVideo(false)
+    }
+  }
+
+  const saveTestimonials = async () => {
+    if (!selectedDashboard) return
+
+    setSavingTestimonials(true)
+    try {
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ testimonial_ids: selectedTestimonials })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, testimonial_ids: selectedTestimonials }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, testimonial_ids: selectedTestimonials } : null
+      )
+
+      toast.success('Testimonials saved!')
+    } catch (error) {
+      console.error('Error saving testimonials:', error)
+      toast.error('Failed to save testimonials')
+    } finally {
+      setSavingTestimonials(false)
+    }
+  }
+
+  const toggleTestimonials = async () => {
+    if (!selectedDashboard) return
+
+    setTogglingTestimonials(true)
+    try {
+      const newValue = !selectedDashboard.show_testimonials
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ show_testimonials: newValue })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id ? { ...d, show_testimonials: newValue } : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, show_testimonials: newValue } : null
+      )
+
+      toast.success(newValue ? 'Testimonials section enabled' : 'Testimonials section hidden')
+    } catch (error) {
+      console.error('Error toggling testimonials:', error)
+      toast.error('Failed to update testimonials visibility')
+    } finally {
+      setTogglingTestimonials(false)
     }
   }
 
@@ -2041,6 +2129,113 @@ export default function ProspectDashboards() {
                           {togglingLoomVideo ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : selectedDashboard.show_loom_video ? (
+                            <>
+                              <Eye className="h-4 w-4 mr-1" />
+                              Showing
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="h-4 w-4 mr-1" />
+                              Hidden
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Testimonials */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Testimonial Videos
+                    </h3>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">
+                        Select testimonials to show for this prospect:
+                      </Label>
+
+                      {/* Testimonial Selection */}
+                      <div className="max-h-48 overflow-y-auto space-y-2 border rounded-lg p-3">
+                        {allTestimonials.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            No testimonials available
+                          </p>
+                        ) : (
+                          allTestimonials.map((testimonial) => (
+                            <label
+                              key={testimonial.id}
+                              className="flex items-start gap-2 p-2 rounded hover:bg-accent cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedTestimonials.includes(testimonial.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedTestimonials([...selectedTestimonials, testimonial.id])
+                                  } else {
+                                    setSelectedTestimonials(selectedTestimonials.filter(id => id !== testimonial.id))
+                                  }
+                                }}
+                                className="mt-1"
+                              />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">{testimonial.client_name}</p>
+                                {testimonial.client_title && (
+                                  <p className="text-xs text-muted-foreground">{testimonial.client_title}</p>
+                                )}
+                              </div>
+                            </label>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={saveTestimonials}
+                          disabled={savingTestimonials || JSON.stringify(selectedTestimonials) === JSON.stringify(selectedDashboard.testimonial_ids || [])}
+                        >
+                          {savingTestimonials ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <Save className="h-4 w-4 mr-1" />
+                          )}
+                          Save Selection
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          {selectedTestimonials.length} selected
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Toggle Show/Hide Testimonials */}
+                    <div className="pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Show Testimonials Section</p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedDashboard.show_testimonials
+                              ? 'Testimonials section visible to prospect'
+                              : 'Testimonials section hidden from prospect'}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={toggleTestimonials}
+                          disabled={togglingTestimonials || selectedTestimonials.length === 0}
+                          variant={selectedDashboard.show_testimonials ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            selectedDashboard.show_testimonials && "bg-purple-600 hover:bg-purple-700"
+                          )}
+                        >
+                          {togglingTestimonials ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : selectedDashboard.show_testimonials ? (
                             <>
                               <Eye className="h-4 w-4 mr-1" />
                               Showing

@@ -13,6 +13,7 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import confetti from 'canvas-confetti'
+import SocialProofSection from '@/components/SocialProofSection'
 import {
   Mic,
   Users,
@@ -83,6 +84,8 @@ interface ProspectDashboard {
   loom_thumbnail_url: string | null
   loom_video_title: string | null
   show_loom_video: boolean
+  testimonial_ids: string[] | null
+  show_testimonials: boolean
 }
 
 interface PodcastCategory {
@@ -1830,6 +1833,13 @@ export default function ProspectView() {
               <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </Button>
           </div>
+
+          {/* Testimonials Section */}
+          {dashboard.show_testimonials && dashboard.testimonial_ids && dashboard.testimonial_ids.length > 0 && (
+            <div className="my-12 sm:my-16">
+              <SocialProofSection testimonialIds={dashboard.testimonial_ids} />
+            </div>
+          )}
 
           {/* FAQ Section */}
           <div className="mt-12 sm:mt-16">
