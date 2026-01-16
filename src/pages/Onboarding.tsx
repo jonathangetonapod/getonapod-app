@@ -628,14 +628,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                     )}
                   </div>
                   <p className="text-xs text-green-700 dark:text-green-300 mt-3">
-                    💡 Save these credentials - you'll need them to log in
-                  </p>
-                </div>
-
-                <div className="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg">
-                  <p className="text-sm font-medium mb-2">✉️ Magic Link Email Sent!</p>
-                  <p className="text-sm text-muted-foreground">
-                    We've also sent you an email with a magic login link. Check your inbox (and spam folder) for quick access.
+                    💡 Save these credentials - you'll need them to log in to your client portal
                   </p>
                 </div>
 
@@ -843,16 +836,16 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             isAnimating ? (direction === 'forward' ? 'opacity-0 translate-x-8' : 'opacity-0 -translate-x-8') : 'opacity-100 translate-x-0'
           }`}
         >
-          <CardHeader className="space-y-3 pb-8">
-            <CardTitle className="flex items-center gap-3 text-2xl md:text-3xl">
-              {step === 1 && <><User className="h-7 w-7 text-purple-500" /> Basic Information</>}
-              {step === 2 && <><Briefcase className="h-7 w-7 text-purple-500" /> Professional Profile</>}
-              {step === 3 && <><Sparkles className="h-7 w-7 text-purple-500" /> Your Story</>}
-              {step === 4 && <><Target className="h-7 w-7 text-purple-500" /> Expertise & Topics</>}
-              {step === 5 && <><Target className="h-7 w-7 text-purple-500" /> Goals & Audience</>}
-              {step === 6 && <><Calendar className="h-7 w-7 text-purple-500" /> Final Details</>}
+          <CardHeader className="space-y-3 pb-6 sm:pb-8 px-4 sm:px-6">
+            <CardTitle className="flex items-center gap-2 sm:gap-3 text-xl sm:text-2xl md:text-3xl">
+              {step === 1 && <><User className="h-6 w-6 sm:h-7 sm:w-7 text-purple-500" /> Basic Information</>}
+              {step === 2 && <><Briefcase className="h-6 w-6 sm:h-7 sm:w-7 text-purple-500" /> Professional Profile</>}
+              {step === 3 && <><Sparkles className="h-6 w-6 sm:h-7 sm:w-7 text-purple-500" /> Your Story</>}
+              {step === 4 && <><Target className="h-6 w-6 sm:h-7 sm:w-7 text-purple-500" /> Expertise & Topics</>}
+              {step === 5 && <><Target className="h-6 w-6 sm:h-7 sm:w-7 text-purple-500" /> Goals & Audience</>}
+              {step === 6 && <><Calendar className="h-6 w-6 sm:h-7 sm:w-7 text-purple-500" /> Final Details</>}
             </CardTitle>
-            <CardDescription className="text-base">
+            <CardDescription className="text-sm sm:text-base">
               {step === 1 && 'Tell us about yourself and your company'}
               {step === 2 && 'Share your professional background and expertise'}
               {step === 3 && 'What makes your journey unique and compelling?'}
@@ -861,70 +854,76 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
               {step === 6 && 'A few more details to complete your profile'}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-5 sm:space-y-6 px-4 sm:px-6">
             {/* Step 1: Basic Information */}
             {step === 1 && (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="col-span-2 sm:col-span-1">
-                    <Label htmlFor="name">Full Name *</Label>
+                    <Label htmlFor="name" className="text-sm font-semibold mb-2 block">Full Name *</Label>
                     <Input
                       id="name"
                       placeholder="John Doe"
                       value={data.name}
                       onChange={(e) => updateData('name', e.target.value)}
+                      className="h-11 text-base"
                     />
                   </div>
                   <div className="col-span-2 sm:col-span-1">
-                    <Label htmlFor="title">Title/Role</Label>
+                    <Label htmlFor="title" className="text-sm font-semibold mb-2 block">Title/Role</Label>
                     <Input
                       id="title"
                       placeholder="CEO, Founder, CMO"
                       value={data.title}
                       onChange={(e) => updateData('title', e.target.value)}
+                      className="h-11 text-base"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="email">Email Address *</Label>
+                  <Label htmlFor="email" className="text-sm font-semibold mb-2 block">Email Address *</Label>
                   <Input
                     id="email"
                     type="email"
                     placeholder="you@company.com"
                     value={data.email}
                     onChange={(e) => updateData('email', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="company">Company/Organization Name *</Label>
+                  <Label htmlFor="company" className="text-sm font-semibold mb-2 block">Company/Organization Name *</Label>
                   <Input
                     id="company"
                     placeholder="Your Company Inc."
                     value={data.company}
                     onChange={(e) => updateData('company', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="website">Website URL</Label>
+                  <Label htmlFor="website" className="text-sm font-semibold mb-2 block">Website URL</Label>
                   <Input
                     id="website"
                     type="url"
                     placeholder="https://yourcompany.com"
                     value={data.website}
                     onChange={(e) => updateData('website', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="socialFollowers">Social Media Following</Label>
+                  <Label htmlFor="socialFollowers" className="text-sm font-semibold mb-2 block">Social Media Following</Label>
                   <Input
                     id="socialFollowers"
                     placeholder="e.g., 5,000 across platforms"
                     value={data.socialFollowers}
                     onChange={(e) => updateData('socialFollowers', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
               </>
@@ -946,7 +945,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                     rows={6}
                     value={data.bio}
                     onChange={(e) => updateData('bio', e.target.value)}
-                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all"
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     💡 This will be used to pitch you to podcasts - make it compelling!
@@ -975,24 +974,26 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </div>
 
                 <div>
-                  <Label htmlFor="linkedin_url">LinkedIn Profile URL</Label>
+                  <Label htmlFor="linkedin_url" className="text-sm font-semibold mb-2 block">LinkedIn Profile URL</Label>
                   <Input
                     id="linkedin_url"
                     type="url"
                     placeholder="https://linkedin.com/in/yourname"
                     value={data.linkedin_url}
                     onChange={(e) => updateData('linkedin_url', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="previousPodcasts">Previous Podcast/Media Appearances</Label>
+                  <Label htmlFor="previousPodcasts" className="text-sm font-semibold mb-2 block">Previous Podcast/Media Appearances</Label>
                   <Textarea
                     id="previousPodcasts"
                     placeholder="List any podcasts or media outlets you've been featured on (or write 'None')"
                     rows={3}
                     value={data.previousPodcasts}
                     onChange={(e) => updateData('previousPodcasts', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
               </>
@@ -1039,13 +1040,14 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </div>
 
                 <div>
-                  <Label htmlFor="personalStories">Additional Personal Stories</Label>
+                  <Label htmlFor="personalStories" className="text-sm font-semibold mb-2 block">Additional Personal Stories</Label>
                   <Textarea
                     id="personalStories"
                     placeholder="Any other personal stories or experiences you're open to sharing?"
                     rows={4}
                     value={data.personalStories}
                     onChange={(e) => updateData('personalStories', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
               </>
@@ -1076,35 +1078,38 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </div>
 
                 <div>
-                  <Label htmlFor="passions">What Are You Most Passionate About? *</Label>
+                  <Label htmlFor="passions" className="text-sm font-semibold mb-2 block">What Are You Most Passionate About? *</Label>
                   <Textarea
                     id="passions"
                     placeholder="What drives you in your personal or professional life?"
                     rows={4}
                     value={data.passions}
                     onChange={(e) => updateData('passions', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="hobbies">Hobbies or Interests Outside of Work</Label>
+                  <Label htmlFor="hobbies" className="text-sm font-semibold mb-2 block">Hobbies or Interests Outside of Work</Label>
                   <Textarea
                     id="hobbies"
                     placeholder="What do you enjoy discussing outside of your professional work?"
                     rows={3}
                     value={data.hobbies}
                     onChange={(e) => updateData('hobbies', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="audienceValue">Value You Provide to Audiences</Label>
+                  <Label htmlFor="audienceValue" className="text-sm font-semibold mb-2 block">Value You Provide to Audiences</Label>
                   <Textarea
                     id="audienceValue"
                     placeholder="How can your experience and insights provide value to a podcast audience?"
                     rows={4}
                     value={data.audienceValue}
                     onChange={(e) => updateData('audienceValue', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
               </>
@@ -1114,13 +1119,14 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             {step === 5 && (
               <>
                 <div>
-                  <Label htmlFor="idealAudience">Your Ideal Audience *</Label>
+                  <Label htmlFor="idealAudience" className="text-sm font-semibold mb-2 block">Your Ideal Audience *</Label>
                   <Textarea
                     id="idealAudience"
                     placeholder="Who is your ideal audience or customer base?"
                     rows={3}
                     value={data.idealAudience}
                     onChange={(e) => updateData('idealAudience', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
 
@@ -1146,35 +1152,38 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </div>
 
                 <div>
-                  <Label htmlFor="impact">Impact You Want to Make</Label>
+                  <Label htmlFor="impact" className="text-sm font-semibold mb-2 block">Impact You Want to Make</Label>
                   <Textarea
                     id="impact"
                     placeholder="What impact can you make by sharing your story on podcasts?"
                     rows={4}
                     value={data.impact}
                     onChange={(e) => updateData('impact', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="specificPodcasts">Specific Podcasts You're Interested In</Label>
+                  <Label htmlFor="specificPodcasts" className="text-sm font-semibold mb-2 block">Specific Podcasts You're Interested In</Label>
                   <Textarea
                     id="specificPodcasts"
                     placeholder="Are there any specific podcasts you'd like to be a guest on?"
                     rows={3}
                     value={data.specificPodcasts}
                     onChange={(e) => updateData('specificPodcasts', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="specificAngles">Specific Angles or Insights</Label>
+                  <Label htmlFor="specificAngles" className="text-sm font-semibold mb-2 block">Specific Angles or Insights</Label>
                   <Textarea
                     id="specificAngles"
                     placeholder="Any specific angles or insights you'd like to share that would be valuable to audiences?"
                     rows={4}
                     value={data.specificAngles}
                     onChange={(e) => updateData('specificAngles', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
               </>
@@ -1184,34 +1193,37 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             {step === 6 && (
               <>
                 <div>
-                  <Label htmlFor="futureVision">Future Vision</Label>
+                  <Label htmlFor="futureVision" className="text-sm font-semibold mb-2 block">Future Vision</Label>
                   <Textarea
                     id="futureVision"
                     placeholder="How do you see your work evolving in the next few years?"
                     rows={4}
                     value={data.futureVision}
                     onChange={(e) => updateData('futureVision', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="availability">Recording Availability</Label>
+                  <Label htmlFor="availability" className="text-sm font-semibold mb-2 block">Recording Availability</Label>
                   <Input
                     id="availability"
                     placeholder="e.g., Weekdays after 10am EST"
                     value={data.availability}
                     onChange={(e) => updateData('availability', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="calendarLink">Calendar Link (Calendly, etc.)</Label>
+                  <Label htmlFor="calendarLink" className="text-sm font-semibold mb-2 block">Calendar Link (Calendly, etc.)</Label>
                   <Input
                     id="calendarLink"
                     type="url"
                     placeholder="https://calendly.com/yourname"
                     value={data.calendarLink}
                     onChange={(e) => updateData('calendarLink', e.target.value)}
+                    className="h-11 text-base"
                   />
                 </div>
 
@@ -1238,13 +1250,14 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </div>
 
                 <div>
-                  <Label htmlFor="additionalInfo">Anything Else We Should Know?</Label>
+                  <Label htmlFor="additionalInfo" className="text-sm font-semibold mb-2 block">Anything Else We Should Know?</Label>
                   <Textarea
                     id="additionalInfo"
                     placeholder="Any additional information that would help us pitch you effectively..."
                     rows={4}
                     value={data.additionalInfo}
                     onChange={(e) => updateData('additionalInfo', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all text-base"
                   />
                 </div>
               </>
