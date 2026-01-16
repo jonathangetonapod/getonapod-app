@@ -166,6 +166,7 @@ export default function ProspectView() {
 
   // Loom video modal state
   const [showLoomVideo, setShowLoomVideo] = useState(false)
+  const [loomVideoLoading, setLoomVideoLoading] = useState(true)
 
   // Feedback state (for saving)
   const [currentNotes, setCurrentNotes] = useState('')
@@ -2941,16 +2942,35 @@ export default function ProspectView() {
 
       {/* Loom Video Modal */}
       {dashboard && dashboard.loom_video_url && (
-        <Dialog open={showLoomVideo} onOpenChange={setShowLoomVideo}>
+        <Dialog
+          open={showLoomVideo}
+          onOpenChange={(open) => {
+            setShowLoomVideo(open)
+            if (open) {
+              setLoomVideoLoading(true)
+            }
+          }}
+        >
           <DialogContent className="max-w-4xl w-full p-0">
             <DialogTitle className="sr-only">Personal Video Message</DialogTitle>
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+              {/* Loading Spinner */}
+              {loomVideoLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 rounded-lg z-10">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Loading your video...</p>
+                  </div>
+                </div>
+              )}
+
               <iframe
                 src={getLoomEmbedUrl(dashboard.loom_video_url)}
                 frameBorder="0"
                 allowFullScreen
                 className="absolute top-0 left-0 w-full h-full rounded-lg"
                 allow="autoplay; fullscreen; picture-in-picture"
+                onLoad={() => setLoomVideoLoading(false)}
               />
             </div>
           </DialogContent>
