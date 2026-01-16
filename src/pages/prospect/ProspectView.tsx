@@ -150,6 +150,20 @@ export default function ProspectView() {
   const [audienceFilter, setAudienceFilter] = useState<string>('any')
   const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc'>('default')
 
+  // Video card position and size state
+  const [videoPosition, setVideoPosition] = useState(() => {
+    const saved = localStorage.getItem('loom-video-position')
+    return saved ? JSON.parse(saved) : { x: window.innerWidth - 320, y: 32 }
+  })
+  const [videoSize, setVideoSize] = useState(() => {
+    const saved = localStorage.getItem('loom-video-size')
+    return saved ? JSON.parse(saved) : { width: 256, height: 144 }
+  })
+  const [isDragging, setIsDragging] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const videoCardRef = useRef<HTMLDivElement>(null)
+
   // Pagination
   const CARDS_PER_PAGE = 18
   const [currentPage, setCurrentPage] = useState(1)
@@ -272,6 +286,61 @@ export default function ProspectView() {
   const loadingPodcasts = podcastsLoading
   const error = dashboardError?.message || null
   const cacheNotReady = dashboard && !dashboard.content_ready
+
+  // Video card drag handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.resize-handle')) return
+    setIsDragging(true)
+    setDragOffset({
+      x: e.clientX - videoPosition.x,
+      y: e.clientY - videoPosition.y
+    })
+  }
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsResizing(true)
+    setDragOffset({
+      x: e.clientX,
+      y: e.clientY
+    })
+  }
+
+  // Handle mouse move for dragging and resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const newX = Math.max(0, Math.min(e.clientX - dragOffset.x, window.innerWidth - videoSize.width))
+        const newY = Math.max(0, Math.min(e.clientY - dragOffset.y, window.innerHeight - 200))
+        const newPosition = { x: newX, y: newY }
+        setVideoPosition(newPosition)
+        localStorage.setItem('loom-video-position', JSON.stringify(newPosition))
+      } else if (isResizing) {
+        const deltaX = e.clientX - dragOffset.x
+        const deltaY = e.clientY - dragOffset.y
+        const newWidth = Math.max(200, Math.min(videoSize.width + deltaX, 600))
+        const newHeight = Math.max(150, Math.min(videoSize.height + deltaY, 450))
+        const newSize = { width: newWidth, height: newHeight }
+        setVideoSize(newSize)
+        setDragOffset({ x: e.clientX, y: e.clientY })
+        localStorage.setItem('loom-video-size', JSON.stringify(newSize))
+      }
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      setIsResizing(false)
+    }
+
+    if (isDragging || isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [isDragging, isResizing, dragOffset, videoPosition, videoSize])
 
   // Update view count once (fire and forget)
   useEffect(() => {
@@ -848,53 +917,77 @@ export default function ProspectView() {
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-          {/* Floating Video Card - Top Right */}
-          <div className="hidden lg:block absolute top-8 right-8 animate-fade-in">
-            <div className="relative group">
-              {/* Arrow pointing to video */}
-              <div className="absolute -left-24 top-1/2 -translate-y-1/2 flex items-center gap-2 animate-pulse">
-                <span className="text-sm font-medium text-primary/70">Watch this!</span>
-                <ArrowRight className="h-4 w-4 text-primary/70" />
-              </div>
-
-              {/* Video Card */}
+        {/* Draggable & Resizable Floating Video Card */}
+        <div
+          ref={videoCardRef}
+          className="hidden lg:block fixed z-50 animate-fade-in"
+          style={{
+            left: `${videoPosition.x}px`,
+            top: `${videoPosition.y}px`,
+            width: `${videoSize.width}px`,
+            cursor: isDragging ? 'grabbing' : 'grab'
+          }}
+          onMouseDown={handleMouseDown}
+        >
+          <div className="relative group">
+            {/* Video Card */}
+            <div className="relative rounded-xl overflow-hidden shadow-2xl border-2 border-primary/20 hover:border-primary/40 transition-colors bg-white dark:bg-slate-900">
+              {/* Video Thumbnail */}
               <a
                 href={dashboard.loom_video_url || '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block"
                 onClick={(e) => {
+                  e.stopPropagation()
                   if (!dashboard.loom_video_url) {
                     e.preventDefault()
                   }
                 }}
               >
-                <div className="relative w-64 rounded-xl overflow-hidden shadow-2xl border-2 border-primary/20 hover:border-primary/40 transition-all duration-300 hover:scale-105 hover:shadow-primary/20">
-                  {/* Video Thumbnail - For now using a gradient placeholder */}
-                  <div className="relative aspect-video bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
-                    {/* Play button overlay */}
-                    <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
-                    <div className="relative z-10 w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                      <div className="w-0 h-0 border-l-[20px] border-l-primary border-t-[12px] border-t-transparent border-b-[12px] border-b-transparent ml-1" />
-                    </div>
-
-                    {/* Name overlay on thumbnail */}
-                    <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-white/95 backdrop-blur-sm shadow-lg">
-                      <p className="text-sm font-bold text-foreground">Hey {dashboard.prospect_name}! 👋</p>
-                    </div>
+                <div
+                  className="relative bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center"
+                  style={{ height: `${videoSize.height}px` }}
+                >
+                  {/* Play button overlay */}
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+                  <div className="relative z-10 w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                    <div className="w-0 h-0 border-l-[20px] border-l-primary border-t-[12px] border-t-transparent border-b-[12px] border-b-transparent ml-1" />
                   </div>
 
-                  {/* Video label */}
-                  <div className="bg-white dark:bg-slate-900 px-4 py-3 border-t border-slate-200 dark:border-slate-700">
-                    <p className="text-sm font-semibold text-center">
-                      Watch Your Personal Intro
-                    </p>
+                  {/* Name overlay on thumbnail */}
+                  <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-white/95 backdrop-blur-sm shadow-lg pointer-events-none">
+                    <p className="text-sm font-bold text-foreground">Hey {dashboard.prospect_name}! 👋</p>
                   </div>
                 </div>
               </a>
+
+              {/* Video label */}
+              <div className="bg-white dark:bg-slate-900 px-4 py-3 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-sm font-semibold text-center">
+                  Watch Your Personal Intro
+                </p>
+              </div>
+
+              {/* Resize Handle */}
+              <div
+                className="resize-handle absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize hover:bg-primary/20 transition-colors"
+                onMouseDown={handleResizeMouseDown}
+              >
+                <div className="absolute bottom-1 right-1 w-3 h-3 border-r-2 border-b-2 border-primary/50" />
+              </div>
+            </div>
+
+            {/* Drag hint (shows on first hover) */}
+            <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <span className="text-xs text-muted-foreground bg-background/90 px-2 py-1 rounded shadow-sm whitespace-nowrap">
+                Drag to move • Resize from corner
+              </span>
             </div>
           </div>
+        </div>
+
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
 
           <div className="text-center space-y-3 sm:space-y-4">
             {/* Badge */}
