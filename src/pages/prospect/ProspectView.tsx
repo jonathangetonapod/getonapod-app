@@ -784,58 +784,61 @@ export default function ProspectView() {
     else feedbackStats.notReviewed++
   })
 
-  const filteredPodcasts = uniquePodcasts.filter(podcast => {
-    // Search filter (use debounced for performance)
-    if (debouncedSearch.trim()) {
-      const query = debouncedSearch.toLowerCase()
-      const matchesSearch = (
-        podcast.podcast_name.toLowerCase().includes(query) ||
-        podcast.podcast_description?.toLowerCase().includes(query) ||
-        podcast.publisher_name?.toLowerCase().includes(query)
-      )
-      if (!matchesSearch) return false
-    }
+  // Filter podcasts (memoized to prevent unnecessary re-renders)
+  const filteredPodcasts = useMemo(() => {
+    return uniquePodcasts.filter(podcast => {
+      // Search filter (use debounced for performance)
+      if (debouncedSearch.trim()) {
+        const query = debouncedSearch.toLowerCase()
+        const matchesSearch = (
+          podcast.podcast_name.toLowerCase().includes(query) ||
+          podcast.podcast_description?.toLowerCase().includes(query) ||
+          podcast.publisher_name?.toLowerCase().includes(query)
+        )
+        if (!matchesSearch) return false
+      }
 
-    // Category filter
-    if (selectedCategories.length > 0) {
-      const podcastCats = podcast.podcast_categories
-      if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
-      const podcastCatIds = podcastCats.map(c => c.category_id)
-      const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
-      if (!hasMatch) return false
-    }
+      // Category filter
+      if (selectedCategories.length > 0) {
+        const podcastCats = podcast.podcast_categories
+        if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
+        const podcastCatIds = podcastCats.map(c => c.category_id)
+        const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
+        if (!hasMatch) return false
+      }
 
-    // Feedback status filter
-    if (feedbackFilter !== 'all') {
-      const feedback = feedbackMap.get(podcast.podcast_id)
-      if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
-      if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
-      if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
-    }
+      // Feedback status filter
+      if (feedbackFilter !== 'all') {
+        const feedback = feedbackMap.get(podcast.podcast_id)
+        if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
+        if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
+        if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
+      }
 
-    // Episode count filter
-    if (episodeFilter !== 'any') {
-      const eps = podcast.episode_count || 0
-      if (episodeFilter === 'under50' && eps >= 50) return false
-      if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
-      if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
-      if (episodeFilter === '200plus' && eps < 200) return false
-    }
+      // Episode count filter
+      if (episodeFilter !== 'any') {
+        const eps = podcast.episode_count || 0
+        if (episodeFilter === 'under50' && eps >= 50) return false
+        if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
+        if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
+        if (episodeFilter === '200plus' && eps < 200) return false
+      }
 
-    // Audience size filter
-    if (audienceFilter !== 'any') {
-      const aud = podcast.audience_size || 0
-      if (audienceFilter === 'under1k' && aud >= 1000) return false
-      if (audienceFilter === '1kto5k' && (aud < 1000 || aud >= 5000)) return false
-      if (audienceFilter === '5kto10k' && (aud < 5000 || aud >= 10000)) return false
-      if (audienceFilter === '10kto25k' && (aud < 10000 || aud >= 25000)) return false
-      if (audienceFilter === '25kto50k' && (aud < 25000 || aud >= 50000)) return false
-      if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
-      if (audienceFilter === '100kplus' && aud < 100000) return false
-    }
+      // Audience size filter
+      if (audienceFilter !== 'any') {
+        const aud = podcast.audience_size || 0
+        if (audienceFilter === 'under1k' && aud >= 1000) return false
+        if (audienceFilter === '1kto5k' && (aud < 1000 || aud >= 5000)) return false
+        if (audienceFilter === '5kto10k' && (aud < 5000 || aud >= 10000)) return false
+        if (audienceFilter === '10kto25k' && (aud < 10000 || aud >= 25000)) return false
+        if (audienceFilter === '25kto50k' && (aud < 25000 || aud >= 50000)) return false
+        if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
+        if (audienceFilter === '100kplus' && aud < 100000) return false
+      }
 
-    return true
-  })
+      return true
+    })
+  }, [uniquePodcasts, debouncedSearch, selectedCategories, feedbackMap, feedbackFilter, episodeFilter, audienceFilter])
 
   // Sort filtered podcasts (memoized to prevent unnecessary re-renders)
   const sortedPodcasts = useMemo(() => {
