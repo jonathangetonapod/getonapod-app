@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -121,6 +121,9 @@ const goalOptions = [
   'Network Building', 'Product Launch', 'Authority Building'
 ]
 
+const STORAGE_KEY = 'onboarding_draft'
+const STORAGE_STEP_KEY = 'onboarding_step'
+
 export default function Onboarding() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
@@ -131,6 +134,52 @@ export default function Onboarding() {
 
   const totalSteps = 6
   const progress = (step / totalSteps) * 100
+
+  // Load saved progress from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedData = localStorage.getItem(STORAGE_KEY)
+      const savedStep = localStorage.getItem(STORAGE_STEP_KEY)
+
+      if (savedData) {
+        const parsed = JSON.parse(savedData)
+        setData(parsed)
+        toast.info('Welcome back! Your progress has been restored.')
+      }
+
+      if (savedStep) {
+        setStep(parseInt(savedStep, 10))
+      }
+    } catch (error) {
+      console.error('Error loading saved progress:', error)
+    }
+  }, [])
+
+  // Auto-save data to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      // Don't save if account is already created
+      if (accountCreated) return
+
+      // Don't save if data is still initial (prevents saving empty form)
+      if (JSON.stringify(data) === JSON.stringify(initialData)) return
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      localStorage.setItem(STORAGE_STEP_KEY, step.toString())
+    } catch (error) {
+      console.error('Error saving progress:', error)
+    }
+  }, [data, step, accountCreated])
+
+  // Clear saved progress after successful account creation
+  const clearSavedProgress = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(STORAGE_STEP_KEY)
+    } catch (error) {
+      console.error('Error clearing saved progress:', error)
+    }
+  }
 
   const updateData = (field: keyof OnboardingData, value: any) => {
     setData(prev => ({ ...prev, [field]: value }))
@@ -326,6 +375,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
       const result = await response.json()
       setAccountDetails(result.client)
       setAccountCreated(true)
+      clearSavedProgress()
       toast.success('Your account has been created!')
 
       // Show warning if Google Sheet creation failed
@@ -339,7 +389,8 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
 
     } catch (error) {
       console.error('Onboarding error:', error)
-      toast.error(error instanceof Error ? error.message : 'Something went wrong')
+      toast.error(error instanceof Error ? error.message : 'Something went wrong. Your progress has been saved - you can try again.')
+      // Progress is automatically saved via useEffect
     } finally {
       setLoading(false)
     }
@@ -563,6 +614,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">Get On A Pod</h1>
           <p className="text-xl text-muted-foreground">Let's get you on amazing podcasts</p>
+          <p className="text-sm text-muted-foreground mt-2">⏱️ Takes about 10-15 minutes</p>
         </div>
 
         {/* Progress */}
@@ -572,6 +624,26 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             <span className="text-sm text-muted-foreground">{Math.round(progress)}% Complete</span>
           </div>
           <Progress value={progress} className="h-2" />
+
+          {/* Step Navigation Dots */}
+          <div className="flex items-center justify-center gap-2 mt-4">
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((stepNum) => (
+              <button
+                key={stepNum}
+                onClick={() => setStep(stepNum)}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all ${
+                  stepNum === step
+                    ? 'bg-primary text-primary-foreground scale-110'
+                    : stepNum < step
+                    ? 'bg-primary/20 text-primary hover:bg-primary/30'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+                title={`Go to step ${stepNum}`}
+              >
+                {stepNum}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Form Card */}
