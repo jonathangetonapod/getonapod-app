@@ -848,8 +848,9 @@ export default function ProspectView() {
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
 
-        {/* Video Card - Fixed Right Side */}
-        <div className="hidden xl:block fixed top-24 right-8 w-80 z-50 animate-fade-in">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+          {/* Video Card - Right Side (stays in hero section) */}
+          <div className="hidden xl:block absolute top-0 right-0 w-80 z-10 animate-fade-in">
             {/* Attention Banner */}
             <div className="mb-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg animate-pulse">
               <Sparkles className="h-4 w-4" />
@@ -894,9 +895,7 @@ export default function ProspectView() {
                 </div>
               </div>
             </a>
-        </div>
-
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+          </div>
           <div className="text-center space-y-3 sm:space-y-4">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg animate-fade-in">
