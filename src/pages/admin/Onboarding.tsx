@@ -63,6 +63,7 @@ interface Client {
   linkedin_url: string | null
   website: string | null
   calendar_link: string | null
+  photo_url: string | null
   created_at: string
   status: string
 }
@@ -394,24 +395,35 @@ export default function Onboarding() {
             <SheetTitle>Client Onboarding Details</SheetTitle>
           </VisuallyHidden>
           <SheetHeader>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold">{selectedClient?.name}</h2>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  {selectedClient?.email}
+            <div className="space-y-4">
+              {selectedClient?.photo_url && (
+                <div className="flex justify-center">
+                  <img
+                    src={selectedClient.photo_url}
+                    alt={`${selectedClient.name} headshot`}
+                    className="w-24 h-24 rounded-full object-cover border-4 border-primary/20"
+                  />
                 </div>
-                {selectedClient?.website && (
+              )}
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold">{selectedClient?.name}</h2>
+                <div className="space-y-1 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <Globe className="h-4 w-4" />
-                    <a href={selectedClient.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                      {selectedClient.website}
-                    </a>
+                    <Mail className="h-4 w-4" />
+                    {selectedClient?.email}
                   </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Submitted {selectedClient && formatDistanceToNow(new Date(selectedClient.created_at), { addSuffix: true })}
+                  {selectedClient?.website && (
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      <a href={selectedClient.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        {selectedClient.website}
+                      </a>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Submitted {selectedClient && formatDistanceToNow(new Date(selectedClient.created_at), { addSuffix: true })}
+                  </div>
                 </div>
               </div>
             </div>
