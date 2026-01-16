@@ -848,6 +848,50 @@ export default function ProspectView() {
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+          {/* Floating Video Card - Top Right */}
+          {dashboard.loom_video_url && (
+            <div className="hidden lg:block absolute top-8 right-8 animate-fade-in">
+              <div className="relative group">
+                {/* Arrow pointing to video */}
+                <div className="absolute -left-24 top-1/2 -translate-y-1/2 flex items-center gap-2 animate-pulse">
+                  <span className="text-sm font-medium text-primary/70">Watch this!</span>
+                  <ArrowRight className="h-4 w-4 text-primary/70" />
+                </div>
+
+                {/* Video Card */}
+                <a
+                  href={dashboard.loom_video_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  <div className="relative w-64 rounded-xl overflow-hidden shadow-2xl border-2 border-primary/20 hover:border-primary/40 transition-all duration-300 hover:scale-105 hover:shadow-primary/20">
+                    {/* Video Thumbnail - For now using a gradient placeholder */}
+                    <div className="relative aspect-video bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                      {/* Play button overlay */}
+                      <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+                      <div className="relative z-10 w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <div className="w-0 h-0 border-l-[20px] border-l-primary border-t-[12px] border-t-transparent border-b-[12px] border-b-transparent ml-1" />
+                      </div>
+
+                      {/* Name overlay on thumbnail */}
+                      <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-white/95 backdrop-blur-sm shadow-lg">
+                        <p className="text-sm font-bold text-foreground">Hey {dashboard.prospect_name}! 👋</p>
+                      </div>
+                    </div>
+
+                    {/* Video label */}
+                    <div className="bg-white dark:bg-slate-900 px-4 py-3 border-t border-slate-200 dark:border-slate-700">
+                      <p className="text-sm font-semibold text-center">
+                        Watch Your Personal Intro
+                      </p>
+                    </div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          )}
+
           <div className="text-center space-y-3 sm:space-y-4">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg animate-fade-in">
