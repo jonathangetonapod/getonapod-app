@@ -792,6 +792,44 @@ export default function ProspectDashboards() {
     }
   }
 
+  // Parse Loom HTML snippet to extract video URL and thumbnail URL
+  const parseLoomHtml = (html: string) => {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+
+    // Extract video URL from <a> tag's href
+    const link = doc.querySelector('a[href*="loom.com"]')
+    const videoUrl = link?.getAttribute('href') || ''
+
+    // Extract thumbnail URL from <img> tag's src
+    const img = doc.querySelector('img[src*="cdn.loom.com"]')
+    const thumbnailUrl = img?.getAttribute('src') || ''
+
+    return { videoUrl, thumbnailUrl }
+  }
+
+  const handleLoomHtmlPaste = (html: string) => {
+    const trimmed = html.trim()
+
+    // Check if it looks like HTML (contains < and >)
+    if (trimmed.includes('<') && trimmed.includes('>')) {
+      const { videoUrl, thumbnailUrl } = parseLoomHtml(trimmed)
+
+      if (videoUrl) {
+        setEditLoomVideoUrl(videoUrl)
+        if (thumbnailUrl) {
+          setEditLoomThumbnailUrl(thumbnailUrl)
+        }
+        toast.success('Loom video and thumbnail extracted!')
+      } else {
+        toast.error('Could not find Loom video URL in the HTML')
+      }
+    } else if (trimmed.includes('loom.com')) {
+      // If it's just a plain URL, use it as video URL
+      setEditLoomVideoUrl(trimmed)
+    }
+  }
+
   const saveLoomVideoUrl = async () => {
     if (!selectedDashboard) return
 
@@ -1909,21 +1947,43 @@ export default function ProspectDashboards() {
                       <Video className="h-4 w-4" />
                       Loom Video
                     </h3>
+
+                    {/* Quick Paste Area */}
                     <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">
+                        Paste Loom HTML snippet here (or just the video URL):
+                      </Label>
+                      <Textarea
+                        placeholder="Paste the HTML code from Loom here..."
+                        className="text-sm font-mono min-h-[80px]"
+                        onChange={(e) => handleLoomHtmlPaste(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        The video URL and thumbnail will be extracted automatically
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    {/* Extracted Values */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">Extracted Values:</Label>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Paste Loom video URL..."
+                          placeholder="Video URL (auto-filled)"
                           value={editLoomVideoUrl}
                           onChange={(e) => setEditLoomVideoUrl(e.target.value)}
                           className="text-sm"
+                          readOnly
                         />
                       </div>
                       <div className="flex gap-2">
                         <Input
-                          placeholder="Paste Loom thumbnail URL (optional)..."
+                          placeholder="Thumbnail URL (auto-filled)"
                           value={editLoomThumbnailUrl}
                           onChange={(e) => setEditLoomThumbnailUrl(e.target.value)}
                           className="text-sm"
+                          readOnly
                         />
                       </div>
                       <div className="flex gap-2">
@@ -1957,9 +2017,6 @@ export default function ProspectDashboards() {
                         Preview Video
                       </Button>
                     )}
-                    <p className="text-xs text-muted-foreground">
-                      Video URL from Loom share link. Thumbnail URL is optional (e.g., https://cdn.loom.com/sessions/thumbnails/...)
-                    </p>
 
                     {/* Toggle Show/Hide Video */}
                     <div className="pt-2 border-t">

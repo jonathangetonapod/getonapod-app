@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -837,22 +837,26 @@ export default function ProspectView() {
     return true
   })
 
-  // Sort filtered podcasts
-  const sortedPodcasts = [...filteredPodcasts].sort((a, b) => {
-    switch (sortBy) {
-      case 'audience_desc':
-        return (b.audience_size || 0) - (a.audience_size || 0)
-      case 'audience_asc':
-        return (a.audience_size || 0) - (b.audience_size || 0)
-      default:
-        return 0
-    }
-  })
+  // Sort filtered podcasts (memoized to prevent unnecessary re-renders)
+  const sortedPodcasts = useMemo(() => {
+    return [...filteredPodcasts].sort((a, b) => {
+      switch (sortBy) {
+        case 'audience_desc':
+          return (b.audience_size || 0) - (a.audience_size || 0)
+        case 'audience_asc':
+          return (a.audience_size || 0) - (b.audience_size || 0)
+        default:
+          return 0
+      }
+    })
+  }, [filteredPodcasts, sortBy])
 
-  // Pagination
+  // Pagination (memoized to prevent unnecessary re-renders)
   const totalPages = Math.ceil(sortedPodcasts.length / CARDS_PER_PAGE)
   const startIndex = (currentPage - 1) * CARDS_PER_PAGE
-  const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  const paginatedPodcasts = useMemo(() => {
+    return sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  }, [sortedPodcasts, startIndex])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -891,6 +895,8 @@ export default function ProspectView() {
                       src={dashboard.loom_thumbnail_url}
                       alt="Video thumbnail"
                       className="absolute inset-0 w-full h-full object-cover"
+                      loading="eager"
+                      decoding="async"
                     />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20" />
@@ -1062,7 +1068,7 @@ export default function ProspectView() {
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {highestReachPodcast.podcast_image_url ? (
-                    <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="w-full h-full bg-green-200 flex items-center justify-center">
                       <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
@@ -1088,7 +1094,7 @@ export default function ProspectView() {
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {topRatedPodcast.podcast_image_url ? (
-                    <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="w-full h-full bg-amber-200 flex items-center justify-center">
                       <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
@@ -1117,7 +1123,7 @@ export default function ProspectView() {
               <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {mostEpisodesPodcast.podcast_image_url ? (
-                    <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="w-full h-full bg-purple-200 flex items-center justify-center">
                       <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
@@ -1415,6 +1421,7 @@ export default function ProspectView() {
                       alt={podcast.podcast_name}
                       className="w-full h-full object-cover"
                       loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
