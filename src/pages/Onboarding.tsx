@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,9 +21,14 @@ import {
   Key,
   ExternalLink,
   Loader2,
-  Copy
+  Copy,
+  Star,
+  TrendingUp,
+  Check,
+  Quote
 } from 'lucide-react'
 import { toast } from 'sonner'
+import confetti from 'canvas-confetti'
 
 interface OnboardingData {
   // Basic Information
@@ -121,6 +126,33 @@ const goalOptions = [
   'Network Building', 'Product Launch', 'Authority Building'
 ]
 
+const testimonials = [
+  {
+    name: 'Sarah Chen',
+    title: 'CEO at TechFlow',
+    quote: 'Get On A Pod secured me 12 podcast appearances in 3 months. My brand visibility skyrocketed!',
+    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop'
+  },
+  {
+    name: 'Michael Rodriguez',
+    title: 'Marketing Director',
+    quote: 'The team made the entire process seamless. I went from unknown to industry thought leader.',
+    image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop'
+  },
+  {
+    name: 'Emily Thompson',
+    title: 'Founder & Author',
+    quote: 'Best investment I made for my personal brand. The ROI has been incredible.',
+    image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop'
+  }
+]
+
+const stats = [
+  { label: 'Clients Booked', value: '500+' },
+  { label: 'Podcast Placements', value: '2,500+' },
+  { label: 'Success Rate', value: '94%' }
+]
+
 const STORAGE_KEY = 'onboarding_draft'
 const STORAGE_STEP_KEY = 'onboarding_step'
 
@@ -131,6 +163,10 @@ export default function Onboarding() {
   const [loading, setLoading] = useState(false)
   const [accountCreated, setAccountCreated] = useState(false)
   const [accountDetails, setAccountDetails] = useState<any>(null)
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
+  const cardRef = useRef<HTMLDivElement>(null)
 
   const totalSteps = 6
   const progress = (step / totalSteps) * 100
@@ -250,12 +286,44 @@ export default function Onboarding() {
 
   const nextStep = () => {
     if (validateStep()) {
-      setStep(prev => Math.min(prev + 1, totalSteps))
+      // Mark current step as completed
+      setCompletedSteps(prev => new Set([...prev, step]))
+
+      // Animate transition
+      setDirection('forward')
+      setIsAnimating(true)
+
+      // Small celebration for completing step
+      if (step < totalSteps) {
+        confetti({
+          particleCount: 30,
+          spread: 60,
+          origin: { y: 0.6 },
+          colors: ['#8B5CF6', '#EC4899', '#F59E0B']
+        })
+      }
+
+      setTimeout(() => {
+        setStep(prev => Math.min(prev + 1, totalSteps))
+        setIsAnimating(false)
+
+        // Scroll to top of card
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 300)
     }
   }
 
   const prevStep = () => {
-    setStep(prev => Math.max(prev - 1, 1))
+    setDirection('backward')
+    setIsAnimating(true)
+
+    setTimeout(() => {
+      setStep(prev => Math.max(prev - 1, 1))
+      setIsAnimating(false)
+
+      // Scroll to top of card
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 300)
   }
 
   const handleSubmit = async () => {
@@ -378,6 +446,36 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
       clearSavedProgress()
       toast.success('Your account has been created!')
 
+      // Big celebration!
+      const duration = 3000
+      const animationEnd = Date.now() + duration
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }
+
+      const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min
+
+      const interval = setInterval(() => {
+        const timeLeft = animationEnd - Date.now()
+
+        if (timeLeft <= 0) {
+          return clearInterval(interval)
+        }
+
+        const particleCount = 50 * (timeLeft / duration)
+
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
+          colors: ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981']
+        })
+        confetti({
+          ...defaults,
+          particleCount,
+          origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
+          colors: ['#8B5CF6', '#EC4899', '#F59E0B', '#10B981']
+        })
+      }, 250)
+
       // Show warning if Google Sheet creation failed
       if (result.google_sheet_error) {
         console.error('Google Sheet creation error:', result.google_sheet_error)
@@ -398,21 +496,61 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
 
   if (accountCreated && accountDetails) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 dark:bg-green-900/20 rounded-full mb-4">
-              <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
+      <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-100 via-pink-50 to-purple-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900 py-12 px-4">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-purple-300/30 dark:bg-purple-500/10 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute top-40 right-10 w-96 h-96 bg-pink-300/30 dark:bg-pink-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+          <div className="absolute bottom-20 left-1/3 w-80 h-80 bg-green-300/30 dark:bg-green-500/10 rounded-full blur-3xl animate-pulse delay-2000" />
+        </div>
+
+        <div className="max-w-4xl mx-auto relative z-10">
+          <div className="text-center mb-12 animate-fade-in">
+            <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full mb-6 shadow-2xl animate-bounce">
+              <CheckCircle2 className="h-14 w-14 text-white" />
             </div>
-            <h1 className="text-4xl font-bold mb-2">Welcome to Get On A Pod! 🎉</h1>
-            <p className="text-xl text-muted-foreground">
+            <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
+              Welcome to Get On A Pod! 🎉
+            </h1>
+            <p className="text-2xl md:text-3xl font-semibold text-gray-700 dark:text-gray-300">
               Your account is ready. Here's everything you need to get started.
             </p>
           </div>
 
+          {/* Testimonials Section */}
+          <div className="mb-12 animate-fade-in delay-100">
+            <h2 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-200">
+              Join Our Successful Clients
+            </h2>
+            <div className="grid md:grid-cols-3 gap-6">
+              {testimonials.map((testimonial, index) => (
+                <div
+                  key={index}
+                  className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-white/50 dark:border-gray-700/50 rounded-xl p-6 shadow-lg hover:scale-105 transition-transform duration-300"
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <img
+                      src={testimonial.image}
+                      alt={testimonial.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                    <div>
+                      <p className="font-semibold text-gray-900 dark:text-gray-100">{testimonial.name}</p>
+                      <p className="text-xs text-muted-foreground">{testimonial.title}</p>
+                    </div>
+                  </div>
+                  <Quote className="h-8 w-8 text-purple-400 mb-2" />
+                  <p className="text-sm text-gray-700 dark:text-gray-300 italic">
+                    "{testimonial.quote}"
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-6">
             {/* Portal Access */}
-            <Card className="border-2 border-purple-200 dark:border-purple-800">
+            <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-2 border-purple-200 dark:border-purple-800 shadow-xl">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Key className="h-5 w-5 text-purple-600" />
@@ -513,7 +651,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             </Card>
 
             {/* Next Steps */}
-            <Card>
+            <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-white/50 dark:border-gray-700/50 shadow-xl">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-yellow-600" />
@@ -571,10 +709,9 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             </Card>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col gap-3 sm:gap-4">
               <Button
-                className="flex-1"
-                size="lg"
+                className="w-full py-6 text-base font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 hover:scale-105 transition-all shadow-lg"
                 onClick={() => window.open(accountDetails.portal_url, '_blank')}
               >
                 <ExternalLink className="mr-2 h-5 w-5" />
@@ -582,8 +719,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
               </Button>
               <Button
                 variant="outline"
-                className="flex-1"
-                size="lg"
+                className="w-full py-6 text-base font-semibold hover:scale-105 transition-transform"
                 onClick={() => navigate('/')}
               >
                 Back to Home
@@ -591,7 +727,7 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             </div>
 
             {/* Contact Info */}
-            <Card className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-purple-200 dark:border-purple-800">
+            <Card className="backdrop-blur-xl bg-gradient-to-r from-purple-100/70 to-pink-100/70 dark:from-purple-950/50 dark:to-pink-950/50 border-purple-200 dark:border-purple-800 shadow-xl">
               <CardContent className="pt-6">
                 <p className="text-center text-sm text-muted-foreground">
                   Questions? Email us at{' '}
@@ -608,56 +744,115 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12 px-4">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2">Get On A Pod</h1>
-          <p className="text-xl text-muted-foreground">Let's get you on amazing podcasts</p>
-          <p className="text-sm text-muted-foreground mt-2">⏱️ Takes about 10-15 minutes</p>
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-100 via-pink-50 to-purple-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900 py-12 px-4">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-purple-300/30 dark:bg-purple-500/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute top-40 right-10 w-96 h-96 bg-pink-300/30 dark:bg-pink-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+        <div className="absolute bottom-20 left-1/3 w-80 h-80 bg-yellow-300/20 dark:bg-yellow-500/10 rounded-full blur-3xl animate-pulse delay-2000" />
+      </div>
+
+      <div className="max-w-4xl mx-auto relative z-10">
+        {/* Header with improved typography */}
+        <div className="text-center mb-8 sm:mb-12 animate-fade-in px-4">
+          <div className="inline-block mb-4">
+            <Badge className="text-xs sm:text-sm px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg">
+              <Star className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 inline" />
+              Join 500+ Successful Guests
+            </Badge>
+          </div>
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-3 sm:mb-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent px-2">
+            Get On A Pod
+          </h1>
+          <p className="text-xl sm:text-2xl md:text-3xl font-semibold text-gray-700 dark:text-gray-300 mb-2 px-2">
+            Let's get you on amazing podcasts
+          </p>
+          <p className="text-sm sm:text-base text-muted-foreground flex items-center justify-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1">
+              <TrendingUp className="h-4 w-4" />
+              10-15 minutes
+            </span>
+            <span className="hidden sm:inline">•</span>
+            <span>Auto-saves progress</span>
+          </p>
         </div>
 
-        {/* Progress */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Step {step} of {totalSteps}</span>
-            <span className="text-sm text-muted-foreground">{Math.round(progress)}% Complete</span>
-          </div>
-          <Progress value={progress} className="h-2" />
+        {/* Social Proof Stats */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-10 animate-fade-in delay-100">
+          {stats.map((stat, index) => (
+            <div
+              key={index}
+              className="text-center p-3 sm:p-4 rounded-xl bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border border-white/50 dark:border-gray-700/50 hover:scale-105 transition-transform duration-300 shadow-sm"
+            >
+              <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                {stat.value}
+              </div>
+              <div className="text-[10px] sm:text-xs md:text-sm text-muted-foreground font-medium mt-1">
+                {stat.label}
+              </div>
+            </div>
+          ))}
+        </div>
 
-          {/* Step Navigation Dots */}
-          <div className="flex items-center justify-center gap-2 mt-4">
-            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((stepNum) => (
-              <button
-                key={stepNum}
-                onClick={() => setStep(stepNum)}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all ${
-                  stepNum === step
-                    ? 'bg-primary text-primary-foreground scale-110'
-                    : stepNum < step
-                    ? 'bg-primary/20 text-primary hover:bg-primary/30'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-                title={`Go to step ${stepNum}`}
-              >
-                {stepNum}
-              </button>
-            ))}
+        {/* Progress with enhanced visual design */}
+        <div className="mb-8 animate-fade-in delay-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Step {step} of {totalSteps}
+            </span>
+            <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
+              {Math.round(progress)}% Complete
+            </span>
+          </div>
+          <Progress value={progress} className="h-3 shadow-sm" />
+
+          {/* Enhanced Step Navigation Dots with Checkmarks */}
+          <div className="flex items-center justify-center gap-2 sm:gap-3 mt-6">
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((stepNum) => {
+              const isCompleted = completedSteps.has(stepNum)
+              const isCurrent = stepNum === step
+
+              return (
+                <button
+                  key={stepNum}
+                  onClick={() => setStep(stepNum)}
+                  className={`relative w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold transition-all duration-300 ${
+                    isCurrent
+                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white scale-110 sm:scale-125 shadow-lg ring-2 sm:ring-4 ring-purple-200 dark:ring-purple-800'
+                      : isCompleted
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:scale-110 shadow-md'
+                      : 'bg-white/70 dark:bg-gray-800/70 text-gray-400 hover:bg-white dark:hover:bg-gray-800 hover:scale-105 shadow-sm'
+                  }`}
+                  title={`${isCompleted ? '✓ Completed' : isCurrent ? 'Current' : 'Go to'} step ${stepNum}`}
+                >
+                  {isCompleted ? (
+                    <Check className="h-4 w-4 sm:h-5 sm:w-5" />
+                  ) : (
+                    stepNum
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* Form Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {step === 1 && <><User className="h-5 w-5" /> Basic Information</>}
-              {step === 2 && <><Briefcase className="h-5 w-5" /> Professional Profile</>}
-              {step === 3 && <><Sparkles className="h-5 w-5" /> Your Story</>}
-              {step === 4 && <><Target className="h-5 w-5" /> Expertise & Topics</>}
-              {step === 5 && <><Target className="h-5 w-5" /> Goals & Audience</>}
-              {step === 6 && <><Calendar className="h-5 w-5" /> Final Details</>}
+        {/* Glassmorphism Form Card */}
+        <Card
+          ref={cardRef}
+          className={`backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-white/50 dark:border-gray-700/50 shadow-2xl transition-all duration-300 ${
+            isAnimating ? (direction === 'forward' ? 'opacity-0 translate-x-8' : 'opacity-0 -translate-x-8') : 'opacity-100 translate-x-0'
+          }`}
+        >
+          <CardHeader className="space-y-3 pb-8">
+            <CardTitle className="flex items-center gap-3 text-2xl md:text-3xl">
+              {step === 1 && <><User className="h-7 w-7 text-purple-500" /> Basic Information</>}
+              {step === 2 && <><Briefcase className="h-7 w-7 text-purple-500" /> Professional Profile</>}
+              {step === 3 && <><Sparkles className="h-7 w-7 text-purple-500" /> Your Story</>}
+              {step === 4 && <><Target className="h-7 w-7 text-purple-500" /> Expertise & Topics</>}
+              {step === 5 && <><Target className="h-7 w-7 text-purple-500" /> Goals & Audience</>}
+              {step === 6 && <><Calendar className="h-7 w-7 text-purple-500" /> Final Details</>}
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-base">
               {step === 1 && 'Tell us about yourself and your company'}
               {step === 2 && 'Share your professional background and expertise'}
               {step === 3 && 'What makes your journey unique and compelling?'}
@@ -739,29 +934,40 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             {step === 2 && (
               <>
                 <div>
-                  <Label htmlFor="bio">Professional Bio *</Label>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label htmlFor="bio" className="text-base font-semibold">Professional Bio *</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {data.bio.length} characters
+                    </span>
+                  </div>
                   <Textarea
                     id="bio"
                     placeholder="Tell us about your professional background, key accomplishments, and what you do..."
                     rows={6}
                     value={data.bio}
                     onChange={(e) => updateData('bio', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    This will be used to pitch you to podcasts
+                    💡 This will be used to pitch you to podcasts - make it compelling!
                   </p>
                 </div>
 
                 <div>
-                  <Label>Areas of Expertise * (select all that apply)</Label>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <Label className="text-base font-semibold">Areas of Expertise * (select all that apply)</Label>
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {expertiseOptions.map((option) => (
                       <Badge
                         key={option}
                         variant={data.expertise.includes(option) ? 'default' : 'outline'}
-                        className="cursor-pointer"
+                        className={`cursor-pointer transition-all duration-200 ${
+                          data.expertise.includes(option)
+                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-md hover:shadow-lg scale-105'
+                            : 'hover:scale-105 hover:border-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950'
+                        }`}
                         onClick={() => toggleArrayItem('expertise', option)}
                       >
+                        {data.expertise.includes(option) && <Check className="h-3 w-3 mr-1" />}
                         {option}
                       </Badge>
                     ))}
@@ -796,24 +1002,39 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             {step === 3 && (
               <>
                 <div>
-                  <Label htmlFor="compellingStory">Share a Compelling Story *</Label>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label htmlFor="compellingStory" className="text-base font-semibold">Share a Compelling Story *</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {data.compellingStory.length} characters
+                    </span>
+                  </div>
                   <Textarea
                     id="compellingStory"
                     placeholder="Share a compelling story from your personal or professional life that would engage a podcast audience..."
                     rows={6}
                     value={data.compellingStory}
                     onChange={(e) => updateData('compellingStory', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    💡 Share challenges you've overcome, pivotal moments, or unique insights
+                  </p>
                 </div>
 
                 <div>
-                  <Label htmlFor="uniqueJourney">What Makes You Unique? *</Label>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label htmlFor="uniqueJourney" className="text-base font-semibold">What Makes You Unique? *</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {data.uniqueJourney.length} characters
+                    </span>
+                  </div>
                   <Textarea
                     id="uniqueJourney"
                     placeholder="What makes your journey or experience different from others in your industry?"
                     rows={5}
                     value={data.uniqueJourney}
                     onChange={(e) => updateData('uniqueJourney', e.target.value)}
+                    className="resize-none focus:ring-2 focus:ring-purple-500 transition-all"
                   />
                 </div>
 
@@ -834,15 +1055,20 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             {step === 4 && (
               <>
                 <div>
-                  <Label>Topics You're Confident Speaking About * (select all that apply)</Label>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <Label className="text-base font-semibold">Topics You're Confident Speaking About * (select all that apply)</Label>
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {topicOptions.map((option) => (
                       <Badge
                         key={option}
                         variant={data.topicsConfident.includes(option) ? 'default' : 'outline'}
-                        className="cursor-pointer"
+                        className={`cursor-pointer transition-all duration-200 ${
+                          data.topicsConfident.includes(option)
+                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-md hover:shadow-lg scale-105'
+                            : 'hover:scale-105 hover:border-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950'
+                        }`}
                         onClick={() => toggleArrayItem('topicsConfident', option)}
                       >
+                        {data.topicsConfident.includes(option) && <Check className="h-3 w-3 mr-1" />}
                         {option}
                       </Badge>
                     ))}
@@ -899,15 +1125,20 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                 </div>
 
                 <div>
-                  <Label>Your Goals for Getting on Podcasts * (select all that apply)</Label>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <Label className="text-base font-semibold">Your Goals for Getting on Podcasts * (select all that apply)</Label>
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {goalOptions.map((option) => (
                       <Badge
                         key={option}
                         variant={data.goals.includes(option) ? 'default' : 'outline'}
-                        className="cursor-pointer"
+                        className={`cursor-pointer transition-all duration-200 ${
+                          data.goals.includes(option)
+                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-md hover:shadow-lg scale-105'
+                            : 'hover:scale-105 hover:border-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950'
+                        }`}
                         onClick={() => toggleArrayItem('goals', option)}
                       >
+                        {data.goals.includes(option) && <Check className="h-3 w-3 mr-1" />}
                         {option}
                       </Badge>
                     ))}
@@ -1020,32 +1251,41 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             )}
 
             {/* Navigation Buttons */}
-            <div className="flex justify-between pt-6">
+            <div className="flex flex-col sm:flex-row justify-between pt-8 gap-3 sm:gap-4">
               <Button
                 variant="outline"
                 onClick={prevStep}
                 disabled={step === 1 || loading}
+                className="w-full sm:w-auto px-6 py-5 sm:py-6 text-sm sm:text-base font-semibold hover:scale-105 transition-transform disabled:opacity-50 order-2 sm:order-1"
               >
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <ArrowLeft className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                 Back
               </Button>
 
               {step < totalSteps ? (
-                <Button onClick={nextStep} disabled={loading}>
+                <Button
+                  onClick={nextStep}
+                  disabled={loading}
+                  className="w-full sm:w-auto px-8 py-5 sm:py-6 text-sm sm:text-base font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 hover:scale-105 transition-all shadow-lg order-1 sm:order-2"
+                >
                   Next
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                  <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
               ) : (
-                <Button onClick={handleSubmit} disabled={loading}>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className="w-full sm:w-auto px-8 py-5 sm:py-6 text-sm sm:text-base font-semibold bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 hover:scale-105 transition-all shadow-lg order-1 sm:order-2"
+                >
                   {loading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
                       Creating Your Account...
                     </>
                   ) : (
                     <>
                       Complete Setup
-                      <CheckCircle2 className="ml-2 h-4 w-4" />
+                      <CheckCircle2 className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
                     </>
                   )}
                 </Button>
