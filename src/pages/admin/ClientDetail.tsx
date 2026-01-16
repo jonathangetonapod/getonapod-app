@@ -1009,15 +1009,25 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to run AI analysis')
 
-      const status = result.status || {}
-      const cached = status.cached || result.podcasts?.length || 0
-      const aiAnalyzed = status.withAi || 0
-      const total = status.totalInSheet || cached
-      setDashboardCacheStatus({ cached, aiAnalyzed, total })
+      // Backend returns: { analyzed, remaining, total, aiComplete, stoppedEarly }
+      const analyzed = result.analyzed || 0
+      const total = result.total || 0
+      const remaining = result.remaining || 0
+      const aiComplete = result.aiComplete || false
+
+      // Update cache status with new AI analysis count
+      setDashboardCacheStatus(prev => ({
+        ...prev,
+        cached: total,
+        aiAnalyzed: total - remaining,
+        total: total
+      }))
 
       toast({
-        title: 'AI Analysis Complete',
-        description: `Analyzed ${aiAnalyzed} podcasts`
+        title: aiComplete ? 'AI Analysis Complete' : 'AI Analysis Partial',
+        description: analyzed > 0
+          ? `Analyzed ${analyzed} podcast${analyzed !== 1 ? 's' : ''}${remaining > 0 ? `, ${remaining} remaining` : ''}`
+          : 'All podcasts already have AI analysis'
       })
     } catch (error) {
       toast({

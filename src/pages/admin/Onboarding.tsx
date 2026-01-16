@@ -9,6 +9,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   ClipboardList,
   Search,
   Calendar,
@@ -19,9 +29,11 @@ import {
   Target,
   Mail,
   Globe,
-  Users as UsersIcon
+  Users as UsersIcon,
+  Trash2
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { deleteClient } from '@/services/clients'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -74,6 +86,8 @@ export default function Onboarding() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [parsedData, setParsedData] = useState<Partial<OnboardingData> | null>(null)
+  const [clientToDelete, setClientToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     fetchClients()
@@ -217,6 +231,33 @@ export default function Onboarding() {
     setParsedData(parsed)
   }
 
+  const handleDeleteClient = async () => {
+    if (!clientToDelete) return
+
+    setIsDeleting(true)
+    try {
+      await deleteClient(clientToDelete.id)
+
+      // Update local state by filtering out deleted client
+      setClients(prevClients => prevClients.filter(c => c.id !== clientToDelete.id))
+
+      // Close dialog and reset state
+      setClientToDelete(null)
+
+      // Show success toast
+      toast.success('Onboarding submission deleted', {
+        description: `${clientToDelete.name} has been removed from the system.`
+      })
+    } catch (error) {
+      console.error('Error deleting client:', error)
+      toast.error('Failed to delete onboarding submission', {
+        description: 'Please try again or contact support if the issue persists.'
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -343,6 +384,17 @@ export default function Onboarding() {
                           <Calendar className="h-3 w-3 mr-1" />
                           {formatDistanceToNow(new Date(client.created_at), { addSuffix: true })}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setClientToDelete({ id: client.id, name: client.name })
+                          }}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -638,6 +690,41 @@ export default function Onboarding() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!clientToDelete}
+        onOpenChange={(open) => !open && setClientToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Onboarding Submission?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{clientToDelete?.name}</strong>'s onboarding submission and remove them from the client database.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteClient}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Submission'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   )
 }
