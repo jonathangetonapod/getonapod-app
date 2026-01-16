@@ -68,7 +68,8 @@ import {
   ThumbsDown,
   MessageSquare,
   DollarSign,
-  FileText
+  FileText,
+  Video
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -89,6 +90,7 @@ interface ProspectDashboard {
   last_viewed_at: string | null
   personalized_tagline: string | null
   media_kit_url: string | null
+  loom_video_url: string | null
 }
 
 interface PodcastFeedback {
@@ -137,6 +139,10 @@ export default function ProspectDashboards() {
   // Edit media kit URL
   const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
   const [savingMediaKit, setSavingMediaKit] = useState(false)
+
+  // Edit Loom video URL
+  const [editLoomVideoUrl, setEditLoomVideoUrl] = useState('')
+  const [savingLoomVideo, setSavingLoomVideo] = useState(false)
 
   // Edit prospect name
   const [editProspectName, setEditProspectName] = useState('')
@@ -467,12 +473,13 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editProspectName and reset state when selectedDashboard changes
+  // Sync editImageUrl, editSpreadsheetUrl, editTagline, editMediaKitUrl, editLoomVideoUrl, editProspectName and reset state when selectedDashboard changes
   useEffect(() => {
     if (selectedDashboard) {
       setEditImageUrl(selectedDashboard.prospect_image_url || '')
       setEditSpreadsheetUrl(selectedDashboard.spreadsheet_url || '')
       setEditMediaKitUrl(selectedDashboard.media_kit_url || '')
+      setEditLoomVideoUrl(selectedDashboard.loom_video_url || '')
       setEditProspectName(selectedDashboard.prospect_name || '')
       // Extract the custom part of tagline (after "perfect for ")
       const tagline = selectedDashboard.personalized_tagline || ''
@@ -775,6 +782,39 @@ export default function ProspectDashboards() {
       toast.error('Failed to save media kit URL')
     } finally {
       setSavingMediaKit(false)
+    }
+  }
+
+  const saveLoomVideoUrl = async () => {
+    if (!selectedDashboard) return
+
+    setSavingLoomVideo(true)
+    try {
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ loom_video_url: editLoomVideoUrl.trim() || null })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? { ...d, loom_video_url: editLoomVideoUrl.trim() || null }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, loom_video_url: editLoomVideoUrl.trim() || null } : null
+      )
+
+      toast.success('Loom video URL saved!')
+    } catch (error) {
+      console.error('Error saving Loom video URL:', error)
+      toast.error('Failed to save Loom video URL')
+    } finally {
+      setSavingLoomVideo(false)
     }
   }
 
@@ -1802,6 +1842,49 @@ export default function ProspectDashboards() {
                     )}
                     <p className="text-xs text-muted-foreground">
                       Link to the prospect's media kit or one-pager document (Google Doc, PDF, etc.)
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  {/* Loom Video URL */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Video className="h-4 w-4" />
+                      Loom Video
+                    </h3>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste Loom video URL..."
+                        value={editLoomVideoUrl}
+                        onChange={(e) => setEditLoomVideoUrl(e.target.value)}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={saveLoomVideoUrl}
+                        disabled={savingLoomVideo || editLoomVideoUrl === (selectedDashboard.loom_video_url || '')}
+                      >
+                        {savingLoomVideo ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    {editLoomVideoUrl && (
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-xs"
+                        onClick={() => window.open(editLoomVideoUrl, '_blank')}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        Preview Video
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Personalized Loom video that will appear in the hero section
                     </p>
                   </div>
 
