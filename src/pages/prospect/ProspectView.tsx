@@ -80,6 +80,7 @@ interface ProspectDashboard {
   personalized_tagline: string | null
   media_kit_url: string | null
   loom_video_url: string | null
+  show_loom_video: boolean
 }
 
 interface PodcastCategory {
@@ -850,25 +851,21 @@ export default function ProspectView() {
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16">
           {/* Video Card - Right Side (stays in hero section) */}
-          <div className="hidden xl:block absolute top-8 -right-32 w-80 z-10 animate-fade-in">
-            {/* Attention Banner */}
-            <div className="mb-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg animate-pulse">
-              <Sparkles className="h-4 w-4" />
-              <span className="text-sm font-bold">👋 WATCH THIS FIRST!</span>
-              <Sparkles className="h-4 w-4" />
-            </div>
+          {dashboard.loom_video_url && dashboard.show_loom_video && (
+            <div className="hidden xl:block absolute top-8 -right-32 w-80 z-10 animate-fade-in">
+              {/* Attention Banner */}
+              <div className="mb-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg animate-pulse">
+                <Sparkles className="h-4 w-4" />
+                <span className="text-sm font-bold">👋 WATCH THIS FIRST!</span>
+                <Sparkles className="h-4 w-4" />
+              </div>
 
-            <a
-              href={dashboard.loom_video_url || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block group"
-              onClick={(e) => {
-                if (!dashboard.loom_video_url) {
-                  e.preventDefault()
-                }
-              }}
-            >
+              <a
+                href={dashboard.loom_video_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block group"
+              >
               <div className="relative rounded-xl overflow-hidden shadow-2xl border-3 border-primary/30 hover:border-primary/60 transition-all duration-300 hover:scale-[1.02] bg-white dark:bg-slate-900">
                 {/* Video Thumbnail */}
                 <div className="relative aspect-video bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
@@ -894,8 +891,10 @@ export default function ProspectView() {
                   </p>
                 </div>
               </div>
-            </a>
-          </div>
+              </a>
+            </div>
+          )}
+
           <div className="text-center space-y-3 sm:space-y-4">
             {/* Badge */}
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg animate-fade-in">

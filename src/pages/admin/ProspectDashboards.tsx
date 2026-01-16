@@ -91,6 +91,7 @@ interface ProspectDashboard {
   personalized_tagline: string | null
   media_kit_url: string | null
   loom_video_url: string | null
+  show_loom_video: boolean
 }
 
 interface PodcastFeedback {
@@ -1055,6 +1056,9 @@ export default function ProspectDashboards() {
   // Pricing section toggle state
   const [togglingPricing, setTogglingPricing] = useState(false)
 
+  // Loom video toggle state
+  const [togglingLoomVideo, setTogglingLoomVideo] = useState(false)
+
   const togglePricingSection = async () => {
     if (!selectedDashboard) return
 
@@ -1084,6 +1088,38 @@ export default function ProspectDashboards() {
       toast.error('Failed to update pricing section visibility')
     } finally {
       setTogglingPricing(false)
+    }
+  }
+
+  const toggleLoomVideo = async () => {
+    if (!selectedDashboard) return
+
+    setTogglingLoomVideo(true)
+    try {
+      const newValue = !selectedDashboard.show_loom_video
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .update({ show_loom_video: newValue })
+        .eq('id', selectedDashboard.id)
+
+      if (error) throw error
+
+      // Update local state
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id ? { ...d, show_loom_video: newValue } : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, show_loom_video: newValue } : null
+      )
+
+      toast.success(newValue ? 'Loom video enabled' : 'Loom video hidden')
+    } catch (error) {
+      console.error('Error toggling Loom video:', error)
+      toast.error('Failed to update Loom video visibility')
+    } finally {
+      setTogglingLoomVideo(false)
     }
   }
 
@@ -1886,6 +1922,43 @@ export default function ProspectDashboards() {
                     <p className="text-xs text-muted-foreground">
                       Personalized Loom video that will appear in the hero section
                     </p>
+
+                    {/* Toggle Show/Hide Video */}
+                    <div className="pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Show Video</p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedDashboard.show_loom_video
+                              ? 'Video visible to prospect'
+                              : 'Video hidden from prospect'}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={toggleLoomVideo}
+                          disabled={togglingLoomVideo || !editLoomVideoUrl}
+                          variant={selectedDashboard.show_loom_video ? "default" : "outline"}
+                          size="sm"
+                          className={cn(
+                            selectedDashboard.show_loom_video && "bg-purple-600 hover:bg-purple-700"
+                          )}
+                        >
+                          {togglingLoomVideo ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : selectedDashboard.show_loom_video ? (
+                            <>
+                              <Eye className="h-4 w-4 mr-1" />
+                              Showing
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="h-4 w-4 mr-1" />
+                              Hidden
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   <Separator />
