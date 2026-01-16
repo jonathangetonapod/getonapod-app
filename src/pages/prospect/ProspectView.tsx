@@ -848,7 +848,7 @@ export default function ProspectView() {
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16">
           {/* Video Card - Right Side (stays in hero section) */}
           <div className="hidden xl:block absolute top-8 -right-32 w-80 z-10 animate-fade-in">
             {/* Attention Banner */}
