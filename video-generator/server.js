@@ -96,8 +96,8 @@ app.post('/api/heygen/generate', async (req, res) => {
 
   try {
     // Build the personalized script with strategic pauses
-    // Using periods and commas for natural pauses to sync with 42-second background video
-    const script = `${firstName}, we have handpicked the best possible shows. At the top, we see the potential reach, the average rating, and how many podcasts are on the list that we can reach out to..... Each podcast card shows you detailed insights... the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message.. You can approve or reject any show directly from the panel....... And here's our pricing, simple, transparent, and designed to get you maximum ROI. Please click the Book a call now Button to schedule a call.`;
+    // Expanded script to fill 42-second background video and sync with visual sections
+    const script = `${firstName}, we have handpicked the best possible shows for you. At the top of your dashboard, you'll see the total potential reach across all these podcasts, the average rating showing their quality, and the exact number of shows we can reach out to on your behalf... As we scroll down, each podcast card reveals detailed insights that matter. You'll see the specific audience demographics, so you know exactly who's listening. The listener engagement metrics show you how active and loyal their audience is. Download numbers give you the real reach, and most importantly, we've included our reasoning for why each show is a perfect strategic match for your message and your goals.. Now, as you review each show, you can approve the ones you love or reject any that don't feel right, directly from this panel. It's completely in your control.... And here you can see our pricing. Simple, transparent, and designed specifically to deliver maximum return on investment for your podcast tour. When you're ready to move forward, just click the Book a Call Now button to schedule a time with our team.`;
 
     // Call HeyGen API
     const response = await fetch('https://api.heygen.com/v2/video/generate', {
