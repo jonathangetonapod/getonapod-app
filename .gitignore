@@ -25,3 +25,7 @@ dist-ssr
 .env.local
 credentials/
 supabase/.temp/
+
+# Video generator service (local only)
+video-generator/
+video-generator-setup.md

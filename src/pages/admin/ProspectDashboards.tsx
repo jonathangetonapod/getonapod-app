@@ -96,6 +96,9 @@ interface ProspectDashboard {
   show_loom_video: boolean
   testimonial_ids: string[] | null
   show_testimonials: boolean
+  background_video_url: string | null
+  background_video_generated_at: string | null
+  background_video_status: 'not_generated' | 'processing' | 'completed' | 'failed'
 }
 
 interface PodcastFeedback {
@@ -154,6 +157,10 @@ export default function ProspectDashboards() {
   const [selectedTestimonials, setSelectedTestimonials] = useState<string[]>([])
   const [savingTestimonials, setSavingTestimonials] = useState(false)
   const [togglingTestimonials, setTogglingTestimonials] = useState(false)
+
+  // Background video generation
+  const [generatingVideo, setGeneratingVideo] = useState(false)
+  const [videoProgress, setVideoProgress] = useState(0)
 
   // Edit prospect name
   const [editProspectName, setEditProspectName] = useState('')
@@ -1269,6 +1276,94 @@ export default function ProspectDashboards() {
     }
   }
 
+  const handleGenerateBackgroundVideo = async () => {
+    if (!selectedDashboard) return
+
+    setGeneratingVideo(true)
+    setVideoProgress(0)
+
+    try {
+      // Update status to processing
+      await supabase
+        .from('prospect_dashboards')
+        .update({ background_video_status: 'processing' })
+        .eq('id', selectedDashboard.id)
+
+      // Update local state
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, background_video_status: 'processing' } : null
+      )
+
+      toast.info('Starting dashboard recording...', {
+        description: 'This will take about 45-60 seconds'
+      })
+
+      // Call local video generation service
+      const response = await fetch('http://localhost:3001/api/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dashboardId: selectedDashboard.id,
+          slug: selectedDashboard.slug
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate video')
+      }
+
+      const result = await response.json()
+
+      // Update local state with video URL
+      setDashboards(prev =>
+        prev.map(d =>
+          d.id === selectedDashboard.id
+            ? {
+                ...d,
+                background_video_url: result.videoUrl,
+                background_video_generated_at: new Date().toISOString(),
+                background_video_status: 'completed'
+              }
+            : d
+        )
+      )
+      setSelectedDashboard(prev =>
+        prev
+          ? {
+              ...prev,
+              background_video_url: result.videoUrl,
+              background_video_generated_at: new Date().toISOString(),
+              background_video_status: 'completed'
+            }
+          : null
+      )
+
+      toast.success('Dashboard video generated!', {
+        description: 'Ready to use with HeyGen'
+      })
+    } catch (error) {
+      console.error('Error generating video:', error)
+
+      // Update status to failed
+      await supabase
+        .from('prospect_dashboards')
+        .update({ background_video_status: 'failed' })
+        .eq('id', selectedDashboard.id)
+
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, background_video_status: 'failed' } : null
+      )
+
+      toast.error('Failed to generate video', {
+        description: error instanceof Error ? error.message : 'Please try again'
+      })
+    } finally {
+      setGeneratingVideo(false)
+      setVideoProgress(0)
+    }
+  }
+
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -2142,6 +2237,96 @@ export default function ProspectDashboards() {
                         </Button>
                       </div>
                     </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Background Video for HeyGen */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Video className="h-4 w-4" />
+                      Background Video (HeyGen)
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Generate a 45-second recording of the dashboard interactions to use as background for HeyGen AI videos.
+                    </p>
+
+                    {/* Show existing video if available */}
+                    {selectedDashboard.background_video_url && (
+                      <div className="space-y-2">
+                        <video
+                          src={selectedDashboard.background_video_url}
+                          controls
+                          className="w-full rounded-lg border"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(selectedDashboard.background_video_url!, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Open Video
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              navigator.clipboard.writeText(selectedDashboard.background_video_url!)
+                              toast.success('Video URL copied to clipboard')
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy URL
+                          </Button>
+                        </div>
+                        {selectedDashboard.background_video_generated_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Generated {formatDistanceToNow(new Date(selectedDashboard.background_video_generated_at), { addSuffix: true })}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Status indicator */}
+                    {selectedDashboard.background_video_status === 'processing' && (
+                      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        <span className="text-sm text-blue-900">Recording in progress...</span>
+                      </div>
+                    )}
+
+                    {selectedDashboard.background_video_status === 'failed' && (
+                      <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <XCircle className="h-4 w-4 text-red-600" />
+                        <span className="text-sm text-red-900">Generation failed. Try again.</span>
+                      </div>
+                    )}
+
+                    {/* Generate button */}
+                    <Button
+                      onClick={handleGenerateBackgroundVideo}
+                      disabled={generatingVideo || selectedDashboard.background_video_status === 'processing'}
+                      className="w-full"
+                      variant={selectedDashboard.background_video_url ? "outline" : "default"}
+                    >
+                      {generatingVideo || selectedDashboard.background_video_status === 'processing' ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Recording Dashboard...
+                        </>
+                      ) : selectedDashboard.background_video_url ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Re-generate Recording
+                        </>
+                      ) : (
+                        <>
+                          <Video className="h-4 w-4 mr-2" />
+                          Generate Dashboard Recording
+                        </>
+                      )}
+                    </Button>
                   </div>
 
                   <Separator />
