@@ -69,7 +69,8 @@ import {
   MessageSquare,
   DollarSign,
   FileText,
-  Video
+  Video,
+  Download
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
@@ -1493,6 +1494,45 @@ export default function ProspectDashboards() {
     }
   }
 
+  // Download HeyGen video as MP4
+  const handleDownloadVideo = async () => {
+    if (!selectedDashboard?.heygen_video_url) {
+      toast.error('No video URL available')
+      return
+    }
+
+    try {
+      toast.info('Downloading video...')
+
+      // Fetch the video from HeyGen URL
+      const response = await fetch(selectedDashboard.heygen_video_url)
+
+      if (!response.ok) {
+        throw new Error('Failed to download video')
+      }
+
+      // Get the video blob
+      const blob = await response.blob()
+
+      // Create a download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${selectedDashboard.prospect_name || 'prospect'}-heygen-video.mp4`
+      document.body.appendChild(a)
+      a.click()
+
+      // Cleanup
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success('Video downloaded!')
+    } catch (error) {
+      console.error('Error downloading video:', error)
+      toast.error('Failed to download video')
+    }
+  }
+
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -2618,6 +2658,19 @@ export default function ProspectDashboards() {
                       >
                         <RefreshCw className="h-3 w-3 mr-2" />
                         Refresh Video Status
+                      </Button>
+                    )}
+
+                    {/* Download Video button */}
+                    {selectedDashboard.heygen_video_url && selectedDashboard.heygen_video_status === 'completed' && (
+                      <Button
+                        onClick={handleDownloadVideo}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full"
+                      >
+                        <Download className="h-3 w-3 mr-2" />
+                        Download Video (MP4)
                       </Button>
                     )}
                   </div>
