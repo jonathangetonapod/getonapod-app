@@ -156,7 +156,7 @@ export async function generateProspectVideo(
 export async function pollVideoStatus(
   videoId: string,
   dashboardId: string,
-  maxAttempts = 60,
+  maxAttempts = 120,
   intervalMs = 5000
 ): Promise<string> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
