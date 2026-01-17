@@ -261,8 +261,33 @@ serve(async (req) => {
 
     // Get Google access token and fetch podcast IDs from sheet
     const accessToken = await getGoogleAccessToken()
+
+    // First, get the sheet metadata to find the first sheet's name (dynamic detection)
+    const metadataResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      }
+    )
+
+    if (!metadataResponse.ok) {
+      const error = await metadataResponse.text()
+      throw new Error(`Failed to get sheet metadata: ${error}`)
+    }
+
+    const metadata = await metadataResponse.json()
+    const firstSheetName = metadata.sheets[0]?.properties?.title || 'Sheet1'
+
+    console.log('[Get Prospect Podcasts] First sheet name:', firstSheetName)
+
+    // Read column E (Podcast ID) - using dynamic sheet name
+    const range = `${firstSheetName}!E:E`
+    console.log('[Get Prospect Podcasts] Reading range:', range)
+
     const sheetResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!E:E`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
       { headers: { 'Authorization': `Bearer ${accessToken}` } }
     )
 
