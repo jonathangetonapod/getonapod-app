@@ -1298,8 +1298,9 @@ export default function ProspectDashboards() {
         description: 'This will take about 45-60 seconds'
       })
 
-      // Call local video generation service
-      const response = await fetch('http://localhost:3001/api/generate-video', {
+      // Call video generation service
+      const videoServiceUrl = import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001'
+      const response = await fetch(`${videoServiceUrl}/api/generate-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
