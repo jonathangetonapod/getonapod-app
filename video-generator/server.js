@@ -95,8 +95,8 @@ app.post('/api/heygen/generate', async (req, res) => {
   console.log(`[${new Date().toISOString()}] Starting HeyGen video generation for ${firstName}`);
 
   try {
-    // Build the personalized script
-    const script = `Hi ${firstName}, I wanted to show you something personalized just for you. Here's your custom dashboard where we've curated podcasts specifically for your industry and audience. Right here on the hero section, you can see all the shows we've selected that align with your goals. Each podcast card shows you detailed insights - the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message. You can approve or reject any show directly from the panel. And here's our pricing - simple, transparent, and designed to get you maximum ROI. I'd love to discuss which podcasts resonated with you most. Ready to get started?`;
+    // Build the personalized script with SSML pauses
+    const script = `${firstName} we have handpicked the best possible shows. At the top, we see the potential reach, the average rating and how many podcasts are on the list that we can reach out to. <break time="1s" /> <break time="2s" /> Each podcast card shows you detailed insights, <break time="1s" /> the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message. <break time="1.5s" /> You can approve or reject any show directly from the panel. <break time="4s" /> And here's our pricing - simple, transparent, and designed to get you maximum ROI. Please click the Book a call now Button to schedule a call.`;
 
     // Call HeyGen API
     const response = await fetch('https://api.heygen.com/v2/video/generate', {
