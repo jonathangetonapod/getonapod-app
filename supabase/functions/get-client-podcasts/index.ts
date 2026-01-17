@@ -367,6 +367,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
+          podcasts: podcastIds.map(id => ({ podcast_id: id })), // Return IDs for frontend cache check
           status: {
             totalInSheet: podcastIds.length,
             cached: cachedPodcasts.length,
