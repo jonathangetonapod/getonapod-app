@@ -30,14 +30,17 @@ export async function recordDashboard(slug, baseUrl) {
     const url = `${baseUrl}/prospect/${slug}?tour=0`;
     console.log(`Navigating to: ${url}`);
 
-    // [0-8s] Load dashboard and wait for everything to settle
+    // [0-5s] Load dashboard and wait for everything to settle
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     console.log('Page loaded, waiting for content to settle...');
-    await page.waitForTimeout(6000); // Give site time to fully load
+    await page.waitForTimeout(2000); // Wait 2s for initial load
 
-    // Try to dismiss any lingering modals with Escape
+    // Dismiss any modals quickly
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
+    // Press again to ensure modal is closed
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1000);
 
     // [8-12s] Stay at hero section for a few seconds
     await page.evaluate(() => window.scrollTo(0, 0));
