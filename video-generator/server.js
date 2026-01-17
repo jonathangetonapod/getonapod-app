@@ -116,7 +116,7 @@ app.post('/api/heygen/generate', async (req, res) => {
           {
             character: {
               type: 'avatar',
-              avatar_id: 'Tyler_sitting_20240711',
+              avatar_id: 'Artur_sitting_office_front',
               avatar_style: 'normal',
             },
             voice: {
