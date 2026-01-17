@@ -73,6 +73,7 @@ import {
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { generateProspectVideo, pollVideoStatus } from '@/services/heygen'
 
 interface ProspectDashboard {
   id: string
@@ -99,6 +100,12 @@ interface ProspectDashboard {
   background_video_url: string | null
   background_video_generated_at: string | null
   background_video_status: 'not_generated' | 'processing' | 'completed' | 'failed'
+  first_name: string | null
+  heygen_video_id: string | null
+  heygen_video_status: string | null
+  heygen_video_url: string | null
+  heygen_video_thumbnail_url: string | null
+  heygen_video_generated_at: string | null
 }
 
 interface PodcastFeedback {
@@ -161,6 +168,9 @@ export default function ProspectDashboards() {
   // Background video generation
   const [generatingVideo, setGeneratingVideo] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
+
+  // HeyGen AI video generation
+  const [generatingHeyGenVideo, setGeneratingHeyGenVideo] = useState(false)
 
   // Edit prospect name
   const [editProspectName, setEditProspectName] = useState('')
@@ -1365,6 +1375,78 @@ export default function ProspectDashboards() {
     }
   }
 
+  // HeyGen AI Video Generation
+  const handleGenerateHeyGenVideo = async () => {
+    if (!selectedDashboard) return
+
+    if (!selectedDashboard.background_video_url) {
+      toast.error('Generate dashboard recording first')
+      return
+    }
+
+    if (!selectedDashboard.first_name) {
+      toast.error('Please enter prospect first name')
+      return
+    }
+
+    try {
+      setGeneratingHeyGenVideo(true)
+
+      toast.info('Starting HeyGen AI video generation...', {
+        description: 'This may take 2-3 minutes'
+      })
+
+      // Generate the video
+      const videoId = await generateProspectVideo(
+        selectedDashboard.id,
+        selectedDashboard.background_video_url,
+        selectedDashboard.first_name
+      )
+
+      // Update local state to show pending status
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, heygen_video_status: 'pending', heygen_video_id: videoId } : null
+      )
+
+      toast.success('HeyGen video queued!', {
+        description: 'Rendering in progress...'
+      })
+
+      // Poll for completion in the background
+      pollVideoStatus(videoId, selectedDashboard.id)
+        .then((videoUrl) => {
+          setSelectedDashboard(prev =>
+            prev
+              ? {
+                  ...prev,
+                  heygen_video_url: videoUrl,
+                  heygen_video_status: 'completed',
+                }
+              : null
+          )
+          toast.success('HeyGen video ready!', {
+            description: 'Your AI avatar video is complete'
+          })
+        })
+        .catch((error) => {
+          console.error('Polling error:', error)
+          toast.error('Video generation failed', {
+            description: error instanceof Error ? error.message : 'Please try again'
+          })
+        })
+        .finally(() => {
+          setGeneratingHeyGenVideo(false)
+        })
+    } catch (error) {
+      console.error('Error generating HeyGen video:', error)
+      setGeneratingHeyGenVideo(false)
+
+      toast.error('Failed to start video generation', {
+        description: error instanceof Error ? error.message : 'Please try again'
+      })
+    }
+  }
+
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -2325,6 +2407,157 @@ export default function ProspectDashboards() {
                         <>
                           <Video className="h-4 w-4 mr-2" />
                           Generate Dashboard Recording
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  {/* HeyGen AI Video */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      HeyGen AI Avatar Video
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Generate a personalized AI avatar video using the dashboard recording as background.
+                    </p>
+
+                    {/* First Name Input */}
+                    <div className="space-y-2">
+                      <Label htmlFor="first_name">
+                        Prospect First Name *
+                      </Label>
+                      <Input
+                        id="first_name"
+                        placeholder="Enter first name for video personalization"
+                        value={selectedDashboard.first_name || ''}
+                        onChange={(e) => {
+                          setSelectedDashboard(prev =>
+                            prev ? { ...prev, first_name: e.target.value } : null
+                          )
+                        }}
+                        onBlur={async () => {
+                          if (!selectedDashboard) return
+                          // Auto-save first name
+                          const { error } = await supabase
+                            .from('prospect_dashboards')
+                            .update({ first_name: selectedDashboard.first_name })
+                            .eq('id', selectedDashboard.id)
+
+                          if (error) {
+                            toast.error('Failed to save first name')
+                          } else {
+                            toast.success('First name saved')
+                          }
+                        }}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        This name will be used in the AI avatar greeting
+                      </p>
+                    </div>
+
+                    {/* Show existing HeyGen video if available */}
+                    {selectedDashboard.heygen_video_url && (
+                      <div className="space-y-2">
+                        <video
+                          src={selectedDashboard.heygen_video_url}
+                          controls
+                          className="w-full rounded-lg border"
+                          poster={selectedDashboard.heygen_video_thumbnail_url || undefined}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(selectedDashboard.heygen_video_url!, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Open Video
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              navigator.clipboard.writeText(selectedDashboard.heygen_video_url!)
+                              toast.success('Video URL copied to clipboard')
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy URL
+                          </Button>
+                        </div>
+                        {selectedDashboard.heygen_video_generated_at && (
+                          <p className="text-xs text-muted-foreground">
+                            Generated {formatDistanceToNow(new Date(selectedDashboard.heygen_video_generated_at), { addSuffix: true })}
+                          </p>
+                        )}
+                        <p className="text-xs text-orange-600">
+                          ⚠️ HeyGen video URLs expire in 7 days
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Status indicators */}
+                    {selectedDashboard.heygen_video_status === 'pending' && (
+                      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        <span className="text-sm text-blue-900">HeyGen video queued...</span>
+                      </div>
+                    )}
+
+                    {selectedDashboard.heygen_video_status === 'processing' && (
+                      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        <span className="text-sm text-blue-900">Generating AI avatar video...</span>
+                      </div>
+                    )}
+
+                    {selectedDashboard.heygen_video_status === 'failed' && (
+                      <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <XCircle className="h-4 w-4 text-red-600" />
+                        <span className="text-sm text-red-900">HeyGen generation failed. Try again.</span>
+                      </div>
+                    )}
+
+                    {/* Requirements check */}
+                    {!selectedDashboard.background_video_url && (
+                      <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <XCircle className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm text-amber-900">
+                          Generate dashboard recording first
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Generate button */}
+                    <Button
+                      onClick={handleGenerateHeyGenVideo}
+                      disabled={
+                        !selectedDashboard.background_video_url ||
+                        !selectedDashboard.first_name ||
+                        selectedDashboard.heygen_video_status === 'processing' ||
+                        selectedDashboard.heygen_video_status === 'pending' ||
+                        generatingHeyGenVideo
+                      }
+                      className="w-full"
+                      variant={selectedDashboard.heygen_video_url ? "outline" : "default"}
+                    >
+                      {selectedDashboard.heygen_video_status === 'processing' || selectedDashboard.heygen_video_status === 'pending' || generatingHeyGenVideo ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating AI Video...
+                        </>
+                      ) : selectedDashboard.heygen_video_url ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Re-generate AI Video
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Generate HeyGen AI Video
                         </>
                       )}
                     </Button>
