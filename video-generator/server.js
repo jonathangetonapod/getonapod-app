@@ -128,7 +128,7 @@ app.post('/api/heygen/generate', async (req, res) => {
             voice: {
               type: 'text',
               input_text: script,
-              voice_id: '1bd001e7e50f421d891986aad5158bc8',
+              voice_id: 'ba661971758a496c9ae1d807afb4aa87',
               speed: 0.95,
             },
             background: {
