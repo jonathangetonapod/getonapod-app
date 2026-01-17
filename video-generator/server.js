@@ -95,8 +95,8 @@ app.post('/api/heygen/generate', async (req, res) => {
   console.log(`[${new Date().toISOString()}] Starting HeyGen video generation for ${firstName}`);
 
   try {
-    // Build the personalized script with SSML pauses
-    const script = `${firstName} we have handpicked the best possible shows. At the top, we see the potential reach, the average rating and how many podcasts are on the list that we can reach out to. <break time="1s" /> <break time="2s" /> Each podcast card shows you detailed insights, <break time="1s" /> the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message. <break time="1.5s" /> You can approve or reject any show directly from the panel. <break time="4s" /> And here's our pricing - simple, transparent, and designed to get you maximum ROI. Please click the Book a call now Button to schedule a call.`;
+    // Build the personalized script with natural pauses using punctuation
+    const script = `${firstName}, we have handpicked the best possible shows. At the top, we see the potential reach, the average rating, and how many podcasts are on the list that we can reach out to... Each podcast card shows you detailed insights... the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message. You can approve or reject any show directly from the panel.... And here's our pricing - simple, transparent, and designed to get you maximum ROI. Please click the Book a call now Button to schedule a call.`;
 
     // Call HeyGen API
     const response = await fetch('https://api.heygen.com/v2/video/generate', {
@@ -116,7 +116,7 @@ app.post('/api/heygen/generate', async (req, res) => {
           {
             character: {
               type: 'avatar',
-              avatar_id: 'Artur_sitting_office_front',
+              avatar_id: '8aecff8d247244f2be3a7b3ab8d0fb85',
               avatar_style: 'circle',
               scale: 0.35,
               offset: {
@@ -128,6 +128,7 @@ app.post('/api/heygen/generate', async (req, res) => {
               type: 'text',
               input_text: script,
               voice_id: '1bd001e7e50f421d891986aad5158bc8',
+              speed: 1.1,
             },
             background: {
               type: 'video',
