@@ -1,5 +1,3 @@
-import { supabase } from '@/lib/supabase';
-
 const HEYGEN_API_BASE = 'https://api.heygen.com';
 const HEYGEN_API_KEY = import.meta.env.VITE_HEYGEN_API_KEY;
 const VIDEO_SERVICE_URL = import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001';
@@ -99,10 +97,10 @@ export async function generateVideoFromTemplate(
 
 /**
  * Get video status and details
- * Routes through the video-generator service to keep API keys secure
+ * Routes through the video-generator service which also updates the database
  */
-export async function getVideoStatus(videoId: string): Promise<HeyGenVideoStatus> {
-  const response = await fetch(`${VIDEO_SERVICE_URL}/api/heygen/status/${videoId}`, {
+export async function getVideoStatus(videoId: string, dashboardId: string): Promise<HeyGenVideoStatus> {
+  const response = await fetch(`${VIDEO_SERVICE_URL}/api/heygen/status/${videoId}/${dashboardId}`, {
     headers: {
       accept: 'application/json',
     },
@@ -151,6 +149,7 @@ export async function generateProspectVideo(
 
 /**
  * Poll video status until completion
+ * Backend handles all database updates with service role key
  * Returns the final video URL when ready
  */
 export async function pollVideoStatus(
@@ -160,19 +159,15 @@ export async function pollVideoStatus(
   intervalMs = 5000
 ): Promise<string> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const status = await getVideoStatus(videoId);
+    console.log(`[Poll ${attempt + 1}/${maxAttempts}] Checking video ${videoId}...`);
 
-    // Update database with current status
-    await supabase
-      .from('prospect_dashboards')
-      .update({
-        heygen_video_status: status.status,
-        ...(status.video_url && { heygen_video_url: status.video_url }),
-        ...(status.thumbnail_url && { heygen_video_thumbnail_url: status.thumbnail_url }),
-      })
-      .eq('id', dashboardId);
+    // Backend checks HeyGen AND updates database (has service role key)
+    const status = await getVideoStatus(videoId, dashboardId);
+
+    console.log(`[Poll ${attempt + 1}/${maxAttempts}] Status: ${status.status}`);
 
     if (status.status === 'completed' && status.video_url) {
+      console.log(`Video completed! URL: ${status.video_url}`);
       return status.video_url;
     }
 
@@ -187,5 +182,5 @@ export async function pollVideoStatus(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
-  throw new Error('Video generation timed out');
+  throw new Error('Video generation timed out after 10 minutes');
 }

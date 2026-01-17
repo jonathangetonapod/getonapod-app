@@ -168,11 +168,11 @@ app.post('/api/heygen/generate', async (req, res) => {
   }
 });
 
-// HeyGen Video Status Endpoint
-app.get('/api/heygen/status/:videoId', async (req, res) => {
-  const { videoId } = req.params;
+// HeyGen Video Status Endpoint (with database update)
+app.get('/api/heygen/status/:videoId/:dashboardId', async (req, res) => {
+  const { videoId, dashboardId } = req.params;
 
-  console.log(`[${new Date().toISOString()}] Checking HeyGen video status: ${videoId}`);
+  console.log(`[${new Date().toISOString()}] Checking HeyGen video status: ${videoId} for dashboard: ${dashboardId}`);
 
   try {
     const response = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
@@ -187,7 +187,34 @@ app.get('/api/heygen/status/:videoId', async (req, res) => {
     }
 
     const data = await response.json();
-    res.json(data.data);
+    const videoStatus = data.data;
+
+    // Update database with current status using service role key
+    const updateData = {
+      heygen_video_status: videoStatus.status,
+    };
+
+    // Add optional fields if they exist
+    if (videoStatus.video_url) {
+      updateData.heygen_video_url = videoStatus.video_url;
+    }
+    if (videoStatus.thumbnail_url) {
+      updateData.heygen_video_thumbnail_url = videoStatus.thumbnail_url;
+    }
+
+    const { error: dbError } = await supabase
+      .from('prospect_dashboards')
+      .update(updateData)
+      .eq('id', dashboardId);
+
+    if (dbError) {
+      console.error('Database update error:', dbError);
+      // Don't fail the request, but log it
+    } else {
+      console.log(`[${new Date().toISOString()}] Database updated: status=${videoStatus.status}`);
+    }
+
+    res.json(videoStatus);
 
   } catch (error) {
     console.error('Error getting HeyGen video status:', error);
