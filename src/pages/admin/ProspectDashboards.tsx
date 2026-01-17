@@ -1447,6 +1447,52 @@ export default function ProspectDashboards() {
     }
   }
 
+  // Refresh HeyGen Video Status (failsafe)
+  const handleRefreshVideoStatus = async () => {
+    if (!selectedDashboard?.heygen_video_id) {
+      toast.error('No video ID found')
+      return
+    }
+
+    try {
+      toast.info('Checking video status...')
+
+      const response = await fetch(
+        `${import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001'}/api/heygen/status/${selectedDashboard.heygen_video_id}/${selectedDashboard.id}`,
+        { cache: 'no-store' }
+      )
+
+      if (!response.ok) {
+        throw new Error('Failed to check video status')
+      }
+
+      const status = await response.json()
+
+      // Update local state
+      setSelectedDashboard(prev =>
+        prev
+          ? {
+              ...prev,
+              heygen_video_status: status.status,
+              ...(status.video_url && { heygen_video_url: status.video_url }),
+              ...(status.thumbnail_url && { heygen_video_thumbnail_url: status.thumbnail_url }),
+            }
+          : null
+      )
+
+      if (status.status === 'completed') {
+        toast.success('Video is ready!')
+      } else if (status.status === 'failed') {
+        toast.error('Video generation failed')
+      } else {
+        toast.info(`Video status: ${status.status}`)
+      }
+    } catch (error) {
+      console.error('Error refreshing video status:', error)
+      toast.error('Failed to refresh status')
+    }
+  }
+
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -2561,6 +2607,19 @@ export default function ProspectDashboards() {
                         </>
                       )}
                     </Button>
+
+                    {/* Refresh Status button (failsafe) */}
+                    {selectedDashboard.heygen_video_id && (
+                      <Button
+                        onClick={handleRefreshVideoStatus}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full"
+                      >
+                        <RefreshCw className="h-3 w-3 mr-2" />
+                        Refresh Video Status
+                      </Button>
+                    )}
                   </div>
 
                   <Separator />
