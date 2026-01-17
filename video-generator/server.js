@@ -88,6 +88,108 @@ app.post('/api/generate-video', async (req, res) => {
   }
 });
 
+// HeyGen Video Generation Endpoint
+app.post('/api/heygen/generate', async (req, res) => {
+  const { dashboardId, backgroundVideoUrl, firstName } = req.body;
+
+  console.log(`[${new Date().toISOString()}] Starting HeyGen video generation for ${firstName}`);
+
+  try {
+    // Build the personalized script
+    const script = `Hi ${firstName}, I wanted to show you something personalized just for you. Here's your custom dashboard where we've curated podcasts specifically for your industry and audience. Right here on the hero section, you can see all the shows we've selected that align with your goals. Each podcast card shows you detailed insights - the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message. You can approve or reject any show directly from the panel. And here's our pricing - simple, transparent, and designed to get you maximum ROI. I'd love to discuss which podcasts resonated with you most. Ready to get started?`;
+
+    // Call HeyGen API
+    const response = await fetch('https://api.heygen.com/v2/video/generate', {
+      method: 'POST',
+      headers: {
+        'X-Api-Key': process.env.HEYGEN_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: `Prospect Video - ${firstName}`,
+        caption: false,
+        dimension: {
+          width: 1280,
+          height: 720,
+        },
+        video_inputs: [
+          {
+            character: {
+              type: 'avatar',
+              avatar_id: 'Tyler_sitting_20240711',
+              avatar_style: 'normal',
+            },
+            voice: {
+              type: 'text',
+              input_text: script,
+              voice_id: '1bd001e7e50f421d891986aad5158bc8',
+            },
+            background: {
+              type: 'video',
+              url: backgroundVideoUrl,
+              play_style: 'once',
+              fit: 'cover',
+            },
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || `Failed to generate video: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const video_id = data.data.video_id;
+
+    console.log(`[${new Date().toISOString()}] HeyGen video initiated: ${video_id}`);
+
+    // Update database with HeyGen video ID
+    await supabase
+      .from('prospect_dashboards')
+      .update({
+        heygen_video_id: video_id,
+        heygen_video_status: 'pending',
+        heygen_video_generated_at: new Date().toISOString(),
+      })
+      .eq('id', dashboardId);
+
+    res.json({ video_id });
+
+  } catch (error) {
+    console.error('Error generating HeyGen video:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// HeyGen Video Status Endpoint
+app.get('/api/heygen/status/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+
+  console.log(`[${new Date().toISOString()}] Checking HeyGen video status: ${videoId}`);
+
+  try {
+    const response = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
+      headers: {
+        accept: 'application/json',
+        'x-api-key': process.env.HEYGEN_API_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get video status: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    res.json(data.data);
+
+  } catch (error) {
+    console.error('Error getting HeyGen video status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
