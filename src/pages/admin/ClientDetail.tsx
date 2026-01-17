@@ -68,6 +68,7 @@ import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPorta
 import { createClientGoogleSheet } from '@/services/googleSheets'
 import { getClientAddons, updateBookingAddonStatus, deleteBookingAddon, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
 import type { BookingAddon } from '@/services/addonServices'
+import { getClientCacheStatus, findCachedPodcastsMetadata } from '@/services/podcastCache'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
@@ -108,7 +109,16 @@ export default function ClientDetail() {
   // Podcast Approval Dashboard state
   const [dashboardCacheLoading, setDashboardCacheLoading] = useState(false)
   const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
-  const [dashboardCacheStatus, setDashboardCacheStatus] = useState<{ cached: number; aiAnalyzed: number; total: number } | null>(null)
+  const [dashboardCacheStatus, setDashboardCacheStatus] = useState<{
+    cached: number
+    aiAnalyzed: number
+    total: number
+    cached_in_client?: number
+    cached_in_other_clients?: number
+    cached_in_prospects?: number
+    cached_in_bookings?: number
+    needs_fetch?: number
+  } | null>(null)
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
   const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
   const [deletingAllRejected, setDeletingAllRejected] = useState(false)
@@ -886,6 +896,7 @@ export default function ClientDetail() {
 
     setDashboardCacheLoading(true)
     try {
+      // Get podcast IDs from Google Sheet
       const { data: session } = await supabase.auth.getSession()
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
         method: 'POST',
@@ -905,15 +916,37 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to check cache status')
 
-      const status = result.status || {}
-      const cached = status.cached || 0
-      const aiAnalyzed = status.withAi || 0
-      const total = status.totalInSheet || 0
-      setDashboardCacheStatus({ cached, aiAnalyzed, total })
+      const podcastIds = result.podcasts?.map((p: any) => p.podcast_id).filter(Boolean) || []
+
+      // Use unified cache search across all sources
+      const cacheStatus = await getClientCacheStatus(client.id, podcastIds)
+
+      // Count AI analyzed podcasts in client's cache
+      const { data: clientPodcasts } = await supabase
+        .from('client_dashboard_podcasts')
+        .select('ai_analyzed_at')
+        .eq('client_id', client.id)
+        .not('ai_analyzed_at', 'is', null)
+
+      const aiAnalyzed = clientPodcasts?.length || 0
+
+      setDashboardCacheStatus({
+        total: cacheStatus.total,
+        cached: cacheStatus.cached_in_client,
+        aiAnalyzed,
+        cached_in_client: cacheStatus.cached_in_client,
+        cached_in_other_clients: cacheStatus.cached_in_other_clients,
+        cached_in_prospects: cacheStatus.cached_in_prospects,
+        cached_in_bookings: cacheStatus.cached_in_bookings,
+        needs_fetch: cacheStatus.needs_fetch
+      })
+
+      const totalCached = cacheStatus.cached_in_client + cacheStatus.cached_in_other_clients +
+                          cacheStatus.cached_in_prospects + cacheStatus.cached_in_bookings
 
       toast({
-        title: 'Cache Status',
-        description: `${cached} podcasts cached, ${aiAnalyzed} with AI analysis`
+        title: '✅ Cache Status Check Complete',
+        description: `${totalCached} podcasts found in cache (${cacheStatus.needs_fetch} need fetching)`
       })
     } catch (error) {
       toast({
@@ -941,8 +974,11 @@ export default function ClientDetail() {
 
     setDashboardCacheLoading(true)
     try {
+      toast({ title: 'Checking cache across all sources...' })
+
+      // Step 1: Get podcast IDs from Google Sheet
       const { data: session } = await supabase.auth.getSession()
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+      const sheetResponse = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -953,23 +989,113 @@ export default function ClientDetail() {
           clientId: client.id,
           clientName: client.name,
           clientBio: client.bio || '',
-          skipAiAnalysis: true
+          checkStatusOnly: true // Just get IDs, don't fetch yet
         })
       })
 
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
+      const sheetResult = await sheetResponse.json()
+      if (!sheetResponse.ok) throw new Error(sheetResult.error || 'Failed to read Google Sheet')
 
-      const status = result.status || {}
-      const cached = status.cached || result.podcasts?.length || 0
-      const aiAnalyzed = status.withAi || 0
-      const total = status.totalInSheet || cached
-      setDashboardCacheStatus({ cached, aiAnalyzed, total })
+      const podcastIds = sheetResult.podcasts?.map((p: any) => p.podcast_id).filter(Boolean) || []
+
+      if (podcastIds.length === 0) {
+        toast({
+          title: 'No podcasts found',
+          description: 'Google Sheet is empty or has no valid podcast IDs',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      // Step 2: Check what's cached anywhere
+      const cachedMetadata = await findCachedPodcastsMetadata(podcastIds)
+
+      // Step 3: Copy universal metadata from other sources to this client's cache
+      const toCopy = Array.from(cachedMetadata.values()).filter(
+        p => p.source !== 'client_dashboard' // Don't copy if already in client cache
+      )
+
+      if (toCopy.length > 0) {
+        await supabase.from('client_dashboard_podcasts').upsert(
+          toCopy.map(p => ({
+            client_id: client.id,
+            // Universal podcast metadata (NO AI analysis)
+            podcast_id: p.podcast_id,
+            podcast_name: p.podcast_name,
+            podcast_description: p.podcast_description,
+            podcast_image_url: p.podcast_image_url,
+            podcast_url: p.podcast_url,
+            publisher_name: p.publisher_name,
+            itunes_rating: p.itunes_rating,
+            episode_count: p.episode_count,
+            audience_size: p.audience_size,
+            podcast_categories: p.podcast_categories,
+            last_posted_at: p.last_posted_at,
+            // Demographics (universal listener data)
+            demographics: p.demographics,
+            demographics_fetched_at: p.has_demographics ? new Date().toISOString() : null,
+            // AI fields explicitly NULL - will be generated later
+            ai_clean_description: null,
+            ai_fit_reasons: null,
+            ai_pitch_angles: null,
+            ai_analyzed_at: null
+          })),
+          { onConflict: 'client_id,podcast_id' }
+        )
+
+        toast({
+          title: `✅ Copied ${toCopy.length} from cache`,
+          description: `Saved ${toCopy.length} Podscan API calls!`
+        })
+      }
+
+      // Step 4: Fetch only missing podcasts from Podscan
+      const missingIds = podcastIds.filter(id => !cachedMetadata.has(id))
+
+      if (missingIds.length > 0) {
+        toast({
+          title: `Fetching ${missingIds.length} from Podscan...`,
+          description: 'This may take a moment'
+        })
+
+        // Now actually fetch the missing ones
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.session?.access_token || ''}`
+          },
+          body: JSON.stringify({
+            spreadsheetId,
+            clientId: client.id,
+            clientName: client.name,
+            clientBio: client.bio || '',
+            skipAiAnalysis: true,
+            podcastIds: missingIds // Only fetch these IDs
+          })
+        })
+
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
+
+        toast({
+          title: `✅ Fetched ${missingIds.length} new podcasts`,
+          description: `Used ${missingIds.length} Podscan credits`
+        })
+      }
+
+      // Final summary
+      const totalCopied = toCopy.length
+      const totalFetched = missingIds.length
 
       toast({
-        title: 'Podcasts Cached',
-        description: `Successfully cached ${cached} podcasts`
+        title: '🎉 Metadata Cache Complete',
+        description: `Copied: ${totalCopied} | Fetched: ${totalFetched} | Saved ${totalCopied} API calls! Click "Run AI Analysis" to personalize.`
       })
+
+      // Refresh cache status automatically
+      await handleCheckDashboardCache()
+
       queryClient.invalidateQueries({ queryKey: ['client', id] })
     } catch (error) {
       toast({
@@ -1931,18 +2057,60 @@ export default function ClientDetail() {
 
                   {/* Cache Status */}
                   {dashboardCacheStatus && (
-                    <div className="grid grid-cols-3 gap-2 p-3 bg-muted rounded-lg">
-                      <div className="text-center">
-                        <p className="text-2xl font-bold">{dashboardCacheStatus.total}</p>
-                        <p className="text-xs text-muted-foreground">In Sheet</p>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
+                        <div className="text-center">
+                          <p className="text-2xl font-bold">{dashboardCacheStatus.total}</p>
+                          <p className="text-xs text-muted-foreground">In Sheet</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-orange-500">{dashboardCacheStatus.needs_fetch || 0}</p>
+                          <p className="text-xs text-muted-foreground">Needs Fetch</p>
+                        </div>
                       </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-green-600">{dashboardCacheStatus.cached}</p>
-                        <p className="text-xs text-muted-foreground">Cached</p>
+
+                      <div className="space-y-2 p-3 border rounded-lg">
+                        <div className="text-xs font-medium text-muted-foreground uppercase">Cached Sources</div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-2 rounded-full bg-green-500" />
+                              <span>This Client</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{dashboardCacheStatus.cached_in_client || 0}</Badge>
+                              {dashboardCacheStatus.aiAnalyzed > 0 && (
+                                <Sparkles className="h-3 w-3 text-purple-500" title={`${dashboardCacheStatus.aiAnalyzed} with AI analysis`} />
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-2 rounded-full bg-blue-500" />
+                              <span>Other Clients</span>
+                            </div>
+                            <Badge variant="outline">{dashboardCacheStatus.cached_in_other_clients || 0}</Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-2 rounded-full bg-purple-500" />
+                              <span>Prospects</span>
+                            </div>
+                            <Badge variant="outline">{dashboardCacheStatus.cached_in_prospects || 0}</Badge>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                              <span>Bookings</span>
+                            </div>
+                            <Badge variant="outline">{dashboardCacheStatus.cached_in_bookings || 0}</Badge>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-blue-600">{dashboardCacheStatus.aiAnalyzed}</p>
-                        <p className="text-xs text-muted-foreground">AI Analyzed</p>
+
+                      <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded text-xs text-blue-700 dark:text-blue-300">
+                        <AlertCircle className="h-3 w-3 inline mr-1" />
+                        Metadata is shared. AI analysis is personalized per client.
                       </div>
                     </div>
                   )}
@@ -1965,30 +2133,42 @@ export default function ClientDetail() {
 
                     <Button
                       variant="outline"
-                      className="w-full"
+                      className="w-full justify-between"
                       onClick={handleFetchDashboardPodcasts}
                       disabled={dashboardCacheLoading}
                     >
-                      {dashboardCacheLoading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="mr-2 h-4 w-4" />
+                      <span className="flex items-center">
+                        {dashboardCacheLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="mr-2 h-4 w-4" />
+                        )}
+                        Fetch & Cache Metadata
+                      </span>
+                      {dashboardCacheStatus?.needs_fetch !== undefined && dashboardCacheStatus.needs_fetch > 0 && (
+                        <Badge variant="secondary" className="ml-2">
+                          {dashboardCacheStatus.needs_fetch} missing
+                        </Badge>
                       )}
-                      Fetch & Cache Podcasts
                     </Button>
 
                     <Button
                       variant="outline"
-                      className="w-full"
+                      className="w-full justify-between"
                       onClick={handleRunAiAnalysis}
                       disabled={dashboardAiLoading || !dashboardCacheStatus?.cached}
                     >
-                      {dashboardAiLoading ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Brain className="mr-2 h-4 w-4" />
-                      )}
-                      Run AI Analysis
+                      <span className="flex items-center">
+                        {dashboardAiLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Brain className="mr-2 h-4 w-4" />
+                        )}
+                        Run AI Analysis
+                      </span>
+                      <Badge variant="secondary" className="ml-2">
+                        Personalized
+                      </Badge>
                     </Button>
 
                     <div className="pt-2 border-t">
