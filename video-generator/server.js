@@ -95,8 +95,9 @@ app.post('/api/heygen/generate', async (req, res) => {
   console.log(`[${new Date().toISOString()}] Starting HeyGen video generation for ${firstName}`);
 
   try {
-    // Build the personalized script with natural pauses using punctuation
-    const script = `${firstName}, we have handpicked the best possible shows. At the top, we see the potential reach, the average rating, and how many podcasts are on the list that we can reach out to... Each podcast card shows you detailed insights... the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message. You can approve or reject any show directly from the panel.... And here's our pricing - simple, transparent, and designed to get you maximum ROI. Please click the Book a call now Button to schedule a call.`;
+    // Build the personalized script with strategic pauses
+    // Using periods and commas for natural pauses to sync with 42-second background video
+    const script = `${firstName}, we have handpicked the best possible shows. At the top, we see the potential reach, the average rating, and how many podcasts are on the list that we can reach out to..... Each podcast card shows you detailed insights... the audience demographics, listener engagement, download numbers, and why we think it's a perfect match for your message.. You can approve or reject any show directly from the panel....... And here's our pricing, simple, transparent, and designed to get you maximum ROI. Please click the Book a call now Button to schedule a call.`;
 
     // Call HeyGen API
     const response = await fetch('https://api.heygen.com/v2/video/generate', {
@@ -128,7 +129,7 @@ app.post('/api/heygen/generate', async (req, res) => {
               type: 'text',
               input_text: script,
               voice_id: '1bd001e7e50f421d891986aad5158bc8',
-              speed: 1.1,
+              speed: 0.95,
             },
             background: {
               type: 'video',
