@@ -16,11 +16,21 @@ export interface HeyGenGenerateRequest {
 }
 
 export interface HeyGenVideoStatus {
-  video_id: string;
+  id: string;
   status: 'pending' | 'waiting' | 'processing' | 'completed' | 'failed';
-  video_url?: string;
-  thumbnail_url?: string;
-  error?: string;
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  gif_url?: string | null;
+  duration?: number | null;
+  created_at?: number;
+  callback_id?: string | null;
+  caption_url?: string | null;
+  video_url_caption?: string | null;
+  error?: {
+    code: number;
+    message: string;
+    detail: string;
+  } | null;
 }
 
 /**
@@ -203,7 +213,10 @@ export async function pollVideoStatus(
     }
 
     if (status.status === 'failed') {
-      throw new Error(status.error || 'Video generation failed');
+      const errorMessage = status.error
+        ? `${status.error.message}: ${status.error.detail}`
+        : 'Video generation failed';
+      throw new Error(errorMessage);
     }
 
     // Wait before next poll
