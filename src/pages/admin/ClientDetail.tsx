@@ -916,7 +916,16 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to check cache status')
 
-      const podcastIds = result.podcasts?.map((p: any) => p.podcast_id).filter(Boolean) || []
+      const podcastIds = result.podcastIds || []
+
+      if (podcastIds.length === 0) {
+        toast({
+          title: 'No podcasts in sheet',
+          description: 'Google Sheet is empty or has no podcast IDs',
+          variant: 'destructive'
+        })
+        return
+      }
 
       // Use unified cache search across all sources
       const cacheStatus = await getClientCacheStatus(client.id, podcastIds)
@@ -996,7 +1005,7 @@ export default function ClientDetail() {
       const sheetResult = await sheetResponse.json()
       if (!sheetResponse.ok) throw new Error(sheetResult.error || 'Failed to read Google Sheet')
 
-      const podcastIds = sheetResult.podcasts?.map((p: any) => p.podcast_id).filter(Boolean) || []
+      const podcastIds = sheetResult.podcastIds || []
 
       if (podcastIds.length === 0) {
         toast({
