@@ -117,7 +117,7 @@ app.post('/api/heygen/generate', async (req, res) => {
             character: {
               type: 'avatar',
               avatar_id: 'Artur_sitting_office_front',
-              avatar_style: 'closeup',
+              avatar_style: 'closeUp',
               scale: 0.35,
               offset: {
                 x: -0.35,
