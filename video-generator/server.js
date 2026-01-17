@@ -116,7 +116,7 @@ app.post('/api/heygen/generate', async (req, res) => {
           {
             character: {
               type: 'avatar',
-              avatar_id: '8aecff8d247244f2be3a7b3ab8d0fb85',
+              avatar_id: '821405cb2b04486593fd37616fee92f9',
               avatar_style: 'circle',
               scale: 0.35,
               offset: {
