@@ -34,7 +34,6 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
-  BarChart3,
   ChevronDown,
   ChevronUp,
   User,
@@ -301,10 +300,6 @@ export default function OutreachPlatform() {
               : 'View all sent outreach messages'}
           </p>
         </div>
-        <Button variant="outline" size="sm">
-          <BarChart3 className="h-4 w-4 mr-2" />
-          Stats Dashboard
-        </Button>
       </div>
 
       {/* Status Filter Tabs */}
