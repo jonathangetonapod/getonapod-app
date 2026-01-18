@@ -3365,30 +3365,66 @@ export default function PortalDashboard() {
 
         {/* Activity Timeline */}
         {activityTimeline.length > 0 && (
-          <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-indigo-600" />
-                <CardTitle className="text-indigo-900 dark:text-indigo-100">Activity Timeline</CardTitle>
+          <Card className="border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950 dark:via-purple-950 dark:to-pink-950 shadow-lg">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+                  <Clock className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1">
+                  <CardTitle className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                    Activity Timeline
+                  </CardTitle>
+                  <CardDescription className="text-sm text-muted-foreground mt-0.5">
+                    Recent milestones and updates on your podcast journey
+                  </CardDescription>
+                </div>
               </div>
-              <CardDescription className="text-indigo-800 dark:text-indigo-200">
-                Recent milestones and updates on your podcast journey
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="relative">
                 {/* Vertical line */}
-                <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-gradient-to-b from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-700 dark:via-purple-700 dark:to-pink-700" />
+                <div className="absolute left-[23px] top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-700 dark:via-purple-700 dark:to-pink-700 rounded-full" />
 
                 {/* Timeline items */}
                 <div className="space-y-6">
                   {activityTimeline.map((activity, idx) => {
                     const iconConfig = {
-                      published: { icon: CheckCheck, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900', border: 'border-purple-300 dark:border-purple-700' },
-                      recorded: { icon: Video, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900', border: 'border-blue-300 dark:border-blue-700' },
-                      booked: { icon: CheckCircle2, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900', border: 'border-green-300 dark:border-green-700' },
-                      conversation: { icon: MessageSquare, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900', border: 'border-amber-300 dark:border-amber-700' },
-                      outreach: { icon: Send, color: 'text-pink-600 dark:text-pink-400', bg: 'bg-pink-100 dark:bg-pink-900', border: 'border-pink-300 dark:border-pink-700' }
+                      published: {
+                        icon: CheckCheck,
+                        color: 'text-purple-600 dark:text-purple-300',
+                        bg: 'bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800',
+                        border: 'border-purple-400 dark:border-purple-600',
+                        ring: 'group-hover:ring-4 group-hover:ring-purple-200 dark:group-hover:ring-purple-800'
+                      },
+                      recorded: {
+                        icon: Video,
+                        color: 'text-blue-600 dark:text-blue-300',
+                        bg: 'bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800',
+                        border: 'border-blue-400 dark:border-blue-600',
+                        ring: 'group-hover:ring-4 group-hover:ring-blue-200 dark:group-hover:ring-blue-800'
+                      },
+                      booked: {
+                        icon: CheckCircle2,
+                        color: 'text-green-600 dark:text-green-300',
+                        bg: 'bg-gradient-to-br from-green-100 to-green-200 dark:from-green-900 dark:to-green-800',
+                        border: 'border-green-400 dark:border-green-600',
+                        ring: 'group-hover:ring-4 group-hover:ring-green-200 dark:group-hover:ring-green-800'
+                      },
+                      conversation: {
+                        icon: MessageSquare,
+                        color: 'text-amber-600 dark:text-amber-300',
+                        bg: 'bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900 dark:to-amber-800',
+                        border: 'border-amber-400 dark:border-amber-600',
+                        ring: 'group-hover:ring-4 group-hover:ring-amber-200 dark:group-hover:ring-amber-800'
+                      },
+                      outreach: {
+                        icon: Send,
+                        color: 'text-pink-600 dark:text-pink-300',
+                        bg: 'bg-gradient-to-br from-pink-100 to-rose-200 dark:from-pink-900 dark:to-rose-800',
+                        border: 'border-pink-400 dark:border-pink-600',
+                        ring: 'group-hover:ring-4 group-hover:ring-pink-200 dark:group-hover:ring-pink-800'
+                      }
                     }
                     const config = iconConfig[activity.type]
                     const Icon = config.icon
@@ -3406,27 +3442,32 @@ export default function PortalDashboard() {
                         className={`flex items-start gap-4 relative ${activity.booking || activity.outreachMessage ? 'cursor-pointer' : ''} group`}
                       >
                         {/* Icon circle */}
-                        <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full ${config.bg} ${config.border} border-2 shadow-sm group-hover:scale-110 transition-transform`}>
-                          <Icon className={`h-5 w-5 ${config.color}`} />
+                        <div className={`relative z-10 flex items-center justify-center w-12 h-12 rounded-full ${config.bg} ${config.border} border-2 shadow-lg group-hover:scale-110 transition-all duration-200 ${config.ring}`}>
+                          <Icon className={`h-6 w-6 ${config.color}`} />
                         </div>
 
                         {/* Content card */}
-                        <div className="flex-1 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border group-hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 p-5 bg-white dark:bg-gray-800 rounded-xl shadow-md border-2 border-gray-100 dark:border-gray-700 group-hover:shadow-xl group-hover:border-gray-200 dark:group-hover:border-gray-600 group-hover:-translate-y-0.5 transition-all duration-200">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm mb-1">{activity.message}</p>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs text-muted-foreground">
+                              <p className="font-bold text-base mb-2 text-gray-900 dark:text-gray-100 leading-snug">
+                                {activity.message}
+                              </p>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300">
+                                  <Clock className="h-3 w-3" />
                                   {getRelativeTime(activity.date.toISOString())}
                                 </span>
                                 {activity.booking?.audience_size && (
-                                  <span className="text-xs text-muted-foreground">
-                                    • 👥 {activity.booking.audience_size.toLocaleString()} listeners
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300">
+                                    <Users className="h-3 w-3" />
+                                    {activity.booking.audience_size.toLocaleString()}
                                   </span>
                                 )}
                                 {activity.booking?.itunes_rating && (
-                                  <span className="text-xs text-muted-foreground">
-                                    • ⭐ {activity.booking.itunes_rating.toFixed(1)}
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-xs font-medium text-yellow-700 dark:text-yellow-300">
+                                    <Star className="h-3 w-3 fill-current" />
+                                    {activity.booking.itunes_rating.toFixed(1)}
                                   </span>
                                 )}
                               </div>
@@ -3435,7 +3476,7 @@ export default function PortalDashboard() {
                               <img
                                 src={activity.booking.podcast_image_url}
                                 alt={activity.booking.podcast_name}
-                                className="w-12 h-12 rounded object-cover flex-shrink-0"
+                                className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-md ring-2 ring-white dark:ring-gray-700"
                               />
                             )}
                           </div>
@@ -3448,10 +3489,13 @@ export default function PortalDashboard() {
 
               {/* View all hint */}
               {activityTimeline.length === 10 && (
-                <div className="mt-6 text-center">
-                  <p className="text-xs text-muted-foreground">
-                    Showing your 10 most recent activities
-                  </p>
+                <div className="mt-8 text-center">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/30 border border-indigo-200 dark:border-indigo-700">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+                    <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                      Showing your 10 most recent activities
+                    </p>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -5328,7 +5372,7 @@ export default function PortalDashboard() {
                   <CardContent className="space-y-4">
                     {/* Fit Reasons */}
                     <div>
-                      <h4 className="text-sm font-semibold mb-3">Key Reasons</h4>
+                      <h4 className="text-sm font-semibold mb-3">Why This Is A Great Fit</h4>
                       <ul className="space-y-2">
                         {viewingOutreachActivityDetails.podcastDetails.ai_fit_reasons.map((reason: string, idx: number) => (
                           <li key={idx} className="flex items-start gap-2 text-sm">
@@ -5338,22 +5382,6 @@ export default function PortalDashboard() {
                         ))}
                       </ul>
                     </div>
-
-                    {/* Pitch Angles */}
-                    {viewingOutreachActivityDetails.podcastDetails.ai_pitch_angles &&
-                     viewingOutreachActivityDetails.podcastDetails.ai_pitch_angles.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-semibold mb-3">Suggested Pitch Angles</h4>
-                        <div className="space-y-3">
-                          {viewingOutreachActivityDetails.podcastDetails.ai_pitch_angles.map((angle: any, idx: number) => (
-                            <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-3 border">
-                              <p className="text-sm font-semibold mb-1">{angle.title}</p>
-                              <p className="text-xs text-muted-foreground leading-relaxed">{angle.description}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               )}
