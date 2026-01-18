@@ -226,6 +226,8 @@ export default function OutreachPlatform() {
   const handleEditSave = async () => {
     if (!editingMessage) return
 
+    const savedMessage = editingMessage
+
     await updateMutation.mutateAsync({
       id: editingMessage.id,
       updates: {
@@ -236,7 +238,20 @@ export default function OutreachPlatform() {
       }
     })
 
+    // Close edit modal and reopen view modal with updated data
     setEditingMessage(null)
+
+    // Refresh the message data and show view modal
+    queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
+
+    // Brief delay to let the query refresh, then show updated message
+    setTimeout(() => {
+      const updatedMessages = queryClient.getQueryData(['outreach-messages', statusFilter]) as OutreachMessageWithClient[] | undefined
+      const refreshedMessage = updatedMessages?.find(m => m.id === savedMessage.id)
+      if (refreshedMessage) {
+        setViewingMessage(refreshedMessage)
+      }
+    }, 100)
   }
 
   // Fetch Podscan email
@@ -454,11 +469,16 @@ export default function OutreachPlatform() {
           <DialogHeader>
             <DialogTitle>Edit Outreach Message</DialogTitle>
             <DialogDescription>
-              Make changes to the email before sending
+              Make changes to the email. Your edits will be saved and this final version will be sent to Bison.
             </DialogDescription>
           </DialogHeader>
           {editingMessage && (
             <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  💡 These changes will be saved to the database. When you click "Create & Send Lead In Bison", the edited version will be used.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label>Host Name</Label>
                 <Input
