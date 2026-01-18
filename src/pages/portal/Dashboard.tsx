@@ -195,6 +195,26 @@ export default function PortalDashboard() {
     refetchOnMount: true // Refetch when component mounts
   })
 
+  // Fetch outreach actions
+  const { data: outreachActions = [] } = useQuery({
+    queryKey: ['client-outreach-actions', client?.id],
+    queryFn: async () => {
+      if (!client?.id) return []
+      const { createClient } = await import('@/lib/supabase')
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('podcast_outreach_actions')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('action', 'sent')
+        .order('webhook_sent_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!client?.id,
+    staleTime: 30 * 1000 // 30 seconds
+  })
+
   // Fetch active addon services
   const { data: addonServices } = useQuery({
     queryKey: ['addon-services'],
@@ -742,8 +762,9 @@ export default function PortalDashboard() {
 
     const activities: Array<{
       id: string
-      type: 'published' | 'recorded' | 'booked' | 'conversation'
-      booking: Booking
+      type: 'published' | 'recorded' | 'booked' | 'conversation' | 'outreach'
+      booking?: Booking
+      outreachAction?: any
       date: Date
       message: string
     }> = []
@@ -794,11 +815,34 @@ export default function PortalDashboard() {
       }
     })
 
+    // Add outreach activities
+    outreachActions.forEach(action => {
+      if (action.webhook_sent_at) {
+        const actionDate = new Date(action.webhook_sent_at)
+
+        // Filter by time range
+        const now = new Date()
+        const cutoffDate = new Date()
+        if (timeRange !== 'all') {
+          cutoffDate.setDate(cutoffDate.getDate() - timeRange)
+          if (actionDate < cutoffDate || actionDate > now) return
+        }
+
+        activities.push({
+          id: `outreach-${action.id}`,
+          type: 'outreach',
+          outreachAction: action,
+          date: actionDate,
+          message: `Sent ${action.podcast_name || 'podcast'} to outreach team`
+        })
+      }
+    })
+
     // Sort by date (most recent first) and limit to 10
     return activities
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, 10)
-  }, [filteredByTimeRange])
+  }, [filteredByTimeRange, outreachActions, timeRange])
 
   // Next Steps / Action Items (using selected time range)
   const nextSteps = useMemo(() => {
@@ -3296,7 +3340,8 @@ export default function PortalDashboard() {
                       published: { icon: CheckCheck, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900', border: 'border-purple-300 dark:border-purple-700' },
                       recorded: { icon: Video, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900', border: 'border-blue-300 dark:border-blue-700' },
                       booked: { icon: CheckCircle2, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900', border: 'border-green-300 dark:border-green-700' },
-                      conversation: { icon: MessageSquare, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900', border: 'border-amber-300 dark:border-amber-700' }
+                      conversation: { icon: MessageSquare, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900', border: 'border-amber-300 dark:border-amber-700' },
+                      outreach: { icon: Send, color: 'text-pink-600 dark:text-pink-400', bg: 'bg-pink-100 dark:bg-pink-900', border: 'border-pink-300 dark:border-pink-700' }
                     }
                     const config = iconConfig[activity.type]
                     const Icon = config.icon
@@ -3304,8 +3349,8 @@ export default function PortalDashboard() {
                     return (
                       <div
                         key={activity.id}
-                        onClick={() => setViewingBooking(activity.booking)}
-                        className="flex items-start gap-4 relative cursor-pointer group"
+                        onClick={() => activity.booking && setViewingBooking(activity.booking)}
+                        className={`flex items-start gap-4 relative ${activity.booking ? 'cursor-pointer' : ''} group`}
                       >
                         {/* Icon circle */}
                         <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full ${config.bg} ${config.border} border-2 shadow-sm group-hover:scale-110 transition-transform`}>
@@ -3321,19 +3366,19 @@ export default function PortalDashboard() {
                                 <span className="text-xs text-muted-foreground">
                                   {getRelativeTime(activity.date.toISOString())}
                                 </span>
-                                {activity.booking.audience_size && (
+                                {activity.booking?.audience_size && (
                                   <span className="text-xs text-muted-foreground">
                                     • 👥 {activity.booking.audience_size.toLocaleString()} listeners
                                   </span>
                                 )}
-                                {activity.booking.itunes_rating && (
+                                {activity.booking?.itunes_rating && (
                                   <span className="text-xs text-muted-foreground">
                                     • ⭐ {activity.booking.itunes_rating.toFixed(1)}
                                   </span>
                                 )}
                               </div>
                             </div>
-                            {activity.booking.podcast_image_url && (
+                            {activity.booking?.podcast_image_url && (
                               <img
                                 src={activity.booking.podcast_image_url}
                                 alt={activity.booking.podcast_name}
