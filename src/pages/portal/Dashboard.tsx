@@ -74,6 +74,7 @@ import type { Booking } from '@/services/bookings'
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { getClientOutreachPodcasts, deleteOutreachPodcast, analyzePodcastFit, type OutreachPodcast, type PodcastFitAnalysis } from '@/services/googleSheets'
+import { getOutreachMessages, type OutreachMessageWithClient } from '@/services/outreachMessages'
 import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
 import { CartButton } from '@/components/CartButton'
@@ -121,6 +122,7 @@ export default function PortalDashboard() {
   const [outreachPage, setOutreachPage] = useState(1)
   const [outreachViewMode, setOutreachViewMode] = useState<'grid' | 'list'>('grid')
   const [deletingOutreachPodcast, setDeletingOutreachPodcast] = useState<OutreachPodcast | null>(null)
+  const [viewingOutreachMessage, setViewingOutreachMessage] = useState<OutreachMessageWithClient | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [outreachFitAnalysis, setOutreachFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
@@ -313,6 +315,17 @@ export default function PortalDashboard() {
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: true
+  })
+
+  // Fetch outreach messages (emails sent via Clay/Bison)
+  const { data: outreachMessages = [], isLoading: outreachMessagesLoading } = useQuery({
+    queryKey: ['outreach-messages', client?.id],
+    queryFn: async () => {
+      if (!client?.id) return []
+      return getOutreachMessages({ clientId: client.id, status: 'sent' })
+    },
+    enabled: !!client?.id,
+    staleTime: 30000
   })
 
   // Reset outreach pagination when data changes
