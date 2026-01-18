@@ -32,6 +32,7 @@ import UpcomingRecordings from "./pages/admin/UpcomingRecordings";
 import UpcomingGoingLive from "./pages/admin/UpcomingGoingLive";
 import ClientsManagement from "./pages/admin/ClientsManagement";
 import ClientDetail from "./pages/admin/ClientDetail";
+import OutreachQueue from "./pages/admin/OutreachQueue";
 import BlogManagement from "./pages/admin/BlogManagement";
 import BlogEditor from "./pages/admin/BlogEditor";
 import VideoManagement from "./pages/admin/VideoManagement";
@@ -192,6 +193,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ClientDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/outreach-queue"
+              element={
+                <ProtectedRoute>
+                  <OutreachQueue />
                 </ProtectedRoute>
               }
             />
