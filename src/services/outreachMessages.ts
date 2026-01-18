@@ -21,6 +21,11 @@ export interface OutreachMessage {
   created_by: string
   created_at: string
   updated_at: string
+  // Enriched podcast metadata from client_dashboard_podcasts
+  podcast_image_url?: string | null
+  audience_size?: number | null
+  itunes_rating?: number | null
+  episode_count?: number | null
 }
 
 export interface OutreachMessageWithClient extends OutreachMessage {

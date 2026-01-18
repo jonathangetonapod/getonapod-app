@@ -3449,24 +3449,30 @@ export default function PortalDashboard() {
                                   <Clock className="h-3 w-3" />
                                   {getRelativeTime(activity.date.toISOString())}
                                 </span>
-                                {activity.booking?.audience_size && (
+                                {(activity.booking?.audience_size || activity.outreachMessage?.audience_size) && (
                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300">
                                     <Users className="h-3 w-3" />
-                                    {activity.booking.audience_size.toLocaleString()}
+                                    {(activity.booking?.audience_size || activity.outreachMessage?.audience_size || 0).toLocaleString()}
                                   </span>
                                 )}
-                                {activity.booking?.itunes_rating && (
+                                {(activity.booking?.itunes_rating || activity.outreachMessage?.itunes_rating) && (
                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-xs font-medium text-yellow-700 dark:text-yellow-300">
                                     <Star className="h-3 w-3 fill-current" />
-                                    {activity.booking.itunes_rating.toFixed(1)}
+                                    {(activity.booking?.itunes_rating || activity.outreachMessage?.itunes_rating || 0).toFixed(1)}
+                                  </span>
+                                )}
+                                {activity.outreachMessage?.episode_count && (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 dark:bg-purple-900/30 text-xs font-medium text-purple-700 dark:text-purple-300">
+                                    <Video className="h-3 w-3" />
+                                    {activity.outreachMessage.episode_count.toLocaleString()} episodes
                                   </span>
                                 )}
                               </div>
                             </div>
-                            {activity.booking?.podcast_image_url && (
+                            {(activity.booking?.podcast_image_url || activity.outreachMessage?.podcast_image_url) && (
                               <img
-                                src={activity.booking.podcast_image_url}
-                                alt={activity.booking.podcast_name}
+                                src={activity.booking?.podcast_image_url || activity.outreachMessage?.podcast_image_url}
+                                alt={activity.booking?.podcast_name || activity.outreachMessage?.podcast_name}
                                 className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-md ring-2 ring-white dark:ring-gray-700"
                               />
                             )}

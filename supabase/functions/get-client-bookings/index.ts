@@ -173,7 +173,7 @@ serve(async (req) => {
       )
     }
 
-    // Fetch outreach messages with service role (bypasses RLS)
+    // Fetch outreach messages with service role (bypasses RLS) and enrich with podcast metadata
     const { data: outreachMessages, error: outreachError } = await supabase
       .from('outreach_messages')
       .select('*')
@@ -190,8 +190,30 @@ serve(async (req) => {
       )
     }
 
+    // Enrich outreach messages with podcast metadata from client_dashboard_podcasts
+    const enrichedOutreachMessages = await Promise.all(
+      (outreachMessages || []).map(async (message) => {
+        if (!message.podcast_id) return message
+
+        const { data: podcastMeta } = await supabase
+          .from('client_dashboard_podcasts')
+          .select('podcast_image_url, audience_size, itunes_rating, episode_count')
+          .eq('client_id', clientId)
+          .eq('podcast_id', message.podcast_id)
+          .maybeSingle()
+
+        return {
+          ...message,
+          podcast_image_url: podcastMeta?.podcast_image_url,
+          audience_size: podcastMeta?.audience_size,
+          itunes_rating: podcastMeta?.itunes_rating,
+          episode_count: podcastMeta?.episode_count
+        }
+      })
+    )
+
     return new Response(
-      JSON.stringify({ bookings, outreachMessages }),
+      JSON.stringify({ bookings, outreachMessages: enrichedOutreachMessages }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
