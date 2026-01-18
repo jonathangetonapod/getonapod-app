@@ -129,23 +129,30 @@ export default function OutreachPlatform() {
     setCreatingLeadIds(prev => new Set(prev).add(message.id))
 
     try {
-      // TODO: Call Bison API to create lead
-      // This will need to be implemented with the actual Bison endpoint
-      // For now, we'll simulate the API call
-      await new Promise(resolve => setTimeout(resolve, 1500))
-
-      // Update message with bison_lead_id or similar field
-      await updateMutation.mutateAsync({
-        id: message.id,
-        updates: {
-          // Add bison_lead_id or status field when schema is ready
-          status: 'lead_created'
-        }
+      const { data, error } = await supabase.functions.invoke('create-bison-lead', {
+        body: { message_id: message.id }
       })
 
-      toast.success(`Lead created in Bison for ${message.host_name}`)
-    } catch (error) {
-      toast.error('Failed to create lead in Bison')
+      if (error) throw error
+
+      if (data.success) {
+        if (data.already_exists) {
+          toast.info(`Lead already exists in Bison (ID: ${data.lead_id})`)
+        } else {
+          const campaignMsg = data.campaign_attached
+            ? ` and attached to campaign ${data.campaign_id}`
+            : ''
+          toast.success(`Lead created in Bison (ID: ${data.lead_id})${campaignMsg}`)
+        }
+
+        // Refresh the messages to get updated status
+        queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
+      } else {
+        throw new Error(data.error || 'Failed to create lead')
+      }
+    } catch (error: any) {
+      console.error('Error creating Bison lead:', error)
+      toast.error(`Failed to create lead in Bison: ${error.message || 'Unknown error'}`)
     } finally {
       setCreatingLeadIds(prev => {
         const newSet = new Set(prev)

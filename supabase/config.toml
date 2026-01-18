@@ -43,3 +43,6 @@ verify_jwt = false
 
 [functions.fetch-podscan-email]
 verify_jwt = false
+
+[functions.create-bison-lead]
+verify_jwt = false
