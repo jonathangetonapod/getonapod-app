@@ -178,9 +178,10 @@ export default function OutreachPlatform() {
 
       toast.success(`Successfully ${leadStatus} lead in Bison (ID: ${leadId})${campaignMsg}. Email marked as sent.`)
 
-      // Refresh all message queries
-      queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
-      queryClient.invalidateQueries({ queryKey: ['outreach-messages-sent-today'] })
+      // Refresh all message queries (both pending and sent tabs)
+      await queryClient.invalidateQueries({ queryKey: ['outreach-messages', 'pending_review'] })
+      await queryClient.invalidateQueries({ queryKey: ['outreach-messages', 'sent'] })
+      await queryClient.invalidateQueries({ queryKey: ['outreach-messages-sent-today'] })
 
       // Close modal after short delay to let user see the success state
       setTimeout(() => {
