@@ -110,31 +110,12 @@ serve(async (req) => {
       customVariables.push({ name: 'campaign_id', value: message.bison_campaign_id })
     }
 
-    // First, search for existing lead by email in Bison
-    console.log('[Create Bison Lead] Searching for existing lead:', message.host_email)
+    // Create lead directly in Bison - Bison will return the lead ID
+    // If the email already exists, Bison will return a 422 error and we'll handle it
+    console.log('[Create Bison Lead] Creating lead in Bison for:', message.host_email)
 
     let leadId: number | null = null
     let leadAlreadyExisted = false
-
-    const searchResponse = await fetch(`${bisonApiUrl}/api/leads?email=${encodeURIComponent(message.host_email)}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${bisonApiKey}`
-      }
-    })
-
-    if (searchResponse.ok) {
-      const searchData = await searchResponse.json()
-      if (searchData.data && Array.isArray(searchData.data) && searchData.data.length > 0) {
-        leadId = searchData.data[0].id
-        leadAlreadyExisted = true
-        console.log('[Create Bison Lead] Found existing lead with ID:', leadId)
-      }
-    }
-
-    // If no existing lead found, create new one
-    if (!leadId) {
-      console.log('[Create Bison Lead] No existing lead found, creating new lead in Bison')
 
       const leadPayload = {
         first_name: firstName,
@@ -164,23 +145,75 @@ serve(async (req) => {
           errorData = { message: errorText }
         }
 
-        // Check if it's a duplicate email error (race condition)
+        // Check if it's a duplicate email error (lead already exists)
         if (createLeadResponse.status === 422 && errorData?.data?.message?.includes('email has already been taken')) {
-          // Try to search again
-          const retrySearchResponse = await fetch(`${bisonApiUrl}/api/leads?email=${encodeURIComponent(message.host_email)}`, {
+          console.log('[Create Bison Lead] Email already exists, updating existing lead via PATCH')
+
+          // Update the existing lead using email as identifier (PATCH /api/leads/{email})
+          const updatePayload = {
+            first_name: firstName,
+            last_name: lastName,
+            email: message.host_email,
+            company: message.podcast_name || 'Unknown Podcast',
+            title: 'Podcast Host',
+            notes: `Outreach for ${message.client?.name || 'client'}`,
+            custom_variables: customVariables
+          }
+
+          const updateResponse = await fetch(`${bisonApiUrl}/api/leads/${encodeURIComponent(message.host_email)}`, {
+            method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${bisonApiKey}`
-            }
+            },
+            body: JSON.stringify(updatePayload)
           })
 
-          if (retrySearchResponse.ok) {
-            const retrySearchData = await retrySearchResponse.json()
-            if (retrySearchData.data && Array.isArray(retrySearchData.data) && retrySearchData.data.length > 0) {
-              leadId = retrySearchData.data[0].id
-              leadAlreadyExisted = true
-              console.log('[Create Bison Lead] Found lead after duplicate error:', leadId)
+          if (updateResponse.ok) {
+            const updateData = await updateResponse.json()
+            console.log('[Create Bison Lead] Lead updated successfully:', updateData)
+
+            leadId = updateData.data?.id
+            leadAlreadyExisted = true
+
+            if (!leadId) {
+              console.error('[Create Bison Lead] No lead ID in update response:', updateData)
+              return new Response(
+                JSON.stringify({
+                  success: false,
+                  error: 'Updated existing lead but no ID returned',
+                  email: message.host_email
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    ...corsHeaders,
+                    'Content-Type': 'application/json',
+                  },
+                }
+              )
             }
+
+            console.log('[Create Bison Lead] Using existing lead ID:', leadId)
+          } else {
+            const updateErrorText = await updateResponse.text()
+            console.error('[Create Bison Lead] Failed to update existing lead:', updateErrorText)
+
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: 'Lead already exists but could not be updated',
+                email: message.host_email,
+                bison_error: updateErrorText
+              }),
+              {
+                status: 200,
+                headers: {
+                  ...corsHeaders,
+                  'Content-Type': 'application/json',
+                },
+              }
+            )
           }
         }
 
@@ -193,7 +226,22 @@ serve(async (req) => {
 
           // User-friendly error messages
           const userMessage = errorData?.data?.message || errorData?.message || 'Unknown error'
-          throw new Error(`Could not create lead in Bison: ${userMessage}`)
+
+          // Return error response instead of throwing
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: `Could not create lead in Bison: ${userMessage}`,
+              bison_error_details: errorData
+            }),
+            {
+              status: 200, // Still 200 so it doesn't crash the UI
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+              },
+            }
+          )
         }
       } else {
         const leadData = await createLeadResponse.json()
@@ -208,7 +256,6 @@ serve(async (req) => {
 
         console.log('[Create Bison Lead] Lead created with ID:', leadId)
       }
-    }
 
     // Update message with bison_lead_id (don't change status - that's handled separately)
     const { error: updateError } = await supabase
@@ -226,13 +273,19 @@ serve(async (req) => {
     // Attach to campaign if campaign_id exists
     if (message.bison_campaign_id) {
       console.log('[Create Bison Lead] Attaching lead to campaign:', message.bison_campaign_id)
+      console.log('[Create Bison Lead] Lead ID to attach:', leadId)
 
       const attachPayload = {
-        lead_ids: [leadId]
+        lead_ids: [leadId],
+        allow_parallel_sending: false
       }
 
+      const attachUrl = `${bisonApiUrl}/api/campaigns/${message.bison_campaign_id}/leads/attach-leads`
+      console.log('[Create Bison Lead] Attachment URL:', attachUrl)
+      console.log('[Create Bison Lead] Attachment payload:', JSON.stringify(attachPayload))
+
       const attachResponse = await fetch(
-        `${bisonApiUrl}/api/campaigns/${message.bison_campaign_id}/leads/attach-leads`,
+        attachUrl,
         {
           method: 'POST',
           headers: {
@@ -243,16 +296,19 @@ serve(async (req) => {
         }
       )
 
+      console.log('[Create Bison Lead] Attachment response status:', attachResponse.status)
+      const responseText = await attachResponse.text()
+      console.log('[Create Bison Lead] Attachment response body:', responseText)
+
       if (!attachResponse.ok) {
-        const errorText = await attachResponse.text()
-        console.error('[Create Bison Lead] Failed to attach to campaign:', errorText)
+        console.error('[Create Bison Lead] Failed to attach to campaign')
         // Don't throw - lead was created successfully, just not attached
         return new Response(
           JSON.stringify({
             success: true,
             lead_id: leadId,
             campaign_attached: false,
-            campaign_error: errorText
+            campaign_error: responseText
           }),
           {
             status: 200,
@@ -265,6 +321,8 @@ serve(async (req) => {
       }
 
       console.log('[Create Bison Lead] Lead attached to campaign successfully')
+    } else {
+      console.warn('[Create Bison Lead] No bison_campaign_id on message - skipping campaign attachment')
     }
 
     return new Response(

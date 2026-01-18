@@ -58,10 +58,10 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Verify client exists
+    // Verify client exists and get their bison_campaign_id
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('id, name')
+      .select('id, name, bison_campaign_id')
       .eq('id', payload.client_id)
       .single()
 
@@ -71,6 +71,43 @@ serve(async (req) => {
     }
 
     console.log('[Create Outreach Message] Client verified:', client.name)
+    console.log('[Create Outreach Message] Client bison_campaign_id:', client.bison_campaign_id)
+    console.log('[Create Outreach Message] Payload bison_campaign_id:', payload.bison_campaign_id)
+
+    // Use client's bison_campaign_id if payload doesn't have one
+    const bisonCampaignId = payload.bison_campaign_id || client.bison_campaign_id || null
+    console.log('[Create Outreach Message] Final bison_campaign_id to use:', bisonCampaignId)
+
+    // Look up podcast name from cache if podcast_id is provided
+    if (payload.podcast_id) {
+      console.log('[Create Outreach Message] Looking up podcast in cache:', payload.podcast_id)
+
+      // Try client_dashboard_podcasts first
+      const { data: cachedPodcast } = await supabase
+        .from('client_dashboard_podcasts')
+        .select('podcast_name, podcast_url')
+        .eq('podcast_id', payload.podcast_id)
+        .maybeSingle()
+
+      if (cachedPodcast && cachedPodcast.podcast_name) {
+        podcastName = cachedPodcast.podcast_name
+        console.log('[Create Outreach Message] Found cached podcast:', podcastName)
+      } else {
+        // Fallback to prospect_dashboard_podcasts
+        const { data: prospectPodcast } = await supabase
+          .from('prospect_dashboard_podcasts')
+          .select('podcast_name, podcast_url')
+          .eq('podcast_id', payload.podcast_id)
+          .maybeSingle()
+
+        if (prospectPodcast && prospectPodcast.podcast_name) {
+          podcastName = prospectPodcast.podcast_name
+          console.log('[Create Outreach Message] Found podcast in prospect cache:', podcastName)
+        } else {
+          console.warn('[Create Outreach Message] Podcast not found in cache, will try regex extraction')
+        }
+      }
+    }
 
     // Insert outreach message with Clay fields
     const { data: message, error: insertError } = await supabase
@@ -84,7 +121,7 @@ serve(async (req) => {
         host_email: payload.final_host_email,
         subject_line: payload.subject_line,
         email_body: payload.email_1,
-        bison_campaign_id: payload.bison_campaign_id || null,
+        bison_campaign_id: bisonCampaignId,
         personalization_data: {
           podcast_research: payload.podcast_research,
           host_info: payload.host_info,
@@ -106,6 +143,7 @@ serve(async (req) => {
     }
 
     console.log('[Create Outreach Message] Message created:', message.id)
+    console.log('[Create Outreach Message] Message bison_campaign_id:', message.bison_campaign_id)
 
     return new Response(
       JSON.stringify({
