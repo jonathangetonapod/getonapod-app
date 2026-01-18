@@ -36,13 +36,15 @@ import {
   ChevronDown,
   ChevronUp,
   UserPlus,
-  User
+  User,
+  ExternalLink
 } from 'lucide-react'
 
 export default function OutreachPlatform() {
   const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
   const [editingMessage, setEditingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [viewingMessage, setViewingMessage] = useState<OutreachMessageWithClient | null>(null)
+  const [viewingClientBio, setViewingClientBio] = useState<OutreachMessageWithClient | null>(null)
   const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(new Set())
   const [creatingLeadIds, setCreatingLeadIds] = useState<Set<string>>(new Set())
 
@@ -436,13 +438,13 @@ export default function OutreachPlatform() {
 
       {/* View Details Modal */}
       <Dialog open={!!viewingMessage} onOpenChange={() => setViewingMessage(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           {viewingMessage && (
             <>
               <DialogHeader>
                 <DialogTitle className="text-2xl">Email Review</DialogTitle>
                 <DialogDescription>
-                  Review email, client info, and podcast details
+                  Review email content and client information
                 </DialogDescription>
               </DialogHeader>
 
@@ -470,15 +472,14 @@ export default function OutreachPlatform() {
                   </div>
                 </div>
 
-                {/* Client & Podcast Info Section */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Client Info */}
-                  <div className="space-y-3">
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <User className="h-5 w-5" />
-                      Client Info
-                    </h3>
-                    <div className="border rounded-lg p-4 space-y-3">
+                {/* Client Info Section */}
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <User className="h-5 w-5" />
+                    Client Info
+                  </h3>
+                  <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         {viewingMessage.client?.photo_url && (
                           <img
@@ -490,69 +491,46 @@ export default function OutreachPlatform() {
                         <div>
                           <div className="font-semibold">{viewingMessage.client?.name}</div>
                           <div className="text-sm text-muted-foreground">{viewingMessage.client?.email}</div>
+                          {viewingMessage.bison_campaign_id && (
+                            <Badge variant="outline" className="mt-1">{viewingMessage.bison_campaign_id}</Badge>
+                          )}
                         </div>
                       </div>
-                      {viewingMessage.bison_campaign_id && (
-                        <div>
-                          <span className="text-sm text-muted-foreground">Campaign: </span>
-                          <Badge variant="outline">{viewingMessage.bison_campaign_id}</Badge>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Podcast Info */}
-                  <div className="space-y-3">
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <Mail className="h-5 w-5" />
-                      Podcast Info
-                    </h3>
-                    <div className="border rounded-lg p-4 space-y-3">
-                      <div>
-                        <div className="font-semibold">{viewingMessage.podcast_name}</div>
-                        {viewingMessage.podcast_id && (
-                          <div className="text-sm text-muted-foreground">ID: {viewingMessage.podcast_id}</div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-muted-foreground mb-1">Host:</div>
-                        <div className="text-sm">{viewingMessage.host_name}</div>
-                        <div className="text-sm text-muted-foreground">{viewingMessage.host_email}</div>
-                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setViewingClientBio(viewingMessage)}
+                      >
+                        <User className="h-4 w-4 mr-2" />
+                        View Bio
+                      </Button>
                     </div>
                   </div>
                 </div>
 
-                {/* Additional Details */}
-                {viewingMessage.personalization_data && (
-                  <Collapsible>
-                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
-                      <ChevronDown className="h-4 w-4" />
-                      View Additional Research & Details
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="mt-3 border rounded-lg p-4 space-y-3 bg-muted/30">
-                        {viewingMessage.personalization_data.podcast_research && (
-                          <div>
-                            <div className="text-sm font-medium mb-1">Podcast Research:</div>
-                            <div className="text-sm text-muted-foreground">{viewingMessage.personalization_data.podcast_research}</div>
-                          </div>
-                        )}
-                        {viewingMessage.personalization_data.host_info && (
-                          <div>
-                            <div className="text-sm font-medium mb-1">Host Info:</div>
-                            <div className="text-sm text-muted-foreground">{viewingMessage.personalization_data.host_info}</div>
-                          </div>
-                        )}
-                        {viewingMessage.personalization_data.topics && (
-                          <div>
-                            <div className="text-sm font-medium mb-1">Topics:</div>
-                            <div className="text-sm text-muted-foreground">{viewingMessage.personalization_data.topics}</div>
-                          </div>
-                        )}
+                {/* Podcast ID & Link */}
+                {viewingMessage.podcast_id && (
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-semibold">Podcast</h3>
+                    <div className="border rounded-lg p-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Podcast ID</div>
+                        <div className="font-mono text-sm">{viewingMessage.podcast_id}</div>
                       </div>
-                    </CollapsibleContent>
-                  </Collapsible>
+                      <Button
+                        variant="outline"
+                        asChild
+                      >
+                        <a
+                          href={`https://podscan.fm/dashboard/podcasts/${viewingMessage.podcast_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          View on Podscan
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Action Buttons */}
@@ -612,6 +590,45 @@ export default function OutreachPlatform() {
                     </Button>
                   </div>
                 </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Client Bio Modal */}
+      <Dialog open={!!viewingClientBio} onOpenChange={() => setViewingClientBio(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          {viewingClientBio && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl flex items-center gap-3">
+                  {viewingClientBio.client?.photo_url && (
+                    <img
+                      src={viewingClientBio.client.photo_url}
+                      alt={viewingClientBio.client.name}
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
+                  )}
+                  {viewingClientBio.client?.name}
+                </DialogTitle>
+                <DialogDescription>
+                  Client Bio & Information
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {viewingClientBio.client?.bio ? (
+                  <div className="prose prose-sm max-w-none">
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {viewingClientBio.client.bio}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No bio available for this client
+                  </div>
+                )}
               </div>
             </>
           )}
