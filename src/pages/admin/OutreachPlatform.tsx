@@ -226,32 +226,35 @@ export default function OutreachPlatform() {
   const handleEditSave = async () => {
     if (!editingMessage) return
 
-    const savedMessage = editingMessage
+    const messageId = editingMessage.id
 
-    await updateMutation.mutateAsync({
-      id: editingMessage.id,
-      updates: {
-        subject_line: editingMessage.subject_line,
-        email_body: editingMessage.email_body,
-        host_email: editingMessage.host_email,
-        host_name: editingMessage.host_name
-      }
-    })
+    try {
+      await updateMutation.mutateAsync({
+        id: editingMessage.id,
+        updates: {
+          subject_line: editingMessage.subject_line,
+          email_body: editingMessage.email_body,
+          host_email: editingMessage.host_email,
+          host_name: editingMessage.host_name
+        }
+      })
 
-    // Close edit modal and reopen view modal with updated data
-    setEditingMessage(null)
+      // Close edit modal
+      setEditingMessage(null)
 
-    // Refresh the message data and show view modal
-    queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
+      // Refetch queries and wait for completion
+      await queryClient.refetchQueries({ queryKey: ['outreach-messages'] })
 
-    // Brief delay to let the query refresh, then show updated message
-    setTimeout(() => {
+      // Get the refreshed message and show it in view modal
       const updatedMessages = queryClient.getQueryData(['outreach-messages', statusFilter]) as OutreachMessageWithClient[] | undefined
-      const refreshedMessage = updatedMessages?.find(m => m.id === savedMessage.id)
+      const refreshedMessage = updatedMessages?.find(m => m.id === messageId)
       if (refreshedMessage) {
         setViewingMessage(refreshedMessage)
       }
-    }, 100)
+    } catch (error) {
+      // Error is already handled by mutation's onError
+      console.error('Failed to save message:', error)
+    }
   }
 
   // Fetch Podscan email
