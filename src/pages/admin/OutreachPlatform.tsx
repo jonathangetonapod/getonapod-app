@@ -529,11 +529,14 @@ export default function OutreachPlatform() {
                             className="h-12 w-12 rounded-full object-cover"
                           />
                         )}
-                        <div>
+                        <div className="space-y-1">
                           <div className="font-semibold">{viewingMessage.client?.name}</div>
                           <div className="text-sm text-muted-foreground">{viewingMessage.client?.email}</div>
                           {viewingMessage.bison_campaign_id && (
-                            <Badge variant="outline" className="mt-1">{viewingMessage.bison_campaign_id}</Badge>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-muted-foreground">Campaign:</span>
+                              <Badge variant="outline">{viewingMessage.bison_campaign_id}</Badge>
+                            </div>
                           )}
                         </div>
                       </div>
