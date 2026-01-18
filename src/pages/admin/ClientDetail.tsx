@@ -2352,6 +2352,11 @@ export default function ClientDetail() {
                           <Brain className="mr-2 h-4 w-4" />
                         )}
                         Run AI Analysis
+                        {dashboardCacheStatus && dashboardCacheStatus.cached > 0 && (
+                          <span className="ml-2 text-muted-foreground">
+                            ({(dashboardCacheStatus.cached - (dashboardCacheStatus.aiAnalyzed || 0))} need analysis)
+                          </span>
+                        )}
                       </span>
                       <Badge variant="secondary" className="ml-2">
                         Personalized
