@@ -65,7 +65,8 @@ import {
   ListChecks,
   ThumbsUp,
   Brain,
-  Rocket
+  Rocket,
+  Send
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -200,8 +201,7 @@ export default function PortalDashboard() {
     queryKey: ['client-outreach-actions', client?.id],
     queryFn: async () => {
       if (!client?.id) return []
-      const { createClient } = await import('@/lib/supabase')
-      const supabase = createClient()
+      const { supabase } = await import('@/lib/supabase')
       const { data, error } = await supabase
         .from('podcast_outreach_actions')
         .select('*')
@@ -212,7 +212,9 @@ export default function PortalDashboard() {
       return data || []
     },
     enabled: !!client?.id,
-    staleTime: 30 * 1000 // 30 seconds
+    staleTime: 0, // Always fetch fresh data
+    refetchOnWindowFocus: true, // Refetch when user focuses the tab
+    refetchOnMount: true // Refetch when component mounts
   })
 
   // Fetch active addon services
