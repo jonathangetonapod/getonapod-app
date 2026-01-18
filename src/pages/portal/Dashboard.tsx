@@ -120,6 +120,8 @@ export default function PortalDashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [completedActions, setCompletedActions] = useState<Set<string>>(new Set())
+  const [activityPage, setActivityPage] = useState(0)
+  const activityPerPage = 10
   const [viewingDayBookings, setViewingDayBookings] = useState<{ date: Date; bookings: Array<{ booking: Booking; dateType: 'scheduled' | 'recording' | 'publish' }> } | null>(null)
   const [viewingOutreachPodcast, setViewingOutreachPodcast] = useState<OutreachPodcast | null>(null)
   const [outreachPage, setOutreachPage] = useState(1)
@@ -794,8 +796,8 @@ export default function PortalDashboard() {
     return `${years} ${years === 1 ? 'year' : 'years'} ago`
   }
 
-  // Generate activity timeline
-  const activityTimeline = useMemo(() => {
+  // Generate activity timeline (all activities, not limited)
+  const allActivities = useMemo(() => {
     if (!filteredByTimeRange) return []
 
     const activities: Array<{
@@ -876,11 +878,18 @@ export default function PortalDashboard() {
       }
     })
 
-    // Sort by date (most recent first) and limit to 10
-    return activities
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 10)
+    // Sort by date (most recent first)
+    return activities.sort((a, b) => b.date.getTime() - a.date.getTime())
   }, [filteredByTimeRange, outreachMessages, timeRange])
+
+  // Paginated activity timeline
+  const totalActivityPages = Math.ceil(allActivities.length / activityPerPage)
+  const activityTimeline = useMemo(() => {
+    return allActivities.slice(
+      activityPage * activityPerPage,
+      (activityPage + 1) * activityPerPage
+    )
+  }, [allActivities, activityPage, activityPerPage])
 
   // Next Steps / Action Items (using selected time range)
   const nextSteps = useMemo(() => {
@@ -3355,21 +3364,48 @@ export default function PortalDashboard() {
         )}
 
         {/* Activity Timeline */}
-        {activityTimeline.length > 0 && (
+        {allActivities.length > 0 && (
           <Card className="border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950 dark:via-purple-950 dark:to-pink-950 shadow-lg">
             <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
-                  <Clock className="h-5 w-5 text-white" />
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+                    <Clock className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                      Activity Timeline
+                    </CardTitle>
+                    <CardDescription className="text-sm text-muted-foreground mt-0.5">
+                      Recent milestones and updates on your podcast journey
+                    </CardDescription>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <CardTitle className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                    Activity Timeline
-                  </CardTitle>
-                  <CardDescription className="text-sm text-muted-foreground mt-0.5">
-                    Recent milestones and updates on your podcast journey
-                  </CardDescription>
-                </div>
+                {totalActivityPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActivityPage(Math.max(0, activityPage - 1))}
+                      disabled={activityPage === 0}
+                      className="h-8 px-3"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      {activityPage + 1} / {totalActivityPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActivityPage(Math.min(totalActivityPages - 1, activityPage + 1))}
+                      disabled={activityPage === totalActivityPages - 1}
+                      className="h-8 px-3"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -3483,24 +3519,12 @@ export default function PortalDashboard() {
                   })}
                 </div>
               </div>
-
-              {/* View all hint */}
-              {activityTimeline.length === 10 && (
-                <div className="mt-8 text-center">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/30 border border-indigo-200 dark:border-indigo-700">
-                    <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-                    <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                      Showing your 10 most recent activities
-                    </p>
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
 
         {/* Empty State - No Activity Yet */}
-        {activityTimeline.length === 0 && (!enhancedStats || (enhancedStats.upcomingRecordings.length === 0 && enhancedStats.goingLiveSoon.length === 0)) && (
+        {allActivities.length === 0 && (!enhancedStats || (enhancedStats.upcomingRecordings.length === 0 && enhancedStats.goingLiveSoon.length === 0)) && (
           <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950 dark:via-purple-950 dark:to-pink-950">
             <CardContent className="flex flex-col items-center justify-center py-16 text-center">
               <div className="flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-xl mb-6">
