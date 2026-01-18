@@ -31,14 +31,25 @@ serve(async (req) => {
       .from('outreach_messages')
       .select(`
         *,
-        client:clients(id, name, email)
+        client:clients!inner(id, name, email)
       `)
       .eq('id', message_id)
       .single()
 
-    if (fetchError || !message) {
+    if (fetchError) {
+      console.error('[Create Bison Lead] Fetch error:', fetchError)
+      throw new Error(`Failed to fetch message: ${fetchError.message}`)
+    }
+
+    if (!message) {
       throw new Error(`Message not found: ${message_id}`)
     }
+
+    console.log('[Create Bison Lead] Message fetched:', {
+      id: message.id,
+      host_email: message.host_email,
+      has_client: !!message.client
+    })
 
     // Check if lead already created
     if (message.bison_lead_id) {
@@ -123,14 +134,21 @@ serve(async (req) => {
 
     if (!createLeadResponse.ok) {
       const errorText = await createLeadResponse.text()
-      console.error('[Create Bison Lead] Failed to create lead:', errorText)
-      throw new Error(`Bison API error: ${createLeadResponse.status} - ${errorText}`)
+      console.error('[Create Bison Lead] Failed to create lead:', {
+        status: createLeadResponse.status,
+        statusText: createLeadResponse.statusText,
+        error: errorText
+      })
+      throw new Error(`Bison API error (${createLeadResponse.status}): ${errorText}`)
     }
 
     const leadData = await createLeadResponse.json()
+    console.log('[Create Bison Lead] Bison response:', leadData)
+
     const leadId = leadData.data?.id
 
     if (!leadId) {
+      console.error('[Create Bison Lead] No lead ID in response:', leadData)
       throw new Error('No lead ID returned from Bison')
     }
 
