@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ import {
 } from 'lucide-react'
 
 export default function OutreachPlatform() {
+  const [statusFilter, setStatusFilter] = useState<'pending_review' | 'sent'>('pending_review')
   const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
   const [editingMessage, setEditingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [viewingMessage, setViewingMessage] = useState<OutreachMessageWithClient | null>(null)
@@ -51,11 +53,30 @@ export default function OutreachPlatform() {
 
   const queryClient = useQueryClient()
 
-  // Fetch all messages
+  // Fetch messages based on status filter
   const { data: allMessages = [], isLoading } = useQuery({
-    queryKey: ['outreach-messages'],
-    queryFn: () => getOutreachMessages({ status: 'pending_review' }),
+    queryKey: ['outreach-messages', statusFilter],
+    queryFn: () => getOutreachMessages({ status: statusFilter }),
     refetchInterval: 30000 // Refresh every 30 seconds
+  })
+
+  // Fetch count of messages sent today
+  const { data: sentTodayCount = 0 } = useQuery({
+    queryKey: ['outreach-messages-sent-today'],
+    queryFn: async () => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const { count, error } = await supabase
+        .from('outreach_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'sent')
+        .gte('sent_at', today.toISOString())
+
+      if (error) throw error
+      return count || 0
+    },
+    refetchInterval: 30000
   })
 
   // Group messages by client
@@ -157,8 +178,14 @@ export default function OutreachPlatform() {
 
       toast.success(`Successfully ${leadStatus} lead in Bison (ID: ${leadId})${campaignMsg}. Email marked as sent.`)
 
-      // Refresh the messages
+      // Refresh all message queries
       queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
+      queryClient.invalidateQueries({ queryKey: ['outreach-messages-sent-today'] })
+
+      // Close modal after short delay to let user see the success state
+      setTimeout(() => {
+        setViewingMessage(null)
+      }, 1500)
     } catch (error: any) {
       console.error('Error in approve and send:', error)
 
@@ -268,7 +295,9 @@ export default function OutreachPlatform() {
             Outreach Dashboard
           </h1>
           <p className="text-muted-foreground mt-1">
-            Review and approve outreach emails from Clay
+            {statusFilter === 'pending_review'
+              ? 'Review and approve outreach emails from Clay'
+              : 'View all sent outreach messages'}
           </p>
         </div>
         <Button variant="outline" size="sm">
@@ -277,31 +306,47 @@ export default function OutreachPlatform() {
         </Button>
       </div>
 
+      {/* Status Filter Tabs */}
+      <Tabs value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'pending_review' | 'sent')}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="pending_review" className="gap-2">
+            <AlertCircle className="h-4 w-4" />
+            Pending Review
+          </TabsTrigger>
+          <TabsTrigger value="sent" className="gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            Sent
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Stats Bar */}
       <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{allMessages.length}</div>
-            <div className="text-sm text-muted-foreground">Pending Review</div>
+            <div className="text-sm text-muted-foreground">
+              {statusFilter === 'pending_review' ? 'Pending Review' : 'Total Sent'}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{clients.length}</div>
-            <div className="text-sm text-muted-foreground">Active Clients</div>
+            <div className="text-sm text-muted-foreground">Clients</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">
-              {new Set(allMessages.map(m => m.bison_campaign_id)).size}
+              {new Set(allMessages.map(m => m.bison_campaign_id).filter(Boolean)).size}
             </div>
-            <div className="text-sm text-muted-foreground">Campaigns</div>
+            <div className="text-sm text-muted-foreground">Active Campaigns</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-green-600">0</div>
+            <div className="text-2xl font-bold text-green-600">{sentTodayCount}</div>
             <div className="text-sm text-muted-foreground">Sent Today</div>
           </CardContent>
         </Card>
@@ -374,16 +419,18 @@ export default function OutreachPlatform() {
 
                   <CollapsibleContent>
                     <CardContent className="pt-0 space-y-4">
-                      {/* Create All Leads Button */}
-                      <div className="flex justify-end border-t pt-4">
-                        <Button
-                          onClick={() => handleApproveAll(client.id, client.name)}
-                          disabled={sendingMessageIds.size > 0}
-                        >
-                          <CheckCircle2 className="h-4 w-4 mr-2" />
-                          Create All Leads In Bison ({client.count})
-                        </Button>
-                      </div>
+                      {/* Create All Leads Button - only show for pending review */}
+                      {statusFilter === 'pending_review' && (
+                        <div className="flex justify-end border-t pt-4">
+                          <Button
+                            onClick={() => handleApproveAll(client.id, client.name)}
+                            disabled={sendingMessageIds.size > 0}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Create All Leads In Bison ({client.count})
+                          </Button>
+                        </div>
+                      )}
 
                       {/* Message Cards */}
                       <div className="space-y-4">
@@ -603,37 +650,50 @@ export default function OutreachPlatform() {
 
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setViewingMessage(null)
-                      setEditingMessage(viewingMessage)
-                    }}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Email
-                  </Button>
+                  {statusFilter === 'pending_review' ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setViewingMessage(null)
+                          setEditingMessage(viewingMessage)
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit Email
+                      </Button>
 
-                  <Button
-                    onClick={() => {
-                      handleApproveAndSend(viewingMessage)
-                      setViewingMessage(null)
-                    }}
-                    disabled={sendingMessageIds.has(viewingMessage.id)}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    {sendingMessageIds.has(viewingMessage.id) ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-4 w-4 mr-2" />
-                        Create & Send Lead In Bison
-                      </>
-                    )}
-                  </Button>
+                      <Button
+                        onClick={() => handleApproveAndSend(viewingMessage)}
+                        disabled={sendingMessageIds.has(viewingMessage.id)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {sendingMessageIds.has(viewingMessage.id) ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="h-4 w-4 mr-2" />
+                            Create & Send Lead In Bison
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="w-full">
+                      <div className="flex items-center gap-2 text-sm text-green-600">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Sent on {new Date(viewingMessage.sent_at || '').toLocaleString()}</span>
+                      </div>
+                      {viewingMessage.bison_lead_id && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          Bison Lead ID: {viewingMessage.bison_lead_id}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </>
