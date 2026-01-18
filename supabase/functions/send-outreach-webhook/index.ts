@@ -91,11 +91,16 @@ serve(async (req) => {
         rating: podcast.itunes_rating,
         episode_count: podcast.episode_count,
         audience_size: podcast.audience_size,
+        last_posted_at: podcast.last_posted_at,
         categories: podcast.podcast_categories,
         ai_clean_description: podcast.ai_clean_description,
         ai_fit_reasons: podcast.ai_fit_reasons,
         ai_pitch_angles: podcast.ai_pitch_angles,
+        ai_analyzed_at: podcast.ai_analyzed_at,
         demographics: podcast.demographics,
+        demographics_fetched_at: podcast.demographics_fetched_at,
+        created_at: podcast.created_at,
+        updated_at: podcast.updated_at,
       },
     }
 
