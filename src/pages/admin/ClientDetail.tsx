@@ -1167,51 +1167,71 @@ export default function ClientDetail() {
     if (!spreadsheetId) return
 
     setDashboardAiLoading(true)
+    let totalAnalyzed = 0
+    let isComplete = false
+    let batchCount = 0
+
     try {
-      const { data: session } = await supabase.auth.getSession()
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.session?.access_token || ''}`
-        },
-        body: JSON.stringify({
-          spreadsheetId,
-          clientId: client.id,
-          clientName: client.name,
-          clientBio: client.bio || '',
-          aiAnalysisOnly: true
+      // Keep running until all podcasts are analyzed
+      while (!isComplete) {
+        batchCount++
+        const { data: session } = await supabase.auth.getSession()
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.session?.access_token || ''}`
+          },
+          body: JSON.stringify({
+            spreadsheetId,
+            clientId: client.id,
+            clientName: client.name,
+            clientBio: client.bio || '',
+            aiAnalysisOnly: true
+          })
         })
-      })
 
-      const result = await response.json()
-      console.log('[AI Analysis] Response:', result)
-      if (!response.ok) throw new Error(result.error || 'Failed to run AI analysis')
+        const result = await response.json()
+        console.log(`[AI Analysis Batch ${batchCount}] Response:`, result)
+        if (!response.ok) throw new Error(result.error || 'Failed to run AI analysis')
 
-      // Backend returns: { analyzed, remaining, total, aiComplete, stoppedEarly }
-      const analyzed = result.analyzed || 0
-      const total = result.total || 0
-      const remaining = result.remaining || 0
-      const aiComplete = result.aiComplete || false
+        // Backend returns: { analyzed, remaining, total, aiComplete, stoppedEarly }
+        const analyzed = result.analyzed || 0
+        const total = result.total || 0
+        const remaining = result.remaining || 0
+        const aiComplete = result.aiComplete || false
 
-      console.log('[AI Analysis] Results:', { analyzed, total, remaining, aiComplete })
+        totalAnalyzed += analyzed
+        isComplete = aiComplete
 
-      // Update cache status with new AI analysis count
-      setDashboardCacheStatus(prev => ({
-        ...prev,
-        cached: total,
-        aiAnalyzed: total - remaining,
-        total: total
-      }))
+        console.log(`[AI Analysis Batch ${batchCount}] Results:`, { analyzed, total, remaining, aiComplete, totalAnalyzed })
+
+        // Update cache status with new AI analysis count
+        setDashboardCacheStatus(prev => ({
+          ...prev,
+          cached: total,
+          aiAnalyzed: total - remaining,
+          total: total
+        }))
+
+        // Show progress toast for intermediate batches
+        if (!isComplete && remaining > 0) {
+          toast({
+            title: `AI Analysis Batch ${batchCount} Complete`,
+            description: `Analyzed ${totalAnalyzed} total... ${remaining} remaining. Running next batch automatically.`
+          })
+
+          // Small delay between batches
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      }
 
       // Refetch cached podcasts to show updated data
       await refetchCachedPodcasts()
 
       toast({
-        title: aiComplete ? 'AI Analysis Complete' : 'AI Analysis In Progress',
-        description: analyzed > 0
-          ? `Analyzed ${analyzed} podcast${analyzed !== 1 ? 's' : ''}. ${remaining > 0 ? `${remaining} remaining - click "Run AI Analysis" again to continue` : 'All done!'}`
-          : 'No podcasts needed analysis'
+        title: '🎉 AI Analysis Complete!',
+        description: `Successfully analyzed ${totalAnalyzed} podcast${totalAnalyzed !== 1 ? 's' : ''} across ${batchCount} batch${batchCount !== 1 ? 'es' : ''}. All podcasts now have personalized fit analysis.`
       })
     } catch (error) {
       toast({

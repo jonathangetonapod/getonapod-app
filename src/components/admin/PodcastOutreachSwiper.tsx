@@ -142,18 +142,20 @@ export function PodcastOutreachSwiper({
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-3 mb-2">
                 <h3 className="text-2xl font-bold flex-1">{currentPodcast.podcast_name}</h3>
-                {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    onClick={() => setShowAiModal(true)}
-                    className="flex-shrink-0 bg-purple-600 hover:bg-purple-700"
-                  >
-                    <Sparkles className="h-4 w-4 mr-1" />
-                    View AI Analysis
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant={currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowAiModal(true)}
+                  className={currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0
+                    ? "flex-shrink-0 bg-purple-600 hover:bg-purple-700"
+                    : "flex-shrink-0"}
+                >
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0
+                    ? 'View AI Analysis'
+                    : 'No AI Analysis'}
+                </Button>
               </div>
               {currentPodcast.publisher_name && (
                 <p className="text-sm text-muted-foreground mb-2">
