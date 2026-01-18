@@ -3502,6 +3502,29 @@ export default function PortalDashboard() {
           </Card>
         )}
 
+        {/* Empty State - No Activity Yet */}
+        {activityTimeline.length === 0 && (!enhancedStats || (enhancedStats.upcomingRecordings.length === 0 && enhancedStats.goingLiveSoon.length === 0)) && (
+          <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950 dark:via-purple-950 dark:to-pink-950">
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-xl mb-6">
+                <Clock className="h-10 w-10 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold mb-3 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                Your Journey Starts Here
+              </h3>
+              <p className="text-muted-foreground max-w-md mb-4">
+                Once you start booking podcasts and we begin reaching out on your behalf, your activity timeline will appear here with all your milestones and updates.
+              </p>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700">
+                <Sparkles className="h-4 w-4 text-indigo-500" />
+                <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                  Stay tuned for exciting updates!
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
           </TabsContent>
 
           {/* OUTREACH LIST TAB */}
