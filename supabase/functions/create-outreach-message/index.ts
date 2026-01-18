@@ -41,6 +41,15 @@ serve(async (req) => {
     // Construct host name from first and last name
     const hostName = [payload.first_name, payload.last_name].filter(Boolean).join(' ').trim() || 'Unknown Host'
 
+    // Extract podcast name from research text (looks for "Podcast Research Report: NAME" pattern)
+    let podcastName = 'Unknown Podcast'
+    if (payload.podcast_research) {
+      const match = payload.podcast_research.match(/(?:Podcast Research Report:|research report on)\s*[*_]?([^*_\n]+)[*_]?/i)
+      if (match && match[1]) {
+        podcastName = match[1].trim()
+      }
+    }
+
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -66,7 +75,7 @@ serve(async (req) => {
       .insert({
         client_id: payload.client_id,
         podcast_id: payload.podcast_id || null,
-        podcast_name: payload.podcast_research || 'Unknown Podcast',
+        podcast_name: podcastName,
         podcast_url: null,
         host_name: hostName,
         host_email: payload.final_host_email,
