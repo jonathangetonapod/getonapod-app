@@ -36,7 +36,6 @@ import {
   BarChart3,
   ChevronDown,
   ChevronUp,
-  UserPlus,
   User,
   ExternalLink
 } from 'lucide-react'
@@ -47,7 +46,6 @@ export default function OutreachPlatform() {
   const [viewingMessage, setViewingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [viewingClientBio, setViewingClientBio] = useState<OutreachMessageWithClient | null>(null)
   const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(new Set())
-  const [creatingLeadIds, setCreatingLeadIds] = useState<Set<string>>(new Set())
   const [podscanEmail, setPodscanEmail] = useState<string | null>(null)
   const [fetchingPodscanEmail, setFetchingPodscanEmail] = useState(false)
 
@@ -124,51 +122,28 @@ export default function OutreachPlatform() {
     }
   })
 
-  // Handle create lead in Bison
-  const handleCreateBisonLead = async (message: OutreachMessageWithClient) => {
-    setCreatingLeadIds(prev => new Set(prev).add(message.id))
-
-    try {
-      const { data, error } = await supabase.functions.invoke('create-bison-lead', {
-        body: { message_id: message.id }
-      })
-
-      if (error) throw error
-
-      if (data.success) {
-        if (data.already_exists) {
-          toast.info(`Lead already exists in Bison (ID: ${data.lead_id})`)
-        } else {
-          const campaignMsg = data.campaign_attached
-            ? ` and attached to campaign ${data.campaign_id}`
-            : ''
-          toast.success(`Lead created in Bison (ID: ${data.lead_id})${campaignMsg}`)
-        }
-
-        // Refresh the messages to get updated status
-        queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
-      } else {
-        throw new Error(data.error || 'Failed to create lead')
-      }
-    } catch (error: any) {
-      console.error('Error creating Bison lead:', error)
-      toast.error(`Failed to create lead in Bison: ${error.message || 'Unknown error'}`)
-    } finally {
-      setCreatingLeadIds(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(message.id)
-        return newSet
-      })
-    }
-  }
-
-  // Handle approve and send
+  // Handle create lead in Bison and send email
   const handleApproveAndSend = async (message: OutreachMessageWithClient) => {
     setSendingMessageIds(prev => new Set(prev).add(message.id))
 
     try {
-      // TODO: Call email platform API here
-      // For now, just mark as sent
+      // Step 1: Create lead in Bison
+      const { data: bisonData, error: bisonError } = await supabase.functions.invoke('create-bison-lead', {
+        body: { message_id: message.id }
+      })
+
+      if (bisonError) throw bisonError
+
+      if (!bisonData.success) {
+        throw new Error(bisonData.error || 'Failed to create lead')
+      }
+
+      const leadId = bisonData.lead_id
+      const campaignMsg = bisonData.campaign_attached
+        ? ` and attached to campaign ${bisonData.campaign_id}`
+        : ''
+
+      // Step 2: Send email (TODO: integrate with email platform)
       await updateMutation.mutateAsync({
         id: message.id,
         updates: {
@@ -177,9 +152,13 @@ export default function OutreachPlatform() {
         }
       })
 
-      toast.success(`Email sent to ${message.host_name}`)
-    } catch (error) {
-      toast.error('Failed to send email')
+      toast.success(`Lead created in Bison (ID: ${leadId})${campaignMsg}. Email sent to ${message.host_name}`)
+
+      // Refresh the messages
+      queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
+    } catch (error: any) {
+      console.error('Error in approve and send:', error)
+      toast.error(`Failed: ${error.message || 'Unknown error'}`)
     } finally {
       setSendingMessageIds(prev => {
         const newSet = new Set(prev)
@@ -188,6 +167,7 @@ export default function OutreachPlatform() {
       })
     }
   }
+
 
   // Handle approve all for a specific client
   const handleApproveAll = async (clientId: string, clientName: string) => {
@@ -628,49 +608,26 @@ export default function OutreachPlatform() {
                     Edit Email
                   </Button>
 
-                  <div className="flex gap-2">
-                    <Button
-                      variant="default"
-                      onClick={() => {
-                        handleCreateBisonLead(viewingMessage)
-                        setViewingMessage(null)
-                      }}
-                      disabled={creatingLeadIds.has(viewingMessage.id)}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      {creatingLeadIds.has(viewingMessage.id) ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          Create Lead in Bison
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        handleApproveAndSend(viewingMessage)
-                        setViewingMessage(null)
-                      }}
-                      disabled={sendingMessageIds.has(viewingMessage.id)}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      {sendingMessageIds.has(viewingMessage.id) ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4 mr-2" />
-                          Approve & Send
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  <Button
+                    onClick={() => {
+                      handleApproveAndSend(viewingMessage)
+                      setViewingMessage(null)
+                    }}
+                    disabled={sendingMessageIds.has(viewingMessage.id)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {sendingMessageIds.has(viewingMessage.id) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Approve & Send
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
             </>
