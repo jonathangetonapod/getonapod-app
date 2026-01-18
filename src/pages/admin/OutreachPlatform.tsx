@@ -10,7 +10,7 @@ import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -32,11 +32,13 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 
 export default function OutreachPlatform() {
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
   const [editingMessage, setEditingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [previewMessage, setPreviewMessage] = useState<OutreachMessageWithClient | null>(null)
   const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(new Set())
@@ -76,17 +78,18 @@ export default function OutreachPlatform() {
     }))
   }, [messagesByClient])
 
-  // Set first client as selected by default
-  useState(() => {
-    if (clients.length > 0 && !selectedClientId) {
-      setSelectedClientId(clients[0].id)
-    }
-  })
-
-  // Get messages for selected client
-  const selectedMessages = selectedClientId
-    ? messagesByClient.get(selectedClientId) || []
-    : []
+  // Toggle client expansion
+  const toggleClient = (clientId: string) => {
+    setExpandedClientIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(clientId)) {
+        newSet.delete(clientId)
+      } else {
+        newSet.add(clientId)
+      }
+      return newSet
+    })
+  }
 
   // Update message mutation
   const updateMutation = useMutation({
@@ -140,18 +143,19 @@ export default function OutreachPlatform() {
     }
   }
 
-  // Handle approve all
-  const handleApproveAll = async () => {
-    if (!selectedMessages.length) return
+  // Handle approve all for a specific client
+  const handleApproveAll = async (clientId: string, clientName: string) => {
+    const messages = messagesByClient.get(clientId) || []
+    if (!messages.length) return
 
     const confirmSend = window.confirm(
-      `Send ${selectedMessages.length} emails for ${clients.find(c => c.id === selectedClientId)?.name}?`
+      `Send ${messages.length} emails for ${clientName}?`
     )
 
     if (!confirmSend) return
 
     try {
-      for (const message of selectedMessages) {
+      for (const message of messages) {
         await handleApproveAndSend(message)
       }
     } catch (error) {
@@ -249,78 +253,92 @@ export default function OutreachPlatform() {
         </Card>
       )}
 
-      {/* Client Tabs */}
+      {/* Client Collapsible Sections */}
       {clients.length > 0 && (
-        <Card>
-          <CardHeader className="border-b">
-            <div className="flex items-center justify-between">
-              <CardTitle>Review Messages</CardTitle>
-              {selectedMessages.length > 0 && (
-                <Button onClick={handleApproveAll} disabled={sendingMessageIds.size > 0}>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Approve All ({selectedMessages.length})
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Tabs value={selectedClientId || undefined} onValueChange={setSelectedClientId}>
-              {/* Client Tab Headers */}
-              <div className="border-b px-6 pt-6">
-                <TabsList className="grid w-full gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(clients.length, 5)}, 1fr)` }}>
-                  {clients.slice(0, 5).map(client => (
-                    <TabsTrigger key={client.id} value={client.id} className="relative">
-                      {client.photo_url && (
-                        <img
-                          src={client.photo_url}
-                          alt={client.name}
-                          className="h-6 w-6 rounded-full mr-2 object-cover"
-                        />
-                      )}
-                      {client.name}
-                      <Badge variant="secondary" className="ml-2">
-                        {client.count}
-                      </Badge>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
+        <div className="space-y-4">
+          {clients.map(client => {
+            const clientMessages = messagesByClient.get(client.id) || []
+            const isExpanded = expandedClientIds.has(client.id)
 
-              {/* Tab Content */}
-              {clients.map(client => (
-                <TabsContent key={client.id} value={client.id} className="m-0 p-6 space-y-6">
-                  {/* Campaign Info */}
-                  {client.campaignId && (
-                    <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <AlertCircle className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm font-medium">
-                        Campaign: {client.campaignId}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        ({client.count} pending)
-                      </span>
-                    </div>
-                  )}
+            return (
+              <Card key={client.id}>
+                <Collapsible
+                  open={isExpanded}
+                  onOpenChange={() => toggleClient(client.id)}
+                >
+                  <CollapsibleTrigger className="w-full">
+                    <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {client.photo_url && (
+                            <img
+                              src={client.photo_url}
+                              alt={client.name}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          )}
+                          <div className="text-left">
+                            <CardTitle className="text-xl">{client.name}</CardTitle>
+                            {client.campaignId && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-xs">
+                                  Campaign: {client.campaignId}
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  {client.count} pending
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-lg px-3 py-1">
+                            {client.count}
+                          </Badge>
+                          {isExpanded ? (
+                            <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
 
-                  {/* Message Cards */}
-                  <div className="space-y-4">
-                    {selectedMessages.map(message => (
-                      <MessageCard
-                        key={message.id}
-                        message={message}
-                        onEdit={() => setEditingMessage(message)}
-                        onPreview={() => setPreviewMessage(message)}
-                        onApprove={() => handleApproveAndSend(message)}
-                        onDelete={() => deleteMutation.mutate(message.id)}
-                        isSending={sendingMessageIds.has(message.id)}
-                      />
-                    ))}
-                  </div>
-                </TabsContent>
-              ))}
-            </Tabs>
-          </CardContent>
-        </Card>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 space-y-4">
+                      {/* Approve All Button */}
+                      <div className="flex justify-end border-t pt-4">
+                        <Button
+                          onClick={() => handleApproveAll(client.id, client.name)}
+                          disabled={sendingMessageIds.size > 0}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Approve All ({client.count})
+                        </Button>
+                      </div>
+
+                      {/* Message Cards */}
+                      <div className="space-y-4">
+                        {clientMessages.map(message => (
+                          <MessageCard
+                            key={message.id}
+                            message={message}
+                            onEdit={() => setEditingMessage(message)}
+                            onPreview={() => setPreviewMessage(message)}
+                            onApprove={() => handleApproveAndSend(message)}
+                            onDelete={() => deleteMutation.mutate(message.id)}
+                            isSending={sendingMessageIds.has(message.id)}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
+            )
+          })}
+        </div>
       )}
 
       {/* Edit Modal */}
