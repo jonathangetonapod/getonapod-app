@@ -1175,6 +1175,8 @@ export default function ClientDetail() {
       // Keep running until all podcasts are analyzed
       while (!isComplete) {
         batchCount++
+        console.log(`[AI Analysis] Starting batch ${batchCount}...`)
+
         const { data: session } = await supabase.auth.getSession()
         const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
           method: 'POST',
@@ -1193,18 +1195,30 @@ export default function ClientDetail() {
 
         const result = await response.json()
         console.log(`[AI Analysis Batch ${batchCount}] Response:`, result)
-        if (!response.ok) throw new Error(result.error || 'Failed to run AI analysis')
+        if (!response.ok) {
+          console.error(`[AI Analysis Batch ${batchCount}] Error response:`, result)
+          throw new Error(result.error || 'Failed to run AI analysis')
+        }
 
         // Backend returns: { analyzed, remaining, total, aiComplete, stoppedEarly }
         const analyzed = result.analyzed || 0
         const total = result.total || 0
         const remaining = result.remaining || 0
         const aiComplete = result.aiComplete || false
+        const stoppedEarly = result.stoppedEarly || false
 
         totalAnalyzed += analyzed
         isComplete = aiComplete
 
-        console.log(`[AI Analysis Batch ${batchCount}] Results:`, { analyzed, total, remaining, aiComplete, totalAnalyzed })
+        console.log(`[AI Analysis Batch ${batchCount}] Results:`, {
+          analyzed,
+          total,
+          remaining,
+          aiComplete,
+          stoppedEarly,
+          totalAnalyzed,
+          willContinue: !isComplete && remaining > 0
+        })
 
         // Update cache status with new AI analysis count
         setDashboardCacheStatus(prev => ({
@@ -1216,13 +1230,23 @@ export default function ClientDetail() {
 
         // Show progress toast for intermediate batches
         if (!isComplete && remaining > 0) {
+          const progressMsg = stoppedEarly
+            ? `Batch hit timeout but analyzed ${analyzed}. ${totalAnalyzed} done, ${remaining} remaining.`
+            : `Analyzed ${analyzed} in this batch. ${totalAnalyzed} done, ${remaining} remaining.`
+
           toast({
             title: `AI Analysis Batch ${batchCount} Complete`,
-            description: `Analyzed ${totalAnalyzed} total... ${remaining} remaining. Running next batch automatically.`
+            description: `${progressMsg} Continuing automatically...`
           })
 
           // Small delay between batches
           await new Promise(resolve => setTimeout(resolve, 1000))
+        } else if (isComplete) {
+          console.log(`[AI Analysis] Complete! Total batches: ${batchCount}, Total analyzed: ${totalAnalyzed}`)
+        } else if (remaining === 0) {
+          // Edge case: no remaining but aiComplete is false
+          console.log(`[AI Analysis] No remaining podcasts, marking as complete`)
+          isComplete = true
         }
       }
 
