@@ -6,6 +6,7 @@ import {
   deleteOutreachMessage,
   type OutreachMessageWithClient
 } from '@/services/outreachMessages'
+import { supabase } from '@/lib/supabase'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,8 @@ export default function OutreachPlatform() {
   const [viewingClientBio, setViewingClientBio] = useState<OutreachMessageWithClient | null>(null)
   const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(new Set())
   const [creatingLeadIds, setCreatingLeadIds] = useState<Set<string>>(new Set())
+  const [podscanEmail, setPodscanEmail] = useState<string | null>(null)
+  const [fetchingPodscanEmail, setFetchingPodscanEmail] = useState(false)
 
   const queryClient = useQueryClient()
 
@@ -214,6 +217,33 @@ export default function OutreachPlatform() {
     })
 
     setEditingMessage(null)
+  }
+
+  // Fetch Podscan email
+  const handleFetchPodscanEmail = async (podcastId: string) => {
+    setFetchingPodscanEmail(true)
+    setPodscanEmail(null)
+
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-podscan-email', {
+        body: { podcast_id: podcastId }
+      })
+
+      if (error) throw error
+
+      if (data.success && data.email) {
+        setPodscanEmail(data.email)
+        toast.success(`Podscan email found: ${data.email}`)
+      } else {
+        setPodscanEmail(null)
+        toast.info('No email found in Podscan database')
+      }
+    } catch (error) {
+      console.error('Error fetching Podscan email:', error)
+      toast.error('Failed to fetch Podscan email')
+    } finally {
+      setFetchingPodscanEmail(false)
+    }
   }
 
   if (isLoading) {
@@ -437,7 +467,10 @@ export default function OutreachPlatform() {
       </Dialog>
 
       {/* View Details Modal */}
-      <Dialog open={!!viewingMessage} onOpenChange={() => setViewingMessage(null)}>
+      <Dialog open={!!viewingMessage} onOpenChange={() => {
+        setViewingMessage(null)
+        setPodscanEmail(null)
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           {viewingMessage && (
             <>
@@ -511,26 +544,55 @@ export default function OutreachPlatform() {
                 {viewingMessage.podcast_id && (
                   <div className="space-y-3">
                     <h3 className="text-lg font-semibold">Podcast</h3>
-                    <div className="border rounded-lg p-4 flex items-center justify-between">
-                      <div className="space-y-1">
-                        <div className="font-semibold">{viewingMessage.podcast_name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          ID: <span className="font-mono">{viewingMessage.podcast_id}</span>
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1 flex-1">
+                          <div className="font-semibold">{viewingMessage.podcast_name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            ID: <span className="font-mono">{viewingMessage.podcast_id}</span>
+                          </div>
+                          {podscanEmail && (
+                            <div className="text-sm mt-2">
+                              <span className="font-medium">Podscan Email: </span>
+                              <span className="text-muted-foreground">{podscanEmail}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleFetchPodscanEmail(viewingMessage.podcast_id!)}
+                            disabled={fetchingPodscanEmail}
+                          >
+                            {fetchingPodscanEmail ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Fetching...
+                              </>
+                            ) : (
+                              <>
+                                <Mail className="h-4 w-4 mr-2" />
+                                Get Email
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                          >
+                            <a
+                              href={`https://podscan.fm/dashboard/podcasts/${viewingMessage.podcast_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              View on Podscan
+                            </a>
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        asChild
-                      >
-                        <a
-                          href={`https://podscan.fm/dashboard/podcasts/${viewingMessage.podcast_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          View on Podscan
-                        </a>
-                      </Button>
                     </div>
                   </div>
                 )}
