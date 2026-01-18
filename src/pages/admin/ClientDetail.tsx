@@ -255,7 +255,7 @@ export default function ClientDetail() {
       if (error) throw error
       return data || []
     },
-    enabled: !!id && outreachModeActive
+    enabled: !!id
   })
 
   // Create booking mutation
