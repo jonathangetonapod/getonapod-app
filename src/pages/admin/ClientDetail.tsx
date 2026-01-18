@@ -128,6 +128,7 @@ export default function ClientDetail() {
   // Podcast Outreach state
   const [webhookUrl, setWebhookUrl] = useState('')
   const [outreachModeActive, setOutreachModeActive] = useState(false)
+  const [expandedOutreachSection, setExpandedOutreachSection] = useState<'sent' | 'skipped' | null>(null)
   const [currentPodcastIndex, setCurrentPodcastIndex] = useState(0)
   const [sendingWebhook, setSendingWebhook] = useState(false)
   const [savingWebhookUrl, setSavingWebhookUrl] = useState(false)
@@ -2642,17 +2643,23 @@ export default function ClientDetail() {
                     <div className="text-2xl font-bold">{outreachStats.total}</div>
                     <div className="text-xs text-muted-foreground">Total</div>
                   </div>
-                  <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-900/20">
+                  <div
+                    className="p-3 rounded-lg border bg-green-50 dark:bg-green-900/20 cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                    onClick={() => setExpandedOutreachSection(expandedOutreachSection === 'sent' ? null : 'sent')}
+                  >
                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {outreachStats.sent}
                     </div>
-                    <div className="text-xs text-muted-foreground">Sent</div>
+                    <div className="text-xs text-muted-foreground">Sent (click to view)</div>
                   </div>
-                  <div className="p-3 rounded-lg border bg-red-50 dark:bg-red-900/20">
+                  <div
+                    className="p-3 rounded-lg border bg-red-50 dark:bg-red-900/20 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                    onClick={() => setExpandedOutreachSection(expandedOutreachSection === 'skipped' ? null : 'skipped')}
+                  >
                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                       {outreachStats.skipped}
                     </div>
-                    <div className="text-xs text-muted-foreground">Skipped</div>
+                    <div className="text-xs text-muted-foreground">Skipped (click to view)</div>
                   </div>
                   <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20">
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -2660,6 +2667,98 @@ export default function ClientDetail() {
                     </div>
                     <div className="text-xs text-muted-foreground">Remaining</div>
                   </div>
+                </div>
+              )}
+
+              {/* Expanded Outreach Lists */}
+              {expandedOutreachSection && (
+                <div className="p-4 border rounded-lg bg-muted/30">
+                  {expandedOutreachSection === 'sent' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">
+                          Sent to Outreach ({outreachActions.filter(a => a.action === 'sent').length})
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedOutreachSection(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {outreachActions
+                          .filter(a => a.action === 'sent')
+                          .map((action) => (
+                            <div
+                              key={action.id}
+                              className="p-3 rounded-lg border bg-white dark:bg-slate-800"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                    <span className="font-medium text-sm truncate">
+                                      {action.podcast_name || 'Unknown Podcast'}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground space-y-1">
+                                    <p>Sent: {new Date(action.webhook_sent_at || action.created_at).toLocaleString()}</p>
+                                    {action.webhook_response_status && (
+                                      <p className={action.webhook_response_status >= 200 && action.webhook_response_status < 300 ? 'text-green-600' : 'text-red-600'}>
+                                        Status: {action.webhook_response_status}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {expandedOutreachSection === 'skipped' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
+                          Skipped Podcasts ({outreachActions.filter(a => a.action === 'skipped').length})
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedOutreachSection(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {outreachActions
+                          .filter(a => a.action === 'skipped')
+                          .map((action) => (
+                            <div
+                              key={action.id}
+                              className="p-3 rounded-lg border bg-white dark:bg-slate-800"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                                    <span className="font-medium text-sm truncate">
+                                      {action.podcast_name || 'Unknown Podcast'}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    <p>Skipped: {new Date(action.created_at).toLocaleString()}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
