@@ -17,30 +17,29 @@ serve(async (req) => {
 
     console.log('[Create Outreach Message] Received payload:', JSON.stringify(payload, null, 2))
 
-    // Validate required fields
+    // Validate required fields from Clay
     if (!payload.client_id) {
       throw new Error('client_id is required')
     }
 
-    if (!payload.podcast?.name) {
-      throw new Error('podcast.name is required')
+    if (!payload.final_host_email) {
+      throw new Error('final_host_email is required')
     }
 
-    if (!payload.podcast?.host_name) {
-      throw new Error('podcast.host_name is required')
+    if (!payload.email_1) {
+      throw new Error('email_1 is required')
     }
 
-    if (!payload.podcast?.host_email) {
-      throw new Error('podcast.host_email is required')
+    if (!payload.subject_line) {
+      throw new Error('subject_line is required')
     }
 
-    if (!payload.email?.subject) {
-      throw new Error('email.subject is required')
+    if (!payload.first_name && !payload.last_name) {
+      throw new Error('first_name or last_name is required')
     }
 
-    if (!payload.email?.body) {
-      throw new Error('email.body is required')
-    }
+    // Construct host name from first and last name
+    const hostName = [payload.first_name, payload.last_name].filter(Boolean).join(' ').trim() || 'Unknown Host'
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -61,22 +60,28 @@ serve(async (req) => {
 
     console.log('[Create Outreach Message] Client verified:', client.name)
 
-    // Insert outreach message
+    // Insert outreach message with Clay fields
     const { data: message, error: insertError } = await supabase
       .from('outreach_messages')
       .insert({
         client_id: payload.client_id,
-        podcast_id: payload.podcast.id || null,
-        podcast_name: payload.podcast.name,
-        podcast_url: payload.podcast.url || null,
-        host_name: payload.podcast.host_name,
-        host_email: payload.podcast.host_email,
-        subject_line: payload.email.subject,
-        email_body: payload.email.body,
+        podcast_id: payload.podcast_id || null,
+        podcast_name: payload.podcast_research || 'Unknown Podcast',
+        podcast_url: null,
+        host_name: hostName,
+        host_email: payload.final_host_email,
+        subject_line: payload.subject_line,
+        email_body: payload.email_1,
         bison_campaign_id: payload.bison_campaign_id || null,
-        personalization_data: payload.personalization_data || null,
+        personalization_data: {
+          podcast_research: payload.podcast_research,
+          host_info: payload.host_info,
+          topics: payload.topics,
+          first_name: payload.first_name,
+          last_name: payload.last_name
+        },
         status: 'pending_review',
-        priority: payload.priority || null,
+        priority: payload.priority || 'medium',
         created_by: 'clay'
       })
       .select()
