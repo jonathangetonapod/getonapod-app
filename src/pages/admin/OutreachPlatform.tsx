@@ -374,14 +374,14 @@ export default function OutreachPlatform() {
 
                   <CollapsibleContent>
                     <CardContent className="pt-0 space-y-4">
-                      {/* Approve All Button */}
+                      {/* Create All Leads Button */}
                       <div className="flex justify-end border-t pt-4">
                         <Button
                           onClick={() => handleApproveAll(client.id, client.name)}
                           disabled={sendingMessageIds.size > 0}
                         >
                           <CheckCircle2 className="h-4 w-4 mr-2" />
-                          Approve All ({client.count})
+                          Create All Leads In Bison ({client.count})
                         </Button>
                       </div>
 
@@ -630,7 +630,7 @@ export default function OutreachPlatform() {
                     ) : (
                       <>
                         <Send className="h-4 w-4 mr-2" />
-                        Approve & Send
+                        Create & Send Lead In Bison
                       </>
                     )}
                   </Button>
