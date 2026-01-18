@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Users, Calendar, TrendingUp, CheckCircle2, Clock, Video, CheckCheck, Plus, ArrowRight, AlertCircle, Rocket, Package, DollarSign, Loader2 } from 'lucide-react'
+import { Users, Calendar, TrendingUp, CheckCircle2, Clock, Video, CheckCheck, Plus, ArrowRight, AlertCircle, Rocket, Package, DollarSign, Loader2, Send, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { getClients } from '@/services/clients'
 import { getBookings } from '@/services/bookings'
 import { getAllBookingAddons, formatPrice, getAddonStatusColor, getAddonStatusText } from '@/services/addonServices'
+import { getOutreachMessages } from '@/services/outreachMessages'
+import { supabase } from '@/lib/supabase'
 
 type TimeRange = 7 | 14 | 30 | 60 | 90 | 180
 
@@ -34,9 +36,16 @@ export default function Dashboard() {
     queryFn: getAllBookingAddons,
   })
 
+  // Fetch sent outreach messages
+  const { data: outreachData, isLoading: outreachLoading } = useQuery({
+    queryKey: ['outreach-messages', 'sent'],
+    queryFn: () => getOutreachMessages({ status: 'sent' })
+  })
+
   const clients = clientsData?.clients || []
   const allBookings = bookingsData?.bookings || []
   const allOrders = ordersData || []
+  const allOutreachMessages = outreachData || []
 
   // Calculate stats
   const activeClients = clients.filter(c => c.status === 'active').length
@@ -96,9 +105,61 @@ export default function Dashboard() {
     .sort((a, b) => new Date(a.recording_date!).getTime() - new Date(b.recording_date!).getTime())
     .slice(0, 5)
 
-  // Recent activity (all bookings sorted by update time)
-  const allRecentActivity = [...allBookings]
-    .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+  // Fetch and enrich outreach messages with podcast metadata
+  const { data: enrichedOutreachData } = useQuery({
+    queryKey: ['enriched-outreach-messages', allOutreachMessages.map(m => m.id).join(',')],
+    queryFn: async () => {
+      if (allOutreachMessages.length === 0) return []
+
+      const enriched = await Promise.all(
+        allOutreachMessages.map(async (message) => {
+          if (!message.podcast_id) return message
+
+          const { data: podcastMeta } = await supabase
+            .from('client_dashboard_podcasts')
+            .select('podcast_image_url, audience_size, itunes_rating, episode_count')
+            .eq('client_id', message.client_id)
+            .eq('podcast_id', message.podcast_id)
+            .maybeSingle()
+
+          return {
+            ...message,
+            podcast_image_url: podcastMeta?.podcast_image_url,
+            audience_size: podcastMeta?.audience_size,
+            itunes_rating: podcastMeta?.itunes_rating,
+            episode_count: podcastMeta?.episode_count
+          }
+        })
+      )
+
+      return enriched
+    },
+    enabled: allOutreachMessages.length > 0
+  })
+
+  // Enrich outreach messages with podcast metadata and create unified activity timeline
+  const enrichedOutreachMessages = useMemo(() => {
+    const messages = enrichedOutreachData || allOutreachMessages
+    return messages.map(msg => ({
+      ...msg,
+      type: 'outreach' as const,
+      activityDate: msg.sent_at || msg.updated_at || msg.created_at
+    }))
+  }, [enrichedOutreachData, allOutreachMessages])
+
+  // Recent activity (bookings and outreach messages sorted by activity time)
+  const allRecentActivity = useMemo(() => {
+    const bookingActivities = allBookings.map(booking => ({
+      ...booking,
+      type: 'booking' as const,
+      activityDate: booking.updated_at || booking.created_at
+    }))
+
+    const combined = [...bookingActivities, ...enrichedOutreachMessages]
+    return combined.sort((a, b) =>
+      new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime()
+    )
+  }, [allBookings, enrichedOutreachMessages])
 
   const totalActivityPages = Math.ceil(allRecentActivity.length / activityPerPage)
   const recentActivity = allRecentActivity.slice(
@@ -153,7 +214,7 @@ export default function Dashboard() {
     })
   }
 
-  const isLoading = clientsLoading || bookingsLoading || ordersLoading
+  const isLoading = clientsLoading || bookingsLoading || ordersLoading || outreachLoading
 
   return (
     <DashboardLayout>
@@ -774,7 +835,7 @@ export default function Dashboard() {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
                     <CardTitle className="text-lg sm:text-xl">Recent Activity</CardTitle>
-                    <p className="text-xs sm:text-sm text-muted-foreground">Latest booking updates</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Latest bookings and outreach</p>
                   </div>
                   {totalActivityPages > 1 && (
                     <div className="flex items-center gap-2 sm:gap-3">
@@ -812,26 +873,79 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {recentActivity.map(booking => (
-                      <div key={booking.id} className="flex items-start gap-3 pb-3 border-b last:border-0 last:pb-0">
-                        <div className="flex-1 min-w-0">
-                          <Link
-                            to={`/admin/clients/${booking.client_id}`}
-                            className="font-medium hover:text-primary hover:underline truncate block"
-                          >
-                            {booking.client.name}
-                          </Link>
-                          <p className="text-sm text-muted-foreground truncate">{booking.podcast_name}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Updated {new Date(booking.updated_at || booking.created_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric'
-                            })}
-                          </p>
-                        </div>
-                        {getStatusBadge(booking.status)}
-                      </div>
-                    ))}
+                    {recentActivity.map(activity => {
+                      if (activity.type === 'booking') {
+                        const booking = activity
+                        return (
+                          <div key={`booking-${booking.id}`} className="flex items-start gap-3 pb-3 border-b last:border-0 last:pb-0">
+                            <div className="flex-1 min-w-0">
+                              <Link
+                                to={`/admin/clients/${booking.client_id}`}
+                                className="font-medium hover:text-primary hover:underline truncate block"
+                              >
+                                {booking.client.name}
+                              </Link>
+                              <p className="text-sm text-muted-foreground truncate">{booking.podcast_name}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Updated {new Date(booking.updated_at || booking.created_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </p>
+                            </div>
+                            {getStatusBadge(booking.status)}
+                          </div>
+                        )
+                      } else {
+                        const message = activity
+                        return (
+                          <div key={`outreach-${message.id}`} className="flex items-start gap-3 pb-3 border-b last:border-0 last:pb-0">
+                            <div className="flex-1 min-w-0">
+                              <Link
+                                to={`/admin/clients/${message.client_id}`}
+                                className="font-medium hover:text-primary hover:underline truncate block"
+                              >
+                                {message.client.name}
+                              </Link>
+                              <p className="text-sm text-muted-foreground truncate">{message.podcast_name}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <p className="text-xs text-muted-foreground">
+                                  Sent {new Date(message.sent_at || message.created_at).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })}
+                                </p>
+                                {message.audience_size && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-xs text-blue-700 dark:text-blue-300">
+                                    <Users className="h-3 w-3" />
+                                    {message.audience_size.toLocaleString()}
+                                  </span>
+                                )}
+                                {message.itunes_rating && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-50 dark:bg-yellow-900/30 text-xs text-yellow-700 dark:text-yellow-300">
+                                    <Star className="h-3 w-3 fill-current" />
+                                    {message.itunes_rating.toFixed(1)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {message.podcast_image_url && (
+                                <img
+                                  src={message.podcast_image_url}
+                                  alt={message.podcast_name}
+                                  className="w-10 h-10 rounded object-cover flex-shrink-0"
+                                />
+                              )}
+                              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 flex-shrink-0">
+                                <Send className="h-3 w-3 mr-1" />
+                                Sent
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      }
+                    })}
                   </div>
                 )}
               </CardContent>
