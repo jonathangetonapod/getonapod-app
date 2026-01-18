@@ -66,7 +66,10 @@ import {
   ThumbsUp,
   Brain,
   Rocket,
-  Send
+  Send,
+  Mail,
+  Radio,
+  Check
 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getClientBookings } from '@/services/clientPortal'
@@ -123,6 +126,11 @@ export default function PortalDashboard() {
   const [outreachViewMode, setOutreachViewMode] = useState<'grid' | 'list'>('grid')
   const [deletingOutreachPodcast, setDeletingOutreachPodcast] = useState<OutreachPodcast | null>(null)
   const [viewingOutreachMessage, setViewingOutreachMessage] = useState<OutreachMessageWithClient | null>(null)
+  const [viewingOutreachActivityDetails, setViewingOutreachActivityDetails] = useState<{
+    outreachMessage: OutreachMessageWithClient | null
+    podcastDetails: any | null
+    loading: boolean
+  } | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [outreachFitAnalysis, setOutreachFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
   const [isAnalyzingOutreachFit, setIsAnalyzingOutreachFit] = useState(false)
@@ -198,20 +206,12 @@ export default function PortalDashboard() {
     refetchOnMount: true // Refetch when component mounts
   })
 
-  // Fetch outreach actions
-  const { data: outreachActions = [] } = useQuery({
-    queryKey: ['client-outreach-actions', client?.id],
+  // Fetch outreach messages (sent to Bison)
+  const { data: outreachMessages = [] } = useQuery({
+    queryKey: ['outreach-messages', client?.id],
     queryFn: async () => {
       if (!client?.id) return []
-      const { supabase } = await import('@/lib/supabase')
-      const { data, error } = await supabase
-        .from('podcast_outreach_actions')
-        .select('*')
-        .eq('client_id', client.id)
-        .eq('action', 'sent')
-        .order('webhook_sent_at', { ascending: false })
-      if (error) throw error
-      return data || []
+      return getOutreachMessages({ clientId: client.id, status: 'sent' })
     },
     enabled: !!client?.id,
     staleTime: 0, // Always fetch fresh data
@@ -315,17 +315,6 @@ export default function PortalDashboard() {
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: true
-  })
-
-  // Fetch outreach messages (emails sent via Clay/Bison)
-  const { data: outreachMessages = [], isLoading: outreachMessagesLoading } = useQuery({
-    queryKey: ['outreach-messages', client?.id],
-    queryFn: async () => {
-      if (!client?.id) return []
-      return getOutreachMessages({ clientId: client.id, status: 'sent' })
-    },
-    enabled: !!client?.id,
-    staleTime: 30000
   })
 
   // Reset outreach pagination when data changes
@@ -536,6 +525,49 @@ export default function PortalDashboard() {
       toast.error(error instanceof Error ? error.message : 'Failed to delete podcast')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  // Handle viewing outreach activity from timeline
+  const handleViewOutreachActivity = async (outreachMessage: OutreachMessageWithClient) => {
+    if (!client?.id || !outreachMessage.podcast_id) return
+
+    // Open modal with outreach message immediately
+    setViewingOutreachActivityDetails({
+      outreachMessage,
+      podcastDetails: null,
+      loading: true
+    })
+
+    try {
+      const { supabase } = await import('@/lib/supabase')
+
+      // Fetch podcast details with AI analysis
+      const { data: podcastData, error: podcastError } = await supabase
+        .from('client_dashboard_podcasts')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('podcast_id', outreachMessage.podcast_id)
+        .single()
+
+      if (podcastError) {
+        console.warn('Could not fetch podcast details:', podcastError)
+      }
+
+      // Update state with fetched podcast data
+      setViewingOutreachActivityDetails({
+        outreachMessage,
+        podcastDetails: podcastData,
+        loading: false
+      })
+    } catch (error) {
+      console.error('Error fetching podcast details:', error)
+      // Keep the modal open with message data even if podcast details fail
+      setViewingOutreachActivityDetails({
+        outreachMessage,
+        podcastDetails: null,
+        loading: false
+      })
     }
   }
 
@@ -779,7 +811,7 @@ export default function PortalDashboard() {
       id: string
       type: 'published' | 'recorded' | 'booked' | 'conversation' | 'outreach'
       booking?: Booking
-      outreachAction?: any
+      outreachMessage?: OutreachMessageWithClient
       date: Date
       message: string
     }> = []
@@ -830,25 +862,25 @@ export default function PortalDashboard() {
       }
     })
 
-    // Add outreach activities
-    outreachActions.forEach(action => {
-      if (action.webhook_sent_at) {
-        const actionDate = new Date(action.webhook_sent_at)
+    // Add outreach activities (sent to Bison)
+    outreachMessages.forEach(message => {
+      if (message.sent_at) {
+        const messageDate = new Date(message.sent_at)
 
         // Filter by time range
         const now = new Date()
         const cutoffDate = new Date()
         if (timeRange !== 'all') {
           cutoffDate.setDate(cutoffDate.getDate() - timeRange)
-          if (actionDate < cutoffDate || actionDate > now) return
+          if (messageDate < cutoffDate || messageDate > now) return
         }
 
         activities.push({
-          id: `outreach-${action.id}`,
+          id: `outreach-${message.id}`,
           type: 'outreach',
-          outreachAction: action,
-          date: actionDate,
-          message: `Sent ${action.podcast_name || 'podcast'} to outreach team`
+          outreachMessage: message,
+          date: messageDate,
+          message: `Sent ${message.podcast_name || 'podcast'} to outreach team`
         })
       }
     })
@@ -857,7 +889,7 @@ export default function PortalDashboard() {
     return activities
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, 10)
-  }, [filteredByTimeRange, outreachActions, timeRange])
+  }, [filteredByTimeRange, outreachMessages, timeRange])
 
   // Next Steps / Action Items (using selected time range)
   const nextSteps = useMemo(() => {
@@ -3364,8 +3396,14 @@ export default function PortalDashboard() {
                     return (
                       <div
                         key={activity.id}
-                        onClick={() => activity.booking && setViewingBooking(activity.booking)}
-                        className={`flex items-start gap-4 relative ${activity.booking ? 'cursor-pointer' : ''} group`}
+                        onClick={() => {
+                          if (activity.booking) {
+                            setViewingBooking(activity.booking)
+                          } else if (activity.outreachMessage) {
+                            handleViewOutreachActivity(activity.outreachMessage)
+                          }
+                        }}
+                        className={`flex items-start gap-4 relative ${activity.booking || activity.outreachMessage ? 'cursor-pointer' : ''} group`}
                       >
                         {/* Icon circle */}
                         <div className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-full ${config.bg} ${config.border} border-2 shadow-sm group-hover:scale-110 transition-transform`}>
@@ -3419,6 +3457,7 @@ export default function PortalDashboard() {
             </CardContent>
           </Card>
         )}
+
           </TabsContent>
 
           {/* OUTREACH LIST TAB */}
@@ -5137,6 +5176,221 @@ export default function PortalDashboard() {
                 </Card>
               ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Outreach Activity Detail Modal */}
+      <Dialog open={!!viewingOutreachActivityDetails} onOpenChange={() => setViewingOutreachActivityDetails(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-pink-600" />
+              Outreach Details
+            </DialogTitle>
+            <DialogDescription>
+              Email sent to podcast host with podcast information
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingOutreachActivityDetails?.loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : viewingOutreachActivityDetails?.outreachMessage ? (
+            <div className="space-y-6">
+              {/* Podcast Header */}
+              <Card className="border-2 border-pink-200 bg-gradient-to-br from-pink-50 to-rose-50 dark:from-pink-950 dark:to-rose-950">
+                <CardContent className="pt-6">
+                  <div className="flex gap-4 items-start">
+                    {viewingOutreachActivityDetails.podcastDetails?.podcast_image_url && (
+                      <img
+                        src={viewingOutreachActivityDetails.podcastDetails.podcast_image_url}
+                        alt={viewingOutreachActivityDetails.outreachMessage.podcast_name}
+                        className="w-24 h-24 rounded-lg object-cover shadow-md flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xl font-bold mb-2">
+                        {viewingOutreachActivityDetails.outreachMessage.podcast_name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        {viewingOutreachActivityDetails.podcastDetails?.audience_size && (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Users className="h-4 w-4" />
+                            <span>{viewingOutreachActivityDetails.podcastDetails.audience_size.toLocaleString()} listeners</span>
+                          </div>
+                        )}
+                        {viewingOutreachActivityDetails.podcastDetails?.itunes_rating && (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                            <span>{viewingOutreachActivityDetails.podcastDetails.itunes_rating.toFixed(1)}</span>
+                          </div>
+                        )}
+                        {viewingOutreachActivityDetails.podcastDetails?.episode_count && (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Radio className="h-4 w-4" />
+                            <span>{viewingOutreachActivityDetails.podcastDetails.episode_count} episodes</span>
+                          </div>
+                        )}
+                      </div>
+                      {viewingOutreachActivityDetails.outreachMessage.sent_at && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Sent on {new Date(viewingOutreachActivityDetails.outreachMessage.sent_at).toLocaleDateString('en-US', {
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Host Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Host Contact
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Name:</span>
+                    <span className="text-sm text-muted-foreground">
+                      {viewingOutreachActivityDetails.outreachMessage.host_name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Email:</span>
+                    <span className="text-sm text-muted-foreground">
+                      {viewingOutreachActivityDetails.outreachMessage.host_email}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Email Content */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Email Sent
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium mb-1">Subject:</p>
+                    <p className="text-sm text-muted-foreground bg-muted/30 rounded p-2">
+                      {viewingOutreachActivityDetails.outreachMessage.subject_line}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium mb-1">Body:</p>
+                    <div className="text-sm text-muted-foreground bg-muted/30 rounded p-3 max-h-[300px] overflow-y-auto whitespace-pre-wrap">
+                      {viewingOutreachActivityDetails.outreachMessage.email_body}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Podcast Description */}
+              {viewingOutreachActivityDetails.podcastDetails?.podcast_description && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Mic className="h-4 w-4" />
+                      About The Podcast
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {viewingOutreachActivityDetails.podcastDetails.podcast_description}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* AI Fit Analysis */}
+              {viewingOutreachActivityDetails.podcastDetails?.ai_fit_reasons &&
+               viewingOutreachActivityDetails.podcastDetails.ai_fit_reasons.length > 0 && (
+                <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-purple-600" />
+                      AI Fit Analysis
+                    </CardTitle>
+                    <CardDescription>
+                      Why this podcast is a great fit for you
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Fit Reasons */}
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Key Reasons</h4>
+                      <ul className="space-y-2">
+                        {viewingOutreachActivityDetails.podcastDetails.ai_fit_reasons.map((reason: string, idx: number) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm">
+                            <Check className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                            <span className="text-muted-foreground leading-relaxed">{reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Pitch Angles */}
+                    {viewingOutreachActivityDetails.podcastDetails.ai_pitch_angles &&
+                     viewingOutreachActivityDetails.podcastDetails.ai_pitch_angles.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Suggested Pitch Angles</h4>
+                        <div className="space-y-3">
+                          {viewingOutreachActivityDetails.podcastDetails.ai_pitch_angles.map((angle: any, idx: number) => (
+                            <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-3 border">
+                              <p className="text-sm font-semibold mb-1">{angle.title}</p>
+                              <p className="text-xs text-muted-foreground leading-relaxed">{angle.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Metadata */}
+              {(viewingOutreachActivityDetails.outreachMessage.bison_lead_id ||
+                viewingOutreachActivityDetails.outreachMessage.bison_campaign_id) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Campaign Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {viewingOutreachActivityDetails.outreachMessage.bison_lead_id && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Bison Lead ID:</span>
+                        <Badge variant="outline">
+                          #{viewingOutreachActivityDetails.outreachMessage.bison_lead_id}
+                        </Badge>
+                      </div>
+                    )}
+                    {viewingOutreachActivityDetails.outreachMessage.bison_campaign_id && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Campaign ID:</span>
+                        <Badge variant="outline">
+                          {viewingOutreachActivityDetails.outreachMessage.bison_campaign_id}
+                        </Badge>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <p>No details available</p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
