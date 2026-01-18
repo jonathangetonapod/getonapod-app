@@ -64,10 +64,30 @@ serve(async (req) => {
 
     console.log('[Send Outreach Webhook] Podcast:', podcast.podcast_name)
 
+    // Calculate "since" date (60 days ago) for Podscan
+    const now = new Date()
+    const sinceDate = new Date(now)
+    sinceDate.setDate(sinceDate.getDate() - 60)
+
+    // Format as "YYYY-MM-DD HH:MM:SS" for Podscan
+    const formatDateForPodscan = (date: Date): string => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      const seconds = String(date.getSeconds()).padStart(2, '0')
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+    }
+
+    const since = formatDateForPodscan(sinceDate)
+    console.log('[Send Outreach Webhook] Since date (60 days ago):', since)
+
     // Build webhook payload
     const payload = {
       event: 'podcast_approved_for_outreach',
       timestamp: new Date().toISOString(),
+      since: since,
       client: {
         id: client.id,
         name: client.name,
