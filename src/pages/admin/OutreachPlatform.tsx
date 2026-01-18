@@ -132,13 +132,16 @@ export default function OutreachPlatform() {
         body: { message_id: message.id }
       })
 
-      if (bisonError) throw bisonError
+      if (bisonError) {
+        throw new Error(`Failed to connect to Bison: ${bisonError.message}`)
+      }
 
       if (!bisonData.success) {
-        throw new Error(bisonData.error || 'Failed to create lead')
+        throw new Error(bisonData.error || 'Failed to create lead in Bison')
       }
 
       const leadId = bisonData.lead_id
+      const leadStatus = bisonData.lead_already_existed ? 'found existing' : 'created new'
       const campaignMsg = bisonData.campaign_attached
         ? ` and attached to campaign ${bisonData.campaign_id}`
         : ''
@@ -152,13 +155,16 @@ export default function OutreachPlatform() {
         }
       })
 
-      toast.success(`Lead created in Bison (ID: ${leadId})${campaignMsg}. Email sent to ${message.host_name}`)
+      toast.success(`Successfully ${leadStatus} lead in Bison (ID: ${leadId})${campaignMsg}. Email marked as sent.`)
 
       // Refresh the messages
       queryClient.invalidateQueries({ queryKey: ['outreach-messages'] })
     } catch (error: any) {
       console.error('Error in approve and send:', error)
-      toast.error(`Failed: ${error.message || 'Unknown error'}`)
+
+      // Show user-friendly error message
+      const errorMessage = error.message || 'Unknown error occurred'
+      toast.error(`Failed to approve and send: ${errorMessage}`)
     } finally {
       setSendingMessageIds(prev => {
         const newSet = new Set(prev)

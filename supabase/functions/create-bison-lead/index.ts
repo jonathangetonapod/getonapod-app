@@ -110,56 +110,111 @@ serve(async (req) => {
       customVariables.push({ name: 'campaign_id', value: message.bison_campaign_id })
     }
 
-    // Create lead in Bison
-    console.log('[Create Bison Lead] Creating lead in Bison:', message.host_email)
+    // First, search for existing lead by email in Bison
+    console.log('[Create Bison Lead] Searching for existing lead:', message.host_email)
 
-    const leadPayload = {
-      first_name: firstName,
-      last_name: lastName,
-      email: message.host_email,
-      company: message.podcast_name || 'Unknown Podcast',
-      title: 'Podcast Host',
-      notes: `Outreach for ${message.client?.name || 'client'}`,
-      custom_variables: customVariables
-    }
+    let leadId: number | null = null
+    let leadAlreadyExisted = false
 
-    const createLeadResponse = await fetch(`${bisonApiUrl}/api/leads`, {
-      method: 'POST',
+    const searchResponse = await fetch(`${bisonApiUrl}/api/leads?email=${encodeURIComponent(message.host_email)}`, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${bisonApiKey}`
-      },
-      body: JSON.stringify(leadPayload)
+      }
     })
 
-    if (!createLeadResponse.ok) {
-      const errorText = await createLeadResponse.text()
-      console.error('[Create Bison Lead] Failed to create lead:', {
-        status: createLeadResponse.status,
-        statusText: createLeadResponse.statusText,
-        error: errorText
-      })
-      throw new Error(`Bison API error (${createLeadResponse.status}): ${errorText}`)
+    if (searchResponse.ok) {
+      const searchData = await searchResponse.json()
+      if (searchData.data && Array.isArray(searchData.data) && searchData.data.length > 0) {
+        leadId = searchData.data[0].id
+        leadAlreadyExisted = true
+        console.log('[Create Bison Lead] Found existing lead with ID:', leadId)
+      }
     }
 
-    const leadData = await createLeadResponse.json()
-    console.log('[Create Bison Lead] Bison response:', leadData)
-
-    const leadId = leadData.data?.id
-
+    // If no existing lead found, create new one
     if (!leadId) {
-      console.error('[Create Bison Lead] No lead ID in response:', leadData)
-      throw new Error('No lead ID returned from Bison')
+      console.log('[Create Bison Lead] No existing lead found, creating new lead in Bison')
+
+      const leadPayload = {
+        first_name: firstName,
+        last_name: lastName,
+        email: message.host_email,
+        company: message.podcast_name || 'Unknown Podcast',
+        title: 'Podcast Host',
+        notes: `Outreach for ${message.client?.name || 'client'}`,
+        custom_variables: customVariables
+      }
+
+      const createLeadResponse = await fetch(`${bisonApiUrl}/api/leads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${bisonApiKey}`
+        },
+        body: JSON.stringify(leadPayload)
+      })
+
+      if (!createLeadResponse.ok) {
+        const errorText = await createLeadResponse.text()
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch (e) {
+          errorData = { message: errorText }
+        }
+
+        // Check if it's a duplicate email error (race condition)
+        if (createLeadResponse.status === 422 && errorData?.data?.message?.includes('email has already been taken')) {
+          // Try to search again
+          const retrySearchResponse = await fetch(`${bisonApiUrl}/api/leads?email=${encodeURIComponent(message.host_email)}`, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${bisonApiKey}`
+            }
+          })
+
+          if (retrySearchResponse.ok) {
+            const retrySearchData = await retrySearchResponse.json()
+            if (retrySearchData.data && Array.isArray(retrySearchData.data) && retrySearchData.data.length > 0) {
+              leadId = retrySearchData.data[0].id
+              leadAlreadyExisted = true
+              console.log('[Create Bison Lead] Found lead after duplicate error:', leadId)
+            }
+          }
+        }
+
+        if (!leadId) {
+          console.error('[Create Bison Lead] Failed to create lead:', {
+            status: createLeadResponse.status,
+            statusText: createLeadResponse.statusText,
+            error: errorData
+          })
+
+          // User-friendly error messages
+          const userMessage = errorData?.data?.message || errorData?.message || 'Unknown error'
+          throw new Error(`Could not create lead in Bison: ${userMessage}`)
+        }
+      } else {
+        const leadData = await createLeadResponse.json()
+        console.log('[Create Bison Lead] Bison response:', leadData)
+
+        leadId = leadData.data?.id
+
+        if (!leadId) {
+          console.error('[Create Bison Lead] No lead ID in response:', leadData)
+          throw new Error('Bison did not return a lead ID')
+        }
+
+        console.log('[Create Bison Lead] Lead created with ID:', leadId)
+      }
     }
 
-    console.log('[Create Bison Lead] Lead created with ID:', leadId)
-
-    // Update message with bison_lead_id
+    // Update message with bison_lead_id (don't change status - that's handled separately)
     const { error: updateError } = await supabase
       .from('outreach_messages')
       .update({
-        bison_lead_id: leadId,
-        status: 'lead_created'
+        bison_lead_id: leadId
       })
       .eq('id', message_id)
 
@@ -216,6 +271,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         lead_id: leadId,
+        lead_already_existed: leadAlreadyExisted,
         campaign_attached: !!message.bison_campaign_id,
         campaign_id: message.bison_campaign_id
       }),
