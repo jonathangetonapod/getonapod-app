@@ -2652,6 +2652,175 @@ export default function ClientDetail() {
                 </div>
               )}
 
+              {/* Client Feedback Display */}
+              {clientFeedback.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      variant={expandedFeedbackSection === 'approved' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-auto py-2 flex flex-col items-center gap-1"
+                      onClick={() => setExpandedFeedbackSection(expandedFeedbackSection === 'approved' ? null : 'approved')}
+                    >
+                      <ThumbsUp className="h-4 w-4" />
+                      <span className="text-xs">
+                        {clientFeedback.filter((f: any) => f.status === 'approved').length} Approved
+                      </span>
+                    </Button>
+                    <Button
+                      variant={expandedFeedbackSection === 'rejected' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-auto py-2 flex flex-col items-center gap-1"
+                      onClick={() => setExpandedFeedbackSection(expandedFeedbackSection === 'rejected' ? null : 'rejected')}
+                    >
+                      <ThumbsDown className="h-4 w-4" />
+                      <span className="text-xs">
+                        {clientFeedback.filter((f: any) => f.status === 'rejected').length} Rejected
+                      </span>
+                    </Button>
+                    <Button
+                      variant={expandedFeedbackSection === 'notes' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-auto py-2 flex flex-col items-center gap-1"
+                      onClick={() => setExpandedFeedbackSection(expandedFeedbackSection === 'notes' ? null : 'notes')}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      <span className="text-xs">
+                        {clientFeedback.filter((f: any) => f.notes).length} With Notes
+                      </span>
+                    </Button>
+                  </div>
+
+                  {/* Expanded Feedback Sections */}
+                  {expandedFeedbackSection && (
+                    <div className="p-3 border rounded-lg bg-muted/30">
+                      {/* Approved List */}
+                      {expandedFeedbackSection === 'approved' && clientFeedback.filter((f: any) => f.status === 'approved').length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">
+                            Approved Podcasts
+                          </p>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {clientFeedback.filter((f: any) => f.status === 'approved').map((fb: any) => (
+                              <div
+                                key={fb.id}
+                                className="p-2 rounded-lg border bg-green-50/50 dark:bg-green-950/20"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                                  <span className="font-medium text-sm truncate">
+                                    {fb.podcast_name || 'Unknown Podcast'}
+                                  </span>
+                                </div>
+                                {fb.notes && (
+                                  <p className="text-xs text-muted-foreground mt-1 italic pl-5">
+                                    "{fb.notes}"
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Rejected List */}
+                      {expandedFeedbackSection === 'rejected' && clientFeedback.filter((f: any) => f.status === 'rejected').length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
+                              Rejected Podcasts
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              onClick={deleteAllRejectedPodcasts}
+                              disabled={deletingAllRejected}
+                            >
+                              {deletingAllRejected ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Deleting...
+                                </>
+                              ) : (
+                                <>
+                                  <Trash2 className="h-3 w-3 mr-1" />
+                                  Delete All
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {clientFeedback.filter((f: any) => f.status === 'rejected').map((fb: any) => (
+                              <div
+                                key={fb.id}
+                                className="p-2 rounded-lg border bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                                  <span className="font-medium text-sm truncate flex-1">
+                                    {fb.podcast_name || 'Unknown Podcast'}
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
+                                    onClick={() => deletePodcastFromDashboard(fb.podcast_id, fb.podcast_name)}
+                                    disabled={deletingPodcastId === fb.podcast_id}
+                                  >
+                                    {deletingPodcastId === fb.podcast_id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
+                                {fb.notes && (
+                                  <p className="text-xs text-muted-foreground mt-1 italic pl-5">
+                                    "{fb.notes}"
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notes List */}
+                      {expandedFeedbackSection === 'notes' && clientFeedback.filter((f: any) => f.notes).length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                            Feedback with Notes
+                          </p>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {clientFeedback.filter((f: any) => f.notes).map((fb: any) => (
+                              <div
+                                key={fb.id}
+                                className="p-2 rounded-lg border bg-slate-50 dark:bg-slate-800/50"
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  {fb.status === 'approved' ? (
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                                  ) : (
+                                    <XCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                                  )}
+                                  <span className="font-medium text-sm truncate">
+                                    {fb.podcast_name || 'Unknown Podcast'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground italic pl-5">
+                                  "{fb.notes}"
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Outreach Interface */}
               {client?.google_sheet_url ? (
                 <>
