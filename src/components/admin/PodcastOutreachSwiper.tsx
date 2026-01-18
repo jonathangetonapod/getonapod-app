@@ -114,16 +114,16 @@ export function PodcastOutreachSwiper({
   }
 
   const isAlreadyActioned = alreadyActioned.has(currentPodcast.podcast_id)
-  const reviewedCount = Array.from(alreadyActioned).filter(id =>
-    podcasts.some(p => p.podcast_id === id)
-  ).length
+  // Calculate total podcasts processed (including those already actioned + current filtered list)
+  const totalPodcasts = podcasts.length + alreadyActioned.size
+  const reviewedCount = alreadyActioned.size
 
   return (
     <div className="relative min-h-[500px] flex items-center justify-center px-2 md:px-0">
       {/* Progress Counter */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
         <Badge variant="secondary" className="text-sm px-4 py-1">
-          {reviewedCount} of {podcasts.length} reviewed
+          {reviewedCount} of {totalPodcasts} reviewed
         </Badge>
       </div>
 

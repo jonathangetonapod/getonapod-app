@@ -130,6 +130,7 @@ export default function ClientDetail() {
   const [outreachModeActive, setOutreachModeActive] = useState(false)
   const [expandedOutreachSection, setExpandedOutreachSection] = useState<'sent' | 'skipped' | null>(null)
   const [currentPodcastIndex, setCurrentPodcastIndex] = useState(0)
+  const [minAudienceSize, setMinAudienceSize] = useState<number>(0)
   const [sendingWebhook, setSendingWebhook] = useState(false)
   const [savingWebhookUrl, setSavingWebhookUrl] = useState(false)
   const [editBookingForm, setEditBookingForm] = useState({
@@ -1558,7 +1559,17 @@ export default function ClientDetail() {
 
   // Calculate available podcasts and stats
   const actionedPodcastIds = new Set(outreachActions.map(action => action.podcast_id))
-  const availablePodcasts = cachedPodcasts.filter(p => !actionedPodcastIds.has(p.podcast_id))
+  const availablePodcasts = cachedPodcasts.filter(p => {
+    // Filter out already actioned podcasts
+    if (actionedPodcastIds.has(p.podcast_id)) return false
+
+    // Filter by minimum audience size
+    if (minAudienceSize > 0) {
+      if (!p.audience_size || p.audience_size < minAudienceSize) return false
+    }
+
+    return true
+  })
   const outreachStats = {
     total: cachedPodcasts.length,
     sent: outreachActions.filter(a => a.action === 'sent').length,
@@ -2635,6 +2646,37 @@ export default function ClientDetail() {
                   This URL will receive POST requests when podcasts are approved for outreach
                 </p>
               </div>
+
+              {/* Audience Size Filter */}
+              {cachedPodcasts.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="audience-filter">Filter by Minimum Audience Size</Label>
+                  <div className="flex gap-2">
+                    <select
+                      id="audience-filter"
+                      value={minAudienceSize}
+                      onChange={(e) => {
+                        setMinAudienceSize(Number(e.target.value))
+                        setCurrentPodcastIndex(0) // Reset to first podcast when filter changes
+                      }}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <option value="0">All podcasts (no filter)</option>
+                      <option value="1000">1,000+ listeners</option>
+                      <option value="5000">5,000+ listeners</option>
+                      <option value="10000">10,000+ listeners</option>
+                      <option value="25000">25,000+ listeners</option>
+                      <option value="50000">50,000+ listeners</option>
+                      <option value="100000">100,000+ listeners</option>
+                      <option value="250000">250,000+ listeners</option>
+                      <option value="500000">500,000+ listeners</option>
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Showing {availablePodcasts.length} of {cachedPodcasts.filter(p => !actionedPodcastIds.has(p.podcast_id)).length} available podcasts
+                  </p>
+                </div>
+              )}
 
               {/* Stats Display */}
               {cachedPodcasts.length > 0 && (
