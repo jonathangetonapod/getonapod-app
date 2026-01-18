@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Check,
   X,
@@ -12,6 +13,7 @@ import {
   Star,
   Radio,
   Tag,
+  Sparkles,
 } from 'lucide-react'
 
 interface PodcastCategory {
@@ -63,6 +65,7 @@ export function PodcastOutreachSwiper({
   alreadyActioned,
 }: PodcastOutreachSwiperProps) {
   const currentPodcast = podcasts[currentIndex]
+  const [showAiModal, setShowAiModal] = useState(false)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -180,9 +183,23 @@ export function PodcastOutreachSwiper({
 
           {/* Description */}
           <div className="space-y-2">
-            <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-              About This Podcast
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                About This Podcast
+              </h4>
+              {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAiModal(true)}
+                  className="h-7 text-xs"
+                >
+                  <Sparkles className="h-3 w-3 mr-1 text-purple-500" />
+                  AI Fit Analysis
+                </Button>
+              )}
+            </div>
             <div className="bg-muted/30 rounded-lg p-4 max-h-[200px] overflow-y-auto">
               <p className="text-sm leading-relaxed">
                 {currentPodcast.podcast_description || 'No description available'}
@@ -266,6 +283,61 @@ export function PodcastOutreachSwiper({
       >
         <ChevronRight className="h-6 w-6" />
       </Button>
+
+      {/* AI Fit Analysis Modal */}
+      <Dialog open={showAiModal} onOpenChange={setShowAiModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              AI Fit Analysis: {currentPodcast?.podcast_name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 pt-4">
+            {/* AI Fit Reasons */}
+            {currentPodcast?.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="font-semibold text-base">Why This Is A Great Fit</h4>
+                <ul className="space-y-3">
+                  {currentPodcast.ai_fit_reasons.map((reason, idx) => (
+                    <li key={idx} className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <Check className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                      <span className="text-sm leading-relaxed">{reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* AI Pitch Angles */}
+            {currentPodcast?.ai_pitch_angles && currentPodcast.ai_pitch_angles.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="font-semibold text-base">Pitch Angles</h4>
+                <div className="space-y-3">
+                  {currentPodcast.ai_pitch_angles.map((angle, idx) => (
+                    <div key={idx} className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <h5 className="font-semibold text-sm mb-2 text-blue-900 dark:text-blue-100">
+                        {angle.title}
+                      </h5>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {angle.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(!currentPodcast?.ai_fit_reasons || currentPodcast.ai_fit_reasons.length === 0) && (
+              <div className="text-center py-8 text-muted-foreground">
+                <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No AI analysis available for this podcast yet.</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
