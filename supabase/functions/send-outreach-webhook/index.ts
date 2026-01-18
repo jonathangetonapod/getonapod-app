@@ -34,7 +34,7 @@ serve(async (req) => {
     // Fetch client data (including webhook URL)
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('id, name, email, bio, photo_url, contact_person, linkedin_url, website, google_sheet_url, media_kit_url, calendar_link, outreach_webhook_url')
+      .select('id, name, email, bio, photo_url, contact_person, linkedin_url, website, google_sheet_url, media_kit_url, calendar_link, bison_campaign_id, outreach_webhook_url')
       .eq('id', clientId)
       .single()
 
@@ -80,6 +80,7 @@ serve(async (req) => {
         google_sheet_url: client.google_sheet_url,
         media_kit_url: client.media_kit_url,
         calendar_link: client.calendar_link,
+        bison_campaign_id: client.bison_campaign_id,
       },
       podcast: {
         id: podcast.podcast_id,

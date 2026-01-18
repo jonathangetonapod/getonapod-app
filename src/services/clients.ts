@@ -17,6 +17,7 @@ export interface Client {
   media_kit_url: string | null
   prospect_dashboard_slug: string | null
   outreach_webhook_url: string | null
+  bison_campaign_id: string | null
   created_at: string
   updated_at: string
   // Portal access fields

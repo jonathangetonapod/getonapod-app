@@ -170,7 +170,8 @@ export default function ClientDetail() {
     bio: '',
     google_sheet_url: '',
     media_kit_url: '',
-    prospect_dashboard_slug: ''
+    prospect_dashboard_slug: '',
+    bison_campaign_id: ''
   })
 
   const queryClient = useQueryClient()
@@ -615,7 +616,8 @@ export default function ClientDetail() {
         bio: client.bio || '',
         google_sheet_url: client.google_sheet_url || '',
         media_kit_url: client.media_kit_url || '',
-        prospect_dashboard_slug: client.prospect_dashboard_slug || ''
+        prospect_dashboard_slug: client.prospect_dashboard_slug || '',
+        bison_campaign_id: client.bison_campaign_id || ''
       })
       setIsEditClientModalOpen(true)
     }
@@ -3776,6 +3778,19 @@ export default function ClientDetail() {
                   Preview Dashboard
                 </Button>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-bison-campaign-id">Bison Campaign ID</Label>
+              <Input
+                id="edit-bison-campaign-id"
+                placeholder="Enter Bison Campaign ID"
+                value={editClientForm.bison_campaign_id}
+                onChange={(e) => setEditClientForm({ ...editClientForm, bison_campaign_id: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Campaign tracking ID for Bison outreach system
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t mt-4">
