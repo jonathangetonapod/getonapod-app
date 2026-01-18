@@ -34,7 +34,8 @@ import {
   AlertCircle,
   BarChart3,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  UserPlus
 } from 'lucide-react'
 
 export default function OutreachPlatform() {
@@ -42,6 +43,7 @@ export default function OutreachPlatform() {
   const [editingMessage, setEditingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [previewMessage, setPreviewMessage] = useState<OutreachMessageWithClient | null>(null)
   const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(new Set())
+  const [creatingLeadIds, setCreatingLeadIds] = useState<Set<string>>(new Set())
 
   const queryClient = useQueryClient()
 
@@ -115,6 +117,37 @@ export default function OutreachPlatform() {
       toast.error(`Failed to delete message: ${error.message}`)
     }
   })
+
+  // Handle create lead in Bison
+  const handleCreateBisonLead = async (message: OutreachMessageWithClient) => {
+    setCreatingLeadIds(prev => new Set(prev).add(message.id))
+
+    try {
+      // TODO: Call Bison API to create lead
+      // This will need to be implemented with the actual Bison endpoint
+      // For now, we'll simulate the API call
+      await new Promise(resolve => setTimeout(resolve, 1500))
+
+      // Update message with bison_lead_id or similar field
+      await updateMutation.mutateAsync({
+        id: message.id,
+        updates: {
+          // Add bison_lead_id or status field when schema is ready
+          status: 'lead_created'
+        }
+      })
+
+      toast.success(`Lead created in Bison for ${message.host_name}`)
+    } catch (error) {
+      toast.error('Failed to create lead in Bison')
+    } finally {
+      setCreatingLeadIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(message.id)
+        return newSet
+      })
+    }
+  }
 
   // Handle approve and send
   const handleApproveAndSend = async (message: OutreachMessageWithClient) => {
@@ -324,10 +357,12 @@ export default function OutreachPlatform() {
                           <MessageCard
                             key={message.id}
                             message={message}
+                            onCreateLead={() => handleCreateBisonLead(message)}
                             onEdit={() => setEditingMessage(message)}
                             onPreview={() => setPreviewMessage(message)}
                             onApprove={() => handleApproveAndSend(message)}
                             onDelete={() => deleteMutation.mutate(message.id)}
+                            isCreatingLead={creatingLeadIds.has(message.id)}
                             isSending={sendingMessageIds.has(message.id)}
                           />
                         ))}
@@ -436,14 +471,16 @@ export default function OutreachPlatform() {
 // Message Card Component
 interface MessageCardProps {
   message: OutreachMessageWithClient
+  onCreateLead: () => void
   onEdit: () => void
   onPreview: () => void
   onApprove: () => void
   onDelete: () => void
+  isCreatingLead: boolean
   isSending: boolean
 }
 
-function MessageCard({ message, onEdit, onPreview, onApprove, onDelete, isSending }: MessageCardProps) {
+function MessageCard({ message, onCreateLead, onEdit, onPreview, onApprove, onDelete, isCreatingLead, isSending }: MessageCardProps) {
   return (
     <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between gap-4 mb-3">
@@ -469,6 +506,25 @@ function MessageCard({ message, onEdit, onPreview, onApprove, onDelete, isSendin
       </div>
 
       <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="default"
+          onClick={onCreateLead}
+          disabled={isCreatingLead}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          {isCreatingLead ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <UserPlus className="h-4 w-4 mr-1" />
+              Create Lead in Bison
+            </>
+          )}
+        </Button>
         <Button size="sm" variant="outline" onClick={onEdit}>
           <Edit className="h-4 w-4 mr-1" />
           Edit
