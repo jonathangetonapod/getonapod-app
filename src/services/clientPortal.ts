@@ -118,10 +118,15 @@ export async function logout(sessionToken: string): Promise<void> {
   sessionStorage.clear()
 }
 
+export interface ClientPortalData {
+  bookings: Booking[]
+  outreachMessages: any[]
+}
+
 /**
- * Get all bookings for the authenticated client via Edge Function
+ * Get all bookings and outreach messages for the authenticated client via Edge Function
  */
-export async function getClientBookings(clientId: string): Promise<Booking[]> {
+export async function getClientBookings(clientId: string): Promise<ClientPortalData> {
   // Get session token if exists
   const { session } = sessionStorage.get()
 
@@ -167,7 +172,10 @@ export async function getClientBookings(clientId: string): Promise<Booking[]> {
     throw new Error(data.error || 'Failed to fetch bookings')
   }
 
-  return data.bookings as Booking[]
+  return {
+    bookings: data.bookings as Booking[],
+    outreachMessages: data.outreachMessages || []
+  }
 }
 
 /**

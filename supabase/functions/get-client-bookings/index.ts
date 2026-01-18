@@ -173,8 +173,25 @@ serve(async (req) => {
       )
     }
 
+    // Fetch outreach messages with service role (bypasses RLS)
+    const { data: outreachMessages, error: outreachError } = await supabase
+      .from('outreach_messages')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('status', 'sent')
+      .order('sent_at', { ascending: false })
+
+    if (outreachError) {
+      console.error('[Get Client Bookings] Error fetching outreach messages:', outreachError)
+      // Don't fail the whole request if outreach messages fail
+      return new Response(
+        JSON.stringify({ bookings, outreachMessages: [] }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     return new Response(
-      JSON.stringify({ bookings }),
+      JSON.stringify({ bookings, outreachMessages }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

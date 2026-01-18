@@ -77,7 +77,7 @@ import type { Booking } from '@/services/bookings'
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { getClientOutreachPodcasts, deleteOutreachPodcast, analyzePodcastFit, type OutreachPodcast, type PodcastFitAnalysis } from '@/services/googleSheets'
-import { getOutreachMessages, type OutreachMessageWithClient } from '@/services/outreachMessages'
+import { type OutreachMessageWithClient } from '@/services/outreachMessages'
 import { useCartStore } from '@/stores/cartStore'
 import { toast as sonnerToast } from 'sonner'
 import { CartButton } from '@/components/CartButton'
@@ -196,8 +196,8 @@ export default function PortalDashboard() {
   const [selectedService, setSelectedService] = useState<typeof addonServices extends (infer T)[] ? T : never | null>(null)
   const [showEpisodeSelector, setShowEpisodeSelector] = useState(false)
 
-  // Fetch bookings
-  const { data: bookings, isLoading } = useQuery({
+  // Fetch bookings and outreach messages via Edge Function
+  const { data: clientData, isLoading } = useQuery({
     queryKey: ['client-bookings', client?.id],
     queryFn: () => getClientBookings(client!.id),
     enabled: !!client,
@@ -206,18 +206,9 @@ export default function PortalDashboard() {
     refetchOnMount: true // Refetch when component mounts
   })
 
-  // Fetch outreach messages (sent to Bison)
-  const { data: outreachMessages = [] } = useQuery({
-    queryKey: ['outreach-messages', client?.id],
-    queryFn: async () => {
-      if (!client?.id) return []
-      return getOutreachMessages({ clientId: client.id, status: 'sent' })
-    },
-    enabled: !!client?.id,
-    staleTime: 0, // Always fetch fresh data
-    refetchOnWindowFocus: true, // Refetch when user focuses the tab
-    refetchOnMount: true // Refetch when component mounts
-  })
+  // Extract bookings and outreach messages from combined query
+  const bookings = clientData?.bookings
+  const outreachMessages = clientData?.outreachMessages || []
 
   // Fetch active addon services
   const { data: addonServices } = useQuery({
