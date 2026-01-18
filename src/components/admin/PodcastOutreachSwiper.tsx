@@ -140,7 +140,21 @@ export function PodcastOutreachSwiper({
               />
             )}
             <div className="flex-1 min-w-0">
-              <h3 className="text-2xl font-bold mb-2">{currentPodcast.podcast_name}</h3>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <h3 className="text-2xl font-bold flex-1">{currentPodcast.podcast_name}</h3>
+                {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    onClick={() => setShowAiModal(true)}
+                    className="flex-shrink-0 bg-purple-600 hover:bg-purple-700"
+                  >
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    View AI Analysis
+                  </Button>
+                )}
+              </div>
               {currentPodcast.publisher_name && (
                 <p className="text-sm text-muted-foreground mb-2">
                   by {currentPodcast.publisher_name}
@@ -183,23 +197,9 @@ export function PodcastOutreachSwiper({
 
           {/* Description */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                About This Podcast
-              </h4>
-              {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAiModal(true)}
-                  className="h-7 text-xs"
-                >
-                  <Sparkles className="h-3 w-3 mr-1 text-purple-500" />
-                  AI Fit Analysis
-                </Button>
-              )}
-            </div>
+            <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              About This Podcast
+            </h4>
             <div className="bg-muted/30 rounded-lg p-4 max-h-[200px] overflow-y-auto">
               <p className="text-sm leading-relaxed">
                 {currentPodcast.podcast_description || 'No description available'}
@@ -212,6 +212,16 @@ export function PodcastOutreachSwiper({
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-sm text-yellow-800">
                 ⚠️ This podcast has already been reviewed (sent or skipped)
+              </p>
+            </div>
+          )}
+
+          {/* AI Analysis Reminder */}
+          {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && !isAlreadyActioned && (
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
+              <p className="text-sm text-purple-800 dark:text-purple-200">
+                <Sparkles className="h-4 w-4 inline mr-1" />
+                AI analysis available - Click "View AI Analysis" above to see why this is a great fit
               </p>
             </div>
           )}
