@@ -512,9 +512,11 @@ export default function OutreachPlatform() {
                   <div className="space-y-3">
                     <h3 className="text-lg font-semibold">Podcast</h3>
                     <div className="border rounded-lg p-4 flex items-center justify-between">
-                      <div>
-                        <div className="text-sm text-muted-foreground">Podcast ID</div>
-                        <div className="font-mono text-sm">{viewingMessage.podcast_id}</div>
+                      <div className="space-y-1">
+                        <div className="font-semibold">{viewingMessage.podcast_name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          ID: <span className="font-mono">{viewingMessage.podcast_id}</span>
+                        </div>
                       </div>
                       <Button
                         variant="outline"

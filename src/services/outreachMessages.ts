@@ -27,7 +27,9 @@ export interface OutreachMessageWithClient extends OutreachMessage {
   client: {
     id: string
     name: string
+    email: string | null
     photo_url: string | null
+    bio: string | null
   }
 }
 
@@ -44,7 +46,7 @@ export async function getOutreachMessages(options?: {
     .from('outreach_messages')
     .select(`
       *,
-      client:clients(id, name, photo_url)
+      client:clients(id, name, email, photo_url, bio)
     `)
     .order('created_at', { ascending: false })
 
