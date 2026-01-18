@@ -35,13 +35,14 @@ import {
   BarChart3,
   ChevronDown,
   ChevronUp,
-  UserPlus
+  UserPlus,
+  User
 } from 'lucide-react'
 
 export default function OutreachPlatform() {
   const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
   const [editingMessage, setEditingMessage] = useState<OutreachMessageWithClient | null>(null)
-  const [previewMessage, setPreviewMessage] = useState<OutreachMessageWithClient | null>(null)
+  const [viewingMessage, setViewingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(new Set())
   const [creatingLeadIds, setCreatingLeadIds] = useState<Set<string>>(new Set())
 
@@ -357,13 +358,8 @@ export default function OutreachPlatform() {
                           <MessageCard
                             key={message.id}
                             message={message}
-                            onCreateLead={() => handleCreateBisonLead(message)}
-                            onEdit={() => setEditingMessage(message)}
-                            onPreview={() => setPreviewMessage(message)}
-                            onApprove={() => handleApproveAndSend(message)}
+                            onView={() => setViewingMessage(message)}
                             onDelete={() => deleteMutation.mutate(message.id)}
-                            isCreatingLead={creatingLeadIds.has(message.id)}
-                            isSending={sendingMessageIds.has(message.id)}
                           />
                         ))}
                       </div>
@@ -438,28 +434,186 @@ export default function OutreachPlatform() {
         </DialogContent>
       </Dialog>
 
-      {/* Preview Modal */}
-      <Dialog open={!!previewMessage} onOpenChange={() => setPreviewMessage(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Email Preview</DialogTitle>
-          </DialogHeader>
-          {previewMessage && (
-            <div className="space-y-4">
-              <div className="space-y-2 p-4 bg-muted rounded-lg">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">To:</span>
-                  <span>{previewMessage.host_email}</span>
+      {/* View Details Modal */}
+      <Dialog open={!!viewingMessage} onOpenChange={() => setViewingMessage(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          {viewingMessage && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl">Email Review</DialogTitle>
+                <DialogDescription>
+                  Review email, client info, and podcast details
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Email Preview Section */}
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Email Preview
+                  </h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-muted p-4 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground font-medium">To:</span>
+                        <span>{viewingMessage.host_name} ({viewingMessage.host_email})</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground font-medium">Subject:</span>
+                        <span className="font-medium">{viewingMessage.subject_line}</span>
+                      </div>
+                    </div>
+                    <div className="p-6 bg-white whitespace-pre-wrap text-sm leading-relaxed">
+                      {viewingMessage.email_body}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subject:</span>
-                  <span className="font-medium">{previewMessage.subject_line}</span>
+
+                {/* Client & Podcast Info Section */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Client Info */}
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <User className="h-5 w-5" />
+                      Client Info
+                    </h3>
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        {viewingMessage.client?.photo_url && (
+                          <img
+                            src={viewingMessage.client.photo_url}
+                            alt={viewingMessage.client.name}
+                            className="h-12 w-12 rounded-full object-cover"
+                          />
+                        )}
+                        <div>
+                          <div className="font-semibold">{viewingMessage.client?.name}</div>
+                          <div className="text-sm text-muted-foreground">{viewingMessage.client?.email}</div>
+                        </div>
+                      </div>
+                      {viewingMessage.bison_campaign_id && (
+                        <div>
+                          <span className="text-sm text-muted-foreground">Campaign: </span>
+                          <Badge variant="outline">{viewingMessage.bison_campaign_id}</Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Podcast Info */}
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Mail className="h-5 w-5" />
+                      Podcast Info
+                    </h3>
+                    <div className="border rounded-lg p-4 space-y-3">
+                      <div>
+                        <div className="font-semibold">{viewingMessage.podcast_name}</div>
+                        {viewingMessage.podcast_id && (
+                          <div className="text-sm text-muted-foreground">ID: {viewingMessage.podcast_id}</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-muted-foreground mb-1">Host:</div>
+                        <div className="text-sm">{viewingMessage.host_name}</div>
+                        <div className="text-sm text-muted-foreground">{viewingMessage.host_email}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Details */}
+                {viewingMessage.personalization_data && (
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline">
+                      <ChevronDown className="h-4 w-4" />
+                      View Additional Research & Details
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-3 border rounded-lg p-4 space-y-3 bg-muted/30">
+                        {viewingMessage.personalization_data.podcast_research && (
+                          <div>
+                            <div className="text-sm font-medium mb-1">Podcast Research:</div>
+                            <div className="text-sm text-muted-foreground">{viewingMessage.personalization_data.podcast_research}</div>
+                          </div>
+                        )}
+                        {viewingMessage.personalization_data.host_info && (
+                          <div>
+                            <div className="text-sm font-medium mb-1">Host Info:</div>
+                            <div className="text-sm text-muted-foreground">{viewingMessage.personalization_data.host_info}</div>
+                          </div>
+                        )}
+                        {viewingMessage.personalization_data.topics && (
+                          <div>
+                            <div className="text-sm font-medium mb-1">Topics:</div>
+                            <div className="text-sm text-muted-foreground">{viewingMessage.personalization_data.topics}</div>
+                          </div>
+                        )}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setViewingMessage(null)
+                      setEditingMessage(viewingMessage)
+                    }}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Email
+                  </Button>
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        handleCreateBisonLead(viewingMessage)
+                        setViewingMessage(null)
+                      }}
+                      disabled={creatingLeadIds.has(viewingMessage.id)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {creatingLeadIds.has(viewingMessage.id) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Create Lead in Bison
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        handleApproveAndSend(viewingMessage)
+                        setViewingMessage(null)
+                      }}
+                      disabled={sendingMessageIds.has(viewingMessage.id)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {sendingMessageIds.has(viewingMessage.id) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Approve & Send
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div className="p-4 border rounded-lg whitespace-pre-wrap text-sm">
-                {previewMessage.email_body}
-              </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
@@ -471,89 +625,38 @@ export default function OutreachPlatform() {
 // Message Card Component
 interface MessageCardProps {
   message: OutreachMessageWithClient
-  onCreateLead: () => void
-  onEdit: () => void
-  onPreview: () => void
-  onApprove: () => void
+  onView: () => void
   onDelete: () => void
-  isCreatingLead: boolean
-  isSending: boolean
 }
 
-function MessageCard({ message, onCreateLead, onEdit, onPreview, onApprove, onDelete, isCreatingLead, isSending }: MessageCardProps) {
+function MessageCard({ message, onView, onDelete }: MessageCardProps) {
   return (
-    <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <Mail className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{message.podcast_name}</span>
-            <Badge variant="outline" className="text-xs">
+    <div className="border rounded-lg p-4 hover:shadow-sm transition-shadow bg-white">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2">
+            <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <span className="font-semibold truncate">{message.podcast_name}</span>
+            <Badge variant="outline" className="text-xs flex-shrink-0">
               {message.status.replace('_', ' ')}
             </Badge>
           </div>
-          <div className="text-sm text-muted-foreground">
-            To: {message.host_name} ({message.host_email})
+          <div className="text-sm text-muted-foreground truncate">
+            To: <span className="font-medium text-foreground">{message.host_name}</span>
+          </div>
+          <div className="text-sm text-muted-foreground mt-1">
+            Subject: <span className="font-medium text-foreground">{message.subject_line}</span>
           </div>
         </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="text-sm font-medium mb-1">Subject: {message.subject_line}</div>
-        <div className="p-3 bg-muted/30 rounded-lg text-sm text-muted-foreground">
-          {message.email_body.slice(0, 150)}...
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button onClick={onView}>
+            <Eye className="h-4 w-4 mr-2" />
+            Review Email
+          </Button>
+          <Button size="icon" variant="ghost" onClick={onDelete}>
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
         </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="default"
-          onClick={onCreateLead}
-          disabled={isCreatingLead}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          {isCreatingLead ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              Creating...
-            </>
-          ) : (
-            <>
-              <UserPlus className="h-4 w-4 mr-1" />
-              Create Lead in Bison
-            </>
-          )}
-        </Button>
-        <Button size="sm" variant="outline" onClick={onEdit}>
-          <Edit className="h-4 w-4 mr-1" />
-          Edit
-        </Button>
-        <Button size="sm" variant="outline" onClick={onPreview}>
-          <Eye className="h-4 w-4 mr-1" />
-          Preview
-        </Button>
-        <Button
-          size="sm"
-          onClick={onApprove}
-          disabled={isSending}
-          className="bg-green-600 hover:bg-green-700"
-        >
-          {isSending ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              Sending...
-            </>
-          ) : (
-            <>
-              <Send className="h-4 w-4 mr-1" />
-              Approve & Send
-            </>
-          )}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onDelete}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
       </div>
     </div>
   )
