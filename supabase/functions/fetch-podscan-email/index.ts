@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,7 +21,39 @@ serve(async (req) => {
 
     console.log('[Fetch Podscan Email] Fetching email for podcast:', podcast_id)
 
-    // Get Podscan API key from environment
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // First, check if email is already in database
+    const { data: cachedEmail, error: cacheError } = await supabase
+      .from('podcast_emails')
+      .select('email, fetched_at')
+      .eq('podcast_id', podcast_id)
+      .single()
+
+    if (cachedEmail && !cacheError) {
+      console.log('[Fetch Podscan Email] Email found in cache:', cachedEmail.email ? 'Yes' : 'No')
+      return new Response(
+        JSON.stringify({
+          success: true,
+          email: cachedEmail.email,
+          podcast_id: podcast_id,
+          cached: true,
+          fetched_at: cachedEmail.fetched_at
+        }),
+        {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    }
+
+    // Not in cache, fetch from Podscan API
     const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
     if (!podscanApiKey) {
       throw new Error('PODSCAN_API_KEY not configured')
@@ -45,13 +78,30 @@ serve(async (req) => {
     // Extract email from reach.email field
     const email = data.podcast?.reach?.email || null
 
-    console.log('[Fetch Podscan Email] Email found:', email ? 'Yes' : 'No')
+    console.log('[Fetch Podscan Email] Email fetched from API:', email ? 'Yes' : 'No')
+
+    // Store in database for future use
+    const { error: insertError } = await supabase
+      .from('podcast_emails')
+      .insert({
+        podcast_id: podcast_id,
+        email: email,
+        source: 'podscan'
+      })
+
+    if (insertError) {
+      console.error('[Fetch Podscan Email] Failed to cache email:', insertError)
+      // Continue anyway, just log the error
+    } else {
+      console.log('[Fetch Podscan Email] Email cached in database')
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         email: email,
-        podcast_id: podcast_id
+        podcast_id: podcast_id,
+        cached: false
       }),
       {
         status: 200,
