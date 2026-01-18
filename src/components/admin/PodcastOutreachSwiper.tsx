@@ -183,48 +183,12 @@ export function PodcastOutreachSwiper({
             <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
               About This Podcast
             </h4>
-            <div className="bg-muted/30 rounded-lg p-4 max-h-[120px] overflow-y-auto">
+            <div className="bg-muted/30 rounded-lg p-4 max-h-[200px] overflow-y-auto">
               <p className="text-sm leading-relaxed">
-                {currentPodcast.ai_clean_description ||
-                 currentPodcast.podcast_description ||
-                 'No description available'}
+                {currentPodcast.podcast_description || 'No description available'}
               </p>
             </div>
           </div>
-
-          {/* AI Fit Reasons */}
-          {currentPodcast.ai_fit_reasons && currentPodcast.ai_fit_reasons.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                Why This Is A Great Fit
-              </h4>
-              <ul className="space-y-2">
-                {currentPodcast.ai_fit_reasons.map((reason, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm">
-                    <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                    <span>{reason}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* AI Pitch Angles */}
-          {currentPodcast.ai_pitch_angles && currentPodcast.ai_pitch_angles.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                Pitch Angles
-              </h4>
-              <div className="space-y-3">
-                {currentPodcast.ai_pitch_angles.map((angle, idx) => (
-                  <div key={idx} className="bg-muted/30 rounded-lg p-3">
-                    <h5 className="font-semibold text-sm mb-1">{angle.title}</h5>
-                    <p className="text-xs text-muted-foreground">{angle.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Already Actioned Warning */}
           {isAlreadyActioned && (
