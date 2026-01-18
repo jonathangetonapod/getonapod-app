@@ -456,58 +456,74 @@ serve(async (req) => {
         )
       }
 
-      const BATCH_SIZE = 5
+      const BATCH_SIZE = 10 // Process 10 podcasts per batch
+      const CONCURRENT_BATCHES = 3 // Run 3 batches concurrently = 30 podcasts at a time
       let analyzedCount = 0
 
-      for (let i = 0; i < podcastsNeedingAi.length; i += BATCH_SIZE) {
+      for (let i = 0; i < podcastsNeedingAi.length; i += BATCH_SIZE * CONCURRENT_BATCHES) {
         if (Date.now() - startTime > MAX_RUNTIME_MS) {
           console.log('[Get Client Podcasts] AI Analysis stopping early, analyzed', analyzedCount, 'of', podcastsNeedingAi.length)
           stoppedEarly = true
           break
         }
 
-        const batch = podcastsNeedingAi.slice(i, i + BATCH_SIZE)
+        // Create multiple batches to run concurrently
+        const batchPromises: Promise<void>[] = []
 
-        await Promise.all(
-          batch.map(async (podcast) => {
-            if (!clientName || !clientBio) return
+        for (let b = 0; b < CONCURRENT_BATCHES; b++) {
+          const startIdx = i + (b * BATCH_SIZE)
+          if (startIdx >= podcastsNeedingAi.length) break
 
-            console.log('[Get Client Podcasts] Running AI analysis for:', podcast.podcast_name)
-            const analysis = await analyzePodcastFit(
-              {
-                name: podcast.podcast_name,
-                description: podcast.podcast_description,
-                url: podcast.podcast_url,
-                publisher: podcast.publisher_name,
-                rating: podcast.itunes_rating,
-                episodes: podcast.episode_count,
-                audience: podcast.audience_size,
-              },
-              clientName,
-              clientBio
-            )
+          const batch = podcastsNeedingAi.slice(startIdx, startIdx + BATCH_SIZE)
 
-            if (analysis) {
-              // Update the cache with AI analysis
-              const { error: updateError } = await supabase
-                .from('client_dashboard_podcasts')
-                .update({
-                  ai_clean_description: analysis.clean_description,
-                  ai_fit_reasons: analysis.fit_reasons,
-                  ai_pitch_angles: analysis.pitch_angles,
-                  ai_analyzed_at: new Date().toISOString(),
-                })
-                .eq('client_id', clientId)
-                .eq('podcast_id', podcast.podcast_id)
+          const batchPromise = Promise.all(
+            batch.map(async (podcast) => {
+              if (!clientName || !clientBio) return
 
-              if (!updateError) {
-                analyzedCount++
-                stats.aiAnalysesGenerated++
-                console.log('[Get Client Podcasts] AI analysis saved for:', podcast.podcast_name)
+              console.log('[Get Client Podcasts] Running AI analysis for:', podcast.podcast_name)
+              const analysis = await analyzePodcastFit(
+                {
+                  name: podcast.podcast_name,
+                  description: podcast.podcast_description,
+                  url: podcast.podcast_url,
+                  publisher: podcast.publisher_name,
+                  rating: podcast.itunes_rating,
+                  episodes: podcast.episode_count,
+                  audience: podcast.audience_size,
+                },
+                clientName,
+                clientBio
+              )
+
+              if (analysis) {
+                // Update the cache with AI analysis
+                const { error: updateError } = await supabase
+                  .from('client_dashboard_podcasts')
+                  .update({
+                    ai_clean_description: analysis.clean_description,
+                    ai_fit_reasons: analysis.fit_reasons,
+                    ai_pitch_angles: analysis.pitch_angles,
+                    ai_analyzed_at: new Date().toISOString(),
+                  })
+                  .eq('client_id', clientId)
+                  .eq('podcast_id', podcast.podcast_id)
+
+                if (!updateError) {
+                  analyzedCount++
+                  stats.aiAnalysesGenerated++
+                  console.log('[Get Client Podcasts] AI analysis saved for:', podcast.podcast_name)
+                }
               }
-            }
-          })
-        )
+            })
+          ).then(() => {})
+
+          batchPromises.push(batchPromise)
+        }
+
+        // Wait for all concurrent batches to complete
+        await Promise.all(batchPromises)
+
+        console.log('[Get Client Podcasts] Completed concurrent batch processing, analyzed', analyzedCount, 'so far')
       }
 
       const remaining = podcastsNeedingAi.length - analyzedCount
