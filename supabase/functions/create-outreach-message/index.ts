@@ -34,12 +34,15 @@ serve(async (req) => {
       throw new Error('subject_line is required')
     }
 
-    if (!payload.first_name && !payload.last_name) {
-      throw new Error('first_name or last_name is required')
+    // Accept host_name directly, or construct from first_name + last_name
+    let hostName = 'Unknown Host'
+    if (payload.host_name) {
+      hostName = payload.host_name.trim()
+    } else if (payload.first_name || payload.last_name) {
+      hostName = [payload.first_name, payload.last_name].filter(Boolean).join(' ').trim()
+    } else {
+      throw new Error('host_name or (first_name and/or last_name) is required')
     }
-
-    // Construct host name from first and last name
-    const hostName = [payload.first_name, payload.last_name].filter(Boolean).join(' ').trim() || 'Unknown Host'
 
     // Extract podcast name from research text (looks for "Podcast Research Report: NAME" pattern)
     let podcastName = 'Unknown Podcast'
@@ -86,6 +89,7 @@ serve(async (req) => {
           podcast_research: payload.podcast_research,
           host_info: payload.host_info,
           topics: payload.topics,
+          host_name: payload.host_name,
           first_name: payload.first_name,
           last_name: payload.last_name
         },
