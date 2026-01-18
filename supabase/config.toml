@@ -10,6 +10,12 @@ verify_jwt = false
 [functions.get-client-bookings]
 verify_jwt = false
 
+[functions.get-client-podcasts]
+verify_jwt = false
+
+[functions.get-prospect-podcasts]
+verify_jwt = false
+
 [functions.create-client-account]
 enabled = true
 verify_jwt = true
