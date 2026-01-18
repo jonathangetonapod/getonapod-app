@@ -233,10 +233,18 @@ export default function OutreachPlatform() {
 
       if (data.success && data.email) {
         setPodscanEmail(data.email)
-        toast.success(`Podscan email found: ${data.email}`)
+        if (data.cached) {
+          toast.success(`Email found in cache: ${data.email}`)
+        } else {
+          toast.success(`Email fetched from Podscan: ${data.email}`)
+        }
       } else {
         setPodscanEmail(null)
-        toast.info('No email found in Podscan database')
+        if (data.cached) {
+          toast.info('Email was previously checked - no email available')
+        } else {
+          toast.info('No email found in Podscan database')
+        }
       }
     } catch (error) {
       console.error('Error fetching Podscan email:', error)
