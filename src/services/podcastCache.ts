@@ -31,6 +31,19 @@ export interface CacheStatistics {
   estimated_credits_saved: number
 }
 
+export interface PodcastOutreachAction {
+  id: string
+  client_id: string
+  podcast_id: string
+  podcast_name: string | null
+  action: 'sent' | 'skipped'
+  webhook_sent_at: string | null
+  webhook_response_status: number | null
+  webhook_response_body: string | null
+  created_at: string
+  updated_at: string
+}
+
 /**
  * Search for podcast metadata across all cache sources
  * Returns ONLY universal data, excludes personalized AI analysis

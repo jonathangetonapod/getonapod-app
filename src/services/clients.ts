@@ -16,6 +16,7 @@ export interface Client {
   google_sheet_url: string | null
   media_kit_url: string | null
   prospect_dashboard_slug: string | null
+  outreach_webhook_url: string | null
   created_at: string
   updated_at: string
   // Portal access fields

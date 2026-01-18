@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useToast } from '@/hooks/use-toast'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -69,6 +70,8 @@ import { createClientGoogleSheet } from '@/services/googleSheets'
 import { getClientAddons, updateBookingAddonStatus, deleteBookingAddon, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
 import type { BookingAddon } from '@/services/addonServices'
 import { getClientCacheStatus, findCachedPodcastsMetadata } from '@/services/podcastCache'
+import type { PodcastOutreachAction } from '@/services/podcastCache'
+import { PodcastOutreachSwiper } from '@/components/admin/PodcastOutreachSwiper'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
@@ -122,6 +125,12 @@ export default function ClientDetail() {
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
   const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
   const [deletingAllRejected, setDeletingAllRejected] = useState(false)
+  // Podcast Outreach state
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [outreachModeActive, setOutreachModeActive] = useState(false)
+  const [currentPodcastIndex, setCurrentPodcastIndex] = useState(0)
+  const [sendingWebhook, setSendingWebhook] = useState(false)
+  const [savingWebhookUrl, setSavingWebhookUrl] = useState(false)
   const [editBookingForm, setEditBookingForm] = useState({
     podcast_name: '',
     host_name: '',
@@ -217,6 +226,36 @@ export default function ClientDetail() {
       if (error) throw error
       return data || []
     }
+  })
+
+  // Fetch outreach actions for this client
+  const { data: outreachActions = [], refetch: refetchOutreachActions } = useQuery<PodcastOutreachAction[]>({
+    queryKey: ['podcast-outreach-actions', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('podcast_outreach_actions')
+        .select('*')
+        .eq('client_id', id)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!id
+  })
+
+  // Fetch cached podcasts for outreach
+  const { data: cachedPodcasts = [], refetch: refetchCachedPodcasts } = useQuery({
+    queryKey: ['client-cached-podcasts', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('client_dashboard_podcasts')
+        .select('*')
+        .eq('client_id', id)
+        .order('podcast_name', { ascending: true })
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!id && outreachModeActive
   })
 
   // Create booking mutation
@@ -1375,6 +1414,140 @@ export default function ClientDetail() {
     }
   }
 
+  // Podcast Outreach handlers
+  const handleSaveWebhookUrl = async () => {
+    if (!client?.id) return
+
+    setSavingWebhookUrl(true)
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ outreach_webhook_url: webhookUrl || null })
+        .eq('id', client.id)
+
+      if (error) throw error
+
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+      toast({
+        title: 'Webhook URL Saved',
+        description: 'Outreach webhook URL has been updated'
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save webhook URL',
+        variant: 'destructive'
+      })
+    } finally {
+      setSavingWebhookUrl(false)
+    }
+  }
+
+  const handleSendWebhook = async (podcast: any) => {
+    if (!client?.id || !client?.outreach_webhook_url) {
+      toast({
+        title: 'No Webhook URL',
+        description: 'Please configure a webhook URL first',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setSendingWebhook(true)
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/send-outreach-webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          podcastId: podcast.podcast_id
+        })
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send webhook')
+      }
+
+      await refetchOutreachActions()
+
+      toast({
+        title: 'Webhook Sent',
+        description: `Successfully sent ${podcast.podcast_name} to outreach webhook`
+      })
+
+      // Move to next podcast
+      if (currentPodcastIndex < availablePodcasts.length - 1) {
+        setCurrentPodcastIndex(currentPodcastIndex + 1)
+      }
+    } catch (error) {
+      toast({
+        title: 'Webhook Failed',
+        description: error instanceof Error ? error.message : 'Failed to send webhook',
+        variant: 'destructive'
+      })
+    } finally {
+      setSendingWebhook(false)
+    }
+  }
+
+  const handleSkipPodcast = async (podcast: any) => {
+    if (!client?.id) return
+
+    try {
+      const { error } = await supabase
+        .from('podcast_outreach_actions')
+        .upsert({
+          client_id: client.id,
+          podcast_id: podcast.podcast_id,
+          podcast_name: podcast.podcast_name,
+          action: 'skipped',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'client_id,podcast_id' })
+
+      if (error) throw error
+
+      await refetchOutreachActions()
+
+      toast({
+        title: 'Podcast Skipped',
+        description: `Skipped ${podcast.podcast_name}`
+      })
+
+      // Move to next podcast
+      if (currentPodcastIndex < availablePodcasts.length - 1) {
+        setCurrentPodcastIndex(currentPodcastIndex + 1)
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to skip podcast',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  // Initialize webhook URL when client loads
+  useEffect(() => {
+    if (client?.outreach_webhook_url) {
+      setWebhookUrl(client.outreach_webhook_url)
+    }
+  }, [client?.outreach_webhook_url])
+
+  // Calculate available podcasts and stats
+  const actionedPodcastIds = new Set(outreachActions.map(action => action.podcast_id))
+  const availablePodcasts = cachedPodcasts.filter(p => !actionedPodcastIds.has(p.podcast_id))
+  const outreachStats = {
+    total: cachedPodcasts.length,
+    sent: outreachActions.filter(a => a.action === 'sent').length,
+    skipped: outreachActions.filter(a => a.action === 'skipped').length,
+    remaining: availablePodcasts.length
+  }
+
   if (clientLoading || bookingsLoading) {
     return (
       <DashboardLayout>
@@ -2388,6 +2561,147 @@ export default function ClientDetail() {
                   <Mic className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                   <p className="text-sm text-muted-foreground">
                     Set up a Google Sheet first to enable the approval dashboard
+                  </p>
+                  <Button variant="link" onClick={handleEditClient} className="mt-2">
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit Client to Add Google Sheet
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Podcast Outreach Interface */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
+                Podcast Outreach Interface
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Webhook URL Configuration */}
+              <div className="space-y-2">
+                <Label htmlFor="webhook-url">Webhook URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="webhook-url"
+                    type="url"
+                    placeholder="https://your-webhook-endpoint.com/podcast-outreach"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={handleSaveWebhookUrl}
+                    disabled={savingWebhookUrl || webhookUrl === (client?.outreach_webhook_url || '')}
+                  >
+                    {savingWebhookUrl ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This URL will receive POST requests when podcasts are approved for outreach
+                </p>
+              </div>
+
+              {/* Stats Display */}
+              {cachedPodcasts.length > 0 && (
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <div className="text-2xl font-bold">{outreachStats.total}</div>
+                    <div className="text-xs text-muted-foreground">Total</div>
+                  </div>
+                  <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-900/20">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {outreachStats.sent}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Sent</div>
+                  </div>
+                  <div className="p-3 rounded-lg border bg-red-50 dark:bg-red-900/20">
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                      {outreachStats.skipped}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Skipped</div>
+                  </div>
+                  <div className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-900/20">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {outreachStats.remaining}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Remaining</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Outreach Interface */}
+              {client?.google_sheet_url ? (
+                <>
+                  {!client?.outreach_webhook_url && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        ⚠️ Configure a webhook URL above to start sending outreach approvals
+                      </p>
+                    </div>
+                  )}
+
+                  <Collapsible open={outreachModeActive} onOpenChange={setOutreachModeActive}>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        disabled={!client?.outreach_webhook_url}
+                      >
+                        {outreachModeActive ? (
+                          <>
+                            <ChevronUp className="mr-2 h-4 w-4" />
+                            Hide Outreach Review
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="mr-2 h-4 w-4" />
+                            Start Outreach Review ({outreachStats.remaining} remaining)
+                          </>
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-4">
+                      {availablePodcasts.length > 0 ? (
+                        <PodcastOutreachSwiper
+                          podcasts={availablePodcasts}
+                          currentIndex={currentPodcastIndex}
+                          onCheckmark={handleSendWebhook}
+                          onSkip={handleSkipPodcast}
+                          onNext={() => setCurrentPodcastIndex(prev => Math.min(prev + 1, availablePodcasts.length - 1))}
+                          onPrevious={() => setCurrentPodcastIndex(prev => Math.max(prev - 1, 0))}
+                          sendingWebhook={sendingWebhook}
+                          alreadyActioned={actionedPodcastIds}
+                        />
+                      ) : (
+                        <div className="text-center py-8">
+                          <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-2" />
+                          <p className="text-lg font-semibold">All Podcasts Reviewed!</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {outreachStats.sent} sent, {outreachStats.skipped} skipped
+                          </p>
+                        </div>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <Send className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    Set up a Google Sheet first to enable podcast outreach
                   </p>
                   <Button variant="link" onClick={handleEditClient} className="mt-2">
                     <Edit className="mr-2 h-4 w-4" />
