@@ -994,7 +994,7 @@ export default function ClientDetail() {
 
       toast({
         title: '✅ Cache Status Check Complete',
-        description: `${totalCached} podcasts found in cache (${cacheStatus.needs_fetch} need fetching)`
+        description: `${totalCached} podcasts found in cache (${cacheStatus.needs_fetch} need fetching). ${aiAnalyzed} have AI analysis.`
       })
     } catch (error) {
       toast({
@@ -2246,7 +2246,7 @@ export default function ClientDetail() {
                   {/* Cache Status */}
                   {dashboardCacheStatus && (
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3 p-3 bg-muted rounded-lg">
+                      <div className="grid grid-cols-3 gap-3 p-3 bg-muted rounded-lg">
                         <div className="text-center">
                           <p className="text-2xl font-bold">{dashboardCacheStatus.total}</p>
                           <p className="text-xs text-muted-foreground">In Sheet</p>
@@ -2254,6 +2254,10 @@ export default function ClientDetail() {
                         <div className="text-center">
                           <p className="text-2xl font-bold text-orange-500">{dashboardCacheStatus.needs_fetch || 0}</p>
                           <p className="text-xs text-muted-foreground">Needs Fetch</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-purple-500">{dashboardCacheStatus.aiAnalyzed || 0}</p>
+                          <p className="text-xs text-muted-foreground">AI Analyzed</p>
                         </div>
                       </div>
 
@@ -2265,12 +2269,7 @@ export default function ClientDetail() {
                               <div className="h-2 w-2 rounded-full bg-green-500" />
                               <span>This Client</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">{dashboardCacheStatus.cached_in_client || 0}</Badge>
-                              {dashboardCacheStatus.aiAnalyzed > 0 && (
-                                <Sparkles className="h-3 w-3 text-purple-500" title={`${dashboardCacheStatus.aiAnalyzed} with AI analysis`} />
-                              )}
-                            </div>
+                            <Badge variant="outline">{dashboardCacheStatus.cached_in_client || 0}</Badge>
                           </div>
                           <div className="flex items-center justify-between text-sm">
                             <div className="flex items-center gap-2">
