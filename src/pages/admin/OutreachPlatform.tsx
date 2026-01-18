@@ -34,7 +34,7 @@ import {
   BarChart3
 } from 'lucide-react'
 
-export default function OutreachQueue() {
+export default function OutreachPlatform() {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
   const [editingMessage, setEditingMessage] = useState<OutreachMessageWithClient | null>(null)
   const [previewMessage, setPreviewMessage] = useState<OutreachMessageWithClient | null>(null)

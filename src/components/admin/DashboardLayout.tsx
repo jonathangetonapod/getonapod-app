@@ -24,7 +24,8 @@ import {
   Package,
   Database,
   Share2,
-  ClipboardList
+  ClipboardList,
+  Mail
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -66,6 +67,7 @@ const defaultNavItems: NavItem[] = [
   { id: 'ai-sales-director', name: 'AI Sales Director', href: '/admin/ai-sales-director', icon: Brain },
   { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
   { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
+  { id: 'outreach-platform', name: 'Outreach Platform', href: '/admin/outreach-platform', icon: Mail },
   { id: 'orders', name: 'Add-on Service Orders', href: '/admin/orders', icon: Package },
   { id: 'blog', name: 'Blog Posts', href: '/admin/blog', icon: FileText },
   { id: 'guest-resources', name: 'Guest Resources', href: '/admin/guest-resources', icon: BookOpen },
