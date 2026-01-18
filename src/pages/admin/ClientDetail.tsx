@@ -1461,6 +1461,15 @@ export default function ClientDetail() {
       return
     }
 
+    if (!client?.bison_campaign_id) {
+      toast({
+        title: 'Bison Campaign ID Required',
+        description: 'Please add a Bison Campaign ID to the client before sending to outreach',
+        variant: 'destructive'
+      })
+      return
+    }
+
     setSendingWebhook(true)
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/send-outreach-webhook`, {
