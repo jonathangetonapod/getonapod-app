@@ -435,6 +435,17 @@ serve(async (req) => {
 
     // AI Analysis Only mode - run AI on cached podcasts that don't have it
     if (aiAnalysisOnly) {
+      // Validate required fields for AI analysis
+      if (!clientName || !clientBio || clientBio.trim() === '') {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Client name and bio are required for AI analysis. Please add a bio to the client profile.',
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       const startTime = Date.now()
       const MAX_RUNTIME_MS = 50000
       let stoppedEarly = false
@@ -478,19 +489,8 @@ serve(async (req) => {
 
           const batchPromise = Promise.all(
             batch.map(async (podcast) => {
-              if (!clientName) {
-                console.error('[Get Client Podcasts] Missing clientName, skipping podcast:', podcast.podcast_name)
-                return
-              }
-
               try {
                 console.log('[Get Client Podcasts] Running AI analysis for:', podcast.podcast_name)
-
-                // Use client bio if provided, otherwise use a generic fallback
-                const bioToUse = clientBio && clientBio.trim()
-                  ? clientBio
-                  : `${clientName} is a professional looking to share their expertise and insights on relevant podcasts.`
-
                 const analysis = await analyzePodcastFit(
                   {
                     name: podcast.podcast_name,
@@ -502,7 +502,7 @@ serve(async (req) => {
                     audience: podcast.audience_size,
                   },
                   clientName,
-                  bioToUse
+                  clientBio
                 )
 
                 // Always mark as analyzed to prevent infinite loops, even if analysis failed/returned empty
@@ -657,14 +657,8 @@ serve(async (req) => {
               }
 
               // 3. Get AI analysis if we have prospect info (and not skipping)
-              if (clientName && !skipAiAnalysis) {
+              if (clientName && clientBio && !skipAiAnalysis) {
                 console.log('[Get Client Podcasts] Getting AI analysis for:', podcastData.podcast_name)
-
-                // Use client bio if provided, otherwise use a generic fallback
-                const bioToUse = clientBio && clientBio.trim()
-                  ? clientBio
-                  : `${clientName} is a professional looking to share their expertise and insights on relevant podcasts.`
-
                 const analysis = await analyzePodcastFit(
                   {
                     name: podcastData.podcast_name,
@@ -676,7 +670,7 @@ serve(async (req) => {
                     audience: podcastData.audience_size,
                   },
                   clientName,
-                  bioToUse
+                  clientBio
                 )
 
                 if (analysis) {

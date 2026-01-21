@@ -1166,6 +1166,16 @@ export default function ClientDetail() {
     const spreadsheetId = extractSpreadsheetId(client.google_sheet_url)
     if (!spreadsheetId) return
 
+    // Validate that client has a bio
+    if (!client.bio || client.bio.trim() === '') {
+      toast({
+        title: 'Bio Required',
+        description: 'Client bio must be filled out before running AI analysis. Please add a bio to the client profile.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     setDashboardAiLoading(true)
     let totalAnalyzed = 0
     let isComplete = false
