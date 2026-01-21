@@ -57,6 +57,8 @@ interface ClientAccount {
   invitation_sent: boolean
   google_sheet_url?: string
   google_sheet_created: boolean
+  dashboard_slug?: string
+  dashboard_url?: string | null
   created_at: string
 }
 
@@ -166,6 +168,7 @@ serve(async (req) => {
       email: email.trim().toLowerCase(),
       status,
       portal_access_enabled: enable_portal_access,
+      dashboard_enabled: true, // Enable podcast approval dashboard by default
     }
 
     // Add optional fields if provided
@@ -187,7 +190,7 @@ serve(async (req) => {
     const { data: client, error: createError } = await supabase
       .from('clients')
       .insert([clientData])
-      .select()
+      .select('*, dashboard_slug') // Fetch the auto-generated dashboard_slug
       .single()
 
     if (createError) {
@@ -349,6 +352,70 @@ serve(async (req) => {
       }
     }
 
+    // Send webhook with all onboarding data
+    const webhookUrl = Deno.env.get('ONBOARDING_WEBHOOK_URL')
+    if (webhookUrl) {
+      try {
+        const dashboardUrl = client.dashboard_slug
+          ? `${portalBaseUrl}/client/${client.dashboard_slug}`
+          : null
+
+        const webhookPayload = {
+          event: 'client_created',
+          timestamp: new Date().toISOString(),
+          client: {
+            id: client.id,
+            name: client.name,
+            email: client.email,
+            bio: client.bio,
+            linkedin_url: client.linkedin_url,
+            website: client.website,
+            calendar_link: client.calendar_link,
+            contact_person: client.contact_person,
+            status: client.status,
+            notes: client.notes,
+            photo_url: headshotUrl,
+          },
+          access: {
+            portal_url: `${portalBaseUrl}/portal/login`,
+            portal_email: client.email,
+            portal_password: password || null,
+            portal_access_enabled: client.portal_access_enabled,
+          },
+          dashboard: {
+            enabled: client.dashboard_enabled,
+            slug: client.dashboard_slug,
+            url: dashboardUrl,
+          },
+          google_sheet: {
+            created: googleSheetCreated,
+            url: googleSheetUrl || null,
+            error: googleSheetError || null,
+          },
+          invitation_sent: invitationSent,
+        }
+
+        console.log('[Create Client] Sending webhook to:', webhookUrl)
+        const webhookResponse = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+        })
+
+        if (webhookResponse.ok) {
+          console.log('[Create Client] Webhook sent successfully')
+        } else {
+          const webhookError = await webhookResponse.text()
+          console.error('[Create Client] Webhook failed:', webhookResponse.status, webhookError)
+        }
+      } catch (webhookError) {
+        console.error('[Create Client] Error sending webhook:', webhookError)
+        // Don't fail the request if webhook fails
+      }
+    }
+
     // Prepare response with all client details
     const response: ClientAccount = {
       client_id: client.id,
@@ -360,6 +427,8 @@ serve(async (req) => {
       invitation_sent: invitationSent,
       google_sheet_created: googleSheetCreated,
       created_at: client.created_at,
+      dashboard_slug: client.dashboard_slug,
+      dashboard_url: client.dashboard_slug ? `${portalBaseUrl}/client/${client.dashboard_slug}` : null,
     }
 
     // Include all optional fields that were provided

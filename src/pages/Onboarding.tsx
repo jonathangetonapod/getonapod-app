@@ -664,6 +664,60 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
               </CardContent>
             </Card>
 
+            {/* Podcast Approval Dashboard */}
+            {accountDetails.dashboard_url && (
+              <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-2 border-pink-200 dark:border-pink-800 shadow-xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mic className="h-5 w-5 text-pink-600" />
+                    Your Podcast Approval Dashboard
+                  </CardTitle>
+                  <CardDescription>
+                    Review and approve podcasts before we pitch you
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Dashboard URL</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input value={accountDetails.dashboard_url} readOnly className="font-mono text-sm" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(accountDetails.dashboard_url)
+                          toast.success('Dashboard URL copied!')
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950/20 dark:to-purple-950/20 border-2 border-pink-200 dark:border-pink-800 rounded-lg p-4">
+                    <p className="text-sm font-semibold text-pink-900 dark:text-pink-100 mb-2">
+                      🎯 What is this?
+                    </p>
+                    <p className="text-xs text-pink-700 dark:text-pink-300 mb-3">
+                      We'll curate a personalized list of podcasts that are perfect for you. Use this dashboard to review them and let us know which ones you'd like us to pitch you to. You can approve or reject podcasts, and we'll only reach out to the ones you approve!
+                    </p>
+                    <p className="text-xs text-pink-700 dark:text-pink-300">
+                      💡 This link is unique to you and doesn't require a login - save it for easy access
+                    </p>
+                  </div>
+
+                  <Button
+                    className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
+                    size="lg"
+                    onClick={() => window.open(accountDetails.dashboard_url, '_blank')}
+                  >
+                    <ExternalLink className="mr-2 h-5 w-5" />
+                    View Your Approval Dashboard
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Next Steps */}
             <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-white/50 dark:border-gray-700/50 shadow-xl">
               <CardHeader>
