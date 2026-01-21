@@ -525,286 +525,258 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
           <div className="absolute bottom-20 left-1/3 w-80 h-80 bg-green-300/30 dark:bg-green-500/10 rounded-full blur-3xl animate-pulse delay-2000" />
         </div>
 
-        <div className="max-w-4xl mx-auto relative z-10">
-          <div className="text-center mb-12 animate-fade-in">
-            <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full mb-6 shadow-2xl animate-bounce">
-              <CheckCircle2 className="h-14 w-14 text-white" />
+        <div className="max-w-5xl mx-auto relative z-10">
+          {/* Header */}
+          <div className="text-center mb-10 animate-fade-in">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full mb-5 shadow-2xl">
+              <CheckCircle2 className="h-11 w-11 text-white" />
             </div>
-            <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
-              Welcome to Get On A Pod! 🎉
+            <h1 className="text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
+              You're All Set! 🎉
             </h1>
-            <p className="text-2xl md:text-3xl font-semibold text-gray-700 dark:text-gray-300">
-              Your account is ready. Here's everything you need to get started.
+            <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Welcome to Get On A Pod! Your account is ready and we're excited to help you get featured on amazing podcasts.
             </p>
           </div>
 
-          {/* Testimonials Section */}
-          <div className="mb-12 animate-fade-in delay-100">
-            <h2 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-gray-200">
-              Join Our Successful Clients
-            </h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              {testimonials.map((testimonial, index) => (
-                <div
-                  key={index}
-                  className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-white/50 dark:border-gray-700/50 rounded-xl p-6 shadow-lg hover:scale-105 transition-transform duration-300"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <img
-                      src={testimonial.image}
-                      alt={testimonial.name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                    <div>
-                      <p className="font-semibold text-gray-900 dark:text-gray-100">{testimonial.name}</p>
-                      <p className="text-xs text-muted-foreground">{testimonial.title}</p>
-                    </div>
-                  </div>
-                  <Quote className="h-8 w-8 text-purple-400 mb-2" />
-                  <p className="text-sm text-gray-700 dark:text-gray-300 italic">
-                    "{testimonial.quote}"
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="space-y-6">
-            {/* Portal Access */}
-            <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-2 border-purple-200 dark:border-purple-800 shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Key className="h-5 w-5 text-purple-600" />
-                  Your Portal Access
-                </CardTitle>
-                <CardDescription>
-                  Access your bookings, outreach list, and track your podcast journey
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Portal URL</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Input value={accountDetails.portal_url} readOnly className="font-mono text-sm" />
+            {/* Quick Access Cards - Grid Layout */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Client Portal Card */}
+              <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-2 border-purple-200 dark:border-purple-800 shadow-xl hover:shadow-2xl transition-shadow">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                      <Key className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    Client Portal
+                  </CardTitle>
+                  <CardDescription className="text-sm">
+                    Track bookings, recordings, and published episodes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button
+                    className="w-full h-12 text-base font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 shadow-md hover:shadow-lg transition-all"
+                    onClick={() => window.open(accountDetails.portal_url, '_blank')}
+                  >
+                    <ExternalLink className="mr-2 h-5 w-5" />
+                    Access Portal
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={accountDetails.portal_url}
+                      readOnly
+                      className="font-mono text-xs bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
+                    />
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="ghost"
+                      size="icon"
+                      className="flex-shrink-0"
                       onClick={() => {
                         navigator.clipboard.writeText(accountDetails.portal_url)
-                        toast.success('Portal URL copied!')
+                        toast.success('Copied!')
                       }}
                     >
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                {/* Login Credentials */}
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-2 border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-green-900 dark:text-green-100 mb-3">
-                    🔑 Your Login Credentials
-                  </p>
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-xs text-green-700 dark:text-green-300">Email</Label>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Input
-                          value={accountDetails.email}
-                          readOnly
-                          className="bg-white dark:bg-gray-800 border-green-200 dark:border-green-800"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            navigator.clipboard.writeText(accountDetails.email)
-                            toast.success('Email copied!')
-                          }}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
+              {/* Podcast Approval Dashboard Card */}
+              {accountDetails.dashboard_url && (
+                <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-2 border-pink-200 dark:border-pink-800 shadow-xl hover:shadow-2xl transition-shadow">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <div className="p-2 bg-pink-100 dark:bg-pink-900/30 rounded-lg">
+                        <Mic className="h-5 w-5 text-pink-600 dark:text-pink-400" />
                       </div>
-                    </div>
-                    {accountDetails.password && (
-                      <div>
-                        <Label className="text-xs text-green-700 dark:text-green-300">Password</Label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Input
-                            value={accountDetails.password}
-                            readOnly
-                            className="bg-white dark:bg-gray-800 border-green-200 dark:border-green-800 font-mono"
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              navigator.clipboard.writeText(accountDetails.password)
-                              toast.success('Password copied!')
-                            }}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-green-700 dark:text-green-300 mt-3">
-                    💡 Save these credentials - you'll need them to log in to your client portal
-                  </p>
-                </div>
-
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={() => window.open(accountDetails.portal_url, '_blank')}
-                >
-                  <ExternalLink className="mr-2 h-5 w-5" />
-                  Login to Your Portal Now
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Podcast Approval Dashboard */}
-            {accountDetails.dashboard_url && (
-              <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border-2 border-pink-200 dark:border-pink-800 shadow-xl">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mic className="h-5 w-5 text-pink-600" />
-                    Your Podcast Approval Dashboard
-                  </CardTitle>
-                  <CardDescription>
-                    Review and approve podcasts before we pitch you
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Dashboard URL</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Input value={accountDetails.dashboard_url} readOnly className="font-mono text-sm" />
+                      Podcast Approval
+                    </CardTitle>
+                    <CardDescription className="text-sm">
+                      Review and approve podcasts before we pitch you
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Button
+                      className="w-full h-12 text-base font-semibold bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 shadow-md hover:shadow-lg transition-all"
+                      onClick={() => window.open(accountDetails.dashboard_url, '_blank')}
+                    >
+                      <ExternalLink className="mr-2 h-5 w-5" />
+                      View Dashboard
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={accountDetails.dashboard_url}
+                        readOnly
+                        className="font-mono text-xs bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
+                      />
                       <Button
-                        variant="outline"
-                        size="sm"
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0"
                         onClick={() => {
                           navigator.clipboard.writeText(accountDetails.dashboard_url)
-                          toast.success('Dashboard URL copied!')
+                          toast.success('Copied!')
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      💡 No login required - bookmark this link for easy access
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Login Credentials */}
+            <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-green-200 dark:border-green-800/50 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                    <Key className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  </div>
+                  Your Login Credentials
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  Save these credentials to access your client portal
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground">Email</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={accountDetails.email}
+                        readOnly
+                        className="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 text-sm"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(accountDetails.email)
+                          toast.success('Email copied!')
                         }}
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
+                  {accountDetails.password && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground">Password</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={accountDetails.password}
+                          readOnly
+                          className="bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 font-mono text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="flex-shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(accountDetails.password)
+                            toast.success('Password copied!')
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-                  <div className="bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950/20 dark:to-purple-950/20 border-2 border-pink-200 dark:border-pink-800 rounded-lg p-4">
-                    <p className="text-sm font-semibold text-pink-900 dark:text-pink-100 mb-2">
-                      🎯 What is this?
-                    </p>
-                    <p className="text-xs text-pink-700 dark:text-pink-300 mb-3">
-                      We'll curate a personalized list of podcasts that are perfect for you. Use this dashboard to review them and let us know which ones you'd like us to pitch you to. You can approve or reject podcasts, and we'll only reach out to the ones you approve!
-                    </p>
-                    <p className="text-xs text-pink-700 dark:text-pink-300">
-                      💡 This link is unique to you and doesn't require a login - save it for easy access
-                    </p>
+            {/* What Happens Next */}
+            <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-white/50 dark:border-gray-700/50 shadow-lg">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                    <Sparkles className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                   </div>
-
-                  <Button
-                    className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
-                    size="lg"
-                    onClick={() => window.open(accountDetails.dashboard_url, '_blank')}
-                  >
-                    <ExternalLink className="mr-2 h-5 w-5" />
-                    View Your Approval Dashboard
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Next Steps */}
-            <Card className="backdrop-blur-xl bg-white/70 dark:bg-gray-900/70 border border-white/50 dark:border-gray-700/50 shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-yellow-600" />
                   What Happens Next?
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ol className="space-y-4">
-                  <li className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold flex-shrink-0">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-50/50 dark:bg-purple-900/10">
+                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-purple-500 text-white text-sm font-bold flex-shrink-0">
                       1
                     </div>
                     <div>
-                      <p className="font-medium">We Review Your Profile</p>
-                      <p className="text-sm text-muted-foreground">
-                        Our team will review your information and identify the best podcast opportunities for you
+                      <p className="font-semibold text-sm mb-1">We Find Perfect Matches</p>
+                      <p className="text-xs text-muted-foreground">
+                        Our team curates podcasts that align with your expertise
                       </p>
                     </div>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold flex-shrink-0">
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-pink-50/50 dark:bg-pink-900/10">
+                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-pink-500 text-white text-sm font-bold flex-shrink-0">
                       2
                     </div>
                     <div>
-                      <p className="font-medium">We Start Outreach</p>
-                      <p className="text-sm text-muted-foreground">
-                        We'll pitch you to relevant podcasts and track all opportunities in your Google Sheet
+                      <p className="font-semibold text-sm mb-1">You Review & Approve</p>
+                      <p className="text-xs text-muted-foreground">
+                        Use your approval dashboard to select the podcasts you love
                       </p>
                     </div>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold flex-shrink-0">
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-green-50/50 dark:bg-green-900/10">
+                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-green-500 text-white text-sm font-bold flex-shrink-0">
                       3
                     </div>
                     <div>
-                      <p className="font-medium">You Get Booked</p>
-                      <p className="text-sm text-muted-foreground">
-                        Track all your bookings, recording dates, and published episodes in your portal
+                      <p className="font-semibold text-sm mb-1">We Handle Outreach</p>
+                      <p className="text-xs text-muted-foreground">
+                        We pitch you professionally and track everything
                       </p>
                     </div>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold flex-shrink-0">
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50/50 dark:bg-blue-900/10">
+                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-500 text-white text-sm font-bold flex-shrink-0">
                       4
                     </div>
                     <div>
-                      <p className="font-medium">Build Your Authority</p>
-                      <p className="text-sm text-muted-foreground">
-                        Grow your brand, reach new audiences, and establish yourself as a thought leader
+                      <p className="font-semibold text-sm mb-1">You Get Booked</p>
+                      <p className="text-xs text-muted-foreground">
+                        Show up, share your story, and grow your authority
                       </p>
                     </div>
-                  </li>
-                </ol>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            {/* CTA Buttons */}
-            <div className="flex flex-col gap-3 sm:gap-4">
-              <Button
-                className="w-full py-6 text-base font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 hover:scale-105 transition-all shadow-lg"
-                onClick={() => window.open(accountDetails.portal_url, '_blank')}
-              >
-                <ExternalLink className="mr-2 h-5 w-5" />
-                Access Your Portal
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full py-6 text-base font-semibold hover:scale-105 transition-transform"
-                onClick={() => navigate('/')}
-              >
-                Back to Home
-              </Button>
-            </div>
-
-            {/* Contact Info */}
-            <Card className="backdrop-blur-xl bg-gradient-to-r from-purple-100/70 to-pink-100/70 dark:from-purple-950/50 dark:to-pink-950/50 border-purple-200 dark:border-purple-800 shadow-xl">
-              <CardContent className="pt-6">
-                <p className="text-center text-sm text-muted-foreground">
-                  Questions? Email us at{' '}
-                  <a href="mailto:jonathan@getonapod.com" className="text-purple-600 dark:text-purple-400 hover:underline font-medium">
+            {/* Support Section */}
+            <div className="text-center space-y-4 pt-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-gray-800/50 rounded-full backdrop-blur-sm border border-gray-200 dark:border-gray-700">
+                <Mail className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Questions?{' '}
+                  <a
+                    href="mailto:jonathan@getonapod.com"
+                    className="text-purple-600 dark:text-purple-400 hover:underline font-medium"
+                  >
                     jonathan@getonapod.com
                   </a>
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+              <Button
+                variant="ghost"
+                className="text-sm text-muted-foreground hover:text-foreground"
+                onClick={() => navigate('/')}
+              >
+                ← Back to Home
+              </Button>
+            </div>
           </div>
         </div>
       </div>
