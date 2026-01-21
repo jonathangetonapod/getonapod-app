@@ -1170,10 +1170,11 @@ export default function ClientDetail() {
     let totalAnalyzed = 0
     let isComplete = false
     let batchCount = 0
+    const MAX_BATCHES = 100 // Safety limit to prevent infinite loops
 
     try {
       // Keep running until all podcasts are analyzed
-      while (!isComplete) {
+      while (!isComplete && batchCount < MAX_BATCHES) {
         batchCount++
         console.log(`[AI Analysis] Starting batch ${batchCount}...`)
 
@@ -1248,6 +1249,17 @@ export default function ClientDetail() {
           console.log(`[AI Analysis] No remaining podcasts, marking as complete`)
           isComplete = true
         }
+      }
+
+      // Check if we hit max batch limit
+      if (batchCount >= MAX_BATCHES && !isComplete) {
+        console.error(`[AI Analysis] Hit max batch limit of ${MAX_BATCHES}. Stopping to prevent infinite loop.`)
+        toast({
+          title: 'AI Analysis Stopped',
+          description: `Hit safety limit of ${MAX_BATCHES} batches. Analyzed ${totalAnalyzed} podcasts. Please contact support if issue persists.`,
+          variant: 'destructive'
+        })
+        return
       }
 
       // Refetch cached podcasts to show updated data

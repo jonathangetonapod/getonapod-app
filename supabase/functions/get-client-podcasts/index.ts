@@ -439,8 +439,8 @@ serve(async (req) => {
       const MAX_RUNTIME_MS = 50000
       let stoppedEarly = false
 
-      // Find cached podcasts without AI analysis
-      const podcastsNeedingAi = cachedPodcasts.filter(p => !p.ai_fit_reasons || p.ai_fit_reasons.length === 0)
+      // Find cached podcasts without AI analysis (check ai_analyzed_at to prevent re-analyzing)
+      const podcastsNeedingAi = cachedPodcasts.filter(p => !p.ai_analyzed_at)
       console.log('[Get Client Podcasts] AI Analysis Only - need to analyze', podcastsNeedingAi.length, 'podcasts')
 
       if (podcastsNeedingAi.length === 0) {
@@ -480,39 +480,59 @@ serve(async (req) => {
             batch.map(async (podcast) => {
               if (!clientName || !clientBio) return
 
-              console.log('[Get Client Podcasts] Running AI analysis for:', podcast.podcast_name)
-              const analysis = await analyzePodcastFit(
-                {
-                  name: podcast.podcast_name,
-                  description: podcast.podcast_description,
-                  url: podcast.podcast_url,
-                  publisher: podcast.publisher_name,
-                  rating: podcast.itunes_rating,
-                  episodes: podcast.episode_count,
-                  audience: podcast.audience_size,
-                },
-                clientName,
-                clientBio
-              )
+              try {
+                console.log('[Get Client Podcasts] Running AI analysis for:', podcast.podcast_name)
+                const analysis = await analyzePodcastFit(
+                  {
+                    name: podcast.podcast_name,
+                    description: podcast.podcast_description,
+                    url: podcast.podcast_url,
+                    publisher: podcast.publisher_name,
+                    rating: podcast.itunes_rating,
+                    episodes: podcast.episode_count,
+                    audience: podcast.audience_size,
+                  },
+                  clientName,
+                  clientBio
+                )
 
-              if (analysis) {
-                // Update the cache with AI analysis
+                // Always mark as analyzed to prevent infinite loops, even if analysis failed/returned empty
+                const updateData: any = {
+                  ai_analyzed_at: new Date().toISOString(),
+                }
+
+                if (analysis) {
+                  updateData.ai_clean_description = analysis.clean_description
+                  updateData.ai_fit_reasons = analysis.fit_reasons
+                  updateData.ai_pitch_angles = analysis.pitch_angles
+                }
+
                 const { error: updateError } = await supabase
                   .from('client_dashboard_podcasts')
-                  .update({
-                    ai_clean_description: analysis.clean_description,
-                    ai_fit_reasons: analysis.fit_reasons,
-                    ai_pitch_angles: analysis.pitch_angles,
-                    ai_analyzed_at: new Date().toISOString(),
-                  })
+                  .update(updateData)
                   .eq('client_id', clientId)
                   .eq('podcast_id', podcast.podcast_id)
 
                 if (!updateError) {
                   analyzedCount++
-                  stats.aiAnalysesGenerated++
+                  if (analysis) {
+                    stats.aiAnalysesGenerated++
+                  }
                   console.log('[Get Client Podcasts] AI analysis saved for:', podcast.podcast_name)
+                } else {
+                  console.error('[Get Client Podcasts] Failed to update podcast:', podcast.podcast_name, updateError)
                 }
+              } catch (error) {
+                console.error('[Get Client Podcasts] Error analyzing podcast:', podcast.podcast_name, error)
+                // Mark as analyzed even on error to prevent infinite retries
+                await supabase
+                  .from('client_dashboard_podcasts')
+                  .update({
+                    ai_analyzed_at: new Date().toISOString(),
+                  })
+                  .eq('client_id', clientId)
+                  .eq('podcast_id', podcast.podcast_id)
+                analyzedCount++
               }
             })
           ).then(() => {})
