@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -78,19 +79,36 @@ interface ExistingProspect {
 }
 
 export default function PodcastDatabase() {
+  // URL Parameters for filter persistence
+  const [searchParams, setSearchParams] = useSearchParams()
+
   // View & Mode State
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [mode, setMode] = useState<Mode>('browse')
 
-  // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [sortBy, setSortBy] = useState<SortOption>('name')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
-  const [page, setPage] = useState(1)
-  const [minAudience, setMinAudience] = useState('')
-  const [minRating, setMinRating] = useState('')
-  const [hasEmailFilter, setHasEmailFilter] = useState(false)
+  // Search & Filter State (initialized from URL params)
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || 'all')
+  const [sortBy, setSortBy] = useState<SortOption>((searchParams.get('sortBy') as SortOption) || 'name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc')
+  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
+
+  // Basic Filters
+  const [minAudience, setMinAudience] = useState(searchParams.get('minAudience') || '')
+  const [maxAudience, setMaxAudience] = useState(searchParams.get('maxAudience') || '')
+  const [minRating, setMinRating] = useState(searchParams.get('minRating') || '')
+  const [maxRating, setMaxRating] = useState(searchParams.get('maxRating') || '')
+  const [hasEmailFilter, setHasEmailFilter] = useState(searchParams.get('hasEmail') === 'true')
+
+  // Advanced Filters
+  const [languageFilter, setLanguageFilter] = useState(searchParams.get('language') || 'all')
+  const [regionFilter, setRegionFilter] = useState(searchParams.get('region') || 'all')
+  const [minEpisodes, setMinEpisodes] = useState(searchParams.get('minEpisodes') || '')
+  const [maxEpisodes, setMaxEpisodes] = useState(searchParams.get('maxEpisodes') || '')
+  const [hasGuestsFilter, setHasGuestsFilter] = useState(searchParams.get('hasGuests') === 'true')
+  const [hasSponsorsFilter, setHasSponsorsFilter] = useState(searchParams.get('hasSponsors') === 'true')
+  const [isActiveFilter, setIsActiveFilter] = useState(searchParams.get('isActive') === 'true')
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
   // Client Mode State
   const [selectedClient, setSelectedClient] = useState('')
@@ -140,6 +158,37 @@ export default function PodcastDatabase() {
     fetchProspects()
   }, [])
 
+  // Sync filters to URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams()
+
+    // Only add non-default values to keep URL clean
+    if (searchQuery) params.set('search', searchQuery)
+    if (categoryFilter !== 'all') params.set('category', categoryFilter)
+    if (sortBy !== 'name') params.set('sortBy', sortBy)
+    if (sortOrder !== 'asc') params.set('sortOrder', sortOrder)
+    if (page !== 1) params.set('page', page.toString())
+    if (minAudience) params.set('minAudience', minAudience)
+    if (maxAudience) params.set('maxAudience', maxAudience)
+    if (minRating) params.set('minRating', minRating)
+    if (maxRating) params.set('maxRating', maxRating)
+    if (hasEmailFilter) params.set('hasEmail', 'true')
+    if (languageFilter !== 'all') params.set('language', languageFilter)
+    if (regionFilter !== 'all') params.set('region', regionFilter)
+    if (minEpisodes) params.set('minEpisodes', minEpisodes)
+    if (maxEpisodes) params.set('maxEpisodes', maxEpisodes)
+    if (hasGuestsFilter) params.set('hasGuests', 'true')
+    if (hasSponsorsFilter) params.set('hasSponsors', 'true')
+    if (isActiveFilter) params.set('isActive', 'true')
+
+    setSearchParams(params, { replace: true })
+  }, [
+    searchQuery, categoryFilter, sortBy, sortOrder, page,
+    minAudience, maxAudience, minRating, maxRating, hasEmailFilter,
+    languageFilter, regionFilter, minEpisodes, maxEpisodes,
+    hasGuestsFilter, hasSponsorsFilter, isActiveFilter, setSearchParams
+  ])
+
   // Build filters
   const filters: PodcastFilters = useMemo(() => {
     const f: PodcastFilters = {}
@@ -156,16 +205,44 @@ export default function PodcastDatabase() {
       f.minAudience = Number(minAudience)
     }
 
+    if (maxAudience && !isNaN(Number(maxAudience))) {
+      f.maxAudience = Number(maxAudience)
+    }
+
     if (minRating && !isNaN(Number(minRating))) {
       f.minRating = Number(minRating)
+    }
+
+    if (maxRating && !isNaN(Number(maxRating))) {
+      f.maxRating = Number(maxRating)
     }
 
     if (hasEmailFilter) {
       f.hasEmail = true
     }
 
+    if (languageFilter && languageFilter !== 'all') {
+      f.language = languageFilter
+    }
+
+    if (regionFilter && regionFilter !== 'all') {
+      f.region = regionFilter
+    }
+
+    if (hasGuestsFilter) {
+      f.hasGuests = true
+    }
+
+    if (hasSponsorsFilter) {
+      f.hasSponsors = true
+    }
+
+    if (isActiveFilter) {
+      f.isActive = true
+    }
+
     return f
-  }, [searchQuery, categoryFilter, minAudience, minRating, hasEmailFilter])
+  }, [searchQuery, categoryFilter, minAudience, maxAudience, minRating, maxRating, hasEmailFilter, languageFilter, regionFilter, hasGuestsFilter, hasSponsorsFilter, isActiveFilter])
 
   // Fetch podcasts
   const { data: podcastsResult, isLoading, refetch } = useQuery({
@@ -192,6 +269,48 @@ export default function PodcastDatabase() {
     queryFn: getPodcastCategories
   })
   const categories = categoriesData?.categories || []
+
+  // Fetch languages
+  const { data: languagesData } = useQuery({
+    queryKey: ['podcast-languages'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('podcasts')
+        .select('language')
+        .not('language', 'is', null)
+
+      if (error) return { languages: [] }
+
+      const languageSet = new Set<string>()
+      data?.forEach(row => {
+        if (row.language) languageSet.add(row.language)
+      })
+
+      return { languages: Array.from(languageSet).sort() }
+    }
+  })
+  const languages = languagesData?.languages || []
+
+  // Fetch regions
+  const { data: regionsData } = useQuery({
+    queryKey: ['podcast-regions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('podcasts')
+        .select('region')
+        .not('region', 'is', null)
+
+      if (error) return { regions: [] }
+
+      const regionSet = new Set<string>()
+      data?.forEach(row => {
+        if (row.region) regionSet.add(row.region)
+      })
+
+      return { regions: Array.from(regionSet).sort() }
+    }
+  })
+  const regions = regionsData?.regions || []
 
   const podcasts = podcastsResult?.data || []
   const totalCount = podcastsResult?.count || 0
@@ -752,6 +871,149 @@ export default function PodcastDatabase() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Active Filters Pills */}
+            {(searchQuery || categoryFilter !== 'all' || minAudience || maxAudience || minRating || maxRating || hasEmailFilter || languageFilter !== 'all' || regionFilter !== 'all' || minEpisodes || maxEpisodes || hasGuestsFilter || hasSponsorsFilter || isActiveFilter) && (
+              <div className="flex items-center gap-2 flex-wrap p-3 bg-muted/50 rounded-md">
+                <span className="text-sm font-medium text-muted-foreground">Active Filters:</span>
+                {searchQuery && (
+                  <Badge variant="secondary" className="gap-1">
+                    Search: {searchQuery}
+                    <button onClick={() => setSearchQuery('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {categoryFilter !== 'all' && (
+                  <Badge variant="secondary" className="gap-1">
+                    Category: {categoryFilter}
+                    <button onClick={() => setCategoryFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {minAudience && (
+                  <Badge variant="secondary" className="gap-1">
+                    Min Audience: {Number(minAudience).toLocaleString()}
+                    <button onClick={() => setMinAudience('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {maxAudience && (
+                  <Badge variant="secondary" className="gap-1">
+                    Max Audience: {Number(maxAudience).toLocaleString()}
+                    <button onClick={() => setMaxAudience('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {minRating && (
+                  <Badge variant="secondary" className="gap-1">
+                    Min Rating: {minRating}★
+                    <button onClick={() => setMinRating('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {maxRating && (
+                  <Badge variant="secondary" className="gap-1">
+                    Max Rating: {maxRating}★
+                    <button onClick={() => setMaxRating('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {hasEmailFilter && (
+                  <Badge variant="secondary" className="gap-1">
+                    Has Email
+                    <button onClick={() => setHasEmailFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {languageFilter !== 'all' && (
+                  <Badge variant="secondary" className="gap-1">
+                    Language: {languageFilter}
+                    <button onClick={() => setLanguageFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {regionFilter !== 'all' && (
+                  <Badge variant="secondary" className="gap-1">
+                    Region: {regionFilter}
+                    <button onClick={() => setRegionFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {minEpisodes && (
+                  <Badge variant="secondary" className="gap-1">
+                    Min Episodes: {minEpisodes}
+                    <button onClick={() => setMinEpisodes('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {maxEpisodes && (
+                  <Badge variant="secondary" className="gap-1">
+                    Max Episodes: {maxEpisodes}
+                    <button onClick={() => setMaxEpisodes('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {hasGuestsFilter && (
+                  <Badge variant="secondary" className="gap-1">
+                    Has Guests
+                    <button onClick={() => setHasGuestsFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {hasSponsorsFilter && (
+                  <Badge variant="secondary" className="gap-1">
+                    Has Sponsors
+                    <button onClick={() => setHasSponsorsFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {isActiveFilter && (
+                  <Badge variant="secondary" className="gap-1">
+                    Active Only
+                    <button onClick={() => setIsActiveFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setCategoryFilter('all')
+                    setMinAudience('')
+                    setMaxAudience('')
+                    setMinRating('')
+                    setMaxRating('')
+                    setHasEmailFilter(false)
+                    setLanguageFilter('all')
+                    setRegionFilter('all')
+                    setMinEpisodes('')
+                    setMaxEpisodes('')
+                    setHasGuestsFilter(false)
+                    setHasSponsorsFilter(false)
+                    setIsActiveFilter(false)
+                    setPage(1)
+                  }}
+                  className="h-6 text-xs"
+                >
+                  Clear All
+                </Button>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -840,6 +1102,135 @@ export default function PodcastDatabase() {
                     <SelectItem value="9">9+ Only (Excellent)</SelectItem>
                   </SelectContent>
                 </Select>
+              )}
+            </div>
+
+            {/* Advanced Filters */}
+            <div className="border-t pt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className="mb-3"
+              >
+                {showAdvancedFilters ? '▼' : '▶'} Advanced Filters
+              </Button>
+
+              {showAdvancedFilters && (
+                <div className="space-y-3 p-4 bg-muted/30 rounded-md">
+                  {/* Row 1: Max Audience & Max Rating */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Max Audience"
+                      value={maxAudience}
+                      onChange={(e) => setMaxAudience(e.target.value)}
+                      className="w-[150px]"
+                      type="number"
+                    />
+                    <Input
+                      placeholder="Max Rating"
+                      value={maxRating}
+                      onChange={(e) => setMaxRating(e.target.value)}
+                      className="w-[150px]"
+                      type="number"
+                      step="0.1"
+                      max="5"
+                    />
+                  </div>
+
+                  {/* Row 2: Episodes Range */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Min Episodes"
+                      value={minEpisodes}
+                      onChange={(e) => setMinEpisodes(e.target.value)}
+                      className="w-[150px]"
+                      type="number"
+                    />
+                    <Input
+                      placeholder="Max Episodes"
+                      value={maxEpisodes}
+                      onChange={(e) => setMaxEpisodes(e.target.value)}
+                      className="w-[150px]"
+                      type="number"
+                    />
+                  </div>
+
+                  {/* Row 3: Language & Region */}
+                  <div className="flex gap-2">
+                    <Select
+                      value={languageFilter}
+                      onValueChange={(v) => {
+                        setLanguageFilter(v)
+                        setPage(1)
+                      }}
+                    >
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Languages</SelectItem>
+                        {languages.map(lang => (
+                          <SelectItem key={lang} value={lang}>{lang}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select
+                      value={regionFilter}
+                      onValueChange={(v) => {
+                        setRegionFilter(v)
+                        setPage(1)
+                      }}
+                    >
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Region" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Regions</SelectItem>
+                        {regions.map(region => (
+                          <SelectItem key={region} value={region}>{region}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Row 4: Additional Filters */}
+                  <div className="flex gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="hasGuests"
+                        checked={hasGuestsFilter}
+                        onCheckedChange={(checked) => setHasGuestsFilter(!!checked)}
+                      />
+                      <Label htmlFor="hasGuests" className="cursor-pointer">
+                        Has Guests
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="hasSponsors"
+                        checked={hasSponsorsFilter}
+                        onCheckedChange={(checked) => setHasSponsorsFilter(!!checked)}
+                      />
+                      <Label htmlFor="hasSponsors" className="cursor-pointer">
+                        Has Sponsors
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="isActive"
+                        checked={isActiveFilter}
+                        onCheckedChange={(checked) => setIsActiveFilter(!!checked)}
+                      />
+                      <Label htmlFor="isActive" className="cursor-pointer">
+                        Active Podcasts Only
+                      </Label>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </CardContent>
