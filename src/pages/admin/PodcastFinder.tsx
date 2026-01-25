@@ -641,7 +641,8 @@ export default function PodcastFinder() {
         (completed, total) => {
           // Could add progress indicator in UI here
           console.log(`Scoring progress: ${completed}/${total}`)
-        }
+        },
+        isProspectMode
       )
 
       // Build score and reasoning maps
@@ -717,7 +718,8 @@ export default function PodcastFinder() {
         10,
         (completed, total) => {
           console.log(`Chart scoring progress: ${completed}/${total}`)
-        }
+        },
+        isProspectMode
       )
 
       // Build score and reasoning maps
