@@ -248,7 +248,21 @@ export default function ProspectView() {
 
       if (!response.ok) return []
       const data = await response.json()
-      console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
+
+      // Log cache performance
+      if (data.cachePerformance) {
+        const { cacheHitRate, apiCallsSaved, costSavings } = data.cachePerformance
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('📊 [PROSPECT DASHBOARD] Cache Performance')
+        console.log(`   Podcasts loaded: ${data.podcasts?.length || 0}`)
+        console.log(`   ✅ Cache hit rate: ${cacheHitRate}%`)
+        console.log(`   💰 API calls saved: ${apiCallsSaved}`)
+        console.log(`   💵 Cost savings: $${costSavings}`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      } else {
+        console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
+      }
+
       return data.podcasts || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes

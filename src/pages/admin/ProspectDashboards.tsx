@@ -1097,12 +1097,25 @@ export default function ProspectDashboards() {
         remaining: data.remaining || 0,
       })
 
-      if (data.stoppedEarly) {
-        toast.warning(`Fetched ${data.fetched} podcasts. ${data.remaining} remaining - click again to continue.`)
-      } else if (data.fetched > 0) {
-        toast.success(`Fetched ${data.fetched} podcasts from Podscan!`)
+      // Show cache performance
+      if (data.cachePerformance) {
+        const { cacheHitRate, apiCallsSaved, costSavings } = data.cachePerformance
+        if (data.stoppedEarly) {
+          toast.warning(`Fetched ${data.fetched} podcasts. ${data.remaining} remaining | Cache: ${cacheHitRate}% | Saved: $${costSavings}`)
+        } else if (data.fetched > 0) {
+          toast.success(`✅ Fetched ${data.fetched} podcasts | 💾 Cache: ${cacheHitRate}% | 💰 Saved ${apiCallsSaved} API calls ($${costSavings})`)
+        } else {
+          toast.success(`🎉 All podcasts from cache! | 💰 Saved ${apiCallsSaved} API calls ($${costSavings})`)
+        }
       } else {
-        toast.success('All podcasts already cached!')
+        // Fallback for responses without cache performance
+        if (data.stoppedEarly) {
+          toast.warning(`Fetched ${data.fetched} podcasts. ${data.remaining} remaining - click again to continue.`)
+        } else if (data.fetched > 0) {
+          toast.success(`Fetched ${data.fetched} podcasts from Podscan!`)
+        } else {
+          toast.success('All podcasts already cached!')
+        }
       }
 
       // Refresh status from DB after fetching completes

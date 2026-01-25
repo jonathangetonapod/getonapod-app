@@ -359,7 +359,12 @@ serve(async (req) => {
     }
 
     // Check CENTRAL podcasts cache (shared across all clients and prospects!)
-    console.log('[Get Prospect Podcasts] 🔍 Checking central podcasts cache for', podcastIds.length, 'podcasts')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔍 [CACHE CHECK] Checking central podcasts database...')
+    console.log('   Requested podcasts:', podcastIds.length)
+    console.log('   For prospect:', prospectDashboardId?.substring(0, 8) + '...')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     const { cached: centralCached, missing: centralMissing } = await getCachedPodcasts(supabase, podcastIds, 7)
 
     // Map central cache to CachedPodcast format for compatibility
@@ -381,8 +386,16 @@ serve(async (req) => {
     }))
 
     const cachedPodcastIds = new Set<string>(centralCached.map((p: any) => p.podscan_id))
-    console.log('[Get Prospect Podcasts] ✅ Found', centralCached.length, 'cached podcasts in central table')
-    console.log('[Get Prospect Podcasts] 💰 Cache hits saved', centralCached.length * 2, 'Podscan API calls!')
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ [CACHE HIT] Found in central database:', centralCached.length, 'podcasts')
+    console.log('⏩ [CACHE BENEFIT] Skipped Podscan API calls:', centralCached.length * 2)
+    console.log('💰 [COST SAVINGS] Estimated savings: $' + (centralCached.length * 2 * 0.01).toFixed(2))
+    console.log('🌍 [PUBLIC BENEFIT] These podcasts available for ALL prospects!')
+    if (centralCached.length > 0) {
+      console.log('📋 [CACHED PODCASTS]:', centralCached.map((p: any) => p.podcast_name).slice(0, 5).join(', ') + (centralCached.length > 5 ? '...' : ''))
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Load AI analyses from prospect_podcast_analyses table (prospect-specific)
     if (prospectDashboardId && cachedPodcasts.length > 0) {
@@ -416,7 +429,18 @@ serve(async (req) => {
 
     // Find podcasts that need to be fetched from Podscan
     const missingPodcastIds = centralMissing
-    console.log('[Get Prospect Podcasts] 🔄 Need to fetch', missingPodcastIds.length, 'new podcasts from Podscan')
+
+    if (missingPodcastIds.length > 0) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔄 [PODSCAN API] Need to fetch from Podscan:', missingPodcastIds.length, 'podcasts')
+      console.log('   These podcasts are NOT in cache yet')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    } else {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🎉 [100% CACHE HIT] All podcasts served from cache!')
+      console.log('   No Podscan API calls needed!')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    }
 
     // Stats tracking
     const stats = {
@@ -760,12 +784,12 @@ serve(async (req) => {
               const { success: cacheSuccess, podcast_id: centralPodcastId } = await upsertPodcastCache(supabase, cacheData)
 
               if (!cacheSuccess) {
-                console.error('[Get Prospect Podcasts] Failed to save to central cache:', podcastId)
+                console.error('❌ [CACHE SAVE FAILED]', podcastId)
               } else {
-                console.log('[Get Prospect Podcasts] ✅ Saved to central cache:', podcastData.podcast_name)
+                console.log('💾 [SAVED TO CENTRAL DB]', podcastData.podcast_name, '→ Now available for ALL prospects!')
               }
 
-              // 5. Save AI analysis to prospect_podcast_analyses table (prospect-specific)
+              // 5. Save AI analysis to prospect_podcast_analyses table (prospect-specific, unique per prospect!)
               if (prospectDashboardId && centralPodcastId && (podcastData.ai_clean_description || podcastData.ai_fit_reasons || podcastData.ai_pitch_angles)) {
                 const { error: analysisError } = await supabase
                   .from('prospect_podcast_analyses')
@@ -779,9 +803,9 @@ serve(async (req) => {
                   }, { onConflict: 'prospect_dashboard_id,podcast_id' })
 
                 if (analysisError) {
-                  console.error('[Get Prospect Podcasts] Failed to save AI analysis:', analysisError)
+                  console.error('❌ [AI ANALYSIS SAVE FAILED]', analysisError)
                 } else {
-                  console.log('[Get Prospect Podcasts] ✅ Saved AI analysis for prospect')
+                  console.log('🤖 [SAVED AI ANALYSIS] For prospect:', prospectName?.substring(0, 30), '(prospect-specific, personalized)')
                 }
               }
 
@@ -816,8 +840,22 @@ serve(async (req) => {
       .filter((p): p is CachedPodcast => p !== undefined)
 
     const remaining = missingPodcastIds.length - newPodcasts.length
-    console.log('[Get Prospect Podcasts] Returning', orderedPodcasts.length, 'podcasts (' + cachedPodcasts.length + ' cached, ' + newPodcasts.length + ' new)', stoppedEarly ? `- stopped early, ${remaining} remaining` : '')
-    console.log('[Get Prospect Podcasts] Stats:', stats)
+    const cacheHitRate = podcastIds.length > 0 ? ((cachedPodcasts.length / podcastIds.length) * 100).toFixed(1) : '0'
+    const apiCallsSaved = cachedPodcasts.length * 2
+    const costSavings = (apiCallsSaved * 0.01).toFixed(2)
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📊 [FINAL SUMMARY] Request complete!')
+    console.log('   Total podcasts returned:', orderedPodcasts.length)
+    console.log('   ✅ From cache:', cachedPodcasts.length, `(${cacheHitRate}%)`)
+    console.log('   🆕 Newly fetched:', newPodcasts.length)
+    console.log('   💰 API calls saved:', apiCallsSaved)
+    console.log('   💵 Cost savings: $' + costSavings)
+    console.log('   🌍 PUBLIC DASHBOARD: Cache benefits all prospects!')
+    if (stoppedEarly) {
+      console.log('   ⏸️  Stopped early:', remaining, 'remaining')
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return new Response(
       JSON.stringify({
@@ -828,6 +866,11 @@ serve(async (req) => {
         fetched: newPodcasts.length,
         stoppedEarly,
         remaining: stoppedEarly ? remaining : 0,
+        cachePerformance: {
+          cacheHitRate: parseFloat(cacheHitRate),
+          apiCallsSaved: apiCallsSaved,
+          costSavings: parseFloat(costSavings),
+        },
         stats: {
           fromSheet: podcastIds.length,
           fromCache: cachedPodcasts.length,
