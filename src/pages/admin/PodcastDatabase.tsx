@@ -393,8 +393,16 @@ export default function PodcastDatabase() {
       f.isActive = true
     }
 
+    if (minEpisodes && !isNaN(Number(minEpisodes))) {
+      f.minEpisodes = Number(minEpisodes)
+    }
+
+    if (maxEpisodes && !isNaN(Number(maxEpisodes))) {
+      f.maxEpisodes = Number(maxEpisodes)
+    }
+
     return f
-  }, [debouncedSearchQuery, categoryFilter, minAudience, maxAudience, minRating, maxRating, hasEmailFilter, languageFilter, regionFilter, hasGuestsFilter, hasSponsorsFilter, isActiveFilter])
+  }, [debouncedSearchQuery, categoryFilter, minAudience, maxAudience, minRating, maxRating, hasEmailFilter, languageFilter, regionFilter, minEpisodes, maxEpisodes, hasGuestsFilter, hasSponsorsFilter, isActiveFilter])
 
   // Fetch podcasts
   const { data: podcastsResult, isLoading, refetch } = useQuery({

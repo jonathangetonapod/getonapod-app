@@ -8,6 +8,8 @@ export interface PodcastFilters {
   maxAudience?: number
   minRating?: number
   maxRating?: number
+  minEpisodes?: number
+  maxEpisodes?: number
   hasEmail?: boolean
   isActive?: boolean
   language?: string
@@ -127,6 +129,14 @@ export async function getPodcasts({
 
   if (filters.hasSponsors !== undefined) {
     query = query.eq('podcast_has_sponsors', filters.hasSponsors)
+  }
+
+  if (filters.minEpisodes !== undefined) {
+    query = query.gte('episode_count', filters.minEpisodes)
+  }
+
+  if (filters.maxEpisodes !== undefined) {
+    query = query.lte('episode_count', filters.maxEpisodes)
   }
 
   // Apply sorting
