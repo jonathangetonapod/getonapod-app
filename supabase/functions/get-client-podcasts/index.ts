@@ -119,6 +119,7 @@ interface CachedPodcast {
   ai_clean_description: string | null
   ai_fit_reasons: string[] | null
   ai_pitch_angles: Array<{ title: string; description: string }> | null
+  ai_analyzed_at: string | null
   demographics: Record<string, unknown> | null
 }
 
@@ -405,6 +406,7 @@ serve(async (req) => {
               ai_clean_description: analysis.ai_clean_description,
               ai_fit_reasons: analysis.ai_fit_reasons,
               ai_pitch_angles: analysis.ai_pitch_angles,
+              ai_analyzed_at: analysis.ai_analyzed_at,
             }
           }
           return p

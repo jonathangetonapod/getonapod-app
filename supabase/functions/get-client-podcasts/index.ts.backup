@@ -1,6 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -119,7 +118,6 @@ interface CachedPodcast {
   ai_clean_description: string | null
   ai_fit_reasons: string[] | null
   ai_pitch_angles: Array<{ title: string; description: string }> | null
-  ai_analyzed_at: string | null
   demographics: Record<string, unknown> | null
 }
 
@@ -134,8 +132,8 @@ interface FitAnalysis {
  */
 async function analyzePodcastFit(
   podcast: { name: string; description: string | null; url: string | null; publisher: string | null; rating: number | null; episodes: number | null; audience: number | null },
-  prospectName: string,
-  prospectBio: string
+  clientName: string,
+  clientBio: string
 ): Promise<FitAnalysis | null> {
   const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!anthropicApiKey) {
@@ -159,8 +157,8 @@ async function analyzePodcastFit(
 ${podcastContext}
 
 ## CLIENT/PROSPECT INFORMATION
-Name: ${prospectName}
-Bio: ${prospectBio}
+Name: ${clientName}
+Bio: ${clientBio}
 
 ## YOUR TASK
 Analyze why this podcast is a great match for this specific client.
@@ -217,7 +215,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { spreadsheetId, prospectDashboardId, prospectName, prospectBio, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
+    const { spreadsheetId, clientId, clientName, clientBio, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
 
     if (!spreadsheetId) {
       return new Response(
@@ -226,8 +224,8 @@ serve(async (req) => {
       )
     }
 
-    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
-    console.log('[Get Prospect Podcasts] Prospect name:', prospectName, '| Bio length:', prospectBio?.length || 0)
+    console.log('[Get Client Podcasts] Starting for dashboard:', clientId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
+    console.log('[Get Client Podcasts] Client name:', clientName, '| Bio length:', clientBio?.length || 0)
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -235,19 +233,19 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // FAST PATH: For cacheOnly mode, skip Google Sheets entirely and return cached data directly
-    if (cacheOnly && prospectDashboardId) {
-      console.log('[Get Prospect Podcasts] FAST PATH - querying cache directly, skipping Google Sheets')
+    if (cacheOnly && clientId) {
+      console.log('[Get Client Podcasts] FAST PATH - querying cache directly, skipping Google Sheets')
       const { data: cached, error: cacheError } = await supabase
-        .from('prospect_podcast_analyses')
+        .from('client_dashboard_podcasts')
         .select('*')
-        .eq('prospect_dashboard_id', prospectDashboardId)
+        .eq('client_id', clientId)
 
       if (cacheError) {
-        console.error('[Get Prospect Podcasts] Cache query error:', cacheError)
+        console.error('[Get Client Podcasts] Cache query error:', cacheError)
         throw cacheError
       }
 
-      console.log('[Get Prospect Podcasts] FAST PATH - returning', cached?.length || 0, 'cached podcasts')
+      console.log('[Get Client Podcasts] FAST PATH - returning', cached?.length || 0, 'cached podcasts')
       return new Response(
         JSON.stringify({
           success: true,
@@ -282,11 +280,11 @@ serve(async (req) => {
     const metadata = await metadataResponse.json()
     const firstSheetName = metadata.sheets[0]?.properties?.title || 'Sheet1'
 
-    console.log('[Get Prospect Podcasts] First sheet name:', firstSheetName)
+    console.log('[Get Client Podcasts] First sheet name:', firstSheetName)
 
     // Read column E (Podcast ID) - using dynamic sheet name
     const range = `${firstSheetName}!E:E`
-    console.log('[Get Prospect Podcasts] Reading range:', range)
+    console.log('[Get Client Podcasts] Reading range:', range)
 
     const sheetResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
@@ -304,48 +302,48 @@ serve(async (req) => {
       .map((row: string[]) => row[0])
       .filter((id: string) => id && id.trim() !== '')
 
-    console.log('[Get Prospect Podcasts] Found', podcastIds.length, 'podcast IDs in sheet')
+    console.log('[Get Client Podcasts] Found', podcastIds.length, 'podcast IDs in sheet')
+    console.log('[Get Client Podcasts] Total rows:', rows.length)
 
     // Clean up stale cache entries (podcasts no longer in sheet)
-    if (prospectDashboardId && podcastIds.length >= 0) {
-      // Get all cached podcast IDs for this dashboard from central podcasts table via analyses
+    if (clientId && podcastIds.length >= 0) {
+      // Get all cached podcast IDs for this dashboard
       const { data: allCached } = await supabase
-        .from('prospect_podcast_analyses')
-        .select('podcast_id, podcasts!inner(podscan_id)')
-        .eq('prospect_dashboard_id', prospectDashboardId)
+        .from('client_dashboard_podcasts')
+        .select('podcast_id')
+        .eq('client_id', clientId)
 
       if (allCached && allCached.length > 0) {
         const sheetPodcastIds = new Set(podcastIds)
-        const staleEntries = allCached
-          .filter((entry: any) => !sheetPodcastIds.has(entry.podcasts.podscan_id))
+        const staleIds = allCached
+          .map(p => p.podcast_id)
+          .filter(id => !sheetPodcastIds.has(id))
 
-        if (staleEntries.length > 0) {
-          console.log('[Get Prospect Podcasts] Removing', staleEntries.length, 'stale podcast analyses')
+        if (staleIds.length > 0) {
+          console.log('[Get Client Podcasts] Removing', staleIds.length, 'stale podcasts from cache')
 
-          const staleAnalysisIds = staleEntries.map((entry: any) => entry.podcast_id)
-
-          // Delete stale analyses
+          // Delete stale podcasts from cache
           const { error: deleteError } = await supabase
-            .from('prospect_podcast_analyses')
+            .from('client_dashboard_podcasts')
             .delete()
-            .eq('prospect_dashboard_id', prospectDashboardId)
-            .in('podcast_id', staleAnalysisIds)
+            .eq('client_id', clientId)
+            .in('podcast_id', staleIds)
 
           if (deleteError) {
-            console.error('[Get Prospect Podcasts] Error deleting stale analyses:', deleteError)
+            console.error('[Get Client Podcasts] Error deleting stale cache:', deleteError)
           } else {
-            console.log('[Get Prospect Podcasts] Deleted stale analysis entries')
+            console.log('[Get Client Podcasts] Deleted stale cache entries')
           }
 
           // Also delete stale feedback
           const { error: feedbackDeleteError } = await supabase
-            .from('prospect_podcast_feedback')
+            .from('client_podcast_feedback')
             .delete()
-            .eq('prospect_dashboard_id', prospectDashboardId)
-            .in('podcast_id', staleAnalysisIds)
+            .eq('client_id', clientId)
+            .in('podcast_id', staleIds)
 
           if (feedbackDeleteError) {
-            console.error('[Get Prospect Podcasts] Error deleting stale feedback:', feedbackDeleteError)
+            console.error('[Get Client Podcasts] Error deleting stale feedback:', feedbackDeleteError)
           }
         }
       }
@@ -358,65 +356,27 @@ serve(async (req) => {
       )
     }
 
-    // Check CENTRAL podcasts cache (shared across all clients and prospects!)
-    console.log('[Get Prospect Podcasts] 🔍 Checking central podcasts cache for', podcastIds.length, 'podcasts')
-    const { cached: centralCached, missing: centralMissing } = await getCachedPodcasts(supabase, podcastIds, 7)
+    // Check cache for existing podcasts
+    let cachedPodcasts: CachedPodcast[] = []
+    const cachedPodcastIds = new Set<string>()
 
-    // Map central cache to CachedPodcast format for compatibility
-    let cachedPodcasts: CachedPodcast[] = centralCached.map((p: any) => ({
-      podcast_id: p.podscan_id,
-      podcast_name: p.podcast_name,
-      podcast_description: p.podcast_description,
-      podcast_image_url: p.podcast_image_url,
-      podcast_url: p.podcast_url,
-      publisher_name: p.publisher_name,
-      itunes_rating: p.itunes_rating,
-      episode_count: p.episode_count,
-      audience_size: p.audience_size,
-      podcast_categories: p.podcast_categories,
-      demographics: p.demographics,
-      ai_clean_description: null,  // Will load from prospect_podcast_analyses if needed
-      ai_fit_reasons: null,
-      ai_pitch_angles: null,
-    }))
-
-    const cachedPodcastIds = new Set<string>(centralCached.map((p: any) => p.podscan_id))
-    console.log('[Get Prospect Podcasts] ✅ Found', centralCached.length, 'cached podcasts in central table')
-    console.log('[Get Prospect Podcasts] 💰 Cache hits saved', centralCached.length * 2, 'Podscan API calls!')
-
-    // Load AI analyses from prospect_podcast_analyses table (prospect-specific)
-    if (prospectDashboardId && cachedPodcasts.length > 0) {
-      const { data: analyses } = await supabase
-        .from('prospect_podcast_analyses')
+    if (clientId) {
+      const { data: cached } = await supabase
+        .from('client_dashboard_podcasts')
         .select('*')
-        .eq('prospect_dashboard_id', prospectDashboardId)
-        .in('podcast_id', centralCached.map((p: any) => p.id))
+        .eq('client_id', clientId)
+        .in('podcast_id', podcastIds)
 
-      if (analyses && analyses.length > 0) {
-        console.log('[Get Prospect Podcasts] Loaded', analyses.length, 'AI analyses from prospect_podcast_analyses')
-        const analysisMap = new Map(analyses.map((a: any) => [a.podcast_id, a]))
-
-        cachedPodcasts = cachedPodcasts.map(p => {
-          const centralPodcast = centralCached.find((cp: any) => cp.podscan_id === p.podcast_id)
-          const analysis = centralPodcast ? analysisMap.get(centralPodcast.id) : null
-
-          if (analysis) {
-            return {
-              ...p,
-              ai_clean_description: analysis.ai_clean_description,
-              ai_fit_reasons: analysis.ai_fit_reasons,
-              ai_pitch_angles: analysis.ai_pitch_angles,
-              ai_analyzed_at: analysis.ai_analyzed_at,
-            }
-          }
-          return p
-        })
+      if (cached && cached.length > 0) {
+        cachedPodcasts = cached
+        cached.forEach((p: CachedPodcast) => cachedPodcastIds.add(p.podcast_id))
+        console.log('[Get Client Podcasts] Found', cached.length, 'cached podcasts')
       }
     }
 
-    // Find podcasts that need to be fetched from Podscan
-    const missingPodcastIds = centralMissing
-    console.log('[Get Prospect Podcasts] 🔄 Need to fetch', missingPodcastIds.length, 'new podcasts from Podscan')
+    // Find podcasts that need to be fetched
+    const missingPodcastIds = podcastIds.filter(id => !cachedPodcastIds.has(id))
+    console.log('[Get Client Podcasts] Need to fetch', missingPodcastIds.length, 'new podcasts')
 
     // Stats tracking
     const stats = {
@@ -429,7 +389,7 @@ serve(async (req) => {
 
     // Check Status Only mode - just report stats, don't fetch anything
     if (checkStatusOnly) {
-      console.log('[Get Prospect Podcasts] Check Status Only mode')
+      console.log('[Get Client Podcasts] Check Status Only mode')
       return new Response(
         JSON.stringify({
           success: true,
@@ -454,7 +414,7 @@ serve(async (req) => {
         .map(id => cachedPodcasts.find(p => p.podcast_id === id))
         .filter((p): p is CachedPodcast => p !== undefined)
 
-      console.log('[Get Prospect Podcasts] Cache only - returning', orderedPodcasts.length, 'of', podcastIds.length, 'podcasts')
+      console.log('[Get Client Podcasts] Cache only - returning', orderedPodcasts.length, 'of', podcastIds.length, 'podcasts')
       return new Response(
         JSON.stringify({
           success: true,
@@ -476,11 +436,11 @@ serve(async (req) => {
     // AI Analysis Only mode - run AI on cached podcasts that don't have it
     if (aiAnalysisOnly) {
       // Validate required fields for AI analysis
-      if (!prospectName || !prospectBio || prospectBio.trim() === '') {
+      if (!clientName || !clientBio || clientBio.trim() === '') {
         return new Response(
           JSON.stringify({
             success: false,
-            error: 'Prospect name and bio are required for AI analysis. Please add a bio to the prospect profile.',
+            error: 'Client name and bio are required for AI analysis. Please add a bio to the client profile.',
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
@@ -492,7 +452,7 @@ serve(async (req) => {
 
       // Find cached podcasts without AI analysis (check ai_analyzed_at to prevent re-analyzing)
       const podcastsNeedingAi = cachedPodcasts.filter(p => !p.ai_analyzed_at)
-      console.log('[Get Prospect Podcasts] AI Analysis Only - need to analyze', podcastsNeedingAi.length, 'podcasts')
+      console.log('[Get Client Podcasts] AI Analysis Only - need to analyze', podcastsNeedingAi.length, 'podcasts')
 
       if (podcastsNeedingAi.length === 0) {
         return new Response(
@@ -513,7 +473,7 @@ serve(async (req) => {
 
       for (let i = 0; i < podcastsNeedingAi.length; i += BATCH_SIZE * CONCURRENT_BATCHES) {
         if (Date.now() - startTime > MAX_RUNTIME_MS) {
-          console.log('[Get Prospect Podcasts] AI Analysis stopping early, analyzed', analyzedCount, 'of', podcastsNeedingAi.length)
+          console.log('[Get Client Podcasts] AI Analysis stopping early, analyzed', analyzedCount, 'of', podcastsNeedingAi.length)
           stoppedEarly = true
           break
         }
@@ -530,7 +490,7 @@ serve(async (req) => {
           const batchPromise = Promise.all(
             batch.map(async (podcast) => {
               try {
-                console.log('[Get Prospect Podcasts] Running AI analysis for:', podcast.podcast_name)
+                console.log('[Get Client Podcasts] Running AI analysis for:', podcast.podcast_name)
                 const analysis = await analyzePodcastFit(
                   {
                     name: podcast.podcast_name,
@@ -541,26 +501,12 @@ serve(async (req) => {
                     episodes: podcast.episode_count,
                     audience: podcast.audience_size,
                   },
-                  prospectName,
-                  prospectBio
+                  clientName,
+                  clientBio
                 )
 
-                // Get central podcast ID
-                const { data: centralPodcast } = await supabase
-                  .from('podcasts')
-                  .select('id')
-                  .eq('podscan_id', podcast.podcast_id)
-                  .single()
-
-                if (!centralPodcast) {
-                  console.error('[Get Prospect Podcasts] Central podcast not found for:', podcast.podcast_id)
-                  return
-                }
-
-                // Save AI analysis to prospect_podcast_analyses table
+                // Always mark as analyzed to prevent infinite loops, even if analysis failed/returned empty
                 const updateData: any = {
-                  prospect_dashboard_id: prospectDashboardId,
-                  podcast_id: centralPodcast.id,
                   ai_analyzed_at: new Date().toISOString(),
                 }
 
@@ -571,36 +517,30 @@ serve(async (req) => {
                 }
 
                 const { error: updateError } = await supabase
-                  .from('prospect_podcast_analyses')
-                  .upsert(updateData, { onConflict: 'prospect_dashboard_id,podcast_id' })
+                  .from('client_dashboard_podcasts')
+                  .update(updateData)
+                  .eq('client_id', clientId)
+                  .eq('podcast_id', podcast.podcast_id)
 
                 if (!updateError) {
                   analyzedCount++
                   if (analysis) {
                     stats.aiAnalysesGenerated++
                   }
-                  console.log('[Get Prospect Podcasts] ✅ AI analysis saved to prospect_podcast_analyses:', podcast.podcast_name)
+                  console.log('[Get Client Podcasts] AI analysis saved for:', podcast.podcast_name)
                 } else {
-                  console.error('[Get Prospect Podcasts] Failed to save AI analysis:', podcast.podcast_name, updateError)
+                  console.error('[Get Client Podcasts] Failed to update podcast:', podcast.podcast_name, updateError)
                 }
               } catch (error) {
-                console.error('[Get Prospect Podcasts] Error analyzing podcast:', podcast.podcast_name, error)
+                console.error('[Get Client Podcasts] Error analyzing podcast:', podcast.podcast_name, error)
                 // Mark as analyzed even on error to prevent infinite retries
-                const { data: centralPodcast } = await supabase
-                  .from('podcasts')
-                  .select('id')
-                  .eq('podscan_id', podcast.podcast_id)
-                  .single()
-
-                if (centralPodcast) {
-                  await supabase
-                    .from('prospect_podcast_analyses')
-                    .upsert({
-                      prospect_dashboard_id: prospectDashboardId,
-                      podcast_id: centralPodcast.id,
-                      ai_analyzed_at: new Date().toISOString(),
-                    }, { onConflict: 'prospect_dashboard_id,podcast_id' })
-                }
+                await supabase
+                  .from('client_dashboard_podcasts')
+                  .update({
+                    ai_analyzed_at: new Date().toISOString(),
+                  })
+                  .eq('client_id', clientId)
+                  .eq('podcast_id', podcast.podcast_id)
                 analyzedCount++
               }
             })
@@ -612,7 +552,7 @@ serve(async (req) => {
         // Wait for all concurrent batches to complete
         await Promise.all(batchPromises)
 
-        console.log('[Get Prospect Podcasts] Completed concurrent batch processing, analyzed', analyzedCount, 'so far')
+        console.log('[Get Client Podcasts] Completed concurrent batch processing, analyzed', analyzedCount, 'so far')
       }
 
       const remaining = podcastsNeedingAi.length - analyzedCount
@@ -647,7 +587,7 @@ serve(async (req) => {
       for (let i = 0; i < missingPodcastIds.length; i += BATCH_SIZE * CONCURRENT_BATCHES) {
         // Check if we're approaching timeout
         if (Date.now() - startTime > MAX_RUNTIME_MS) {
-          console.log('[Get Prospect Podcasts] Stopping early to avoid timeout, processed', newPodcasts.length, 'of', missingPodcastIds.length)
+          console.log('[Get Client Podcasts] Stopping early to avoid timeout, processed', newPodcasts.length, 'of', missingPodcastIds.length)
           stoppedEarly = true
           break
         }
@@ -665,14 +605,14 @@ serve(async (req) => {
             batch.map(async (podcastId): Promise<CachedPodcast | null> => {
             try {
               // 1. Fetch from Podscan
-              console.log('[Get Prospect Podcasts] Fetching from Podscan:', podcastId)
+              console.log('[Get Client Podcasts] Fetching from Podscan:', podcastId)
               const podscanRes = await fetch(
                 `https://podscan.fm/api/v1/podcasts/${podcastId}`,
                 { headers: { 'Authorization': `Bearer ${podscanApiKey}` } }
               )
 
               if (!podscanRes.ok) {
-                console.error('[Get Prospect Podcasts] Podscan error for', podcastId)
+                console.error('[Get Client Podcasts] Podscan error for', podcastId)
                 return null
               }
 
@@ -699,7 +639,7 @@ serve(async (req) => {
 
               // 2. Fetch demographics from Podscan
               try {
-                console.log('[Get Prospect Podcasts] Fetching demographics for:', podcastData.podcast_name)
+                console.log('[Get Client Podcasts] Fetching demographics for:', podcastData.podcast_name)
                 const demoRes = await fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
                   { headers: { 'Authorization': `Bearer ${podscanApiKey}` } }
@@ -709,16 +649,16 @@ serve(async (req) => {
                   if (demoData && demoData.episodes_analyzed) {
                     podcastData.demographics = demoData
                     stats.demographicsFetched++
-                    console.log('[Get Prospect Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
+                    console.log('[Get Client Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
                   }
                 }
               } catch (demoErr) {
-                console.log('[Get Prospect Podcasts] No demographics available')
+                console.log('[Get Client Podcasts] No demographics available')
               }
 
               // 3. Get AI analysis if we have prospect info (and not skipping)
-              if (prospectName && prospectBio && !skipAiAnalysis) {
-                console.log('[Get Prospect Podcasts] Getting AI analysis for:', podcastData.podcast_name)
+              if (clientName && clientBio && !skipAiAnalysis) {
+                console.log('[Get Client Podcasts] Getting AI analysis for:', podcastData.podcast_name)
                 const analysis = await analyzePodcastFit(
                   {
                     name: podcastData.podcast_name,
@@ -729,8 +669,8 @@ serve(async (req) => {
                     episodes: podcastData.episode_count,
                     audience: podcastData.audience_size,
                   },
-                  prospectName,
-                  prospectBio
+                  clientName,
+                  clientBio
                 )
 
                 if (analysis) {
@@ -741,53 +681,39 @@ serve(async (req) => {
                 }
               }
 
-              // 4. Save to CENTRAL podcasts cache (universal, shared across all clients and prospects!)
-              const cacheData: PodcastCacheData = {
-                podscan_id: podcastId,
-                podcast_name: podcastData.podcast_name,
-                podcast_description: podcastData.podcast_description,
-                podcast_image_url: podcastData.podcast_image_url,
-                podcast_url: podcastData.podcast_url,
-                publisher_name: podcastData.publisher_name,
-                itunes_rating: podcastData.itunes_rating ? parseFloat(podcastData.itunes_rating as any) : undefined,
-                episode_count: podcastData.episode_count,
-                audience_size: podcastData.audience_size,
-                podcast_categories: podcastData.podcast_categories,
-                demographics: podcastData.demographics,
-                demographics_episodes_analyzed: podcastData.demographics?.episodes_analyzed,
-              }
-
-              const { success: cacheSuccess, podcast_id: centralPodcastId } = await upsertPodcastCache(supabase, cacheData)
-
-              if (!cacheSuccess) {
-                console.error('[Get Prospect Podcasts] Failed to save to central cache:', podcastId)
-              } else {
-                console.log('[Get Prospect Podcasts] ✅ Saved to central cache:', podcastData.podcast_name)
-              }
-
-              // 5. Save AI analysis to prospect_podcast_analyses table (prospect-specific)
-              if (prospectDashboardId && centralPodcastId && (podcastData.ai_clean_description || podcastData.ai_fit_reasons || podcastData.ai_pitch_angles)) {
-                const { error: analysisError } = await supabase
-                  .from('prospect_podcast_analyses')
+              // 4. Save to cache
+              if (clientId) {
+                const { error: insertError } = await supabase
+                  .from('client_dashboard_podcasts')
                   .upsert({
-                    prospect_dashboard_id: prospectDashboardId,
-                    podcast_id: centralPodcastId,
+                    client_id: clientId,
+                    podcast_id: podcastId,
+                    podcast_name: podcastData.podcast_name,
+                    podcast_description: podcastData.podcast_description,
+                    podcast_image_url: podcastData.podcast_image_url,
+                    podcast_url: podcastData.podcast_url,
+                    publisher_name: podcastData.publisher_name,
+                    itunes_rating: podcastData.itunes_rating,
+                    episode_count: podcastData.episode_count,
+                    audience_size: podcastData.audience_size,
+                    podcast_categories: podcastData.podcast_categories,
                     ai_clean_description: podcastData.ai_clean_description,
                     ai_fit_reasons: podcastData.ai_fit_reasons,
                     ai_pitch_angles: podcastData.ai_pitch_angles,
-                    ai_analyzed_at: new Date().toISOString(),
-                  }, { onConflict: 'prospect_dashboard_id,podcast_id' })
+                    ai_analyzed_at: podcastData.ai_clean_description ? new Date().toISOString() : null,
+                    demographics: podcastData.demographics,
+                  }, { onConflict: 'client_id,podcast_id' })
 
-                if (analysisError) {
-                  console.error('[Get Prospect Podcasts] Failed to save AI analysis:', analysisError)
+                if (insertError) {
+                  console.error('[Get Client Podcasts] Cache insert error:', insertError)
                 } else {
-                  console.log('[Get Prospect Podcasts] ✅ Saved AI analysis for prospect')
+                  console.log('[Get Client Podcasts] Cached:', podcastData.podcast_name)
                 }
               }
 
               return podcastData
             } catch (error) {
-              console.error('[Get Prospect Podcasts] Error processing:', podcastId, error)
+              console.error('[Get Client Podcasts] Error processing:', podcastId, error)
               return null
             }
           })
@@ -802,7 +728,7 @@ serve(async (req) => {
           newPodcasts.push(...batchResults.filter((p): p is CachedPodcast => p !== null))
         }
 
-        console.log('[Get Prospect Podcasts] Processed batch, total so far:', newPodcasts.length)
+        console.log('[Get Client Podcasts] Processed batch, total so far:', newPodcasts.length)
       }
     }
 
@@ -816,8 +742,8 @@ serve(async (req) => {
       .filter((p): p is CachedPodcast => p !== undefined)
 
     const remaining = missingPodcastIds.length - newPodcasts.length
-    console.log('[Get Prospect Podcasts] Returning', orderedPodcasts.length, 'podcasts (' + cachedPodcasts.length + ' cached, ' + newPodcasts.length + ' new)', stoppedEarly ? `- stopped early, ${remaining} remaining` : '')
-    console.log('[Get Prospect Podcasts] Stats:', stats)
+    console.log('[Get Client Podcasts] Returning', orderedPodcasts.length, 'podcasts (' + cachedPodcasts.length + ' cached, ' + newPodcasts.length + ' new)', stoppedEarly ? `- stopped early, ${remaining} remaining` : '')
+    console.log('[Get Client Podcasts] Stats:', stats)
 
     return new Response(
       JSON.stringify({
@@ -841,7 +767,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('[Get Prospect Podcasts] Error:', error)
+    console.error('[Get Client Podcasts] Error:', error)
     return new Response(
       JSON.stringify({
         success: false,
