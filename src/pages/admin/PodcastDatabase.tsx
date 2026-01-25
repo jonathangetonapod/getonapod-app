@@ -50,6 +50,9 @@ import {
   Target,
   CheckCircle2,
   XCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { getClients } from '@/services/clients'
 import {
@@ -451,6 +454,29 @@ export default function PodcastDatabase() {
     })
   }
 
+  // Handle column header sorting
+  const handleSort = (column: SortOption) => {
+    if (sortBy === column) {
+      // Toggle sort order if same column
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Set new column with ascending order
+      setSortBy(column)
+      setSortOrder('asc')
+    }
+    setPage(1) // Reset to first page
+  }
+
+  // Render sort indicator
+  const SortIndicator = ({ column }: { column: SortOption }) => {
+    if (sortBy !== column) {
+      return <ArrowUpDown className="h-3 w-3 ml-1 opacity-30" />
+    }
+    return sortOrder === 'asc'
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />
+  }
+
   // Handle select all matching filters
   const handleSelectAllMatching = async () => {
     if (totalCount > 500) {
@@ -736,10 +762,25 @@ export default function PodcastDatabase() {
   }
 
   // Handle CSV export
-  const handleCSVExport = async () => {
+  const handleCSVExport = async (selectedOnly: boolean = false) => {
     try {
-      await exportPodcastsToCSV(displayPodcasts)
-      toast.success(`✅ Exported ${displayPodcasts.length} podcasts to CSV`)
+      let podcastsToExport: PodcastDatabaseItem[]
+
+      if (selectedOnly) {
+        // Export only selected podcasts
+        podcastsToExport = podcasts.filter(p => selectedPodcasts.has(p.id))
+      } else {
+        // Export all visible (filtered) podcasts
+        podcastsToExport = displayPodcasts
+      }
+
+      if (podcastsToExport.length === 0) {
+        toast.error('No podcasts to export')
+        return
+      }
+
+      await exportPodcastsToCSV(podcastsToExport)
+      toast.success(`✅ Exported ${podcastsToExport.length} podcasts to CSV`)
     } catch (error) {
       toast.error('Failed to export CSV')
     }
@@ -1029,14 +1070,24 @@ export default function PodcastDatabase() {
                     Select All {totalCount.toLocaleString()}
                   </Button>
                 )}
-                <Button
-                  onClick={handleCSVExport}
-                  variant="outline"
-                  size="sm"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  CSV
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      CSV
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleCSVExport(false)}>
+                      Export All Visible ({displayPodcasts.length})
+                    </DropdownMenuItem>
+                    {isMatchMode && selectedPodcasts.size > 0 && (
+                      <DropdownMenuItem onClick={() => handleCSVExport(true)}>
+                        Export Selected ({selectedPodcasts.size})
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </CardHeader>
@@ -1521,11 +1572,43 @@ export default function PodcastDatabase() {
                           />
                         </TableHead>
                       )}
-                      <TableHead>Podcast</TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none hover:bg-muted/50"
+                        onClick={() => handleSort('name')}
+                      >
+                        <div className="flex items-center">
+                          Podcast
+                          <SortIndicator column="name" />
+                        </div>
+                      </TableHead>
                       <TableHead>Host</TableHead>
-                      <TableHead>Audience</TableHead>
-                      <TableHead>Rating</TableHead>
-                      <TableHead>Episodes</TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none hover:bg-muted/50"
+                        onClick={() => handleSort('audience')}
+                      >
+                        <div className="flex items-center">
+                          Audience
+                          <SortIndicator column="audience" />
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none hover:bg-muted/50"
+                        onClick={() => handleSort('rating')}
+                      >
+                        <div className="flex items-center">
+                          Rating
+                          <SortIndicator column="rating" />
+                        </div>
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer select-none hover:bg-muted/50"
+                        onClick={() => handleSort('episodes')}
+                      >
+                        <div className="flex items-center">
+                          Episodes
+                          <SortIndicator column="episodes" />
+                        </div>
+                      </TableHead>
                       {isMatchMode && <TableHead>Compatibility</TableHead>}
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
