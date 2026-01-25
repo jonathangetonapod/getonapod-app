@@ -151,7 +151,12 @@ export async function getPodcastStatistics() {
     .select('*')
     .single()
 
-  return { data, error }
+  if (error) {
+    console.error('Failed to fetch podcast statistics:', error)
+    return null
+  }
+
+  return data
 }
 
 /**
