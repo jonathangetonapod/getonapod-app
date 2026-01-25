@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -227,57 +228,102 @@ serve(async (req) => {
       )
     }
 
-    // Fetch podcast details from Podscan API
+    // Check central podcasts cache first
+    console.log('[Get Outreach Podcasts] Checking cache for', podcastIds.length, 'podcasts')
+    const { cached, missing, stale } = await getCachedPodcasts(supabase, podcastIds, 7)
+
+    console.log(`[Get Outreach Podcasts] Cache results - Cached: ${cached.length}, Missing: ${missing.length}, Stale: ${stale.length}`)
+
+    // Fetch podcast details from Podscan API for missing and stale podcasts
     const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
     if (!podscanApiKey) {
       throw new Error('PODSCAN_API_KEY not configured')
     }
 
-    const podcasts = []
+    const podcastsToFetch = [...missing, ...stale]
+    const fetchedPodcasts = []
 
-    // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
-    const batchSize = 5
-    for (let i = 0; i < podcastIds.length; i += batchSize) {
-      const batch = podcastIds.slice(i, i + batchSize)
-      const batchPromises = batch.map(async (podcastId: string) => {
-        try {
-          const response = await fetch(
-            `https://api.podscan.fm/podcasts/${podcastId}`,
-            {
-              headers: {
-                'X-API-KEY': podscanApiKey,
-              },
+    if (podcastsToFetch.length > 0) {
+      console.log('[Get Outreach Podcasts] Fetching', podcastsToFetch.length, 'podcasts from Podscan API')
+
+      // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
+      const batchSize = 5
+      for (let i = 0; i < podcastsToFetch.length; i += batchSize) {
+        const batch = podcastsToFetch.slice(i, i + batchSize)
+        const batchPromises = batch.map(async (podcastId: string) => {
+          try {
+            const response = await fetch(
+              `https://api.podscan.fm/podcasts/${podcastId}`,
+              {
+                headers: {
+                  'X-API-KEY': podscanApiKey,
+                },
+              }
+            )
+
+            if (!response.ok) {
+              console.warn('[Get Outreach Podcasts] Failed to fetch podcast:', podcastId)
+              return null
             }
-          )
 
-          if (!response.ok) {
-            console.warn('[Get Outreach Podcasts] Failed to fetch podcast:', podcastId)
+            const podcast = await response.json()
+
+            // Prepare data for cache
+            const podcastCacheData: PodcastCacheData = {
+              podscan_id: podcastId,
+              podcast_name: podcast.name || 'Unknown Podcast',
+              podcast_description: podcast.description || null,
+              podcast_image_url: podcast.image_url || null,
+              podcast_url: podcast.website || podcast.listen_url || null,
+              publisher_name: podcast.publisher || null,
+              itunes_rating: podcast.itunes_rating || null,
+              episode_count: podcast.episode_count || null,
+              audience_size: podcast.audience_size || null,
+            }
+
+            // Save to cache
+            await upsertPodcastCache(supabase, podcastCacheData)
+
+            return {
+              podcast_id: podcastId,
+              podcast_name: podcast.name || 'Unknown Podcast',
+              podcast_description: podcast.description || null,
+              podcast_image_url: podcast.image_url || null,
+              podcast_url: podcast.website || podcast.listen_url || null,
+              publisher_name: podcast.publisher || null,
+              itunes_rating: podcast.itunes_rating || null,
+              episode_count: podcast.episode_count || null,
+              audience_size: podcast.audience_size || null,
+            }
+          } catch (error) {
+            console.error('[Get Outreach Podcasts] Error fetching podcast:', podcastId, error)
             return null
           }
+        })
 
-          const podcast = await response.json()
-          return {
-            podcast_id: podcastId,
-            podcast_name: podcast.name || 'Unknown Podcast',
-            podcast_description: podcast.description || null,
-            podcast_image_url: podcast.image_url || null,
-            podcast_url: podcast.website || podcast.listen_url || null,
-            publisher_name: podcast.publisher || null,
-            itunes_rating: podcast.itunes_rating || null,
-            episode_count: podcast.episode_count || null,
-            audience_size: podcast.audience_size || null,
-          }
-        } catch (error) {
-          console.error('[Get Outreach Podcasts] Error fetching podcast:', podcastId, error)
-          return null
-        }
-      })
-
-      const batchResults = await Promise.all(batchPromises)
-      podcasts.push(...batchResults.filter(p => p !== null))
+        const batchResults = await Promise.all(batchPromises)
+        fetchedPodcasts.push(...batchResults.filter(p => p !== null))
+      }
     }
 
-    console.log('[Get Outreach Podcasts] Successfully fetched', podcasts.length, 'podcasts')
+    // Convert cached podcasts to the response format
+    const cachedPodcastsFormatted = cached.map(p => ({
+      podcast_id: p.podscan_id,
+      podcast_name: p.podcast_name,
+      podcast_description: p.podcast_description || null,
+      podcast_image_url: p.podcast_image_url || null,
+      podcast_url: p.podcast_url || null,
+      publisher_name: p.publisher_name || null,
+      itunes_rating: p.itunes_rating || null,
+      episode_count: p.episode_count || null,
+      audience_size: p.audience_size || null,
+    }))
+
+    // Combine cached and newly fetched podcasts
+    const podcasts = [...cachedPodcastsFormatted, ...fetchedPodcasts]
+
+    console.log('[Get Outreach Podcasts] Successfully retrieved', podcasts.length, 'podcasts (',
+      cachedPodcastsFormatted.length, 'from cache,', fetchedPodcasts.length, 'from API)')
 
     return new Response(
       JSON.stringify({
