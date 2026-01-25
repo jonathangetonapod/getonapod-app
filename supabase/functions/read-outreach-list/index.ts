@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { getCachedPodcasts, batchUpsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -225,57 +226,108 @@ serve(async (req) => {
       )
     }
 
-    // Fetch podcast details from Podscan API
-    const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
-    if (!podscanApiKey) {
-      throw new Error('PODSCAN_API_KEY not configured')
-    }
+    // Check central podcasts cache first (7 days freshness)
+    console.log('[READ-OUTREACH-LIST] Checking central podcasts cache...')
+    const { cached, missing } = await getCachedPodcasts(supabase, podcastIds, 7)
 
-    const podcasts = []
+    console.log(`[READ-OUTREACH-LIST] Cache results - Cached: ${cached.length}, Missing: ${missing.length}`)
 
-    // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
-    const batchSize = 5
-    for (let i = 0; i < podcastIds.length; i += batchSize) {
-      const batch = podcastIds.slice(i, i + batchSize)
-      const batchPromises = batch.map(async (podcastId: string) => {
-        try {
-          const response = await fetch(
-            `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${podscanApiKey}`,
-              },
+    // Convert cached podcasts to response format
+    const cachedPodcasts = cached.map(p => ({
+      podcast_id: p.podscan_id,
+      podcast_name: p.podcast_name,
+      podcast_description: p.podcast_description || null,
+      podcast_image_url: p.podcast_image_url || null,
+      podcast_url: p.podcast_url || null,
+      publisher_name: p.publisher_name || null,
+      itunes_rating: p.itunes_rating || null,
+      episode_count: p.episode_count || null,
+      audience_size: p.audience_size || null,
+    }))
+
+    // Fetch missing podcasts from Podscan API
+    const newlyFetchedPodcasts = []
+
+    if (missing.length > 0) {
+      console.log('[READ-OUTREACH-LIST] Fetching', missing.length, 'missing podcasts from Podscan API...')
+
+      const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
+      if (!podscanApiKey) {
+        throw new Error('PODSCAN_API_KEY not configured')
+      }
+
+      // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
+      const batchSize = 5
+      const podcastsToCache: PodcastCacheData[] = []
+
+      for (let i = 0; i < missing.length; i += batchSize) {
+        const batch = missing.slice(i, i + batchSize)
+        const batchPromises = batch.map(async (podcastId: string) => {
+          try {
+            const response = await fetch(
+              `https://podscan.fm/api/v1/podcasts/${podcastId}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${podscanApiKey}`,
+                },
+              }
+            )
+
+            if (!response.ok) {
+              console.warn('[READ-OUTREACH-LIST] Failed to fetch podcast:', podcastId)
+              return null
             }
-          )
 
-          if (!response.ok) {
-            console.warn('[READ-OUTREACH-LIST] Failed to fetch podcast:', podcastId)
+            const podcast = await response.json()
+
+            // Prepare data for cache
+            const cacheData: PodcastCacheData = {
+              podscan_id: podcastId,
+              podcast_name: podcast.name || 'Unknown Podcast',
+              podcast_description: podcast.description || null,
+              podcast_image_url: podcast.image_url || null,
+              podcast_url: podcast.website || podcast.listen_url || null,
+              publisher_name: podcast.publisher || null,
+              itunes_rating: podcast.itunes_rating || null,
+              episode_count: podcast.episode_count || null,
+              audience_size: podcast.audience_size || null,
+            }
+
+            podcastsToCache.push(cacheData)
+
+            return {
+              podcast_id: podcastId,
+              podcast_name: podcast.name || 'Unknown Podcast',
+              podcast_description: podcast.description || null,
+              podcast_image_url: podcast.image_url || null,
+              podcast_url: podcast.website || podcast.listen_url || null,
+              publisher_name: podcast.publisher || null,
+              itunes_rating: podcast.itunes_rating || null,
+              episode_count: podcast.episode_count || null,
+              audience_size: podcast.audience_size || null,
+            }
+          } catch (error) {
+            console.error('[READ-OUTREACH-LIST] Error fetching podcast:', podcastId, error)
             return null
           }
+        })
 
-          const podcast = await response.json()
-          return {
-            podcast_id: podcastId,
-            podcast_name: podcast.name || 'Unknown Podcast',
-            podcast_description: podcast.description || null,
-            podcast_image_url: podcast.image_url || null,
-            podcast_url: podcast.website || podcast.listen_url || null,
-            publisher_name: podcast.publisher || null,
-            itunes_rating: podcast.itunes_rating || null,
-            episode_count: podcast.episode_count || null,
-            audience_size: podcast.audience_size || null,
-          }
-        } catch (error) {
-          console.error('[READ-OUTREACH-LIST] Error fetching podcast:', podcastId, error)
-          return null
-        }
-      })
+        const batchResults = await Promise.all(batchPromises)
+        newlyFetchedPodcasts.push(...batchResults.filter(p => p !== null))
+      }
 
-      const batchResults = await Promise.all(batchPromises)
-      podcasts.push(...batchResults.filter(p => p !== null))
+      // Save newly fetched podcasts to central cache
+      if (podcastsToCache.length > 0) {
+        console.log('[READ-OUTREACH-LIST] Saving', podcastsToCache.length, 'podcasts to cache...')
+        await batchUpsertPodcastCache(supabase, podcastsToCache)
+      }
     }
 
-    console.log('[READ-OUTREACH-LIST] Successfully fetched', podcasts.length, 'podcasts')
+    // Combine cached + newly fetched podcasts
+    const podcasts = [...cachedPodcasts, ...newlyFetchedPodcasts]
+
+    console.log('[READ-OUTREACH-LIST] Total podcasts returned:', podcasts.length,
+                `(${cachedPodcasts.length} from cache, ${newlyFetchedPodcasts.length} newly fetched)`)
 
     return new Response(
       JSON.stringify({
