@@ -78,6 +78,29 @@ interface ExistingProspect {
   slug: string
 }
 
+interface FilterPreset {
+  id: string
+  name: string
+  filters: {
+    searchQuery: string
+    categoryFilter: string
+    minAudience: string
+    maxAudience: string
+    minRating: string
+    maxRating: string
+    hasEmailFilter: boolean
+    languageFilter: string
+    regionFilter: string
+    minEpisodes: string
+    maxEpisodes: string
+    hasGuestsFilter: boolean
+    hasSponsorsFilter: boolean
+    isActiveFilter: boolean
+  }
+}
+
+const PRESETS_STORAGE_KEY = 'podcast-database-filter-presets'
+
 export default function PodcastDatabase() {
   // URL Parameters for filter persistence
   const [searchParams, setSearchParams] = useSearchParams()
@@ -130,6 +153,77 @@ export default function PodcastDatabase() {
 
   // Export State
   const [isExporting, setIsExporting] = useState(false)
+
+  // Saved Filter Presets State
+  const [savedPresets, setSavedPresets] = useState<FilterPreset[]>(() => {
+    const stored = localStorage.getItem(PRESETS_STORAGE_KEY)
+    return stored ? JSON.parse(stored) : []
+  })
+  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false)
+  const [presetName, setPresetName] = useState('')
+
+  // Save presets to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(savedPresets))
+  }, [savedPresets])
+
+  // Preset management functions
+  const saveCurrentFiltersAsPreset = () => {
+    if (!presetName.trim()) {
+      toast.error('Please enter a preset name')
+      return
+    }
+
+    const newPreset: FilterPreset = {
+      id: Date.now().toString(),
+      name: presetName.trim(),
+      filters: {
+        searchQuery,
+        categoryFilter,
+        minAudience,
+        maxAudience,
+        minRating,
+        maxRating,
+        hasEmailFilter,
+        languageFilter,
+        regionFilter,
+        minEpisodes,
+        maxEpisodes,
+        hasGuestsFilter,
+        hasSponsorsFilter,
+        isActiveFilter,
+      }
+    }
+
+    setSavedPresets(prev => [...prev, newPreset])
+    setPresetName('')
+    setShowSavePresetDialog(false)
+    toast.success(`Filter preset "${newPreset.name}" saved!`)
+  }
+
+  const loadPreset = (preset: FilterPreset) => {
+    setSearchQuery(preset.filters.searchQuery)
+    setCategoryFilter(preset.filters.categoryFilter)
+    setMinAudience(preset.filters.minAudience)
+    setMaxAudience(preset.filters.maxAudience)
+    setMinRating(preset.filters.minRating)
+    setMaxRating(preset.filters.maxRating)
+    setHasEmailFilter(preset.filters.hasEmailFilter)
+    setLanguageFilter(preset.filters.languageFilter)
+    setRegionFilter(preset.filters.regionFilter)
+    setMinEpisodes(preset.filters.minEpisodes)
+    setMaxEpisodes(preset.filters.maxEpisodes)
+    setHasGuestsFilter(preset.filters.hasGuestsFilter)
+    setHasSponsorsFilter(preset.filters.hasSponsorsFilter)
+    setIsActiveFilter(preset.filters.isActiveFilter)
+    setPage(1)
+    toast.success(`Loaded preset "${preset.name}"`)
+  }
+
+  const deletePreset = (presetId: string) => {
+    setSavedPresets(prev => prev.filter(p => p.id !== presetId))
+    toast.success('Preset deleted')
+  }
 
   // Fetch clients
   const { data: clientsData } = useQuery({
@@ -814,8 +908,17 @@ export default function PodcastDatabase() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Search & Filter</CardTitle>
-                <CardDescription>
-                  {totalCount.toLocaleString()} podcasts • Page {page} of {totalPages}
+                <CardDescription className="flex items-center gap-2">
+                  <span className="font-semibold text-primary">
+                    {totalCount.toLocaleString()} podcasts
+                  </span>
+                  {(searchQuery || categoryFilter !== 'all' || minAudience || maxAudience || minRating || maxRating || hasEmailFilter || languageFilter !== 'all' || regionFilter !== 'all' || minEpisodes || maxEpisodes || hasGuestsFilter || hasSponsorsFilter || isActiveFilter) && (
+                    <span className="text-xs text-muted-foreground">
+                      match your filters
+                    </span>
+                  )}
+                  <span className="text-muted-foreground">•</span>
+                  <span>Page {page} of {totalPages}</span>
                 </CardDescription>
               </div>
               <div className="flex gap-2">
@@ -1013,6 +1116,91 @@ export default function PodcastDatabase() {
                 </Button>
               </div>
             )}
+
+            {/* Saved Filter Presets */}
+            <div className="flex gap-2 items-center p-3 bg-muted/30 rounded-md">
+              <span className="text-sm font-medium whitespace-nowrap">Quick Filters:</span>
+              {savedPresets.length > 0 ? (
+                <>
+                  <Select onValueChange={(presetId) => {
+                    const preset = savedPresets.find(p => p.id === presetId)
+                    if (preset) loadPreset(preset)
+                  }}>
+                    <SelectTrigger className="w-[250px]">
+                      <SelectValue placeholder="Load saved filter preset..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {savedPresets.map(preset => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          {preset.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {savedPresets.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          Manage Presets
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {savedPresets.map(preset => (
+                          <DropdownMenuItem
+                            key={preset.id}
+                            className="flex justify-between items-center"
+                            onClick={() => deletePreset(preset.id)}
+                          >
+                            <span>{preset.name}</span>
+                            <XCircle className="h-4 w-4 ml-2 text-destructive" />
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </>
+              ) : (
+                <span className="text-sm text-muted-foreground">No saved presets yet</span>
+              )}
+
+              {!showSavePresetDialog ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSavePresetDialog(true)}
+                  className="ml-auto"
+                >
+                  Save Current Filters
+                </Button>
+              ) : (
+                <div className="flex gap-2 ml-auto">
+                  <Input
+                    placeholder="Preset name..."
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveCurrentFiltersAsPreset()
+                      if (e.key === 'Escape') setShowSavePresetDialog(false)
+                    }}
+                    className="w-[200px]"
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={saveCurrentFiltersAsPreset}>
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowSavePresetDialog(false)
+                      setPresetName('')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-2">
               <div className="relative flex-1">
