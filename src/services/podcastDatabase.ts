@@ -2,7 +2,8 @@ import { supabase } from '@/lib/supabase'
 
 export interface PodcastFilters {
   search?: string
-  category?: string
+  category?: string  // Deprecated: use categories instead
+  categories?: string[]  // Multi-select category filter (OR logic)
   minAudience?: number
   maxAudience?: number
   minRating?: number
@@ -76,8 +77,15 @@ export async function getPodcasts({
     query = query.or(`podcast_name.ilike.%${filters.search}%,host_name.ilike.%${filters.search}%,publisher_name.ilike.%${filters.search}%,podcast_description.ilike.%${filters.search}%`)
   }
 
-  if (filters.category) {
-    // Search in JSONB categories array
+  // Category filtering (supports both single and multi-select)
+  if (filters.categories && filters.categories.length > 0) {
+    // Multi-select: OR logic - match podcasts that have ANY of the selected categories
+    const orConditions = filters.categories.map(cat =>
+      `podcast_categories.cs.${JSON.stringify([{ category_name: cat }])}`
+    ).join(',')
+    query = query.or(orConditions)
+  } else if (filters.category) {
+    // Backward compatibility: single category filter
     query = query.contains('podcast_categories', [{ category_name: filters.category }])
   }
 

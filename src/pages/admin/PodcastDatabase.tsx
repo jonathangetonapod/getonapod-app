@@ -22,6 +22,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
 import {
   Select,
@@ -95,7 +98,7 @@ interface FilterPreset {
   name: string
   filters: {
     searchQuery: string
-    categoryFilter: string
+    categoryFilter: string | string[]  // Support both old and new format
     minAudience: string
     maxAudience: string
     minRating: string
@@ -147,7 +150,10 @@ export default function PodcastDatabase() {
   // Search & Filter State (initialized from URL params)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchParams.get('search') || '')
-  const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || 'all')
+  const [categoryFilter, setCategoryFilter] = useState<string[]>(() => {
+    const categories = searchParams.get('categories')
+    return categories ? categories.split(',') : []
+  })
   const [sortBy, setSortBy] = useState<SortOption>((searchParams.get('sortBy') as SortOption) || 'name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc')
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
@@ -239,7 +245,14 @@ export default function PodcastDatabase() {
 
   const loadPreset = (preset: FilterPreset) => {
     setSearchQuery(preset.filters.searchQuery)
-    setCategoryFilter(preset.filters.categoryFilter)
+    // Handle both old (string) and new (array) format for categoryFilter
+    if (Array.isArray(preset.filters.categoryFilter)) {
+      setCategoryFilter(preset.filters.categoryFilter)
+    } else if (preset.filters.categoryFilter && preset.filters.categoryFilter !== 'all') {
+      setCategoryFilter([preset.filters.categoryFilter])
+    } else {
+      setCategoryFilter([])
+    }
     setMinAudience(preset.filters.minAudience)
     setMaxAudience(preset.filters.maxAudience)
     setMinRating(preset.filters.minRating)
@@ -303,7 +316,7 @@ export default function PodcastDatabase() {
 
     // Only add non-default values to keep URL clean
     if (searchQuery) params.set('search', searchQuery)
-    if (categoryFilter !== 'all') params.set('category', categoryFilter)
+    if (categoryFilter.length > 0) params.set('categories', categoryFilter.join(','))
     if (sortBy !== 'name') params.set('sortBy', sortBy)
     if (sortOrder !== 'asc') params.set('sortOrder', sortOrder)
     if (page !== 1) params.set('page', page.toString())
@@ -336,8 +349,8 @@ export default function PodcastDatabase() {
       f.search = debouncedSearchQuery.trim()
     }
 
-    if (categoryFilter && categoryFilter !== 'all') {
-      f.category = categoryFilter
+    if (categoryFilter.length > 0) {
+      f.categories = categoryFilter
     }
 
     if (minAudience && !isNaN(Number(minAudience))) {
@@ -1062,7 +1075,7 @@ export default function PodcastDatabase() {
                   <span className="font-semibold text-primary">
                     {totalCount.toLocaleString()} podcasts
                   </span>
-                  {(searchQuery || categoryFilter !== 'all' || minAudience || maxAudience || minRating || maxRating || hasEmailFilter || languageFilter !== 'all' || regionFilter !== 'all' || minEpisodes || maxEpisodes || hasGuestsFilter || hasSponsorsFilter || isActiveFilter) && (
+                  {(searchQuery || categoryFilter.length > 0 || minAudience || maxAudience || minRating || maxRating || hasEmailFilter || languageFilter !== 'all' || regionFilter !== 'all' || minEpisodes || maxEpisodes || hasGuestsFilter || hasSponsorsFilter || isActiveFilter) && (
                     <span className="text-xs text-muted-foreground">
                       match your filters
                     </span>
@@ -1186,7 +1199,7 @@ export default function PodcastDatabase() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Active Filters Pills */}
-            {(searchQuery || categoryFilter !== 'all' || minAudience || maxAudience || minRating || maxRating || hasEmailFilter || languageFilter !== 'all' || regionFilter !== 'all' || minEpisodes || maxEpisodes || hasGuestsFilter || hasSponsorsFilter || isActiveFilter) && (
+            {(searchQuery || categoryFilter.length > 0 || minAudience || maxAudience || minRating || maxRating || hasEmailFilter || languageFilter !== 'all' || regionFilter !== 'all' || minEpisodes || maxEpisodes || hasGuestsFilter || hasSponsorsFilter || isActiveFilter) && (
               <div className="flex items-center gap-2 flex-wrap p-3 bg-muted/50 rounded-md">
                 <span className="text-sm font-medium text-muted-foreground">Active Filters:</span>
                 {searchQuery && (
@@ -1197,14 +1210,14 @@ export default function PodcastDatabase() {
                     </button>
                   </Badge>
                 )}
-                {categoryFilter !== 'all' && (
-                  <Badge variant="secondary" className="gap-1">
-                    Category: {categoryFilter}
-                    <button onClick={() => setCategoryFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                {categoryFilter.length > 0 && categoryFilter.map(cat => (
+                  <Badge key={cat} variant="secondary" className="gap-1">
+                    Category: {cat}
+                    <button onClick={() => setCategoryFilter(prev => prev.filter(c => c !== cat))} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
-                )}
+                ))}
                 {minAudience && (
                   <Badge variant="secondary" className="gap-1">
                     Min Audience: {Number(minAudience).toLocaleString()}
@@ -1306,7 +1319,7 @@ export default function PodcastDatabase() {
                   size="sm"
                   onClick={() => {
                     setSearchQuery('')
-                    setCategoryFilter('all')
+                    setCategoryFilter([])
                     setMinAudience('')
                     setMaxAudience('')
                     setMinRating('')
@@ -1426,23 +1439,50 @@ export default function PodcastDatabase() {
                   className="pl-10"
                 />
               </div>
-              <Select
-                value={categoryFilter}
-                onValueChange={(v) => {
-                  setCategoryFilter(v)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-[200px] justify-between">
+                    {categoryFilter.length === 0
+                      ? 'All Categories'
+                      : categoryFilter.length === 1
+                      ? categoryFilter[0]
+                      : `${categoryFilter.length} categories`
+                    }
+                    <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[200px]">
+                  <DropdownMenuLabel>Select Categories</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {categoryFilter.length > 0 && (
+                    <>
+                      <DropdownMenuItem onClick={() => {
+                        setCategoryFilter([])
+                        setPage(1)
+                      }}>
+                        Clear Selection
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   {categories.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    <DropdownMenuCheckboxItem
+                      key={cat}
+                      checked={categoryFilter.includes(cat)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setCategoryFilter(prev => [...prev, cat])
+                        } else {
+                          setCategoryFilter(prev => prev.filter(c => c !== cat))
+                        }
+                        setPage(1)
+                      }}
+                    >
+                      {cat}
+                    </DropdownMenuCheckboxItem>
                   ))}
-                </SelectContent>
-              </Select>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
                 <SelectTrigger className="w-[150px]">
                   <SelectValue />
