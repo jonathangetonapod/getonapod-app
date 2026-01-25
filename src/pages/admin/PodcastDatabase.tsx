@@ -71,6 +71,7 @@ import { toast } from 'sonner'
 type ViewMode = 'table' | 'grid'
 type Mode = 'browse' | 'client' | 'prospect'
 type SortOption = 'name' | 'host' | 'audience' | 'rating' | 'episodes' | 'dateAdded'
+type TableDensity = 'compact' | 'comfortable' | 'spacious'
 
 interface ExistingProspect {
   id: string
@@ -111,6 +112,15 @@ export default function PodcastDatabase() {
   // View & Mode State
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [mode, setMode] = useState<Mode>('browse')
+  const [tableDensity, setTableDensity] = useState<TableDensity>(() => {
+    const stored = localStorage.getItem('podcast-database-density')
+    return (stored as TableDensity) || 'comfortable'
+  })
+
+  // Save table density to localStorage
+  useEffect(() => {
+    localStorage.setItem('podcast-database-density', tableDensity)
+  }, [tableDensity])
 
   // Search & Filter State (initialized from URL params)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
@@ -475,6 +485,18 @@ export default function PodcastDatabase() {
     return sortOrder === 'asc'
       ? <ArrowUp className="h-3 w-3 ml-1" />
       : <ArrowDown className="h-3 w-3 ml-1" />
+  }
+
+  // Get density class for table cells
+  const getDensityClass = () => {
+    switch (tableDensity) {
+      case 'compact':
+        return 'py-2'
+      case 'spacious':
+        return 'py-4'
+      default: // comfortable
+        return 'py-3'
+    }
   }
 
   // Handle select all matching filters
@@ -1088,6 +1110,25 @@ export default function PodcastDatabase() {
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <LayoutList className="h-4 w-4 mr-2" />
+                      Density
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setTableDensity('compact')}>
+                      {tableDensity === 'compact' && '✓ '}Compact
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTableDensity('comfortable')}>
+                      {tableDensity === 'comfortable' && '✓ '}Comfortable
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTableDensity('spacious')}>
+                      {tableDensity === 'spacious' && '✓ '}Spacious
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </CardHeader>
@@ -1623,7 +1664,7 @@ export default function PodcastDatabase() {
                         : []
 
                       return (
-                        <TableRow key={podcast.id}>
+                        <TableRow key={podcast.id} className={getDensityClass()}>
                           {isMatchMode && (
                             <TableCell>
                               <Checkbox
