@@ -124,27 +124,50 @@ export default function PodcastDatabase() {
   const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [mode, setMode] = useState<Mode>('browse')
   const [tableDensity, setTableDensity] = useState<TableDensity>(() => {
-    const stored = localStorage.getItem('podcast-database-density')
-    return (stored as TableDensity) || 'comfortable'
+    try {
+      const stored = localStorage.getItem('podcast-database-density')
+      return (stored as TableDensity) || 'comfortable'
+    } catch (error) {
+      console.error('Failed to load table density:', error)
+      return 'comfortable'
+    }
   })
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
-    const stored = localStorage.getItem('podcast-database-columns')
-    return stored ? JSON.parse(stored) : {
-      host: true,
-      audience: true,
-      rating: true,
-      episodes: true,
+    try {
+      const stored = localStorage.getItem('podcast-database-columns')
+      return stored ? JSON.parse(stored) : {
+        host: true,
+        audience: true,
+        rating: true,
+        episodes: true,
+      }
+    } catch (error) {
+      console.error('Failed to load column visibility:', error)
+      return {
+        host: true,
+        audience: true,
+        rating: true,
+        episodes: true,
+      }
     }
   })
 
   // Save table density to localStorage
   useEffect(() => {
-    localStorage.setItem('podcast-database-density', tableDensity)
+    try {
+      localStorage.setItem('podcast-database-density', tableDensity)
+    } catch (error) {
+      console.error('Failed to save table density:', error)
+    }
   }, [tableDensity])
 
   // Save column visibility to localStorage
   useEffect(() => {
-    localStorage.setItem('podcast-database-columns', JSON.stringify(columnVisibility))
+    try {
+      localStorage.setItem('podcast-database-columns', JSON.stringify(columnVisibility))
+    } catch (error) {
+      console.error('Failed to save column visibility:', error)
+    }
   }, [columnVisibility])
 
   // Search & Filter State (initialized from URL params)
@@ -156,7 +179,10 @@ export default function PodcastDatabase() {
   })
   const [sortBy, setSortBy] = useState<SortOption>((searchParams.get('sortBy') as SortOption) || 'name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc')
-  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
+  const [page, setPage] = useState(() => {
+    const pageParam = parseInt(searchParams.get('page') || '1')
+    return isNaN(pageParam) || pageParam < 1 ? 1 : pageParam
+  })
 
   // Basic Filters
   const [minAudience, setMinAudience] = useState(searchParams.get('minAudience') || '')
@@ -198,15 +224,25 @@ export default function PodcastDatabase() {
 
   // Saved Filter Presets State
   const [savedPresets, setSavedPresets] = useState<FilterPreset[]>(() => {
-    const stored = localStorage.getItem(PRESETS_STORAGE_KEY)
-    return stored ? JSON.parse(stored) : []
+    try {
+      const stored = localStorage.getItem(PRESETS_STORAGE_KEY)
+      return stored ? JSON.parse(stored) : []
+    } catch (error) {
+      console.error('Failed to load filter presets:', error)
+      return []
+    }
   })
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false)
   const [presetName, setPresetName] = useState('')
 
   // Save presets to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(savedPresets))
+    try {
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(savedPresets))
+    } catch (error) {
+      console.error('Failed to save filter presets:', error)
+      // Could show toast notification here if needed
+    }
   }, [savedPresets])
 
   // Preset management functions
