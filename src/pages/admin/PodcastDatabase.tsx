@@ -1556,7 +1556,7 @@ export default function PodcastDatabase() {
                     <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[200px]">
+                <DropdownMenuContent align="start" className="w-[200px] max-h-[400px] overflow-y-auto">
                   <DropdownMenuLabel>Select Categories</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {categoryFilter.length > 0 && (
@@ -1867,9 +1867,9 @@ export default function PodcastDatabase() {
                         : []
 
                       return (
-                        <TableRow key={podcast.id} className={getDensityClass()}>
+                        <TableRow key={podcast.id}>
                           {isMatchMode && (
-                            <TableCell>
+                            <TableCell className={getDensityClass()}>
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={(checked) => {
@@ -1886,7 +1886,7 @@ export default function PodcastDatabase() {
                               />
                             </TableCell>
                           )}
-                          <TableCell>
+                          <TableCell className={getDensityClass()}>
                             <div className="flex items-center gap-3">
                               <img
                                 src={podcast.podcast_image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(podcast.podcast_name)}&background=random&size=40`}
@@ -1904,19 +1904,19 @@ export default function PodcastDatabase() {
                             </div>
                           </TableCell>
                           {columnVisibility.host && (
-                            <TableCell>
+                            <TableCell className={getDensityClass()}>
                               {podcast.host_name || podcast.publisher_name || 'Unknown'}
                             </TableCell>
                           )}
                           {columnVisibility.audience && (
-                            <TableCell>
+                            <TableCell className={getDensityClass()}>
                               {podcast.audience_size
                                 ? `${(podcast.audience_size / 1000).toFixed(0)}K`
                                 : 'N/A'}
                             </TableCell>
                           )}
                           {columnVisibility.rating && (
-                            <TableCell>
+                            <TableCell className={getDensityClass()}>
                               {podcast.itunes_rating ? (
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
@@ -1926,12 +1926,12 @@ export default function PodcastDatabase() {
                             </TableCell>
                           )}
                           {columnVisibility.episodes && (
-                            <TableCell>
+                            <TableCell className={getDensityClass()}>
                               {podcast.episode_count || 'N/A'}
                             </TableCell>
                           )}
                           {isMatchMode && (
-                            <TableCell>
+                            <TableCell className={getDensityClass()}>
                               {score !== null && score !== undefined ? (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -1957,7 +1957,7 @@ export default function PodcastDatabase() {
                               )}
                             </TableCell>
                           )}
-                          <TableCell>
+                          <TableCell className={getDensityClass()}>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm">
