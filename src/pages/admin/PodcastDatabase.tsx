@@ -53,6 +53,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Columns3,
 } from 'lucide-react'
 import { getClients } from '@/services/clients'
 import {
@@ -72,6 +73,13 @@ type ViewMode = 'table' | 'grid'
 type Mode = 'browse' | 'client' | 'prospect'
 type SortOption = 'name' | 'host' | 'audience' | 'rating' | 'episodes' | 'dateAdded'
 type TableDensity = 'compact' | 'comfortable' | 'spacious'
+
+interface ColumnVisibility {
+  host: boolean
+  audience: boolean
+  rating: boolean
+  episodes: boolean
+}
 
 interface ExistingProspect {
   id: string
@@ -116,11 +124,25 @@ export default function PodcastDatabase() {
     const stored = localStorage.getItem('podcast-database-density')
     return (stored as TableDensity) || 'comfortable'
   })
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
+    const stored = localStorage.getItem('podcast-database-columns')
+    return stored ? JSON.parse(stored) : {
+      host: true,
+      audience: true,
+      rating: true,
+      episodes: true,
+    }
+  })
 
   // Save table density to localStorage
   useEffect(() => {
     localStorage.setItem('podcast-database-density', tableDensity)
   }, [tableDensity])
+
+  // Save column visibility to localStorage
+  useEffect(() => {
+    localStorage.setItem('podcast-database-columns', JSON.stringify(columnVisibility))
+  }, [columnVisibility])
 
   // Search & Filter State (initialized from URL params)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
@@ -497,6 +519,14 @@ export default function PodcastDatabase() {
       default: // comfortable
         return 'py-3'
     }
+  }
+
+  // Toggle column visibility
+  const toggleColumn = (column: keyof ColumnVisibility) => {
+    setColumnVisibility(prev => ({
+      ...prev,
+      [column]: !prev[column]
+    }))
   }
 
   // Handle select all matching filters
@@ -1129,6 +1159,28 @@ export default function PodcastDatabase() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Columns3 className="h-4 w-4 mr-2" />
+                      Columns
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => toggleColumn('host')}>
+                      {columnVisibility.host && '✓ '}Host
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleColumn('audience')}>
+                      {columnVisibility.audience && '✓ '}Audience
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleColumn('rating')}>
+                      {columnVisibility.rating && '✓ '}Rating
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleColumn('episodes')}>
+                      {columnVisibility.episodes && '✓ '}Episodes
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </CardHeader>
@@ -1622,34 +1674,40 @@ export default function PodcastDatabase() {
                           <SortIndicator column="name" />
                         </div>
                       </TableHead>
-                      <TableHead>Host</TableHead>
-                      <TableHead
-                        className="cursor-pointer select-none hover:bg-muted/50"
-                        onClick={() => handleSort('audience')}
-                      >
-                        <div className="flex items-center">
-                          Audience
-                          <SortIndicator column="audience" />
-                        </div>
-                      </TableHead>
-                      <TableHead
-                        className="cursor-pointer select-none hover:bg-muted/50"
-                        onClick={() => handleSort('rating')}
-                      >
-                        <div className="flex items-center">
-                          Rating
-                          <SortIndicator column="rating" />
-                        </div>
-                      </TableHead>
-                      <TableHead
-                        className="cursor-pointer select-none hover:bg-muted/50"
-                        onClick={() => handleSort('episodes')}
-                      >
-                        <div className="flex items-center">
-                          Episodes
-                          <SortIndicator column="episodes" />
-                        </div>
-                      </TableHead>
+                      {columnVisibility.host && <TableHead>Host</TableHead>}
+                      {columnVisibility.audience && (
+                        <TableHead
+                          className="cursor-pointer select-none hover:bg-muted/50"
+                          onClick={() => handleSort('audience')}
+                        >
+                          <div className="flex items-center">
+                            Audience
+                            <SortIndicator column="audience" />
+                          </div>
+                        </TableHead>
+                      )}
+                      {columnVisibility.rating && (
+                        <TableHead
+                          className="cursor-pointer select-none hover:bg-muted/50"
+                          onClick={() => handleSort('rating')}
+                        >
+                          <div className="flex items-center">
+                            Rating
+                            <SortIndicator column="rating" />
+                          </div>
+                        </TableHead>
+                      )}
+                      {columnVisibility.episodes && (
+                        <TableHead
+                          className="cursor-pointer select-none hover:bg-muted/50"
+                          onClick={() => handleSort('episodes')}
+                        >
+                          <div className="flex items-center">
+                            Episodes
+                            <SortIndicator column="episodes" />
+                          </div>
+                        </TableHead>
+                      )}
                       {isMatchMode && <TableHead>Compatibility</TableHead>}
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
@@ -1700,25 +1758,33 @@ export default function PodcastDatabase() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            {podcast.host_name || podcast.publisher_name || 'Unknown'}
-                          </TableCell>
-                          <TableCell>
-                            {podcast.audience_size
-                              ? `${(podcast.audience_size / 1000).toFixed(0)}K`
-                              : 'N/A'}
-                          </TableCell>
-                          <TableCell>
-                            {podcast.itunes_rating ? (
-                              <div className="flex items-center gap-1">
-                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                {podcast.itunes_rating.toFixed(1)}
-                              </div>
-                            ) : 'N/A'}
-                          </TableCell>
-                          <TableCell>
-                            {podcast.episode_count || 'N/A'}
-                          </TableCell>
+                          {columnVisibility.host && (
+                            <TableCell>
+                              {podcast.host_name || podcast.publisher_name || 'Unknown'}
+                            </TableCell>
+                          )}
+                          {columnVisibility.audience && (
+                            <TableCell>
+                              {podcast.audience_size
+                                ? `${(podcast.audience_size / 1000).toFixed(0)}K`
+                                : 'N/A'}
+                            </TableCell>
+                          )}
+                          {columnVisibility.rating && (
+                            <TableCell>
+                              {podcast.itunes_rating ? (
+                                <div className="flex items-center gap-1">
+                                  <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                  {podcast.itunes_rating.toFixed(1)}
+                                </div>
+                              ) : 'N/A'}
+                            </TableCell>
+                          )}
+                          {columnVisibility.episodes && (
+                            <TableCell>
+                              {podcast.episode_count || 'N/A'}
+                            </TableCell>
+                          )}
                           {isMatchMode && (
                             <TableCell>
                               {score !== null && score !== undefined ? (
