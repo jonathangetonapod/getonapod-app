@@ -1111,17 +1111,25 @@ export default function PodcastFinder() {
           query.results.forEach(podcast => {
             if (selectedPodcasts.has(podcast.podcast_id)) {
               podcastsToExport.push({
+                // Core podcast data
+                podcast_id: podcast.podcast_id,
+                podscan_podcast_id: podcast.podcast_id,
                 podcast_name: podcast.podcast_name,
                 podcast_description: podcast.podcast_description,
-                itunes_rating: podcast.itunes_rating,
-                episode_count: podcast.episode_count,
-                podscan_podcast_id: podcast.podcast_id,
-                // Legacy fields kept for backward compatibility:
-                publisher_name: podcast.publisher_name,
-                audience_size: podcast.reach?.audience_size,
+                podcast_image_url: podcast.podcast_image_url,
                 podcast_url: podcast.podcast_url,
-                podcast_email: podcast.podcast_email,
+                publisher_name: podcast.publisher_name,
+                // Metrics
+                episode_count: podcast.episode_count,
+                itunes_rating: podcast.reach?.itunes?.itunes_rating_average ? parseFloat(podcast.reach.itunes.itunes_rating_average) : undefined,
+                audience_size: podcast.reach?.audience_size,
+                // Additional metadata
+                language: podcast.language,
+                region: podcast.region,
+                podcast_email: podcast.reach?.email,
                 rss_feed: podcast.rss_url,
+                podcast_categories: podcast.podcast_categories,
+                // Compatibility scoring
                 compatibility_score: query.compatibilityScores[podcast.podcast_id],
                 compatibility_reasoning: query.scoreReasonings[podcast.podcast_id],
               })
@@ -1133,16 +1141,25 @@ export default function PodcastFinder() {
         chartResults.forEach(podcast => {
           if (selectedPodcasts.has(podcast.podcast_id)) {
             podcastsToExport.push({
+              // Core podcast data
+              podcast_id: podcast.podcast_id,
+              podscan_podcast_id: podcast.podcast_id,
               podcast_name: podcast.podcast_name,
               podcast_description: podcast.podcast_description,
-              itunes_rating: podcast.reach?.itunes?.itunes_rating_average,
-              episode_count: podcast.episode_count,
-              podscan_podcast_id: podcast.podcast_id,
-              publisher_name: podcast.publisher_name,
-              audience_size: podcast.reach?.audience_size,
+              podcast_image_url: podcast.podcast_image_url,
               podcast_url: podcast.podcast_url,
-              podcast_email: podcast.podcast_email,
+              publisher_name: podcast.publisher_name,
+              // Metrics
+              episode_count: podcast.episode_count,
+              itunes_rating: podcast.reach?.itunes?.itunes_rating_average ? parseFloat(podcast.reach.itunes.itunes_rating_average) : undefined,
+              audience_size: podcast.reach?.audience_size,
+              // Additional metadata
+              language: podcast.language,
+              region: podcast.region,
+              podcast_email: podcast.reach?.email,
               rss_feed: podcast.rss_url,
+              podcast_categories: podcast.podcast_categories,
+              // Compatibility scoring
               compatibility_score: chartScores[podcast.podcast_id],
               compatibility_reasoning: chartReasonings[podcast.podcast_id],
             })

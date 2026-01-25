@@ -7,6 +7,8 @@ const corsHeaders = {
 }
 
 interface PodcastExportData {
+  podcast_id?: string  // Podscan ID
+  podscan_podcast_id?: string  // Alias
   podcast_name: string
   publisher_name?: string | null
   podcast_description?: string | null
@@ -18,6 +20,10 @@ interface PodcastExportData {
   rss_feed?: string | null
   compatibility_score?: number | null
   compatibility_reasoning?: string | null
+  podcast_image_url?: string | null
+  podcast_categories?: Array<{ category_id: string; category_name: string }> | null
+  language?: string | null
+  region?: string | null
 }
 
 serve(async (req) => {
@@ -243,11 +249,85 @@ serve(async (req) => {
 
     const result = await appendResponse.json()
 
+    // ============================================
+    // CACHE OPTIMIZATION: Save podcasts to central database
+    // ============================================
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('💾 [CACHE SAVE] Saving podcasts to central database...')
+    console.log(`   Client: ${client.name}`)
+    console.log(`   Podcasts to cache: ${podcasts.length}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    let savedCount = 0
+    let skippedCount = 0
+    let errorCount = 0
+
+    for (const podcast of podcasts) {
+      const podcastId = podcast.podscan_podcast_id || podcast.podcast_id
+
+      if (!podcastId) {
+        console.warn('⚠️  [SKIP] No podcast ID for:', podcast.podcast_name?.substring(0, 50))
+        skippedCount++
+        continue
+      }
+
+      try {
+        // Upsert podcast to central database
+        const { error: upsertError } = await supabase
+          .from('podcasts')
+          .upsert({
+            podscan_id: podcastId,
+            podcast_name: podcast.podcast_name,
+            podcast_description: podcast.podcast_description || null,
+            podcast_image_url: podcast.podcast_image_url || null,
+            podcast_url: podcast.podcast_url || null,
+            publisher_name: podcast.publisher_name || null,
+            episode_count: podcast.episode_count || null,
+            itunes_rating: podcast.itunes_rating || null,
+            audience_size: podcast.audience_size || null,
+            language: podcast.language || null,
+            region: podcast.region || null,
+            podcast_email: podcast.podcast_email || null,
+            rss_feed: podcast.rss_feed || null,
+            podcast_categories: podcast.podcast_categories || null,
+            // Mark as saved from podcast finder export
+            podscan_last_fetched_at: new Date().toISOString(),
+          }, {
+            onConflict: 'podscan_id',
+            ignoreDuplicates: false, // Update if exists
+          })
+
+        if (upsertError) {
+          console.error('❌ [ERROR] Failed to save podcast:', podcast.podcast_name?.substring(0, 50), upsertError.message)
+          errorCount++
+        } else {
+          console.log(`💾 [SAVED] ${podcast.podcast_name?.substring(0, 50)} → Central DB`)
+          savedCount++
+        }
+      } catch (error) {
+        console.error('❌ [ERROR] Exception saving podcast:', podcast.podcast_name?.substring(0, 50), error)
+        errorCount++
+      }
+    }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ [CACHE SAVE COMPLETE]')
+    console.log(`   💾 Saved to central DB: ${savedCount}`)
+    console.log(`   ⏩ Skipped (no ID): ${skippedCount}`)
+    console.log(`   ❌ Errors: ${errorCount}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🚀 [BENEFIT] These podcasts now available for ALL future fetches!')
+    console.log('   Next time you fetch from this sheet → 100% cache hit!')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     return new Response(
       JSON.stringify({
         success: true,
         rowsAdded: podcasts.length,
         updatedRange: result.updates.updatedRange,
+        cacheSaved: savedCount,
+        cacheSkipped: skippedCount,
+        cacheErrors: errorCount,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
