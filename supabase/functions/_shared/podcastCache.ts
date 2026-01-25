@@ -110,6 +110,9 @@ export async function getCachedPodcasts(
 /**
  * Upsert podcast data into central cache
  * Creates new entry or updates existing one
+ *
+ * Note: podscan_fetch_count is automatically incremented by database trigger
+ * when podscan_last_fetched_at is updated (see migration 20260125_auto_increment_fetch_count.sql)
  */
 export async function upsertPodcastCache(
   supabaseClient: any,
@@ -163,6 +166,9 @@ export async function upsertPodcastCache(
 /**
  * Batch upsert multiple podcasts
  * More efficient than individual upserts
+ *
+ * Note: podscan_fetch_count is automatically incremented by database trigger
+ * when podscan_last_fetched_at is updated (see migration 20260125_auto_increment_fetch_count.sql)
  */
 export async function batchUpsertPodcastCache(
   supabaseClient: any,
