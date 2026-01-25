@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -356,27 +357,64 @@ serve(async (req) => {
       )
     }
 
-    // Check cache for existing podcasts
-    let cachedPodcasts: CachedPodcast[] = []
-    const cachedPodcastIds = new Set<string>()
+    // Check CENTRAL podcasts cache (shared across all clients!)
+    console.log('[Get Client Podcasts] 🔍 Checking central podcasts cache for', podcastIds.length, 'podcasts')
+    const { cached: centralCached, missing: centralMissing } = await getCachedPodcasts(supabase, podcastIds, 7)
 
-    if (clientId) {
-      const { data: cached } = await supabase
-        .from('client_dashboard_podcasts')
+    // Map central cache to CachedPodcast format for compatibility
+    let cachedPodcasts: CachedPodcast[] = centralCached.map((p: any) => ({
+      podcast_id: p.podscan_id,
+      podcast_name: p.podcast_name,
+      podcast_description: p.podcast_description,
+      podcast_image_url: p.podcast_image_url,
+      podcast_url: p.podcast_url,
+      publisher_name: p.publisher_name,
+      itunes_rating: p.itunes_rating,
+      episode_count: p.episode_count,
+      audience_size: p.audience_size,
+      podcast_categories: p.podcast_categories,
+      demographics: p.demographics,
+      ai_clean_description: null,  // Will load from client_podcast_analyses if needed
+      ai_fit_reasons: null,
+      ai_pitch_angles: null,
+    }))
+
+    const cachedPodcastIds = new Set<string>(centralCached.map((p: any) => p.podscan_id))
+    console.log('[Get Client Podcasts] ✅ Found', centralCached.length, 'cached podcasts in central table')
+    console.log('[Get Client Podcasts] 💰 Cache hits saved', centralCached.length * 2, 'Podscan API calls!')
+
+    // Load AI analyses from client_podcast_analyses table (client-specific)
+    if (clientId && cachedPodcasts.length > 0) {
+      const { data: analyses } = await supabase
+        .from('client_podcast_analyses')
         .select('*')
         .eq('client_id', clientId)
-        .in('podcast_id', podcastIds)
+        .in('podcast_id', centralCached.map((p: any) => p.id))
 
-      if (cached && cached.length > 0) {
-        cachedPodcasts = cached
-        cached.forEach((p: CachedPodcast) => cachedPodcastIds.add(p.podcast_id))
-        console.log('[Get Client Podcasts] Found', cached.length, 'cached podcasts')
+      if (analyses && analyses.length > 0) {
+        console.log('[Get Client Podcasts] Loaded', analyses.length, 'AI analyses from client_podcast_analyses')
+        const analysisMap = new Map(analyses.map((a: any) => [a.podcast_id, a]))
+
+        cachedPodcasts = cachedPodcasts.map(p => {
+          const centralPodcast = centralCached.find((cp: any) => cp.podscan_id === p.podcast_id)
+          const analysis = centralPodcast ? analysisMap.get(centralPodcast.id) : null
+
+          if (analysis) {
+            return {
+              ...p,
+              ai_clean_description: analysis.ai_clean_description,
+              ai_fit_reasons: analysis.ai_fit_reasons,
+              ai_pitch_angles: analysis.ai_pitch_angles,
+            }
+          }
+          return p
+        })
       }
     }
 
-    // Find podcasts that need to be fetched
-    const missingPodcastIds = podcastIds.filter(id => !cachedPodcastIds.has(id))
-    console.log('[Get Client Podcasts] Need to fetch', missingPodcastIds.length, 'new podcasts')
+    // Find podcasts that need to be fetched from Podscan
+    const missingPodcastIds = centralMissing
+    console.log('[Get Client Podcasts] 🔄 Need to fetch', missingPodcastIds.length, 'new podcasts from Podscan')
 
     // Stats tracking
     const stats = {
@@ -505,8 +543,22 @@ serve(async (req) => {
                   clientBio
                 )
 
-                // Always mark as analyzed to prevent infinite loops, even if analysis failed/returned empty
+                // Get central podcast ID
+                const { data: centralPodcast } = await supabase
+                  .from('podcasts')
+                  .select('id')
+                  .eq('podscan_id', podcast.podcast_id)
+                  .single()
+
+                if (!centralPodcast) {
+                  console.error('[Get Client Podcasts] Central podcast not found for:', podcast.podcast_id)
+                  return
+                }
+
+                // Save AI analysis to client_podcast_analyses table
                 const updateData: any = {
+                  client_id: clientId,
+                  podcast_id: centralPodcast.id,
                   ai_analyzed_at: new Date().toISOString(),
                 }
 
@@ -517,30 +569,36 @@ serve(async (req) => {
                 }
 
                 const { error: updateError } = await supabase
-                  .from('client_dashboard_podcasts')
-                  .update(updateData)
-                  .eq('client_id', clientId)
-                  .eq('podcast_id', podcast.podcast_id)
+                  .from('client_podcast_analyses')
+                  .upsert(updateData, { onConflict: 'client_id,podcast_id' })
 
                 if (!updateError) {
                   analyzedCount++
                   if (analysis) {
                     stats.aiAnalysesGenerated++
                   }
-                  console.log('[Get Client Podcasts] AI analysis saved for:', podcast.podcast_name)
+                  console.log('[Get Client Podcasts] ✅ AI analysis saved to client_podcast_analyses:', podcast.podcast_name)
                 } else {
-                  console.error('[Get Client Podcasts] Failed to update podcast:', podcast.podcast_name, updateError)
+                  console.error('[Get Client Podcasts] Failed to save AI analysis:', podcast.podcast_name, updateError)
                 }
               } catch (error) {
                 console.error('[Get Client Podcasts] Error analyzing podcast:', podcast.podcast_name, error)
                 // Mark as analyzed even on error to prevent infinite retries
-                await supabase
-                  .from('client_dashboard_podcasts')
-                  .update({
-                    ai_analyzed_at: new Date().toISOString(),
-                  })
-                  .eq('client_id', clientId)
-                  .eq('podcast_id', podcast.podcast_id)
+                const { data: centralPodcast } = await supabase
+                  .from('podcasts')
+                  .select('id')
+                  .eq('podscan_id', podcast.podcast_id)
+                  .single()
+
+                if (centralPodcast) {
+                  await supabase
+                    .from('client_podcast_analyses')
+                    .upsert({
+                      client_id: clientId,
+                      podcast_id: centralPodcast.id,
+                      ai_analyzed_at: new Date().toISOString(),
+                    }, { onConflict: 'client_id,podcast_id' })
+                }
                 analyzedCount++
               }
             })
@@ -681,33 +739,47 @@ serve(async (req) => {
                 }
               }
 
-              // 4. Save to cache
-              if (clientId) {
-                const { error: insertError } = await supabase
-                  .from('client_dashboard_podcasts')
+              // 4. Save to CENTRAL podcasts cache (universal, shared across all clients!)
+              const cacheData: PodcastCacheData = {
+                podscan_id: podcastId,
+                podcast_name: podcastData.podcast_name,
+                podcast_description: podcastData.podcast_description,
+                podcast_image_url: podcastData.podcast_image_url,
+                podcast_url: podcastData.podcast_url,
+                publisher_name: podcastData.publisher_name,
+                itunes_rating: podcastData.itunes_rating ? parseFloat(podcastData.itunes_rating as any) : undefined,
+                episode_count: podcastData.episode_count,
+                audience_size: podcastData.audience_size,
+                podcast_categories: podcastData.podcast_categories,
+                demographics: podcastData.demographics,
+                demographics_episodes_analyzed: podcastData.demographics?.episodes_analyzed,
+              }
+
+              const { success: cacheSuccess, podcast_id: centralPodcastId } = await upsertPodcastCache(supabase, cacheData)
+
+              if (!cacheSuccess) {
+                console.error('[Get Client Podcasts] Failed to save to central cache:', podcastId)
+              } else {
+                console.log('[Get Client Podcasts] ✅ Saved to central cache:', podcastData.podcast_name)
+              }
+
+              // 5. Save AI analysis to client_podcast_analyses table (client-specific)
+              if (clientId && centralPodcastId && (podcastData.ai_clean_description || podcastData.ai_fit_reasons || podcastData.ai_pitch_angles)) {
+                const { error: analysisError } = await supabase
+                  .from('client_podcast_analyses')
                   .upsert({
                     client_id: clientId,
-                    podcast_id: podcastId,
-                    podcast_name: podcastData.podcast_name,
-                    podcast_description: podcastData.podcast_description,
-                    podcast_image_url: podcastData.podcast_image_url,
-                    podcast_url: podcastData.podcast_url,
-                    publisher_name: podcastData.publisher_name,
-                    itunes_rating: podcastData.itunes_rating,
-                    episode_count: podcastData.episode_count,
-                    audience_size: podcastData.audience_size,
-                    podcast_categories: podcastData.podcast_categories,
+                    podcast_id: centralPodcastId,
                     ai_clean_description: podcastData.ai_clean_description,
                     ai_fit_reasons: podcastData.ai_fit_reasons,
                     ai_pitch_angles: podcastData.ai_pitch_angles,
-                    ai_analyzed_at: podcastData.ai_clean_description ? new Date().toISOString() : null,
-                    demographics: podcastData.demographics,
+                    ai_analyzed_at: new Date().toISOString(),
                   }, { onConflict: 'client_id,podcast_id' })
 
-                if (insertError) {
-                  console.error('[Get Client Podcasts] Cache insert error:', insertError)
+                if (analysisError) {
+                  console.error('[Get Client Podcasts] Failed to save AI analysis:', analysisError)
                 } else {
-                  console.log('[Get Client Podcasts] Cached:', podcastData.podcast_name)
+                  console.log('[Get Client Podcasts] ✅ Saved AI analysis for client')
                 }
               }
 
