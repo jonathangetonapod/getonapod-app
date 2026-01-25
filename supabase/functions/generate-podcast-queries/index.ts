@@ -12,11 +12,25 @@ serve(async (req) => {
   }
 
   try {
-    const { clientName, clientBio, clientEmail, oldQuery } = await req.json()
+    const { clientName, clientBio, clientEmail, oldQuery, prospectName, prospectBio } = await req.json()
 
-    if (!clientBio || clientBio.trim().length === 0) {
+    // Support both client and prospect mode
+    const targetName = prospectName || clientName
+    const targetBio = prospectBio || clientBio
+    const isProspectMode = !!prospectName
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🎯 [PODCAST FINDER] Query Generation Request')
+    console.log(`   Mode: ${isProspectMode ? 'PROSPECT' : 'CLIENT'}`)
+    console.log(`   Name: ${targetName?.substring(0, 50)}`)
+    console.log(`   Bio length: ${targetBio?.length || 0} characters`)
+    console.log(`   ${oldQuery ? 'Regenerating' : 'Generating 5'} queries`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    if (!targetBio || targetBio.trim().length === 0) {
+      console.error('❌ [ERROR] Bio is required but was empty')
       return new Response(
-        JSON.stringify({ error: 'Client bio is required' }),
+        JSON.stringify({ error: `${isProspectMode ? 'Prospect' : 'Client'} bio is required` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -27,28 +41,33 @@ serve(async (req) => {
 
     // If oldQuery is provided, regenerate a single query
     if (oldQuery) {
+      console.log('🔄 [REGENERATE] Replacing poor-performing query')
+      console.log(`   Old query: ${oldQuery.substring(0, 100)}`)
+
       const prompt = `You are an expert podcast researcher using Podscan.fm.
 
 Your task: Generate a *new*, high-volume podcast search query (3–7 words) for Podscan.fm,
 designed to return as many relevant podcasts as possible.
 
 The query should be a phrase or combination of phrases likely to appear in the TITLE of a podcast.
-- Stay broad, but always relevant to the client's domain
+- Stay broad, but always relevant to the ${isProspectMode ? 'prospect' : 'client'}'s domain
 - Use single quotes 'like this' for exact phrases (e.g., 'leadership podcast')
 - Use * wildcards within quoted phrases (e.g., 'leadership * podcast')
 - Use Boolean operators (AND, OR, NOT) to combine multiple phrases
 - Do NOT use double quotes - use single quotes only
 - The new query must NOT be a duplicate of or too similar to: "${oldQuery}"
-- Do not use the client's name or brand
+- Do not use the ${isProspectMode ? 'prospect' : 'client'}'s name or brand
 
-Based on client data:
-- Name: ${clientName}
-- Bio: ${clientBio}
+Based on ${isProspectMode ? 'prospect' : 'client'} data:
+- Name: ${targetName}
+- Bio: ${targetBio}
 
 Return exactly one new query as JSON:
 {"query": "your query here"}
 
 CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanations. Just the raw JSON object.`
+
+      console.log('🤖 [AI] Calling Claude Opus 4.5 to generate new query...')
 
       const message = await anthropic.messages.create({
         model: 'claude-opus-4-5-20251101',
@@ -59,6 +78,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
 
       const content = message.content[0]
       if (content.type !== 'text') {
+        console.error('❌ [ERROR] Unexpected response type from Claude')
         throw new Error('Unexpected response type from Claude')
       }
 
@@ -68,17 +88,23 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
         jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
       }
 
-      console.log('Regenerate - Raw response:', content.text)
-      console.log('Regenerate - Cleaned JSON:', jsonText)
+      console.log('📝 [AI RESPONSE] Raw:', content.text.substring(0, 200))
+      console.log('🧹 [CLEANED] Parsed JSON:', jsonText.substring(0, 200))
 
       let parsed
       try {
         parsed = JSON.parse(jsonText)
       } catch (parseError) {
-        console.error('Regenerate - JSON parse error:', parseError)
-        console.error('Regenerate - Failed text:', jsonText)
+        console.error('❌ [JSON PARSE ERROR]', parseError)
+        console.error('   Failed text:', jsonText)
         throw new Error(`Failed to parse JSON: ${parseError.message}`)
       }
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('✅ [REGENERATE SUCCESS] New query generated!')
+      console.log(`   New query: ${parsed.query}`)
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
       return new Response(
         JSON.stringify({ query: parsed.query }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -86,15 +112,18 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
     }
 
     // Generate 5 queries
+    console.log('🤖 [AI] Generating 5 strategic podcast search queries...')
+    console.log(`   Using Claude Opus 4.5 with temperature 0.8`)
+
     const prompt = `You are an expert podcast researcher using Podscan.fm.
 Your goal: Generate 5 *broad, high-volume, but relevant* podcast search queries (each 3–7 words),
 designed to return the most possible relevant podcasts in Podscan.fm—using advanced search syntax.
 
 **Every query should be something likely to appear in the TITLE of a podcast, and should be
-relevant to the client's domain.**
+relevant to the ${isProspectMode ? 'prospect' : 'client'}'s domain.**
 
 STRATEGIC MIX (IMPORTANT):
-1. ONE precise query (client's exact niche + specific terms)
+1. ONE precise query (${isProspectMode ? 'prospect' : 'client'}'s exact niche + specific terms)
 2. TWO broad synonym queries (use OR to combine 3-5 related terms)
 3. ONE wildcard query (use * for variation: startup * podcast, business * stories)
 4. ONE adjacent category query (related but slightly different audience)
@@ -110,11 +139,11 @@ ADVANCED SEARCH SYNTAX RULES:
 - IMPORTANT: Use ONLY single quotes ('), never double quotes (")
 
 QUALITY GUIDELINES:
-- Do **not** use the client's name, brand, or job title in queries
+- Do **not** use the ${isProspectMode ? 'prospect' : 'client'}'s name, brand, or job title in queries
 - **Avoid** generic one-word queries like just "business", "success", "leadership"
 - If you must use broad terms, always pair them with a specific modifier (e.g., "business leadership", "organizational culture")
 - No duplicate queries or near-duplicates
-- Think laterally - if client is in SaaS, also search marketing/sales/tech podcasts
+- Think laterally - if ${isProspectMode ? 'prospect' : 'client'} is in SaaS, also search marketing/sales/tech podcasts
 - Queries should find 100-300 podcasts each (broad is good!)
 
 **Examples of excellent, high-coverage queries:**
@@ -124,9 +153,9 @@ QUALITY GUIDELINES:
 - 'sales * leaders' OR 'revenue growth'
 - 'women in tech' OR 'technology innovation'
 
-Based on the following client data:
-- Name: ${clientName}
-- Bio: ${clientBio}
+Based on the following ${isProspectMode ? 'prospect' : 'client'} data:
+- Name: ${targetName}
+- Bio: ${targetBio}
 ${clientEmail ? `- Email: ${clientEmail}` : ''}
 
 Return exactly 5 queries as a JSON object with this exact format:
@@ -169,8 +198,21 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       const parsed = JSON.parse(jsonText)
 
       if (!parsed.queries || !Array.isArray(parsed.queries) || parsed.queries.length !== 5) {
+        console.error('❌ [ERROR] Invalid response format: expected 5 queries')
         throw new Error('Invalid response format: expected 5 queries')
       }
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('✅ [SUCCESS] Generated 5 podcast search queries!')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('📋 [QUERIES]:')
+      parsed.queries.forEach((q: string, i: number) => {
+        console.log(`   ${i + 1}. ${q}`)
+      })
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🚀 [NEXT STEP] Frontend will use these to search Podscan API')
+      console.log('   Expected: 100-300 podcasts per query = 500-1500 total results')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
       return new Response(
         JSON.stringify({ queries: parsed.queries }),

@@ -22,19 +22,33 @@ serve(async (req) => {
   }
 
   try {
-    const { clientBio, podcasts } = await req.json() as {
-      clientBio: string
+    const { clientBio, prospectBio, podcasts } = await req.json() as {
+      clientBio?: string
+      prospectBio?: string
       podcasts: PodcastForScoring[]
     }
 
-    if (!clientBio || clientBio.trim().length === 0) {
+    // Support both client and prospect mode
+    const targetBio = prospectBio || clientBio
+    const isProspectMode = !!prospectBio
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🎯 [PODCAST FINDER] Compatibility Scoring Request')
+    console.log(`   Mode: ${isProspectMode ? 'PROSPECT' : 'CLIENT'}`)
+    console.log(`   Bio length: ${targetBio?.length || 0} characters`)
+    console.log(`   Podcasts to score: ${podcasts?.length || 0}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    if (!targetBio || targetBio.trim().length === 0) {
+      console.error('❌ [ERROR] Bio is required but was empty')
       return new Response(
-        JSON.stringify({ error: 'Client bio is required for compatibility scoring' }),
+        JSON.stringify({ error: `${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     if (!podcasts || !Array.isArray(podcasts) || podcasts.length === 0) {
+      console.error('❌ [ERROR] Podcasts array is empty or invalid')
       return new Response(
         JSON.stringify({ error: 'Podcasts array is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -45,9 +59,15 @@ serve(async (req) => {
       apiKey: Deno.env.get('ANTHROPIC_API_KEY') || '',
     })
 
+    console.log('🤖 [AI] Using Claude Haiku 4.5 for fast batch scoring...')
+    console.log(`   Processing ${podcasts.length} podcasts in parallel`)
+
+    let successCount = 0
+    let errorCount = 0
+
     // Score each podcast
     const scores = await Promise.all(
-      podcasts.map(async (podcast) => {
+      podcasts.map(async (podcast, index) => {
         try {
           const podcastInfo = `
 Podcast Name: ${podcast.podcast_name}
@@ -58,16 +78,16 @@ Audience Size: ${podcast.audience_size ? podcast.audience_size.toLocaleString() 
 Episodes: ${podcast.episode_count || 'Unknown'}
           `.trim()
 
-          const prompt = `You are a podcast booking expert. Rate the compatibility (1-10) between this client and podcast.
+          const prompt = `You are a podcast booking expert. Rate the compatibility (1-10) between this ${isProspectMode ? 'prospect' : 'client'} and podcast.
 
-Client Bio:
-${clientBio}
+${isProspectMode ? 'Prospect' : 'Client'} Bio:
+${targetBio}
 
 Podcast Information:
 ${podcastInfo}
 
 Scoring Guidelines:
-- 9-10: Perfect match - client's expertise directly aligns with podcast's focus and audience
+- 9-10: Perfect match - ${isProspectMode ? 'prospect' : 'client'}'s expertise directly aligns with podcast's focus and audience
 - 7-8: Strong match - related topics, good audience overlap
 - 5-6: Moderate match - some relevance but not ideal
 - 3-4: Weak match - tangentially related
@@ -101,30 +121,58 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
 
           try {
             const parsed = JSON.parse(jsonText)
+            successCount++
+            if (successCount % 10 === 0 || successCount === podcasts.length) {
+              console.log(`⏳ [PROGRESS] Scored ${successCount}/${podcasts.length} podcasts...`)
+            }
             return {
               podcast_id: podcast.podcast_id,
               score: parsed.score,
               reasoning: parsed.reasoning
             }
           } catch (parseError) {
-            console.warn(`Failed to parse JSON for ${podcast.podcast_name}:`, content.text)
+            console.warn(`⚠️  [PARSE WARNING] Failed to parse JSON for ${podcast.podcast_name.substring(0, 50)}`)
             // Fallback: try to extract just the score
             const match = content.text.match(/\b([1-9]|10)\b/)
             if (match) {
+              successCount++
               return {
                 podcast_id: podcast.podcast_id,
                 score: parseInt(match[1], 10),
                 reasoning: undefined
               }
             }
+            errorCount++
             return { podcast_id: podcast.podcast_id, score: null, reasoning: undefined }
           }
         } catch (error) {
-          console.error(`Error scoring ${podcast.podcast_name}:`, error)
+          console.error(`❌ [ERROR] Scoring ${podcast.podcast_name.substring(0, 50)}:`, error)
+          errorCount++
           return { podcast_id: podcast.podcast_id, score: null, reasoning: undefined }
         }
       })
     )
+
+    // Calculate statistics
+    const validScores = scores.filter(s => s.score !== null)
+    const highScores = validScores.filter(s => s.score && s.score >= 7)
+    const avgScore = validScores.length > 0
+      ? (validScores.reduce((sum, s) => sum + (s.score || 0), 0) / validScores.length).toFixed(1)
+      : 'N/A'
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ [SCORING COMPLETE] Batch processing finished!')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📊 [STATISTICS]:')
+    console.log(`   Total podcasts: ${podcasts.length}`)
+    console.log(`   ✅ Successfully scored: ${successCount}`)
+    console.log(`   ❌ Failed: ${errorCount}`)
+    console.log(`   🎯 High scores (7+): ${highScores.length}`)
+    console.log(`   📈 Average score: ${avgScore}/10`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🚀 [NEXT STEP] Frontend will filter and rank by score')
+    console.log(`   Recommended: Filter for scores >= 7 (${highScores.length} podcasts)`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return new Response(
       JSON.stringify({ scores }),

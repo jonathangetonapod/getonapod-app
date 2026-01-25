@@ -3,9 +3,11 @@ import { supabase } from '@/lib/supabase'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
 export interface GenerateQueriesInput {
-  clientName: string
-  clientBio: string
+  clientName?: string
+  clientBio?: string
   clientEmail?: string
+  prospectName?: string
+  prospectBio?: string
   additionalContext?: Record<string, any>
 }
 
@@ -14,16 +16,19 @@ export interface GenerateQueriesResponse {
 }
 
 /**
- * Generate 5 AI-powered podcast search queries for a client
+ * Generate 5 AI-powered podcast search queries for a client OR prospect
  * Uses strategic mix: 1 precise + 4 broad queries for volume + relevance
  */
 export async function generatePodcastQueries(
   input: GenerateQueriesInput
 ): Promise<string[]> {
-  const { clientName, clientBio, clientEmail } = input
+  const { clientName, clientBio, clientEmail, prospectName, prospectBio } = input
 
-  if (!clientBio || clientBio.trim().length === 0) {
-    throw new Error('Client bio is required for query generation')
+  // Support both client and prospect mode
+  const targetBio = prospectBio || clientBio
+
+  if (!targetBio || targetBio.trim().length === 0) {
+    throw new Error(`${prospectBio ? 'Prospect' : 'Client'} bio is required for query generation`)
   }
 
   try {
@@ -43,6 +48,8 @@ export async function generatePodcastQueries(
         clientName,
         clientBio,
         clientEmail,
+        prospectName,
+        prospectBio,
       }),
     })
 
@@ -71,10 +78,13 @@ export async function regenerateQuery(
   input: GenerateQueriesInput,
   oldQuery: string
 ): Promise<string> {
-  const { clientName, clientBio, clientEmail } = input
+  const { clientName, clientBio, clientEmail, prospectName, prospectBio } = input
 
-  if (!clientBio || clientBio.trim().length === 0) {
-    throw new Error('Client bio is required for query generation')
+  // Support both client and prospect mode
+  const targetBio = prospectBio || clientBio
+
+  if (!targetBio || targetBio.trim().length === 0) {
+    throw new Error(`${prospectBio ? 'Prospect' : 'Client'} bio is required for query generation`)
   }
 
   try {
@@ -94,6 +104,8 @@ export async function regenerateQuery(
         clientName,
         clientBio,
         clientEmail,
+        prospectName,
+        prospectBio,
         oldQuery, // Signal that we want to regenerate
       }),
     })

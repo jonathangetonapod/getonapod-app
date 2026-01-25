@@ -19,17 +19,18 @@ export interface CompatibilityScore {
 }
 
 /**
- * Score multiple podcasts in parallel batches
+ * Score multiple podcasts in parallel batches for client OR prospect
  * Processes in chunks to avoid rate limits and improve UX
  */
 export async function scoreCompatibilityBatch(
-  clientBio: string,
+  bio: string,
   podcasts: PodcastForScoring[],
   batchSize: number = 10,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  isProspectMode: boolean = false
 ): Promise<CompatibilityScore[]> {
-  if (!clientBio || clientBio.trim().length === 0) {
-    throw new Error('Client bio is required for compatibility scoring')
+  if (!bio || bio.trim().length === 0) {
+    throw new Error(`${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring`)
   }
 
   if (podcasts.length === 0) {
@@ -57,7 +58,8 @@ export async function scoreCompatibilityBatch(
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          clientBio,
+          clientBio: isProspectMode ? undefined : bio,
+          prospectBio: isProspectMode ? bio : undefined,
           podcasts: batch,
         }),
       })
@@ -99,13 +101,14 @@ export async function scoreCompatibilityBatch(
  * Score all podcasts and return sorted by score
  */
 export async function scoreAndRankPodcasts(
-  clientBio: string,
+  bio: string,
   podcasts: PodcastForScoring[],
   minScore: number = 7,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  isProspectMode: boolean = false
 ): Promise<Array<PodcastForScoring & { compatibility_score: number }>> {
   // Score all podcasts
-  const scores = await scoreCompatibilityBatch(clientBio, podcasts, 10, onProgress)
+  const scores = await scoreCompatibilityBatch(bio, podcasts, 10, onProgress, isProspectMode)
 
   // Create lookup map
   const scoreMap = new Map<string, number>()
