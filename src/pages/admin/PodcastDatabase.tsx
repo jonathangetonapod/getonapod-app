@@ -560,16 +560,77 @@ export default function PodcastDatabase() {
     }
 
     try {
-      // Fetch all podcast IDs matching current filters (across all pages)
-      const { data, error } = await supabase
+      // Build query with same logic as getPodcasts service
+      let query = supabase
         .from('podcasts')
         .select('id')
-        .match(filters as any)
+
+      // Apply all filters (same logic as in podcastDatabase.ts)
+      if (filters.search) {
+        query = query.or(`podcast_name.ilike.%${filters.search}%,host_name.ilike.%${filters.search}%,publisher_name.ilike.%${filters.search}%,podcast_description.ilike.%${filters.search}%`)
+      }
+
+      if (filters.categories && filters.categories.length > 0) {
+        const orConditions = filters.categories.map(cat =>
+          `podcast_categories.cs.${JSON.stringify([{ category_name: cat }])}`
+        ).join(',')
+        query = query.or(orConditions)
+      }
+
+      if (filters.minAudience !== undefined) {
+        query = query.gte('audience_size', filters.minAudience)
+      }
+
+      if (filters.maxAudience !== undefined) {
+        query = query.lte('audience_size', filters.maxAudience)
+      }
+
+      if (filters.minRating !== undefined) {
+        query = query.gte('itunes_rating', filters.minRating)
+      }
+
+      if (filters.maxRating !== undefined) {
+        query = query.lte('itunes_rating', filters.maxRating)
+      }
+
+      if (filters.hasEmail !== undefined && filters.hasEmail) {
+        query = query.not('email', 'is', null)
+      }
+
+      if (filters.isActive !== undefined) {
+        query = query.eq('is_active', filters.isActive)
+      }
+
+      if (filters.language) {
+        query = query.eq('language', filters.language)
+      }
+
+      if (filters.region) {
+        query = query.eq('region', filters.region)
+      }
+
+      if (filters.hasGuests !== undefined) {
+        query = query.eq('podcast_has_guests', filters.hasGuests)
+      }
+
+      if (filters.hasSponsors !== undefined) {
+        query = query.eq('podcast_has_sponsors', filters.hasSponsors)
+      }
+
+      if (filters.minEpisodes !== undefined) {
+        query = query.gte('episode_count', filters.minEpisodes)
+      }
+
+      if (filters.maxEpisodes !== undefined) {
+        query = query.lte('episode_count', filters.maxEpisodes)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
 
       if (data) {
-        const allIds = data.map(p => p.id)
+        const allIds = data.map((p: { id: string }) => p.id)
         setSelectedPodcasts(new Set(allIds))
         toast.success(`Selected ${allIds.length.toLocaleString()} podcasts`)
       }
@@ -1707,9 +1768,9 @@ export default function PodcastDatabase() {
                         <TableHead className="w-12">
                           <Checkbox
                             checked={allVisibleSelected}
+                            indeterminate={someVisibleSelected}
                             onCheckedChange={handleSelectAllVisible}
                             aria-label="Select all on page"
-                            className={someVisibleSelected ? "data-[state=checked]:bg-primary/50" : ""}
                           />
                         </TableHead>
                       )}
