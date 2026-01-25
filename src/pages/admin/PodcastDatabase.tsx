@@ -814,7 +814,7 @@ export default function PodcastDatabase() {
             audience_size: podcast.audience_size,
             language: podcast.language,
             region: podcast.region,
-            podcast_email: podcast.email,
+            podcast_email: podcast.podscan_email,
             rss_feed: podcast.rss_url,
             podcast_categories: podcast.podcast_categories,
             compatibility_score: scores[podcast.id],
@@ -877,7 +877,7 @@ export default function PodcastDatabase() {
             audience_size: podcast.audience_size,
             language: podcast.language,
             region: podcast.region,
-            podcast_email: podcast.email,
+            podcast_email: podcast.podscan_email,
             rss_feed: podcast.rss_url,
             podcast_categories: podcast.podcast_categories,
             compatibility_score: scores[podcast.id],
@@ -1968,7 +1968,7 @@ export default function PodcastDatabase() {
                                 <DropdownMenuItem>
                                   View Details
                                 </DropdownMenuItem>
-                                {podcast.email && (
+                                {podcast.podscan_email && (
                                   <DropdownMenuItem>
                                     Copy Email
                                   </DropdownMenuItem>

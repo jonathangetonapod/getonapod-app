@@ -34,7 +34,7 @@ export interface PodcastDatabaseItem {
   audience_size: number | null
   language: string | null
   region: string | null
-  email: string | null
+  podscan_email: string | null
   website: string | null
   rss_url: string | null
   is_active: boolean
@@ -108,7 +108,7 @@ export async function getPodcasts({
   }
 
   if (filters.hasEmail !== undefined && filters.hasEmail) {
-    query = query.not('email', 'is', null)
+    query = query.not('podscan_email', 'is', null)
   }
 
   if (filters.isActive !== undefined) {
@@ -309,7 +309,7 @@ export async function exportPodcastsToCSV(
     Array.isArray(p.podcast_categories)
       ? p.podcast_categories.map((c: any) => c.category_name).join('; ')
       : '',
-    p.email || '',
+    p.podscan_email || '',
     p.podcast_url || '',
     p.language || '',
     p.region || '',

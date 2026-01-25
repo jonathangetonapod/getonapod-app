@@ -287,7 +287,7 @@ serve(async (req) => {
             audience_size: podcast.audience_size || null,
             language: podcast.language || null,
             region: podcast.region || null,
-            podcast_email: podcast.podcast_email || null,
+            podscan_email: podcast.podcast_email || null,
             rss_feed: podcast.rss_feed || null,
             podcast_categories: podcast.podcast_categories || null,
             // Mark as saved from podcast finder export

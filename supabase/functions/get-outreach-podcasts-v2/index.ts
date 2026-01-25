@@ -279,6 +279,7 @@ serve(async (req) => {
               itunes_rating: podcast.reach?.itunes?.itunes_rating_average || podcast.itunes_rating || null,
               episode_count: podcast.episode_count || null,
               audience_size: podcast.reach?.audience_size || podcast.audience_size || null,
+              podscan_email: podcast.reach?.email || null,
             }
 
             // Save to cache
@@ -294,6 +295,7 @@ serve(async (req) => {
               itunes_rating: podcast.reach?.itunes?.itunes_rating_average || podcast.itunes_rating || null,
               episode_count: podcast.episode_count || null,
               audience_size: podcast.reach?.audience_size || podcast.audience_size || null,
+              podscan_email: podcast.reach?.email || null,
             }
           } catch (error) {
             console.error('[Get Outreach Podcasts] Error fetching podcast:', podcastId, error)

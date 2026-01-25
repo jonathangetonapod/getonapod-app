@@ -27,7 +27,7 @@ export interface PodcastCacheData {
   itunes_rating_count?: number;
   audience_size?: number;
   podcast_reach_score?: number;
-  email?: string;
+  podscan_email?: string;
   website?: string;
   rss_url?: string;
   demographics?: any;
@@ -140,7 +140,7 @@ export async function upsertPodcastCache(
       itunes_rating_count: podcastData.itunes_rating_count,
       audience_size: podcastData.audience_size,
       podcast_reach_score: podcastData.podcast_reach_score,
-      email: podcastData.email,
+      podscan_email: podcastData.podscan_email,
       website: podcastData.website,
       rss_url: podcastData.rss_url,
       demographics: podcastData.demographics,
@@ -194,7 +194,7 @@ export async function batchUpsertPodcastCache(
     itunes_rating_count: p.itunes_rating_count,
     audience_size: p.audience_size,
     podcast_reach_score: p.podcast_reach_score,
-    email: p.email,
+    podscan_email: p.podscan_email,
     website: p.website,
     rss_url: p.rss_url,
     demographics: p.demographics,
