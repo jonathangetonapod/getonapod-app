@@ -111,6 +111,7 @@ export default function PodcastDatabase() {
 
   // Search & Filter State (initialized from URL params)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchParams.get('search') || '')
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || 'all')
   const [sortBy, setSortBy] = useState<SortOption>((searchParams.get('sortBy') as SortOption) || 'name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sortOrder') as 'asc' | 'desc') || 'asc')
@@ -252,6 +253,15 @@ export default function PodcastDatabase() {
     fetchProspects()
   }, [])
 
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   // Sync filters to URL parameters
   useEffect(() => {
     const params = new URLSearchParams()
@@ -287,8 +297,8 @@ export default function PodcastDatabase() {
   const filters: PodcastFilters = useMemo(() => {
     const f: PodcastFilters = {}
 
-    if (searchQuery.trim()) {
-      f.search = searchQuery.trim()
+    if (debouncedSearchQuery.trim()) {
+      f.search = debouncedSearchQuery.trim()
     }
 
     if (categoryFilter && categoryFilter !== 'all') {
@@ -336,7 +346,7 @@ export default function PodcastDatabase() {
     }
 
     return f
-  }, [searchQuery, categoryFilter, minAudience, maxAudience, minRating, maxRating, hasEmailFilter, languageFilter, regionFilter, hasGuestsFilter, hasSponsorsFilter, isActiveFilter])
+  }, [debouncedSearchQuery, categoryFilter, minAudience, maxAudience, minRating, maxRating, hasEmailFilter, languageFilter, regionFilter, hasGuestsFilter, hasSponsorsFilter, isActiveFilter])
 
   // Fetch podcasts
   const { data: podcastsResult, isLoading, refetch } = useQuery({
@@ -422,6 +432,53 @@ export default function PodcastDatabase() {
   const bioToUse = isProspectMode
     ? (isNewProspectMode ? prospectBio : selectedProspect?.prospect_bio || '')
     : selectedClientData?.bio || ''
+
+  // Selection state calculations
+  const visiblePodcastIds = podcasts.map(p => p.id)
+  const allVisibleSelected = visiblePodcastIds.length > 0 && visiblePodcastIds.every(id => selectedPodcasts.has(id))
+  const someVisibleSelected = visiblePodcastIds.some(id => selectedPodcasts.has(id)) && !allVisibleSelected
+
+  // Handle select/deselect all visible podcasts
+  const handleSelectAllVisible = (checked: boolean) => {
+    setSelectedPodcasts(prev => {
+      const next = new Set(prev)
+      if (checked) {
+        visiblePodcastIds.forEach(id => next.add(id))
+      } else {
+        visiblePodcastIds.forEach(id => next.delete(id))
+      }
+      return next
+    })
+  }
+
+  // Handle select all matching filters
+  const handleSelectAllMatching = async () => {
+    if (totalCount > 500) {
+      const confirm = window.confirm(
+        `This will select all ${totalCount.toLocaleString()} podcasts matching your filters. This may take a moment. Continue?`
+      )
+      if (!confirm) return
+    }
+
+    try {
+      // Fetch all podcast IDs matching current filters (across all pages)
+      const { data, error } = await supabase
+        .from('podcasts')
+        .select('id')
+        .match(filters as any)
+
+      if (error) throw error
+
+      if (data) {
+        const allIds = data.map(p => p.id)
+        setSelectedPodcasts(new Set(allIds))
+        toast.success(`Selected ${allIds.length.toLocaleString()} podcasts`)
+      }
+    } catch (error) {
+      console.error('Error selecting all matching:', error)
+      toast.error('Failed to select all podcasts')
+    }
+  }
 
   // Filter by score
   const displayPodcasts = useMemo(() => {
@@ -962,6 +1019,16 @@ export default function PodcastDatabase() {
                     </Button>
                   </>
                 )}
+                {isMatchMode && totalCount > visiblePodcastIds.length && (
+                  <Button
+                    onClick={handleSelectAllMatching}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Select All {totalCount.toLocaleString()}
+                  </Button>
+                )}
                 <Button
                   onClick={handleCSVExport}
                   variant="outline"
@@ -1444,7 +1511,16 @@ export default function PodcastDatabase() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      {isMatchMode && <TableHead className="w-12">Select</TableHead>}
+                      {isMatchMode && (
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={allVisibleSelected}
+                            onCheckedChange={handleSelectAllVisible}
+                            aria-label="Select all on page"
+                            className={someVisibleSelected ? "data-[state=checked]:bg-primary/50" : ""}
+                          />
+                        </TableHead>
+                      )}
                       <TableHead>Podcast</TableHead>
                       <TableHead>Host</TableHead>
                       <TableHead>Audience</TableHead>
@@ -1605,13 +1681,27 @@ export default function PodcastDatabase() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-lg">{selectedPodcasts.size} podcasts selected</p>
-                  {Object.keys(scores).length > 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      Average score: {calculateAverageScore().toFixed(1)}/10
-                    </p>
-                  )}
+                <div className="flex items-center gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-lg">{selectedPodcasts.size} podcasts selected</p>
+                      {selectedPodcasts.size > visiblePodcastIds.length && (
+                        <Badge variant="secondary" className="text-xs">
+                          across multiple pages
+                        </Badge>
+                      )}
+                      {visiblePodcastIds.length > 0 && selectedPodcasts.size === visiblePodcastIds.length && visiblePodcastIds.length < totalCount && (
+                        <Badge variant="outline" className="text-xs">
+                          all on this page
+                        </Badge>
+                      )}
+                    </div>
+                    {Object.keys(scores).length > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Average score: {calculateAverageScore().toFixed(1)}/10
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button
