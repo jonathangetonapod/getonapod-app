@@ -13,6 +13,7 @@ export interface CreateSheetResult {
 export interface PodcastExportData {
   podcast_name: string
   podcast_description?: string | null
+  podcast_image_url?: string | null
   itunes_rating?: number | null
   episode_count?: number | null
   podscan_podcast_id?: string | null
@@ -23,6 +24,9 @@ export interface PodcastExportData {
   podcast_url?: string | null
   podcast_email?: string | null
   rss_feed?: string | null
+  language?: string | null
+  region?: string | null
+  podcast_categories?: any
   compatibility_score?: number | null
   compatibility_reasoning?: string | null
 }
@@ -31,6 +35,9 @@ export interface ExportToSheetsResult {
   success: boolean
   rowsAdded: number
   updatedRange: string
+  cacheSaved?: number
+  cacheSkipped?: number
+  cacheErrors?: number
 }
 
 export interface PodcastCategory {
@@ -159,6 +166,9 @@ export interface CreateProspectSheetResult {
   message: string
   dashboardUrl: string
   dashboardSlug: string
+  cacheSaved?: number
+  cacheSkipped?: number
+  cacheErrors?: number
 }
 
 /**
@@ -217,6 +227,9 @@ export interface AppendToProspectSheetResult {
   success: boolean
   rowsAdded: number
   spreadsheetUrl: string
+  cacheSaved?: number
+  cacheSkipped?: number
+  cacheErrors?: number
 }
 
 /**
