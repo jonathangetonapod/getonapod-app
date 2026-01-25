@@ -1026,7 +1026,10 @@ export default function ClientDetail() {
 
     setDashboardCacheLoading(true)
     try {
-      toast({ title: 'Checking cache across all sources...' })
+      toast({
+        title: '🔍 Checking Central Podcast Database...',
+        description: 'Looking for podcasts already in our shared cache'
+      })
 
       // Step 1: Get podcast IDs from Google Sheet
       const { data: session } = await supabase.auth.getSession()
@@ -1130,10 +1133,19 @@ export default function ClientDetail() {
         const result = await response.json()
         if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
 
-        toast({
-          title: `✅ Fetched ${missingIds.length} new podcasts`,
-          description: `Used ${missingIds.length} Podscan credits`
-        })
+        // Show cache performance if available
+        if (result.cachePerformance) {
+          const { cacheHitRate, apiCallsSaved, costSavings } = result.cachePerformance
+          toast({
+            title: `✅ Fetched ${missingIds.length} new podcasts`,
+            description: `💾 Cache Hit Rate: ${cacheHitRate}% | 💰 Saved ${apiCallsSaved} API calls ($${costSavings})`
+          })
+        } else {
+          toast({
+            title: `✅ Fetched ${missingIds.length} new podcasts`,
+            description: `Used ${missingIds.length} Podscan credits`
+          })
+        }
       }
 
       // Final summary
@@ -1142,7 +1154,7 @@ export default function ClientDetail() {
 
       toast({
         title: '🎉 Metadata Cache Complete',
-        description: `Copied: ${totalCopied} | Fetched: ${totalFetched} | Saved ${totalCopied} API calls! Click "Run AI Analysis" to personalize.`
+        description: `✅ Cached: ${totalCopied} | 🆕 Fetched: ${totalFetched} | 💰 Saved ${totalCopied * 2} API calls! Click "Run AI Analysis" to personalize.`
       })
 
       // Refresh cache status automatically
