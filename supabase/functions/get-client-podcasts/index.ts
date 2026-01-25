@@ -785,6 +785,7 @@ serve(async (req) => {
                 console.error('❌ [CACHE SAVE FAILED]', podcastId)
               } else {
                 console.log('💾 [SAVED TO CENTRAL DB]', podcastData.podcast_name, '→ Now available for all clients!')
+              }
 
               // 5. Save AI analysis to client_podcast_analyses table (client-specific)
               if (clientId && centralPodcastId && (podcastData.ai_clean_description || podcastData.ai_fit_reasons || podcastData.ai_pitch_angles)) {
