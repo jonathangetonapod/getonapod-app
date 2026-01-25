@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -26,104 +30,460 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   Search,
-  SlidersHorizontal,
   LayoutGrid,
   LayoutList,
-  Plus,
   MoreVertical,
-  Mic,
-  Users,
   Star,
-  Layers,
   TrendingUp,
-  Eye,
-  Edit,
-  Trash2,
   Download,
-  Upload,
+  Loader2,
+  Database,
+  Users as UsersIcon,
+  Target,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
+import { getClients } from '@/services/clients'
+import {
+  getPodcasts,
+  getPodcastStatistics,
+  getPodcastCategories,
+  exportPodcastsToCSV,
+  type PodcastFilters,
+  type PodcastDatabaseItem
+} from '@/services/podcastDatabase'
+import { scoreCompatibilityBatch, type PodcastForScoring } from '@/services/compatibilityScoring'
+import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
+import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 
 type ViewMode = 'table' | 'grid'
+type Mode = 'browse' | 'client' | 'prospect'
+type SortOption = 'name' | 'host' | 'audience' | 'rating' | 'episodes' | 'dateAdded'
 
-type SortOption = 'name' | 'audience' | 'rating' | 'episodes' | 'dateAdded'
+interface ExistingProspect {
+  id: string
+  prospect_name: string
+  prospect_bio: string | null
+  prospect_image_url: string | null
+  spreadsheet_url: string | null
+  slug: string
+}
 
 export default function PodcastDatabase() {
+  // View & Mode State
   const [viewMode, setViewMode] = useState<ViewMode>('table')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState<SortOption>('name')
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [mode, setMode] = useState<Mode>('browse')
 
-  // Mock data - will be replaced with real data from Supabase/API
-  const stats = {
-    total: 1234,
-    totalReach: 5200000,
-    avgRating: 4.7,
-    categories: 45,
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<SortOption>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(1)
+  const [minAudience, setMinAudience] = useState('')
+  const [minRating, setMinRating] = useState('')
+  const [hasEmailFilter, setHasEmailFilter] = useState(false)
+
+  // Client Mode State
+  const [selectedClient, setSelectedClient] = useState('')
+
+  // Prospect Mode State
+  const [prospectMode, setProspectMode] = useState<'new' | 'existing'>('new')
+  const [selectedProspectId, setSelectedProspectId] = useState('')
+  const [prospectName, setProspectName] = useState('')
+  const [prospectBio, setProspectBio] = useState('')
+  const [prospectImageUrl, setProspectImageUrl] = useState('')
+  const [existingProspects, setExistingProspects] = useState<ExistingProspect[]>([])
+
+  // Selection & Scoring State
+  const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set())
+  const [isScoring, setIsScoring] = useState(false)
+  const [scores, setScores] = useState<Record<string, number | null>>({})
+  const [reasonings, setReasonings] = useState<Record<string, string | undefined>>({})
+  const [minScoreFilter, setMinScoreFilter] = useState<number>(0)
+
+  // Export State
+  const [isExporting, setIsExporting] = useState(false)
+
+  // Fetch clients
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => getClients()
+  })
+  const clients = clientsData?.clients || []
+  const selectedClientData = clients.find(c => c.id === selectedClient)
+
+  // Fetch existing prospects
+  useEffect(() => {
+    const fetchProspects = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('prospect_dashboards')
+          .select('id, prospect_name, prospect_bio, prospect_image_url, spreadsheet_url, slug')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+        setExistingProspects(data || [])
+      } catch (error) {
+        console.error('Failed to fetch prospects:', error)
+      }
+    }
+    fetchProspects()
+  }, [])
+
+  // Build filters
+  const filters: PodcastFilters = useMemo(() => {
+    const f: PodcastFilters = {}
+
+    if (searchQuery.trim()) {
+      f.search = searchQuery.trim()
+    }
+
+    if (categoryFilter && categoryFilter !== 'all') {
+      f.category = categoryFilter
+    }
+
+    if (minAudience && !isNaN(Number(minAudience))) {
+      f.minAudience = Number(minAudience)
+    }
+
+    if (minRating && !isNaN(Number(minRating))) {
+      f.minRating = Number(minRating)
+    }
+
+    if (hasEmailFilter) {
+      f.hasEmail = true
+    }
+
+    return f
+  }, [searchQuery, categoryFilter, minAudience, minRating, hasEmailFilter])
+
+  // Fetch podcasts
+  const { data: podcastsResult, isLoading, refetch } = useQuery({
+    queryKey: ['podcast-database', filters, sortBy, sortOrder, page],
+    queryFn: () => getPodcasts({
+      filters,
+      sortBy,
+      sortOrder,
+      page,
+      pageSize: 20
+    })
+  })
+
+  // Fetch statistics
+  const { data: stats } = useQuery({
+    queryKey: ['podcast-stats'],
+    queryFn: getPodcastStatistics,
+    refetchInterval: 60000
+  })
+
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['podcast-categories'],
+    queryFn: getPodcastCategories
+  })
+  const categories = categoriesData?.categories || []
+
+  const podcasts = podcastsResult?.data || []
+  const totalCount = podcastsResult?.count || 0
+  const totalPages = Math.ceil(totalCount / 20)
+
+  // Computed values
+  const isClientMode = mode === 'client'
+  const isProspectMode = mode === 'prospect'
+  const isMatchMode = isClientMode || isProspectMode
+  const isNewProspectMode = isProspectMode && prospectMode === 'new'
+  const isExistingProspectMode = isProspectMode && prospectMode === 'existing'
+  const selectedProspect = existingProspects.find(p => p.id === selectedProspectId)
+  const existingProspectHasSheet = selectedProspect?.spreadsheet_url ? true : false
+
+  const bioToUse = isProspectMode
+    ? (isNewProspectMode ? prospectBio : selectedProspect?.prospect_bio || '')
+    : selectedClientData?.bio || ''
+
+  // Filter by score
+  const displayPodcasts = useMemo(() => {
+    if (minScoreFilter === 0) return podcasts
+
+    return podcasts.filter(p => {
+      const score = scores[p.id]
+      return score !== null && score !== undefined && score >= minScoreFilter
+    })
+  }, [podcasts, scores, minScoreFilter])
+
+  // Handle scoring
+  const handleScoreSelected = async () => {
+    if (!bioToUse || bioToUse.trim().length === 0) {
+      toast.error(
+        isProspectMode
+          ? 'Prospect bio is required for compatibility scoring'
+          : 'Client bio is required for compatibility scoring'
+      )
+      return
+    }
+
+    if (selectedPodcasts.size === 0) {
+      toast.error('Please select at least one podcast to score')
+      return
+    }
+
+    setIsScoring(true)
+
+    try {
+      // Get selected podcasts
+      const podcastsToScore = podcasts.filter(p => selectedPodcasts.has(p.id))
+
+      // Map to scoring format
+      const podcastsForScoring: PodcastForScoring[] = podcastsToScore.map(p => ({
+        podcast_id: p.podscan_id,
+        podcast_name: p.podcast_name,
+        podcast_description: p.podcast_description || undefined,
+        publisher_name: p.publisher_name || undefined,
+        podcast_categories: Array.isArray(p.podcast_categories)
+          ? p.podcast_categories.map((c: any) => ({ category_name: c.category_name || c }))
+          : undefined,
+        audience_size: p.audience_size || undefined,
+        episode_count: p.episode_count || undefined,
+      }))
+
+      // Score them
+      const scoreResults = await scoreCompatibilityBatch(
+        bioToUse,
+        podcastsForScoring,
+        10,
+        (completed, total) => {
+          console.log(`Scoring progress: ${completed}/${total}`)
+        },
+        isProspectMode
+      )
+
+      // Build maps
+      const scoreMap: Record<string, number | null> = {}
+      const reasoningMap: Record<string, string | undefined> = {}
+
+      scoreResults.forEach(s => {
+        const podcast = podcastsToScore.find(p => p.podscan_id === s.podcast_id)
+        if (podcast) {
+          scoreMap[podcast.id] = s.score
+          reasoningMap[podcast.id] = s.reasoning
+        }
+      })
+
+      setScores(prev => ({ ...prev, ...scoreMap }))
+      setReasonings(prev => ({ ...prev, ...reasoningMap }))
+
+      // Stats
+      const validScores = scoreResults.filter(s => s.score !== null).map(s => s.score!)
+      const avgScore = validScores.length > 0
+        ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        : 0
+      const highScoreCount = validScores.filter(s => s >= 8).length
+
+      toast.success(
+        `✅ Scored ${scoreResults.length} podcasts! Average: ${avgScore.toFixed(1)}/10 • ${highScoreCount} highly compatible (8+)`
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to score podcasts')
+      console.error(error)
+    } finally {
+      setIsScoring(false)
+    }
   }
 
-  const mockPodcasts = [
-    {
-      id: '1',
-      name: 'The Joe Rogan Experience',
-      host: 'Joe Rogan',
-      image: `https://ui-avatars.com/api/?name=${encodeURIComponent('Joe Rogan Experience')}&background=random&size=200`,
-      audience: 11000000,
-      rating: 4.8,
-      episodes: 2089,
-      categories: ['Comedy', 'Society & Culture'],
-      status: 'Active',
-    },
-    {
-      id: '2',
-      name: 'The Tim Ferriss Show',
-      host: 'Tim Ferriss',
-      image: `https://ui-avatars.com/api/?name=${encodeURIComponent('Tim Ferriss Show')}&background=random&size=200`,
-      audience: 900000,
-      rating: 4.9,
-      episodes: 700,
-      categories: ['Business', 'Health & Fitness'],
-      status: 'Active',
-    },
-    {
-      id: '3',
-      name: 'How I Built This',
-      host: 'Guy Raz',
-      image: `https://ui-avatars.com/api/?name=${encodeURIComponent('How I Built This')}&background=random&size=200`,
-      audience: 650000,
-      rating: 4.7,
-      episodes: 500,
-      categories: ['Business', 'Entrepreneurship'],
-      status: 'Active',
-    },
-    {
-      id: '4',
-      name: 'SmartLess',
-      host: 'Jason Bateman, Sean Hayes, Will Arnett',
-      image: `https://ui-avatars.com/api/?name=${encodeURIComponent('SmartLess')}&background=random&size=200`,
-      audience: 850000,
-      rating: 4.6,
-      episodes: 200,
-      categories: ['Comedy', 'Arts'],
-      status: 'Active',
-    },
-    {
-      id: '5',
-      name: 'The Daily',
-      host: 'The New York Times',
-      image: `https://ui-avatars.com/api/?name=${encodeURIComponent('The Daily')}&background=random&size=200`,
-      audience: 2500000,
-      rating: 4.5,
-      episodes: 1800,
-      categories: ['News', 'Politics'],
-      status: 'Active',
-    },
-  ]
+  // Handle score all visible
+  const handleScoreAllVisible = async () => {
+    if (displayPodcasts.length === 0) {
+      toast.error('No podcasts to score')
+      return
+    }
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
-    if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
-    return num.toString()
+    // Select all visible
+    const allIds = new Set(displayPodcasts.map(p => p.id))
+    setSelectedPodcasts(allIds)
+
+    // Wait a tick for state to update, then score
+    setTimeout(() => {
+      handleScoreSelected()
+    }, 100)
+  }
+
+  // Handle export to client sheet
+  const handleExportToClientSheet = async () => {
+    if (!selectedClient) {
+      toast.error('Please select a client first')
+      return
+    }
+
+    if (selectedPodcasts.size === 0) {
+      toast.error('Please select at least one podcast to export')
+      return
+    }
+
+    setIsExporting(true)
+
+    try {
+      const podcastsToExport: PodcastExportData[] = []
+
+      podcasts.forEach(podcast => {
+        if (selectedPodcasts.has(podcast.id)) {
+          podcastsToExport.push({
+            podcast_id: podcast.podscan_id,
+            podscan_podcast_id: podcast.podscan_id,
+            podcast_name: podcast.podcast_name,
+            podcast_description: podcast.podcast_description,
+            podcast_image_url: podcast.podcast_image_url,
+            podcast_url: podcast.podcast_url,
+            publisher_name: podcast.publisher_name,
+            episode_count: podcast.episode_count,
+            itunes_rating: podcast.itunes_rating,
+            audience_size: podcast.audience_size,
+            language: podcast.language,
+            region: podcast.region,
+            podcast_email: podcast.email,
+            rss_feed: podcast.rss_url,
+            podcast_categories: podcast.podcast_categories,
+            compatibility_score: scores[podcast.id],
+            compatibility_reasoning: reasonings[podcast.id],
+          })
+        }
+      })
+
+      const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
+
+      toast.success(`✅ Exported ${result.rowsAdded} podcasts to client's sheet!`)
+
+      if (result.cacheSaved) {
+        toast.success(`💾 ${result.cacheSaved} podcasts saved to cache!`)
+      }
+
+      setSelectedPodcasts(new Set())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to export')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  // Handle export to prospect sheet
+  const handleExportToProspectSheet = async () => {
+    if (isNewProspectMode) {
+      if (!prospectName.trim()) {
+        toast.error('Please enter a prospect name')
+        return
+      }
+      if (!prospectBio.trim()) {
+        toast.error('Please enter prospect bio')
+        return
+      }
+    }
+
+    if (selectedPodcasts.size === 0) {
+      toast.error('Please select at least one podcast to export')
+      return
+    }
+
+    setIsExporting(true)
+
+    try {
+      const podcastsToExport: PodcastExportData[] = []
+
+      podcasts.forEach(podcast => {
+        if (selectedPodcasts.has(podcast.id)) {
+          podcastsToExport.push({
+            podcast_id: podcast.podscan_id,
+            podscan_podcast_id: podcast.podscan_id,
+            podcast_name: podcast.podcast_name,
+            podcast_description: podcast.podcast_description,
+            podcast_image_url: podcast.podcast_image_url,
+            podcast_url: podcast.podcast_url,
+            publisher_name: podcast.publisher_name,
+            episode_count: podcast.episode_count,
+            itunes_rating: podcast.itunes_rating,
+            audience_size: podcast.audience_size,
+            language: podcast.language,
+            region: podcast.region,
+            podcast_email: podcast.email,
+            rss_feed: podcast.rss_url,
+            podcast_categories: podcast.podcast_categories,
+            compatibility_score: scores[podcast.id],
+            compatibility_reasoning: reasonings[podcast.id],
+          })
+        }
+      })
+
+      if (isExistingProspectMode && selectedProspectId && existingProspectHasSheet) {
+        // Append to existing
+        const result = await appendToProspectSheet(selectedProspectId, podcastsToExport)
+        toast.success(`✅ Added ${result.rowsAdded} podcasts to ${selectedProspect?.prospect_name}'s sheet!`)
+
+      } else if (isExistingProspectMode && selectedProspectId && !existingProspectHasSheet) {
+        // Create sheet for existing prospect
+        const result = await createProspectSheet(
+          selectedProspect!.prospect_name,
+          selectedProspect!.prospect_bio || '',
+          podcastsToExport,
+          selectedProspect!.prospect_image_url || undefined
+        )
+
+        await supabase
+          .from('prospect_dashboards')
+          .update({
+            spreadsheet_id: result.spreadsheetId,
+            spreadsheet_url: result.spreadsheetUrl
+          })
+          .eq('id', selectedProspectId)
+
+        toast.success(`✅ Created sheet for ${selectedProspect?.prospect_name}!`)
+
+      } else if (isNewProspectMode) {
+        // Create new prospect
+        const result = await createProspectSheet(
+          prospectName.trim(),
+          prospectBio.trim(),
+          podcastsToExport,
+          prospectImageUrl.trim() || undefined
+        )
+
+        toast.success(`✅ Created dashboard for ${prospectName}!`)
+        toast.success(`🔗 ${result.dashboardUrl}`)
+      }
+
+      setSelectedPodcasts(new Set())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to export')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  // Handle CSV export
+  const handleCSVExport = async () => {
+    try {
+      await exportPodcastsToCSV(displayPodcasts)
+      toast.success(`✅ Exported ${displayPodcasts.length} podcasts to CSV`)
+    } catch (error) {
+      toast.error('Failed to export CSV')
+    }
+  }
+
+  // Calculate average score for selected
+  const calculateAverageScore = () => {
+    const selectedScores = Array.from(selectedPodcasts)
+      .map(id => scores[id])
+      .filter(s => s !== null && s !== undefined) as number[]
+
+    if (selectedScores.length === 0) return 0
+
+    return selectedScores.reduce((sum, s) => sum + s, 0) / selectedScores.length
   }
 
   return (
@@ -131,459 +491,585 @@ export default function PodcastDatabase() {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold">Podcast Database</h1>
-          <p className="text-muted-foreground mt-2">
-            Manage and explore your podcast database
+          <h1 className="text-3xl font-bold tracking-tight">Podcast Database</h1>
+          <p className="text-muted-foreground">
+            Browse, search, and manage your centralized podcast inventory
           </p>
         </div>
 
-      {/* Main Content with Sidebar Layout */}
-      <div className="flex flex-col xl:flex-row gap-6">
-        {/* Main Content Area */}
-        <div className="flex-1 min-w-0 space-y-6">
+        {/* Mode Selector */}
+        <div className="flex gap-2">
+          <Button
+            variant={mode === 'browse' ? 'default' : 'outline'}
+            onClick={() => setMode('browse')}
+            className="flex items-center gap-2"
+          >
+            <Database className="h-4 w-4" />
+            Browse
+          </Button>
+          <Button
+            variant={mode === 'client' ? 'default' : 'outline'}
+            onClick={() => setMode('client')}
+            className="flex items-center gap-2"
+          >
+            <UsersIcon className="h-4 w-4" />
+            Match for Client
+          </Button>
+          <Button
+            variant={mode === 'prospect' ? 'default' : 'outline'}
+            onClick={() => setMode('prospect')}
+            className="flex items-center gap-2"
+          >
+            <Target className="h-4 w-4" />
+            Match for Prospect
+          </Button>
+        </div>
 
-      {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-blue-900 dark:text-blue-100">
-              Total Podcasts
-            </CardTitle>
-            <Mic className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">
-              {stats.total.toLocaleString()}
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Podcasts</CardTitle>
+              <Database className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.total_podcasts?.toLocaleString() || 0}</div>
+              <p className="text-xs text-muted-foreground">In your database</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Reach</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {stats?.total_podcasts ? (stats.avg_audience_size * stats.total_podcasts / 1000000).toFixed(1) : 0}M
+              </div>
+              <p className="text-xs text-muted-foreground">Combined audience</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Cache Hits</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.total_cache_hits?.toLocaleString() || 0}</div>
+              <p className="text-xs text-muted-foreground">API calls saved</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Cost Savings</CardTitle>
+              <Star className="h-4 w-4 text-yellow-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                ${((stats?.estimated_api_calls_saved || 0) * 0.01).toFixed(2)}
+              </div>
+              <p className="text-xs text-muted-foreground">Total saved</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Client Selector */}
+        {isClientMode && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Select Client</CardTitle>
+              <CardDescription>Choose a client to match podcasts for</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Select value={selectedClient} onValueChange={setSelectedClient}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a client..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map(client => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedClientData?.bio && (
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-sm font-medium mb-1">Client Bio:</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedClientData.bio}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Prospect Form */}
+        {isProspectMode && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Prospect Details</CardTitle>
+              <CardDescription>Create new or select existing prospect</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  variant={prospectMode === 'new' ? 'default' : 'outline'}
+                  onClick={() => setProspectMode('new')}
+                  className="flex-1"
+                >
+                  New Prospect
+                </Button>
+                <Button
+                  variant={prospectMode === 'existing' ? 'default' : 'outline'}
+                  onClick={() => setProspectMode('existing')}
+                  className="flex-1"
+                >
+                  Existing Prospect
+                </Button>
+              </div>
+
+              {prospectMode === 'existing' ? (
+                <>
+                  <Select value={selectedProspectId} onValueChange={setSelectedProspectId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a prospect..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {existingProspects.map(prospect => (
+                        <SelectItem key={prospect.id} value={prospect.id}>
+                          {prospect.prospect_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedProspect?.prospect_bio && (
+                    <div className="p-3 bg-muted rounded-md">
+                      <p className="text-sm font-medium mb-1">Prospect Bio:</p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedProspect.prospect_bio}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label>Prospect Name</Label>
+                    <Input
+                      value={prospectName}
+                      onChange={(e) => setProspectName(e.target.value)}
+                      placeholder="Sarah Johnson"
+                    />
+                  </div>
+                  <div>
+                    <Label>Prospect Bio</Label>
+                    <Textarea
+                      value={prospectBio}
+                      onChange={(e) => setProspectBio(e.target.value)}
+                      placeholder="Brief background about the prospect..."
+                      rows={4}
+                    />
+                  </div>
+                  <div>
+                    <Label>Profile Image URL (optional)</Label>
+                    <Input
+                      value={prospectImageUrl}
+                      onChange={(e) => setProspectImageUrl(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Search & Actions */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Search & Filter</CardTitle>
+                <CardDescription>
+                  {totalCount.toLocaleString()} podcasts • Page {page} of {totalPages}
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                {isMatchMode && bioToUse && (
+                  <>
+                    <Button
+                      onClick={handleScoreSelected}
+                      disabled={isScoring || selectedPodcasts.size === 0}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      {isScoring ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Scoring...
+                        </>
+                      ) : (
+                        <>
+                          <Star className="h-4 w-4 mr-2" />
+                          Score Selected ({selectedPodcasts.size})
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleScoreAllVisible}
+                      disabled={isScoring || displayPodcasts.length === 0}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {isScoring ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Scoring...
+                        </>
+                      ) : (
+                        <>
+                          <Star className="h-4 w-4 mr-2" />
+                          Score All Visible
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
+                <Button
+                  onClick={handleCSVExport}
+                  variant="outline"
+                  size="sm"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  CSV
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-              Active podcasts in database
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">
-              Total Reach
-            </CardTitle>
-            <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-              {formatNumber(stats.totalReach)}
-            </div>
-            <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
-              Combined audience reach
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-amber-900 dark:text-amber-100">
-              Average Rating
-            </CardTitle>
-            <Star className="h-4 w-4 text-amber-600 dark:text-amber-400 fill-amber-600 dark:fill-amber-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-900 dark:text-amber-100">
-              {stats.avgRating.toFixed(1)} ⭐
-            </div>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-              Average podcast rating
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-green-900 dark:text-green-100">
-              Categories
-            </CardTitle>
-            <Layers className="h-4 w-4 text-green-600 dark:text-green-400" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-900 dark:text-green-100">
-              {stats.categories}
-            </div>
-            <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-              Unique podcast categories
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Toolbar */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4">
-            {/* Search and Actions Row */}
-            <div className="flex flex-col sm:flex-row gap-2">
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search podcasts by name, host, or category..."
+                  placeholder="Search podcasts by name, host, publisher..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setPage(1)
+                  }}
+                  className="pl-10"
                 />
               </div>
-
-              <div className="flex gap-2">
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-[140px]">
-                    <SlidersHorizontal className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Filter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    <SelectItem value="business">Business</SelectItem>
-                    <SelectItem value="comedy">Comedy</SelectItem>
-                    <SelectItem value="technology">Technology</SelectItem>
-                    <SelectItem value="health">Health & Fitness</SelectItem>
-                    <SelectItem value="news">News</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-                  <SelectTrigger className="w-[140px]">
-                    <TrendingUp className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="audience">Audience Size</SelectItem>
-                    <SelectItem value="rating">Rating</SelectItem>
-                    <SelectItem value="episodes">Episodes</SelectItem>
-                    <SelectItem value="dateAdded">Date Added</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button variant="outline" size="icon">
-                  <Download className="h-4 w-4" />
-                </Button>
-
-                <Button className="bg-gradient-to-r from-primary to-purple-600">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Podcast
-                </Button>
-              </div>
+              <Select
+                value={categoryFilter}
+                onValueChange={(v) => {
+                  setCategoryFilter(v)
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="audience">Audience</SelectItem>
+                  <SelectItem value="rating">Rating</SelectItem>
+                  <SelectItem value="episodes">Episodes</SelectItem>
+                  <SelectItem value="dateAdded">Date Added</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* View Toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">View:</span>
-              <div className="flex gap-1 border rounded-md p-1">
-                <Button
-                  variant={viewMode === 'table' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setViewMode('table')}
-                  className="h-8"
-                >
-                  <LayoutList className="h-4 w-4 mr-1" />
-                  Table
-                </Button>
-                <Button
-                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setViewMode('grid')}
-                  className="h-8"
-                >
-                  <LayoutGrid className="h-4 w-4 mr-1" />
-                  Grid
-                </Button>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Min Audience"
+                value={minAudience}
+                onChange={(e) => setMinAudience(e.target.value)}
+                className="w-[150px]"
+                type="number"
+              />
+              <Input
+                placeholder="Min Rating"
+                value={minRating}
+                onChange={(e) => setMinRating(e.target.value)}
+                className="w-[150px]"
+                type="number"
+                step="0.1"
+                max="5"
+              />
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="hasEmail"
+                  checked={hasEmailFilter}
+                  onCheckedChange={(checked) => setHasEmailFilter(!!checked)}
+                />
+                <Label htmlFor="hasEmail" className="cursor-pointer">
+                  Has Email
+                </Label>
               </div>
+              {Object.keys(scores).length > 0 && (
+                <Select
+                  value={minScoreFilter.toString()}
+                  onValueChange={(v) => setMinScoreFilter(Number(v))}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">All Scores</SelectItem>
+                    <SelectItem value="5">5+ Only</SelectItem>
+                    <SelectItem value="6">6+ Only</SelectItem>
+                    <SelectItem value="7">7+ Only (Good)</SelectItem>
+                    <SelectItem value="8">8+ Only (Great)</SelectItem>
+                    <SelectItem value="9">9+ Only (Excellent)</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Content Area */}
-      {viewMode === 'table' ? (
-        /* Table View */
+        {/* Podcasts Table */}
         <Card>
           <CardContent className="pt-6">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[300px]">Podcast</TableHead>
-                    <TableHead>Host</TableHead>
-                    <TableHead>Categories</TableHead>
-                    <TableHead className="text-right">Audience</TableHead>
-                    <TableHead className="text-center">Rating</TableHead>
-                    <TableHead className="text-center">Episodes</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockPodcasts.map((podcast) => (
-                    <TableRow key={podcast.id} className="cursor-pointer hover:bg-muted/50">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={podcast.image}
-                            alt={podcast.name}
-                            className="w-12 h-12 rounded-md object-cover"
-                          />
-                          <div>
-                            <p className="font-medium">{podcast.name}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {podcast.host}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {podcast.categories.slice(0, 2).map((cat) => (
-                            <Badge key={cat} variant="secondary" className="text-xs">
-                              {cat}
-                            </Badge>
-                          ))}
-                          {podcast.categories.length > 2 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{podcast.categories.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatNumber(podcast.audience)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                          <span className="font-medium">{podcast.rating}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center text-muted-foreground">
-                        {podcast.episodes.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge
-                          variant={podcast.status === 'Active' ? 'default' : 'secondary'}
-                          className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                        >
-                          {podcast.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-muted-foreground">
-                Showing 1-5 of {stats.total.toLocaleString()} podcasts
-              </p>
-              <div className="flex gap-1">
-                <Button variant="outline" size="sm">Previous</Button>
-                <Button variant="outline" size="sm">1</Button>
-                <Button variant="default" size="sm">2</Button>
-                <Button variant="outline" size="sm">3</Button>
-                <Button variant="outline" size="sm">...</Button>
-                <Button variant="outline" size="sm">247</Button>
-                <Button variant="outline" size="sm">Next</Button>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            </div>
+            ) : displayPodcasts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <XCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold">No podcasts found</h3>
+                <p className="text-sm text-muted-foreground">
+                  Try adjusting your search or filters
+                </p>
+              </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {isMatchMode && <TableHead className="w-12">Select</TableHead>}
+                      <TableHead>Podcast</TableHead>
+                      <TableHead>Host</TableHead>
+                      <TableHead>Audience</TableHead>
+                      <TableHead>Rating</TableHead>
+                      <TableHead>Episodes</TableHead>
+                      {isMatchMode && <TableHead>Compatibility</TableHead>}
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayPodcasts.map(podcast => {
+                      const score = scores[podcast.id]
+                      const reasoning = reasonings[podcast.id]
+                      const isSelected = selectedPodcasts.has(podcast.id)
+                      const categories = Array.isArray(podcast.podcast_categories)
+                        ? podcast.podcast_categories.map((c: any) => c.category_name || c).slice(0, 2)
+                        : []
+
+                      return (
+                        <TableRow key={podcast.id}>
+                          {isMatchMode && (
+                            <TableCell>
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                  setSelectedPodcasts(prev => {
+                                    const next = new Set(prev)
+                                    if (checked) {
+                                      next.add(podcast.id)
+                                    } else {
+                                      next.delete(podcast.id)
+                                    }
+                                    return next
+                                  })
+                                }}
+                              />
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={podcast.podcast_image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(podcast.podcast_name)}&background=random&size=40`}
+                                alt={podcast.podcast_name}
+                                className="w-10 h-10 rounded object-cover"
+                              />
+                              <div>
+                                <div className="font-medium">{podcast.podcast_name}</div>
+                                {categories.length > 0 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {categories.join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {podcast.host_name || podcast.publisher_name || 'Unknown'}
+                          </TableCell>
+                          <TableCell>
+                            {podcast.audience_size
+                              ? `${(podcast.audience_size / 1000).toFixed(0)}K`
+                              : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            {podcast.itunes_rating ? (
+                              <div className="flex items-center gap-1">
+                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                {podcast.itunes_rating.toFixed(1)}
+                              </div>
+                            ) : 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            {podcast.episode_count || 'N/A'}
+                          </TableCell>
+                          {isMatchMode && (
+                            <TableCell>
+                              {score !== null && score !== undefined ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Badge
+                                        variant={
+                                          score >= 8 ? 'default' :
+                                          score >= 7 ? 'secondary' :
+                                          'outline'
+                                        }
+                                        className="cursor-help"
+                                      >
+                                        {score.toFixed(1)}/10
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="text-sm">{reasoning || 'No reasoning available'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Not scored</span>
+                              )}
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem>
+                                  View Details
+                                </DropdownMenuItem>
+                                {podcast.email && (
+                                  <DropdownMenuItem>
+                                    Copy Email
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((page - 1) * 20) + 1} to {Math.min(page * 20, totalCount)} of {totalCount.toLocaleString()} podcasts
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
-      ) : (
-        /* Grid View */
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {mockPodcasts.map((podcast) => (
-            <Card key={podcast.id} className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer">
-              <div className="aspect-square relative">
-                <img
-                  src={podcast.image}
-                  alt={podcast.name}
-                  className="w-full h-full object-cover"
-                />
-                <Badge className="absolute top-2 right-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                  {podcast.status}
-                </Badge>
-              </div>
-              <CardContent className="p-4">
-                <h3 className="font-semibold text-lg mb-1 line-clamp-1">
-                  {podcast.name}
-                </h3>
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-1">
-                  {podcast.host}
-                </p>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      {formatNumber(podcast.audience)}
-                    </span>
-                    <span className="font-medium flex items-center gap-1">
-                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                      {podcast.rating}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1">
-                    {podcast.categories.slice(0, 2).map((cat) => (
-                      <Badge key={cat} variant="secondary" className="text-xs">
-                        {cat}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  <Button className="w-full mt-2" variant="outline" size="sm">
-                    <Eye className="h-4 w-4 mr-2" />
-                    View Details
-                  </Button>
+        {/* Action Bar */}
+        {isMatchMode && selectedPodcasts.size > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-lg">{selectedPodcasts.size} podcasts selected</p>
+                  {Object.keys(scores).length > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Average score: {calculateAverageScore().toFixed(1)}/10
+                    </p>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-        </div>
-        {/* End Main Content Area */}
-
-        {/* Sidebar */}
-        <div className="hidden xl:block w-80 flex-shrink-0">
-          <div className="sticky top-6 space-y-4 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2">
-
-            {/* Quick Filters */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  Quick Filters
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button variant="outline" className="w-full justify-start" size="sm">
-                  <Star className="h-4 w-4 mr-2 fill-amber-400 text-amber-400" />
-                  Top Rated (4.5+)
-                </Button>
-                <Button variant="outline" className="w-full justify-start" size="sm">
-                  <Users className="h-4 w-4 mr-2 text-purple-600" />
-                  Large Audience (1M+)
-                </Button>
-                <Button variant="outline" className="w-full justify-start" size="sm">
-                  <TrendingUp className="h-4 w-4 mr-2 text-green-600" />
-                  Recently Added
-                </Button>
-                <Button variant="outline" className="w-full justify-start" size="sm">
-                  <Mic className="h-4 w-4 mr-2 text-blue-600" />
-                  Active Shows
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Top Categories */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Layers className="h-4 w-4" />
-                  Top Categories
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {[
-                  { name: 'Business', count: 234, color: 'blue' },
-                  { name: 'Technology', count: 189, color: 'purple' },
-                  { name: 'Comedy', count: 156, color: 'pink' },
-                  { name: 'Health & Fitness', count: 142, color: 'green' },
-                  { name: 'News', count: 98, color: 'red' },
-                ].map((cat) => (
-                  <button
-                    key={cat.name}
-                    className="w-full flex items-center justify-between p-2 rounded-md hover:bg-muted transition-colors text-left"
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedPodcasts(new Set())}
                   >
-                    <span className="text-sm font-medium">{cat.name}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {cat.count}
-                    </Badge>
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Recently Viewed */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Eye className="h-4 w-4" />
-                  Recently Viewed
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {mockPodcasts.slice(0, 3).map((podcast) => (
-                  <div key={podcast.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors cursor-pointer">
-                    <img
-                      src={podcast.image}
-                      alt={podcast.name}
-                      className="w-10 h-10 rounded object-cover flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{podcast.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{podcast.host}</p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Quick Actions */}
-            <Card className="bg-gradient-to-br from-primary/5 to-purple-600/5">
-              <CardHeader>
-                <CardTitle className="text-base">Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button className="w-full bg-gradient-to-r from-primary to-purple-600" size="sm">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add New Podcast
-                </Button>
-                <Button variant="outline" className="w-full" size="sm">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Database
-                </Button>
-                <Button variant="outline" className="w-full" size="sm">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Import Podcasts
-                </Button>
-              </CardContent>
-            </Card>
-
-          </div>
-        </div>
-        {/* End Sidebar */}
-
-      </div>
-      {/* End Main Content with Sidebar Layout */}
+                    Clear Selection
+                  </Button>
+                  {isClientMode && selectedClient && (
+                    <Button onClick={handleExportToClientSheet} disabled={isExporting}>
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Exporting...
+                        </>
+                      ) : (
+                        'Export to Client Sheet'
+                      )}
+                    </Button>
+                  )}
+                  {isProspectMode && (
+                    <Button onClick={handleExportToProspectSheet} disabled={isExporting}>
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Exporting...
+                        </>
+                      ) : (
+                        'Export to Prospect Sheet'
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardLayout>
   )
