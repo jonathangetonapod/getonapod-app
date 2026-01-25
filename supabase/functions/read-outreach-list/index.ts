@@ -227,10 +227,33 @@ serve(async (req) => {
     }
 
     // Check central podcasts cache first (7 days freshness)
-    console.log('[READ-OUTREACH-LIST] Checking central podcasts cache...')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔍 [CACHE CHECK] Checking central podcasts database...')
+    console.log('   📋 Found', podcastIds.length, 'podcast IDs in Google Sheet')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     const { cached, missing } = await getCachedPodcasts(supabase, podcastIds, 7)
 
-    console.log(`[READ-OUTREACH-LIST] Cache results - Cached: ${cached.length}, Missing: ${missing.length}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ [CACHE HIT] Found in central database:', cached.length, 'podcasts')
+    console.log('⏩ [CACHE BENEFIT] Skipped Podscan API calls:', cached.length * 2)
+    console.log('💰 [COST SAVINGS] Estimated savings: $' + (cached.length * 2 * 0.01).toFixed(2))
+    if (cached.length > 0) {
+      console.log('📋 [CACHED PODCASTS]:', cached.map((p: any) => p.podcast_name).slice(0, 5).join(', ') + (cached.length > 5 ? `... +${cached.length - 5} more` : ''))
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    if (missing.length > 0) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔄 [PODSCAN API] Need to fetch from Podscan:', missing.length, 'podcasts')
+      console.log('   These podcasts are NOT in cache yet')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    } else {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🎉 [100% CACHE HIT] All podcasts served from cache!')
+      console.log('   No Podscan API calls needed for this outreach list!')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    }
 
     // Convert cached podcasts to response format
     const cachedPodcasts = cached.map(p => ({
@@ -259,9 +282,15 @@ serve(async (req) => {
       // Fetch podcasts in parallel (but limit concurrency to avoid rate limiting)
       const batchSize = 5
       const podcastsToCache: PodcastCacheData[] = []
+      let fetchedCount = 0
 
       for (let i = 0; i < missing.length; i += batchSize) {
         const batch = missing.slice(i, i + batchSize)
+        const batchNum = Math.floor(i / batchSize) + 1
+        const totalBatches = Math.ceil(missing.length / batchSize)
+
+        console.log(`⏳ [BATCH ${batchNum}/${totalBatches}] Fetching podcasts ${i + 1}-${Math.min(i + batchSize, missing.length)} of ${missing.length}...`)
+
         const batchPromises = batch.map(async (podcastId: string) => {
           try {
             const response = await fetch(
@@ -313,27 +342,72 @@ serve(async (req) => {
         })
 
         const batchResults = await Promise.all(batchPromises)
-        newlyFetchedPodcasts.push(...batchResults.filter(p => p !== null))
+        const validResults = batchResults.filter(p => p !== null)
+        newlyFetchedPodcasts.push(...validResults)
+        fetchedCount += validResults.length
+
+        console.log(`✅ [BATCH ${batchNum}/${totalBatches}] Completed! Fetched ${validResults.length} podcasts (Total: ${fetchedCount}/${missing.length})`)
       }
 
-      // Save newly fetched podcasts to central cache
+      // Save newly fetched podcasts to central cache (BATCH SAVE!)
       if (podcastsToCache.length > 0) {
-        console.log('[READ-OUTREACH-LIST] Saving', podcastsToCache.length, 'podcasts to cache...')
-        await batchUpsertPodcastCache(supabase, podcastsToCache)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('💾 [BATCH SAVE] Saving', podcastsToCache.length, 'podcasts to central database...')
+        const saveResult = await batchUpsertPodcastCache(supabase, podcastsToCache)
+        if (saveResult.success) {
+          console.log('✅ [BATCH SAVE SUCCESS]', podcastsToCache.length, 'podcasts now in central database!')
+          console.log('🌍 [CACHE BENEFIT] These podcasts available for ALL future outreach campaigns!')
+        } else {
+          console.error('❌ [BATCH SAVE FAILED] Some podcasts may not have been cached')
+        }
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       }
     }
 
     // Combine cached + newly fetched podcasts
     const podcasts = [...cachedPodcasts, ...newlyFetchedPodcasts]
 
-    console.log('[READ-OUTREACH-LIST] Total podcasts returned:', podcasts.length,
-                `(${cachedPodcasts.length} from cache, ${newlyFetchedPodcasts.length} newly fetched)`)
+    const cacheHitRate = podcastIds.length > 0 ? ((cached.length / podcastIds.length) * 100).toFixed(1) : '0'
+    const apiCallsSaved = cached.length * 2
+    const apiCallsMade = missing.length * 2
+    const costSavings = (apiCallsSaved * 0.01).toFixed(2)
+    const costSpent = (apiCallsMade * 0.01).toFixed(2)
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🎯 [OUTREACH LIST] Import Complete!')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📊 SUMMARY:')
+    console.log('   📋 Total podcasts in sheet:', podcastIds.length)
+    console.log('   ✅ Served from cache:', cached.length, `(${cacheHitRate}%)`)
+    console.log('   🆕 Newly fetched:', missing.length)
+    console.log('   💾 Total returned:', podcasts.length)
+    console.log('')
+    console.log('💰 COST ANALYSIS:')
+    console.log('   ⏩ API calls saved:', apiCallsSaved)
+    console.log('   💸 API calls made:', apiCallsMade)
+    console.log('   💵 Money saved: $' + costSavings)
+    console.log('   💳 Money spent: $' + costSpent)
+    console.log('   📈 Cache efficiency: ' + cacheHitRate + '%')
+    console.log('')
+    console.log('🚀 NEXT IMPORT:')
+    console.log('   If you import this list again, cache hit rate will be ~100%!')
+    console.log('   If other campaigns use similar podcasts, they benefit too!')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return new Response(
       JSON.stringify({
         success: true,
         podcasts,
         total: podcasts.length,
+        cached: cached.length,
+        fetched: missing.length,
+        cachePerformance: {
+          cacheHitRate: parseFloat(cacheHitRate),
+          apiCallsSaved: apiCallsSaved,
+          apiCallsMade: apiCallsMade,
+          costSavings: parseFloat(costSavings),
+          costSpent: parseFloat(costSpent),
+        },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
