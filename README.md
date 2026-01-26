@@ -31,12 +31,15 @@ Get On A Pod is a full-stack application that helps founders and financial profe
 
 #### Podcast Database
 - **Centralized Cache** - Browse 1,000+ pre-fetched podcasts from central database
-- **Three Modes:**
+- **Four Modes:**
   - **Browse** - View all cached podcasts with filtering and search
   - **Match for Client** - Score and export podcasts to client sheets
   - **Match for Prospect** - Score and export to prospect dashboards
-- **Advanced Filtering** - Search by name, category, audience size, rating, language, region
+  - **Analytics** - Comprehensive insights into database growth, performance, and trends
+- **Advanced Filtering** - Search by name, category, audience size, rating, language, region, email availability
 - **Smart Caching** - 60-80% API cost reduction through proactive cache optimization
+- **Table Density Control** - Compact/Comfortable/Spacious view options
+- **Column Visibility** - Show/hide columns based on preference
 - **Export Integration** - Same Google Sheets export as Podcast Finder
 
 #### Prospect Dashboards
@@ -205,11 +208,31 @@ npx supabase functions deploy analyze-podcast-fit
 
 ## 📝 Recent Updates (January 2026)
 
+### Podcast Database Analytics Dashboard (January 26, 2026)
+- ✅ **Comprehensive Analytics View** - New Analytics mode with 7 database views
+- ✅ **Growth Tracking** - Daily, weekly, and monthly podcast additions
+- ✅ **Coverage Statistics** - Email coverage %, demographics %, geographic diversity
+- ✅ **Cost Optimization Metrics** - Cache efficiency %, API calls saved, money saved
+- ✅ **Top Performers** - Top 20 most cached podcasts with reuse counts
+- ✅ **Category Insights** - Top 30 categories with audience metrics and distribution
+- ✅ **Recently Added** - Last 20 podcasts with ratings and audience size
+- ✅ **Visual Analytics** - Progress bars, stat cards, and ranking lists
+- ✅ **Auto-refresh** - Live data updates every 60 seconds
+
+### Email Extraction & UX Improvements (January 25, 2026)
+- ✅ **Automatic Email Extraction** - All podcast fetches now capture contact emails from Podscan API
+- ✅ **Database Column Rename** - Renamed `email` to `podscan_email` for clarity
+- ✅ **Email Filter** - Filter podcasts by email availability
+- ✅ **Table Density Control** - Compact/Comfortable/Spacious view options
+- ✅ **Category Dropdown Scrolling** - Scrollable multi-select category filter
+- ✅ **Column Visibility** - Show/hide table columns based on preference
+- ✅ **Enhanced Caching** - Emails automatically saved to central cache
+
 ### AI-Powered Podcast Discovery System
 - ✅ Built complete Podcast Finder with AI query generation (Claude Sonnet)
 - ✅ Implemented compatibility scoring with Claude Haiku (1-10 scale with reasoning)
 - ✅ Created Podcast Database page with centralized cache (1,000+ podcasts)
-- ✅ Added three-mode architecture: Browse, Match for Client, Match for Prospect
+- ✅ Added four-mode architecture: Browse, Match for Client, Match for Prospect, Analytics
 - ✅ Integrated Google Sheets export for clients and prospects
 - ✅ Built prospect dashboard system with shareable public URLs
 
@@ -219,6 +242,7 @@ npx supabase functions deploy analyze-podcast-fit
 - ✅ Added epic logging to all edge functions for observability
 - ✅ Achieved 60-80% API cost reduction through smart caching
 - ✅ Built `podcast_cache_statistics` view for monitoring savings
+- ✅ Added detailed analytics views for comprehensive insights
 
 ### Prospect Dashboard Features
 - ✅ Create personalized podcast recommendations for prospects
@@ -257,10 +281,30 @@ npx supabase functions deploy analyze-podcast-fit
 - **Cost Tracking** - Real-time statistics on API calls saved and money saved
 - **60-80% Savings** - Typical reduction in Podscan API costs
 
-### Cache Statistics View
+### Cache Statistics Views
 ```sql
+-- Basic stats
 SELECT * FROM podcast_cache_statistics;
--- Shows: total_podcasts, cache_hits, api_calls_saved, money_saved
+
+-- Detailed analytics
+SELECT * FROM podcast_cache_statistics_detailed;
+-- Shows: total_podcasts, email_coverage_pct, demographics_coverage_pct,
+--        cache_efficiency_pct, estimated_money_saved_usd, and more
+
+-- Growth tracking
+SELECT * FROM podcast_growth_stats;
+-- Shows: added_today, added_last_7_days, added_last_30_days
+
+-- Top performers
+SELECT * FROM top_cached_podcasts;
+SELECT * FROM recently_added_podcasts;
+
+-- Category insights
+SELECT * FROM podcast_category_stats;
+
+-- Distribution analysis
+SELECT * FROM podcast_audience_distribution;
+SELECT * FROM podcast_rating_distribution;
 ```
 
 See `EXPORT_CACHE_OPTIMIZATION.md` for detailed documentation.
@@ -287,7 +331,12 @@ The platform tracks:
 - Audience reach per booking (quality metric)
 - Month-over-month growth in bookings secured
 - Episode publish rates and timelines
-- Podcast cache efficiency and API cost savings
+- Podcast cache efficiency and API cost savings (with detailed analytics)
+- Database growth metrics (daily, weekly, monthly additions)
+- Email and demographics coverage percentages
+- Geographic diversity (languages, regions)
+- Category distribution and audience insights
+- Top cached podcasts and reuse rates
 - Compatibility scoring success rates
 - Sales call performance and recommendations
 - Client engagement and portal activity
