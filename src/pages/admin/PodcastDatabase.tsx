@@ -57,6 +57,14 @@ import {
   ArrowUp,
   ArrowDown,
   Columns3,
+  BarChart3,
+  TrendingDown,
+  Zap,
+  DollarSign,
+  Mail,
+  Users,
+  Globe,
+  Clock,
 } from 'lucide-react'
 import { getClients } from '@/services/clients'
 import {
@@ -71,9 +79,10 @@ import { scoreCompatibilityBatch, type PodcastForScoring } from '@/services/comp
 import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import { getAllAnalytics, type DetailedCacheStats, type TopCachedPodcast, type RecentlyAddedPodcast, type CategoryStats, type AudienceDistribution, type RatingDistribution } from '@/services/podcastAnalytics'
 
 type ViewMode = 'table' | 'grid'
-type Mode = 'browse' | 'client' | 'prospect'
+type Mode = 'browse' | 'client' | 'prospect' | 'analytics'
 type SortOption = 'name' | 'host' | 'audience' | 'rating' | 'episodes' | 'dateAdded'
 type TableDensity = 'compact' | 'comfortable' | 'spacious'
 
@@ -456,6 +465,14 @@ export default function PodcastDatabase() {
   const { data: stats } = useQuery({
     queryKey: ['podcast-stats'],
     queryFn: getPodcastStatistics,
+    refetchInterval: 60000
+  })
+
+  // Fetch analytics data
+  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['podcast-analytics'],
+    queryFn: getAllAnalytics,
+    enabled: mode === 'analytics',
     refetchInterval: 60000
   })
 
@@ -1004,6 +1021,14 @@ export default function PodcastDatabase() {
             <Target className="h-4 w-4" />
             Match for Prospect
           </Button>
+          <Button
+            variant={mode === 'analytics' ? 'default' : 'outline'}
+            onClick={() => setMode('analytics')}
+            className="flex items-center gap-2"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Analytics
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -1056,6 +1081,252 @@ export default function PodcastDatabase() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Analytics Dashboard */}
+        {mode === 'analytics' && (
+          <div className="space-y-6">
+            {analyticsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <>
+                {/* Growth & Coverage Stats */}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Added Today</CardTitle>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData?.growthStats?.added_today?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground">New podcasts</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Last 7 Days</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-green-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData?.detailedStats?.added_last_7_days?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground">Growth this week</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Last 30 Days</CardTitle>
+                      <BarChart3 className="h-4 w-4 text-blue-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData?.detailedStats?.added_last_30_days?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground">Growth this month</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Cache Efficiency</CardTitle>
+                      <Zap className="h-4 w-4 text-yellow-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{analyticsData?.detailedStats?.cache_efficiency_pct || 0}%</div>
+                      <p className="text-xs text-muted-foreground">Reuse rate</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Coverage Statistics */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Coverage & Quality</CardTitle>
+                    <CardDescription>Data completeness across the database</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            Email Coverage
+                          </span>
+                          <span className="font-bold">{analyticsData?.detailedStats?.email_coverage_pct || 0}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-green-600"
+                            style={{ width: `${analyticsData?.detailedStats?.email_coverage_pct || 0}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {analyticsData?.detailedStats?.podcasts_with_email?.toLocaleString() || 0} of {analyticsData?.detailedStats?.total_podcasts?.toLocaleString() || 0} podcasts
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Demographics
+                          </span>
+                          <span className="font-bold">{analyticsData?.detailedStats?.demographics_coverage_pct || 0}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600"
+                            style={{ width: `${analyticsData?.detailedStats?.demographics_coverage_pct || 0}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {analyticsData?.detailedStats?.podcasts_with_demographics?.toLocaleString() || 0} analyzed
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <Globe className="h-4 w-4" />
+                            Geographic Diversity
+                          </span>
+                          <span className="font-bold">{analyticsData?.detailedStats?.unique_regions || 0}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {analyticsData?.detailedStats?.unique_languages || 0} languages, {analyticsData?.detailedStats?.unique_regions || 0} regions
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Cost Savings */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Cost Optimization</CardTitle>
+                    <CardDescription>API cost savings through intelligent caching</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-4">
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">API Calls Saved</p>
+                        <p className="text-2xl font-bold">{analyticsData?.detailedStats?.estimated_api_calls_saved?.toLocaleString() || 0}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Money Saved</p>
+                        <p className="text-2xl font-bold text-green-600">${analyticsData?.detailedStats?.estimated_money_saved_usd || '0.00'}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Cache Hits</p>
+                        <p className="text-2xl font-bold">{analyticsData?.detailedStats?.total_cache_hits?.toLocaleString() || 0}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Efficiency Rate</p>
+                        <p className="text-2xl font-bold text-blue-600">{analyticsData?.detailedStats?.cache_efficiency_pct || 0}%</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Top Cached & Recently Added */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Top Cached Podcasts */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Top Cached Podcasts</CardTitle>
+                      <CardDescription>Most frequently reused from cache</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {analyticsData?.topCached?.slice(0, 10).map((podcast, idx) => (
+                          <div key={podcast.id} className="flex items-center justify-between p-3 rounded-lg border">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{podcast.podcast_name}</p>
+                                <p className="text-xs text-muted-foreground truncate">{podcast.host_name || 'Unknown Host'}</p>
+                              </div>
+                            </div>
+                            <Badge variant="secondary" className="flex-shrink-0">
+                              {podcast.cache_hit_count} hits
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Recently Added */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recently Added</CardTitle>
+                      <CardDescription>Latest podcasts in database</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {analyticsData?.recentlyAdded?.slice(0, 10).map((podcast) => (
+                          <div key={podcast.id} className="flex items-center justify-between p-3 rounded-lg border">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{podcast.podcast_name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{podcast.host_name || 'Unknown Host'}</p>
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                              {podcast.audience_size && (
+                                <p className="text-xs font-medium">{(podcast.audience_size / 1000).toFixed(0)}K</p>
+                              )}
+                              {podcast.itunes_rating && (
+                                <div className="flex items-center gap-1 text-xs text-yellow-600">
+                                  <Star className="h-3 w-3 fill-current" />
+                                  {podcast.itunes_rating.toFixed(1)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Top Categories */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Top Categories</CardTitle>
+                    <CardDescription>Most popular podcast categories in database</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {analyticsData?.categoryStats?.slice(0, 15).map((cat, idx) => (
+                        <div key={cat.category_name} className="flex items-center gap-4">
+                          <div className="flex-shrink-0 w-6 text-right text-sm text-muted-foreground">
+                            #{idx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium">{cat.category_name}</span>
+                              <span className="text-sm text-muted-foreground">{cat.podcast_count} podcasts</span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary"
+                                style={{ width: `${(cat.podcast_count / (analyticsData?.categoryStats?.[0]?.podcast_count || 1)) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 text-right text-xs text-muted-foreground">
+                            Avg: {(cat.avg_audience_size / 1000).toFixed(0)}K
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Client Selector */}
         {isClientMode && (
