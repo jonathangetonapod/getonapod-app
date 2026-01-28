@@ -239,7 +239,22 @@ serve(async (req) => {
       console.log('[Get Prospect Podcasts] FAST PATH - querying cache directly, skipping Google Sheets')
       const { data: cached, error: cacheError } = await supabase
         .from('prospect_podcast_analyses')
-        .select('*')
+        .select(`
+          *,
+          podcasts!inner(
+            podscan_id,
+            podcast_name,
+            podcast_description,
+            podcast_image_url,
+            podcast_url,
+            publisher_name,
+            itunes_rating,
+            episode_count,
+            audience_size,
+            podcast_categories,
+            demographics
+          )
+        `)
         .eq('prospect_dashboard_id', prospectDashboardId)
 
       if (cacheError) {
@@ -247,13 +262,32 @@ serve(async (req) => {
         throw cacheError
       }
 
-      console.log('[Get Prospect Podcasts] FAST PATH - returning', cached?.length || 0, 'cached podcasts')
+      // Transform the joined data into the expected format
+      const podcasts = (cached || []).map((analysis: any) => ({
+        podcast_id: analysis.podcasts.podscan_id,
+        podcast_name: analysis.podcasts.podcast_name,
+        podcast_description: analysis.podcasts.podcast_description,
+        podcast_image_url: analysis.podcasts.podcast_image_url,
+        podcast_url: analysis.podcasts.podcast_url,
+        publisher_name: analysis.podcasts.publisher_name,
+        itunes_rating: analysis.podcasts.itunes_rating,
+        episode_count: analysis.podcasts.episode_count,
+        audience_size: analysis.podcasts.audience_size,
+        podcast_categories: analysis.podcasts.podcast_categories,
+        demographics: analysis.podcasts.demographics,
+        ai_clean_description: analysis.ai_clean_description,
+        ai_fit_reasons: analysis.ai_fit_reasons,
+        ai_pitch_angles: analysis.ai_pitch_angles,
+        ai_analyzed_at: analysis.ai_analyzed_at,
+      }))
+
+      console.log('[Get Prospect Podcasts] FAST PATH - returning', podcasts.length, 'cached podcasts with full metadata')
       return new Response(
         JSON.stringify({
           success: true,
-          podcasts: cached || [],
-          total: cached?.length || 0,
-          cached: cached?.length || 0,
+          podcasts,
+          total: podcasts.length,
+          cached: podcasts.length,
           missing: 0,
           fastPath: true,
         }),
