@@ -2855,8 +2855,8 @@ export default function ProspectDashboards() {
                       </div>
                     )}
 
-                    {/* Button 2: Find Missing Podcasts */}
-                    {cacheStatusData && cacheStatusData.missing > 0 && (
+                    {/* Button 2: Find Missing Podcasts OR Link Cached Podcasts */}
+                    {cacheStatusData && (cacheStatusData.missing > 0 || (cacheStatusData.cached > 0 && cacheStatusData.withAi === 0)) && (
                       <div className="space-y-2">
                         {fetchingPodcasts && (
                           <div className="space-y-2">
@@ -2870,7 +2870,7 @@ export default function ProspectDashboards() {
                               />
                             </div>
                             <p className="text-xs text-center text-muted-foreground">
-                              Fetching from Podscan...
+                              {cacheStatusData.missing > 0 ? 'Fetching from Podscan...' : 'Linking cached podcasts...'}
                             </p>
                           </div>
                         )}
@@ -2883,17 +2883,22 @@ export default function ProspectDashboards() {
                           {fetchingPodcasts ? (
                             <>
                               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Fetching...
+                              {cacheStatusData.missing > 0 ? 'Fetching...' : 'Linking...'}
                             </>
                           ) : fetchStatus?.stoppedEarly ? (
                             <>
                               <RefreshCw className="h-4 w-4 mr-2" />
                               Continue ({fetchStatus.remaining} remaining)
                             </>
-                          ) : (
+                          ) : cacheStatusData.missing > 0 ? (
                             <>
                               <RefreshCw className="h-4 w-4 mr-2" />
                               Find Missing Podcasts ({cacheStatusData.missing})
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Link Cached Podcasts ({cacheStatusData.cached})
                             </>
                           )}
                         </Button>

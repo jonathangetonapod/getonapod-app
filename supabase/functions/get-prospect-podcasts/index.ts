@@ -431,6 +431,31 @@ serve(async (req) => {
     }
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
+    // Create linkage entries in prospect_podcast_analyses for cached podcasts (without AI)
+    // This ensures the FAST PATH works even before AI analysis runs
+    if (prospectDashboardId && cachedPodcasts.length > 0 && !cacheOnly && !checkStatusOnly && !aiAnalysisOnly) {
+      console.log('[Get Prospect Podcasts] Creating linkage entries for', cachedPodcasts.length, 'cached podcasts')
+
+      const linkageEntries = centralCached.map((p: any) => ({
+        prospect_dashboard_id: prospectDashboardId,
+        podcast_id: p.id,
+        // AI fields will be null initially, filled in by AI analysis later
+      }))
+
+      const { error: linkageError } = await supabase
+        .from('prospect_podcast_analyses')
+        .upsert(linkageEntries, {
+          onConflict: 'prospect_dashboard_id,podcast_id',
+          ignoreDuplicates: true  // Don't overwrite existing AI analyses
+        })
+
+      if (linkageError) {
+        console.error('[Get Prospect Podcasts] Error creating linkage entries:', linkageError)
+      } else {
+        console.log('[Get Prospect Podcasts] ✅ Created linkage entries for cached podcasts')
+      }
+    }
+
     // Load AI analyses from prospect_podcast_analyses table (prospect-specific)
     if (prospectDashboardId && cachedPodcasts.length > 0) {
       const { data: analyses } = await supabase
