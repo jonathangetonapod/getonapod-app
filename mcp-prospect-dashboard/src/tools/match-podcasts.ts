@@ -65,32 +65,38 @@ async function filterPodcastsWithAI(
         : 'Unknown'
     }));
 
-    const prompt = `You are evaluating podcast recommendations for a prospect. Your job is to filter out irrelevant matches and explain why each relevant podcast is a good fit.
+    const prompt = `You are an expert podcast booker evaluating which podcasts would be the best fit for a guest. Consider:
+1. Topical alignment - Does the podcast cover topics the guest is expert in?
+2. Audience match - Would the podcast's listeners benefit from this guest?
+3. Format fit - Does the podcast style suit this guest's profile?
+4. Authority fit - Does the guest's expertise level match the podcast's depth?
 
-PROSPECT PROFILE:
+GUEST PROFILE:
 ${prospectText}
 
-PODCAST CANDIDATES:
+PODCAST CANDIDATES (sorted by semantic similarity):
 ${podcastSummaries.map(p => `${p.index}. ${p.name}
    Categories: ${p.categories}
    Description: ${p.description}`).join('\n\n')}
 
-For each podcast, evaluate its relevance (0-10 scale):
-- 8-10: Highly relevant, excellent match for this prospect
-- 6-7: Relevant, good potential fit
-- 5: Moderately relevant, worth including
-- 0-4: Not relevant, filter out
+EVALUATION CRITERIA (0-10 scale):
+- 9-10: Perfect match - guest expertise directly aligns with podcast focus
+- 7-8: Strong match - good topic overlap and audience fit
+- 5-6: Moderate match - some relevance but not ideal
+- 0-4: Poor match - misaligned topics, audience, or format
 
-Respond with ONLY a JSON array of objects for podcasts scoring 5+ (no other text):
+Only include podcasts scoring 5+. For each relevant podcast, explain the specific connection between the guest's profile and the podcast's focus.
+
+Respond with ONLY a JSON array (no markdown, no other text):
 [
   {
     "index": 0,
     "relevance_score": 8,
-    "reason": "Brief explanation of why this is relevant (1 sentence)"
+    "reason": "Specific reason based on guest expertise and podcast focus"
   }
 ]
 
-Be reasonably selective - include podcasts that are clearly relevant or moderately relevant to the prospect's profile. Exclude only those that are clearly unrelated or generic.`;
+Be selective for quality - better to have 10 highly relevant matches than 50 mediocre ones.`;
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
