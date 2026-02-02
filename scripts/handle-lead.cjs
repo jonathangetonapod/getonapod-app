@@ -161,6 +161,56 @@ async function updateOpportunityStage(lead, newStage) {
   return { stage: newStage };
 }
 
+// Update Supabase with follow-up tracking
+async function updateFollowUpTracking(lead, dashboardUrl, prospectId) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY;
+  
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.log('⚠️ Supabase not configured, skipping follow-up tracking');
+    return null;
+  }
+  
+  console.log('📅 Setting up follow-up schedule...');
+  
+  // Calculate first follow-up date (3 days from now)
+  const nextFollowUp = new Date();
+  nextFollowUp.setDate(nextFollowUp.getDate() + 3);
+  
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/bison_classified_replies?from_email=eq.${encodeURIComponent(lead.email)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify({
+          our_reply_sent_at: new Date().toISOString(),
+          dashboard_url: dashboardUrl,
+          prospect_id: prospectId,
+          follow_up_count: 0,
+          next_follow_up_at: nextFollowUp.toISOString()
+        })
+      }
+    );
+    
+    if (res.ok) {
+      console.log(`✅ Follow-up scheduled for ${nextFollowUp.toLocaleDateString()}`);
+      return { next_follow_up: nextFollowUp };
+    } else {
+      console.log(`⚠️ Could not update follow-up tracking: ${res.status}`);
+      return null;
+    }
+  } catch (err) {
+    console.log(`⚠️ Follow-up tracking error: ${err.message}`);
+    return null;
+  }
+}
+
 // Get reply template based on temperature
 function getReplyTemplate(lead, dashboardUrl) {
   const templates = {
@@ -329,6 +379,9 @@ async function handleLead(args) {
       
       // Update opportunity stage to REPLIED (we sent dashboard)
       await updateOpportunityStage(lead, 'REPLIED');
+      
+      // Set up follow-up tracking
+      await updateFollowUpTracking(lead, dashboardUrl, prospectId);
     } else {
       console.log('⚠️ Could not create dashboard, continuing without...');
     }
