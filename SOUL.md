@@ -57,7 +57,7 @@ Draft a personalized reply...
 
 Use the handle-lead script for the full flow:
 ```bash
-node ~/Desktop/SDR/scripts/handle-lead.js \
+node ~/Desktop/SDR/scripts/handle-lead.cjs \
   --name "John Smith" \
   --email "john@acme.com" \
   --company "Acme Corp" \
