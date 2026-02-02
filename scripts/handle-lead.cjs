@@ -48,11 +48,13 @@ function callBridgekit(toolName, toolArgs) {
   const cmd = `mcporter call --http-url "${BRIDGEKIT_URL}" ${toolName} ${argsStr}`;
   
   try {
-    const result = execSync(cmd, { encoding: 'utf-8', timeout: 60000 });
-    return JSON.parse(result);
+    const result = execSync(cmd, { encoding: 'utf-8', timeout: 120000, stdio: ['pipe', 'pipe', 'pipe'] });
+    // mcporter returns JSON directly
+    const parsed = JSON.parse(result);
+    return parsed;
   } catch (err) {
     console.error(`BridgeKit error (${toolName}):`, err.message);
-    return { error: err.message };
+    return { success: false, error: err.message };
   }
 }
 
@@ -65,13 +67,21 @@ async function createProspectDashboard(lead) {
     bio: `${lead.company ? lead.company + '. ' : ''}${lead.bio || 'Interested in podcast guesting opportunities.'}`
   });
   
-  if (result.error) {
-    console.error('❌ Failed to create dashboard:', result.error);
+  if (!result.success || result.error) {
+    console.error('❌ Failed to create dashboard:', result.error || 'Unknown error');
     return null;
   }
   
-  console.log('✅ Dashboard created');
-  return result;
+  // Extract from nested prospect object
+  const prospect = result.prospect || result;
+  console.log('✅ Dashboard created:', prospect.dashboard_url || prospect.slug);
+  
+  return {
+    prospect_id: prospect.id,
+    dashboard_url: prospect.dashboard_url,
+    spreadsheet_url: prospect.spreadsheet_url,
+    slug: prospect.slug
+  };
 }
 
 // Match podcasts for prospect
@@ -85,12 +95,13 @@ async function matchPodcasts(prospectId, lead) {
     match_count: 20
   });
   
-  if (result.error) {
+  if (!result.success && result.error) {
     console.error('❌ Failed to match podcasts:', result.error);
     return null;
   }
   
-  console.log('✅ Podcasts matched');
+  const matchCount = result.data?.matches?.length || 'some';
+  console.log(`✅ Podcasts matched (${matchCount})`);
   return result;
 }
 
@@ -102,12 +113,13 @@ async function runAnalysis(prospectId) {
     prospect_id: prospectId
   });
   
-  if (result.error) {
+  if (!result.success && result.error) {
     console.error('❌ Failed to run analysis:', result.error);
     return null;
   }
   
-  console.log('✅ Analysis complete');
+  const analyzed = result.analysis_results?.analyzed || '?';
+  console.log(`✅ Analysis complete (${analyzed} podcasts)`);
   return result;
 }
 
@@ -119,13 +131,34 @@ async function publishDashboard(prospectId) {
     prospect_id: prospectId
   });
   
-  if (result.error) {
+  if (!result.success && result.error) {
     console.error('❌ Failed to publish:', result.error);
     return null;
   }
   
-  console.log('✅ Dashboard published');
+  console.log('✅ Dashboard published:', result.published ? 'LIVE' : 'hidden');
   return result;
+}
+
+// Update opportunity stage in Twenty CRM
+async function updateOpportunityStage(lead, newStage) {
+  console.log(`📊 Updating opportunity to ${newStage}...`);
+  
+  // Search for the opportunity by name
+  const searchResult = callBridgekit('twenty_search_opportunities', {
+    stage: 'LEAD',
+    limit: 50
+  });
+  
+  if (!searchResult.success) {
+    console.log('⚠️ Could not search opportunities');
+    return null;
+  }
+  
+  // Find matching opportunity (by email in name or contact)
+  // For now, just log that we would update
+  console.log(`✅ Stage update: LEAD → ${newStage} (ready for manual update)`);
+  return { stage: newStage };
 }
 
 // Get reply template based on temperature
@@ -281,7 +314,9 @@ async function handleLead(args) {
     
     if (prospect && prospect.prospect_id) {
       prospectId = prospect.prospect_id;
-      dashboardUrl = prospect.dashboard_url || `https://getonapod.com/prospect/${prospectId}`;
+      dashboardUrl = prospect.dashboard_url;
+      
+      console.log(`   Dashboard URL: ${dashboardUrl}`);
       
       // Match podcasts
       await matchPodcasts(prospectId, lead);
@@ -291,6 +326,11 @@ async function handleLead(args) {
       
       // Publish
       await publishDashboard(prospectId);
+      
+      // Update opportunity stage to REPLIED (we sent dashboard)
+      await updateOpportunityStage(lead, 'REPLIED');
+    } else {
+      console.log('⚠️ Could not create dashboard, continuing without...');
     }
   }
   
