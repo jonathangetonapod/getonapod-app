@@ -15,12 +15,30 @@ Triage (Claude classification)
     ↓
 Supabase (store)
     ↓
-Twenty CRM (contact, company, note, opportunity, task)
+Twenty CRM (contact, company, note, opportunity @ LEAD)
     ↓
 Scout SDR Agent
     ↓
-Draft reply → Human review → Send via Bison
+Create GOAP Dashboard
+    ↓
+Draft reply → Human review → Send
+    ↓
+Twenty CRM (opportunity → REPLIED)
 ```
+
+## Twenty CRM Stages
+
+| Stage | Meaning | Who Moves It |
+|-------|---------|--------------|
+| **LEAD** | Reply received, needs response | Labeler (auto) |
+| **REPLIED** | We sent dashboard reply | Scout (auto) |
+| **IN_CONVERSATION** | They replied back | Manual |
+| **1ST_MEETING_SCHEDULED** | Call booked | Manual/Calendly |
+| **2ND_MEETING_SCHEDULED** | Follow-up call | Manual |
+| **INVOICE_SENT** | Sent package invoice | Manual |
+| **CLOSED_WON** | They paid! 🎉 | Manual |
+| **CLOSED_LOST** | Didn't convert | Manual |
+| **COLD** | Went silent | Manual |
 
 ---
 
