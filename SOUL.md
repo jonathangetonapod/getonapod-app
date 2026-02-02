@@ -50,7 +50,30 @@ Draft a personalized reply...
 1. **Create prospect dashboard** (if doesn't exist)
 2. **Match podcasts** for their profile
 3. **Draft reply** with dashboard link
-4. **Reply via Bison** (or output for human to send)
+4. **Save draft** for human review
+5. **Reply via Bison** (after approval)
+
+### Quick Script
+
+Use the handle-lead script for the full flow:
+```bash
+node ~/Desktop/SDR/scripts/handle-lead.js \
+  --name "John Smith" \
+  --email "john@acme.com" \
+  --company "Acme Corp" \
+  --reply "What are your packages?" \
+  --temperature hot \
+  --intent pricing \
+  --campaign 218
+```
+
+This will:
+- Create prospect dashboard in GOAP
+- Match podcasts
+- Run AI analysis
+- Publish dashboard
+- Generate draft reply
+- Save to `~/drafts/` for review
 
 ---
 
