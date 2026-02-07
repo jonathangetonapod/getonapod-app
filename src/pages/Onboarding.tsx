@@ -155,6 +155,12 @@ const stats = [
 
 const STORAGE_KEY = 'onboarding_draft'
 const STORAGE_STEP_KEY = 'onboarding_step'
+const STORAGE_HEADSHOT_KEY = 'onboarding_headshot'
+
+// Separate interface for serializable data (excludes File object)
+interface SerializableOnboardingData extends Omit<OnboardingData, 'headshotFile'> {
+  headshotFile: null // Always null in serialized form
+}
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -166,6 +172,9 @@ export default function Onboarding() {
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
   const [isAnimating, setIsAnimating] = useState(false)
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
+  const [checkingEmail, setCheckingEmail] = useState(false)
+  const [headshotBase64, setHeadshotBase64] = useState<string | null>(null)
+  const [headshotMeta, setHeadshotMeta] = useState<{ name: string; type: string } | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
 
   const totalSteps = 6
@@ -176,15 +185,27 @@ export default function Onboarding() {
     try {
       const savedData = localStorage.getItem(STORAGE_KEY)
       const savedStep = localStorage.getItem(STORAGE_STEP_KEY)
+      const savedHeadshot = localStorage.getItem(STORAGE_HEADSHOT_KEY)
 
       if (savedData) {
         const parsed = JSON.parse(savedData)
-        setData(parsed)
+        setData({ ...parsed, headshotFile: null }) // File can't be restored, but we have base64
         toast.info('Welcome back! Your progress has been restored.')
       }
 
       if (savedStep) {
         setStep(parseInt(savedStep, 10))
+      }
+
+      // Restore headshot preview from base64
+      if (savedHeadshot) {
+        try {
+          const headshotData = JSON.parse(savedHeadshot)
+          setHeadshotBase64(headshotData.base64)
+          setHeadshotMeta({ name: headshotData.name, type: headshotData.type })
+        } catch (e) {
+          console.error('Error restoring headshot:', e)
+        }
       }
     } catch (error) {
       console.error('Error loading saved progress:', error)
@@ -197,21 +218,49 @@ export default function Onboarding() {
       // Don't save if account is already created
       if (accountCreated) return
 
-      // Don't save if data is still initial (prevents saving empty form)
-      if (JSON.stringify(data) === JSON.stringify(initialData)) return
+      // Create serializable version (exclude File object)
+      const serializableData: SerializableOnboardingData = {
+        ...data,
+        headshotFile: null // File objects can't be serialized
+      }
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      // Don't save if data is still initial (prevents saving empty form)
+      const initialSerializable = { ...initialData, headshotFile: null }
+      if (JSON.stringify(serializableData) === JSON.stringify(initialSerializable) && !headshotBase64) return
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableData))
       localStorage.setItem(STORAGE_STEP_KEY, step.toString())
     } catch (error) {
       console.error('Error saving progress:', error)
     }
-  }, [data, step, accountCreated])
+  }, [data, step, accountCreated, headshotBase64])
+
+  // Save headshot base64 separately (it's large, so only save when it changes)
+  useEffect(() => {
+    try {
+      if (accountCreated) return
+      if (headshotBase64 && headshotMeta) {
+        localStorage.setItem(STORAGE_HEADSHOT_KEY, JSON.stringify({
+          base64: headshotBase64,
+          name: headshotMeta.name,
+          type: headshotMeta.type
+        }))
+      }
+    } catch (error) {
+      console.error('Error saving headshot:', error)
+      // If localStorage is full, warn user but don't block
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        toast.warning('Headshot too large to auto-save. Please don\'t refresh the page.')
+      }
+    }
+  }, [headshotBase64, headshotMeta, accountCreated])
 
   // Clear saved progress after successful account creation
   const clearSavedProgress = () => {
     try {
       localStorage.removeItem(STORAGE_KEY)
       localStorage.removeItem(STORAGE_STEP_KEY)
+      localStorage.removeItem(STORAGE_HEADSHOT_KEY)
     } catch (error) {
       console.error('Error clearing saved progress:', error)
     }
@@ -230,7 +279,7 @@ export default function Onboarding() {
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
@@ -238,7 +287,45 @@ export default function Onboarding() {
         return
       }
       updateData('headshotFile', file)
+      
+      // Also store as base64 for persistence across page refreshes
+      try {
+        const reader = new FileReader()
+        const base64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+        setHeadshotBase64(base64)
+        setHeadshotMeta({ name: file.name, type: file.type })
+      } catch (error) {
+        console.error('Error converting headshot to base64:', error)
+      }
+      
       toast.success('Headshot uploaded!')
+    }
+  }
+
+  // Check if email already exists in the system
+  const checkEmailExists = async (email: string): Promise<boolean> => {
+    try {
+      const response = await fetch(
+        `https://ysjwveqnwjysldpfqzov.supabase.co/rest/v1/clients?email=ilike.${encodeURIComponent(email)}&select=id`,
+        {
+          headers: {
+            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlzandmZXFud2p5c2xkcGZxem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY0NTI1NTUsImV4cCI6MjA1MjAyODU1NX0.aIvJCOOUGiPY2EI7lazlRgVB3I6Ry4wPwHHJUUdJYYs',
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+      if (response.ok) {
+        const existing = await response.json()
+        return existing.length > 0
+      }
+      return false
+    } catch (error) {
+      console.error('Error checking email:', error)
+      return false // Don't block on network errors, will be caught on submit
     }
   }
 
@@ -284,33 +371,51 @@ export default function Onboarding() {
     return true
   }
 
-  const nextStep = () => {
-    if (validateStep()) {
-      // Mark current step as completed
-      setCompletedSteps(prev => new Set([...prev, step]))
+  const nextStep = async () => {
+    if (!validateStep()) return
 
-      // Animate transition
-      setDirection('forward')
-      setIsAnimating(true)
-
-      // Small celebration for completing step
-      if (step < totalSteps) {
-        confetti({
-          particleCount: 30,
-          spread: 60,
-          origin: { y: 0.6 },
-          colors: ['#8B5CF6', '#EC4899', '#F59E0B']
-        })
+    // Check for duplicate email when leaving Step 1
+    if (step === 1) {
+      setCheckingEmail(true)
+      try {
+        const emailExists = await checkEmailExists(data.email)
+        if (emailExists) {
+          toast.error('An account with this email already exists. Please use a different email or contact support.')
+          setCheckingEmail(false)
+          return
+        }
+      } catch (error) {
+        console.error('Email check error:', error)
+        // Continue anyway - will be caught on final submit
+      } finally {
+        setCheckingEmail(false)
       }
-
-      setTimeout(() => {
-        setStep(prev => Math.min(prev + 1, totalSteps))
-        setIsAnimating(false)
-
-        // Scroll to top of card
-        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 300)
     }
+
+    // Mark current step as completed
+    setCompletedSteps(prev => new Set([...prev, step]))
+
+    // Animate transition
+    setDirection('forward')
+    setIsAnimating(true)
+
+    // Small celebration for completing step
+    if (step < totalSteps) {
+      confetti({
+        particleCount: 30,
+        spread: 60,
+        origin: { y: 0.6 },
+        colors: ['#8B5CF6', '#EC4899', '#F59E0B']
+      })
+    }
+
+    setTimeout(() => {
+      setStep(prev => Math.min(prev + 1, totalSteps))
+      setIsAnimating(false)
+
+      // Scroll to top of card
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 300)
   }
 
   const prevStep = () => {
@@ -332,25 +437,31 @@ export default function Onboarding() {
     setLoading(true)
 
     try {
-      // Convert headshot to base64 if provided
-      let headshotBase64: string | undefined
-      let headshotFilename: string | undefined
-      let headshotContentType: string | undefined
+      // Convert headshot to base64 if provided (or use cached version from page refresh)
+      let submitHeadshotBase64: string | undefined
+      let submitHeadshotFilename: string | undefined
+      let submitHeadshotContentType: string | undefined
 
       if (data.headshotFile) {
+        // Fresh file upload - convert to base64
         try {
           const reader = new FileReader()
-          headshotBase64 = await new Promise<string>((resolve, reject) => {
+          submitHeadshotBase64 = await new Promise<string>((resolve, reject) => {
             reader.onload = () => resolve(reader.result as string)
             reader.onerror = reject
             reader.readAsDataURL(data.headshotFile!)
           })
-          headshotFilename = data.headshotFile.name
-          headshotContentType = data.headshotFile.type
+          submitHeadshotFilename = data.headshotFile.name
+          submitHeadshotContentType = data.headshotFile.type
         } catch (fileError) {
           console.error('Error reading headshot file:', fileError)
           toast.error('Failed to process headshot image')
         }
+      } else if (headshotBase64 && headshotMeta) {
+        // Use cached base64 from localStorage (page was refreshed but headshot was saved)
+        submitHeadshotBase64 = headshotBase64
+        submitHeadshotFilename = headshotMeta.name
+        submitHeadshotContentType = headshotMeta.type
       }
 
       // Generate AI bio from all the onboarding information
@@ -452,9 +563,9 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
             password: generatedPassword,
             send_invitation_email: true,
             create_google_sheet: true,
-            headshot_base64: headshotBase64,
-            headshot_filename: headshotFilename,
-            headshot_content_type: headshotContentType,
+            headshot_base64: submitHeadshotBase64,
+            headshot_filename: submitHeadshotFilename,
+            headshot_content_type: submitHeadshotContentType,
           }),
         }
       )
@@ -1284,11 +1395,21 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
                       onChange={handleFileChange}
                       className="cursor-pointer"
                     />
-                    {data.headshotFile && (
-                      <p className="text-sm text-green-600 dark:text-green-400 mt-2 flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4" />
-                        {data.headshotFile.name}
-                      </p>
+                    {/* Show headshot preview - either from fresh upload or cached base64 */}
+                    {(data.headshotFile || headshotBase64) && (
+                      <div className="mt-3 flex items-center gap-3">
+                        {(headshotBase64 || data.headshotFile) && (
+                          <img 
+                            src={headshotBase64 || ''} 
+                            alt="Headshot preview" 
+                            className="w-16 h-16 rounded-full object-cover border-2 border-green-500"
+                          />
+                        )}
+                        <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4" />
+                          {data.headshotFile?.name || headshotMeta?.name || 'Headshot uploaded'}
+                        </p>
+                      </div>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -1325,11 +1446,20 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
               {step < totalSteps ? (
                 <Button
                   onClick={nextStep}
-                  disabled={loading}
+                  disabled={loading || checkingEmail}
                   className="w-full sm:w-auto px-8 py-5 sm:py-6 text-sm sm:text-base font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 hover:scale-105 transition-all shadow-lg order-1 sm:order-2"
                 >
-                  Next
-                  <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
+                  {checkingEmail ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                      Checking...
+                    </>
+                  ) : (
+                    <>
+                      Next
+                      <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    </>
+                  )}
                 </Button>
               ) : (
                 <Button
