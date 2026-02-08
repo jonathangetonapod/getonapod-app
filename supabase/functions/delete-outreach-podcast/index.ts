@@ -119,7 +119,10 @@ serve(async (req) => {
     const { clientId, podcastId } = await req.json()
 
     if (!clientId || !podcastId) {
-      throw new Error('clientId and podcastId are required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'clientId and podcastId are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('[Delete Outreach Podcast] Starting for client:', clientId, 'podcast:', podcastId)

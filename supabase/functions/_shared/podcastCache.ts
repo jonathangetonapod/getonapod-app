@@ -93,13 +93,10 @@ export async function getCachedPodcasts(
     .map((p: CachedPodcast) => p.podscan_id);
 
   if (hitIds.length > 0) {
-    // Increment cache hit counter for each podcast (fire and forget)
-    Promise.all(
-      hitIds.map(podscanId =>
-        supabaseClient.rpc('increment_podcast_cache_hit', { p_podscan_id: podscanId })
-      )
-    ).then(() => console.log(`[Podcast Cache] ✅ Cache hits: ${hitIds.length}`))
-      .catch(err => console.error('[Podcast Cache] Error incrementing cache hits:', err));
+    // Batch increment cache hit counters (single UPDATE instead of N RPCs)
+    supabaseClient.rpc('batch_increment_podcast_cache_hits', { p_podscan_ids: hitIds })
+      .then(() => console.log(`[Podcast Cache] ✅ Cache hits: ${hitIds.length}`))
+      .catch((err: any) => console.error('[Podcast Cache] Error incrementing cache hits:', err));
   }
 
   console.log(`[Podcast Cache] 📊 Cached: ${cached.length}, Missing: ${missing.length}, Stale: ${stale.length}`);

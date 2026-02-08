@@ -60,7 +60,7 @@ export async function createProspect(
         prospect_image_url: input.profile_picture_url || null,
         spreadsheet_id: spreadsheetId,
         spreadsheet_url: spreadsheetUrl,
-        content_ready: false
+        content_ready: true
       })
       .select('id, prospect_name, slug, spreadsheet_url')
       .single();

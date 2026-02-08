@@ -76,7 +76,6 @@ interface ProspectDashboard {
   spreadsheet_id: string | null
   spreadsheet_url: string | null
   is_active: boolean
-  content_ready: boolean
   show_pricing_section: boolean
   personalized_tagline: string | null
   media_kit_url: string | null
@@ -266,7 +265,7 @@ export default function ProspectView() {
       return data.podcasts || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    enabled: !!dashboard?.content_ready && !!dashboard?.spreadsheet_id,
+    enabled: !!dashboard?.spreadsheet_id,
   })
 
   // React Query: Fetch feedback (refreshes more often)
@@ -295,7 +294,6 @@ export default function ProspectView() {
   const loading = dashboardLoading
   const loadingPodcasts = podcastsLoading
   const error = dashboardError?.message || null
-  const cacheNotReady = dashboard && !dashboard.content_ready
 
   // Helper function to extract Loom video ID from URL
   const getLoomEmbedUrl = (url: string) => {
@@ -719,26 +717,6 @@ export default function ProspectView() {
     )
   }
 
-  // Cache not ready state - admin hasn't built the cache yet
-  if (cacheNotReady) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-0 shadow-xl">
-          <CardContent className="pt-8 pb-8 text-center space-y-4">
-            <div className="h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mx-auto">
-              <Clock className="h-8 w-8 text-amber-600" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Coming Soon!</h2>
-              <p className="text-muted-foreground">
-                Hi {dashboard.prospect_name}! Your personalized podcast opportunities are being prepared. Check back shortly!
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
   // Calculate stats
   const totalReach = podcasts.reduce((sum, p) => sum + (p.audience_size || 0), 0)

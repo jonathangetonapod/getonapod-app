@@ -18,7 +18,10 @@ serve(async (req) => {
 
     // Validation
     if (!topic) {
-      throw new Error('Topic is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'Topic is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Initialize Anthropic client

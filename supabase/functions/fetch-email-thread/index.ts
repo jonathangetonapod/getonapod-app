@@ -16,7 +16,10 @@ serve(async (req) => {
 
     // Validation
     if (!replyId) {
-      throw new Error('replyId is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'replyId is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Get Email Bison API token from environment

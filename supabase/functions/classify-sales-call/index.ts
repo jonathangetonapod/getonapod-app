@@ -15,7 +15,10 @@ serve(async (req) => {
     const { sales_call_id } = await req.json()
 
     if (!sales_call_id) {
-      throw new Error('sales_call_id is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'sales_call_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')

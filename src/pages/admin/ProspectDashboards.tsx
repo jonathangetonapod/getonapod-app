@@ -86,7 +86,6 @@ interface ProspectDashboard {
   spreadsheet_url: string
   created_at: string
   is_active: boolean
-  content_ready: boolean
   show_pricing_section: boolean
   view_count: number
   last_viewed_at: string | null
@@ -1130,40 +1129,6 @@ export default function ProspectDashboards() {
     }
   }
 
-  // Publish toggle state
-  const [togglingPublish, setTogglingPublish] = useState(false)
-
-  const toggleContentReady = async () => {
-    if (!selectedDashboard) return
-
-    setTogglingPublish(true)
-    try {
-      const newValue = !selectedDashboard.content_ready
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ content_ready: newValue })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
-
-      // Update local state
-      setDashboards(prev =>
-        prev.map(d =>
-          d.id === selectedDashboard.id ? { ...d, content_ready: newValue } : d
-        )
-      )
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, content_ready: newValue } : null
-      )
-
-      toast.success(newValue ? 'Dashboard published! Prospect can now see content.' : 'Dashboard unpublished. Prospect will see Coming Soon.')
-    } catch (error) {
-      console.error('Error toggling content ready:', error)
-      toast.error('Failed to update publish status')
-    } finally {
-      setTogglingPublish(false)
-    }
-  }
 
   // Pricing section toggle state
   const [togglingPricing, setTogglingPricing] = useState(false)
@@ -2950,43 +2915,6 @@ export default function ProspectDashboards() {
                         </Button>
                       </div>
                     )}
-
-                    {/* Publish Toggle */}
-                    <div className="pt-2 border-t">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">Publish to Client</p>
-                          <p className="text-xs text-muted-foreground">
-                            {selectedDashboard.content_ready
-                              ? 'Client can see the dashboard'
-                              : 'Client sees "Coming Soon"'}
-                          </p>
-                        </div>
-                        <Button
-                          onClick={toggleContentReady}
-                          disabled={togglingPublish}
-                          variant={selectedDashboard.content_ready ? "default" : "outline"}
-                          size="sm"
-                          className={cn(
-                            selectedDashboard.content_ready && "bg-green-600 hover:bg-green-700"
-                          )}
-                        >
-                          {togglingPublish ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : selectedDashboard.content_ready ? (
-                            <>
-                              <CheckCircle2 className="h-4 w-4 mr-1" />
-                              Published
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="h-4 w-4 mr-1" />
-                              Publish
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
 
                     {/* Pricing Section Toggle */}
                     <div className="pt-2 border-t">

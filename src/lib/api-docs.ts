@@ -242,9 +242,9 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Generate Podcast Summary",
         method: "POST",
         path: `${BASE_PATH}/generate-podcast-summary`,
-        description: "Generates a compelling 2-3 sentence 'Why This Show' description for a podcast using Claude Sonnet 3.5, focusing on the value proposition for potential guests.",
+        description: "Generates a compelling 2-3 sentence 'Why This Show' description for a podcast using Claude Sonnet 4.5, focusing on the value proposition for potential guests.",
         auth: "API Key",
-        aiModel: "claude-3-5-sonnet-20241022 (max_tokens: 200)",
+        aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 200)",
         params: [
           { name: "podcast_name", type: "string", required: true, description: "Name of the podcast" },
           { name: "audience_size", type: "string", required: false, description: "Estimated audience size" },

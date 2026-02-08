@@ -17,11 +17,17 @@ serve(async (req) => {
 
     // Validation
     if (!clientId) {
-      throw new Error('clientId is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'clientId is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     if (!podcastId) {
-      throw new Error('podcastId is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'podcastId is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('[Send Outreach Webhook] Starting for client:', clientId, 'podcast:', podcastId)

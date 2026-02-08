@@ -18,12 +18,18 @@ serve(async (req) => {
 
     // Validation
     if (!url || !postId) {
-      throw new Error('url and postId are required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'url and postId are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Validate URL format
     if (!url.startsWith('https://getonapod.com/blog/')) {
-      throw new Error('Invalid URL format. Must be https://getonapod.com/blog/*')
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid URL format. Must be https://getonapod.com/blog/*' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('[Check Indexing] Request:', { url, postId })

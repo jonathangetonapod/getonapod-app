@@ -120,7 +120,10 @@ serve(async (req) => {
 
     // Validation
     if (!url || !postId) {
-      throw new Error('url and postId are required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'url and postId are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Get fresh access token from service account

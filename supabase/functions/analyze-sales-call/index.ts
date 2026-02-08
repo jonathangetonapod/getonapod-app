@@ -15,7 +15,10 @@ serve(async (req) => {
     const { sales_call_id, recording_id: requestRecordingId } = await req.json()
 
     if (!sales_call_id) {
-      throw new Error('sales_call_id is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'sales_call_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const fathomApiKey = Deno.env.get('FATHOM_API_KEY')
