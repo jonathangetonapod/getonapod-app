@@ -50,6 +50,7 @@ import PortalDashboard from "./pages/portal/Dashboard";
 import PortalResources from "./pages/portal/Resources";
 import ProspectView from "./pages/prospect/ProspectView";
 import ClientApprovalView from "./pages/client/ClientApprovalView";
+import Docs from "./pages/Docs";
 
 const queryClient = new QueryClient();
 
@@ -64,6 +65,7 @@ const App = () => (
             <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/resources" element={<Resources />} />
+            <Route path="/docs" element={<Docs />} />
             <Route path="/premium-placements" element={<PremiumPlacements />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
