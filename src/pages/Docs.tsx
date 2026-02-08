@@ -122,58 +122,355 @@ apikey: <SUPABASE_ANON_KEY>`}</pre>
             )}
 
             {activeSection === "prospects" && (
-              <Card className="bg-slate-800/50 border-purple-500/20">
-                <CardHeader>
-                  <CardTitle className="text-white text-2xl">Prospect Dashboards</CardTitle>
-                </CardHeader>
-                <CardContent className="text-gray-300 space-y-4">
-                  <h3 className="text-xl font-semibold text-white">Get Prospect by Slug</h3>
-                  <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
-                    <pre>{`GET /rest/v1/prospect_dashboards?slug=eq.{slug}&is_active=eq.true
+              <div className="space-y-6">
+                {/* Overview */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <CardTitle className="text-white text-2xl">Prospects API</CardTitle>
+                    <CardDescription className="text-purple-200">
+                      Create personalized podcast recommendation dashboards for prospects
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <p>
+                      The Prospects API lets you create shareable dashboards with AI-matched podcast recommendations.
+                      Each prospect gets a unique URL and Google Sheet with their personalized matches.
+                    </p>
+                    
+                    <h3 className="text-xl font-semibold text-white mt-4">Workflow</h3>
+                    <div className="bg-slate-900 p-4 rounded-lg">
+                      <ol className="list-decimal list-inside space-y-2 text-sm">
+                        <li><strong>Create Dashboard</strong> → Generate slug + Google Sheet</li>
+                        <li><strong>Match Podcasts</strong> → AI finds relevant podcasts via embeddings</li>
+                        <li><strong>Export to Sheet</strong> → Podcasts added to prospect's sheet</li>
+                        <li><strong>Share URL</strong> → Prospect views at /prospect/{'{slug}'}</li>
+                        <li><strong>Track Selection</strong> → Record which podcasts they're interested in</li>
+                      </ol>
+                    </div>
+                  </CardContent>
+                </Card>
 
-Response:
-{
-  "id": "uuid",
-  "slug": "abc123",
-  "prospect_name": "John Doe",
-  "prospect_bio": "...",
-  "spreadsheet_id": "...",
-  "created_at": "..."
-}`}</pre>
-                  </div>
+                {/* Database Schema */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <CardTitle className="text-white text-xl">Database Schema</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-gray-300">
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`prospect_dashboards
+├── id (uuid, primary key)
+├── slug (text, unique) ─────────── URL identifier: /prospect/{slug}
+├── prospect_name (text) ────────── Display name
+├── prospect_email (text) ───────── Contact email
+├── prospect_bio (text) ─────────── Background for AI matching
+├── prospect_title (text) ───────── Job title
+├── prospect_company (text) ─────── Company name
+├── profile_picture_url (text) ──── Avatar image
+├── spreadsheet_id (text) ───────── Google Sheet ID
+├── spreadsheet_url (text) ──────── Full sheet URL
+├── tagline (text) ──────────────── Custom header message
+├── is_active (boolean) ─────────── Dashboard visible?
+├── content_ready (boolean) ─────── Podcasts loaded?
+├── bison_lead_id (integer) ─────── Link to Bison CRM
+├── created_at (timestamptz)
+└── updated_at (timestamptz)`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                  <h3 className="text-xl font-semibold text-white mt-6">Get Podcasts for Prospect</h3>
-                  <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
-                    <pre>{`POST /functions/v1/get-prospect-podcasts
+                {/* Create Prospect */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-600">POST</Badge>
+                      <CardTitle className="text-white text-xl">Create Prospect Dashboard</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`POST /functions/v1/create-prospect-sheet
+
+Headers:
+  Authorization: Bearer {SUPABASE_SERVICE_KEY}
+  Content-Type: application/json
 
 Body:
 {
-  "spreadsheetId": "...",
-  "prospectDashboardId": "uuid",
   "prospectName": "John Doe",
-  "prospectBio": "..."
+  "prospectEmail": "john@example.com",
+  "prospectBio": "CEO of TechCorp with 15 years in SaaS. Expert in scaling B2B companies...",
+  "prospectTitle": "CEO",
+  "prospectCompany": "TechCorp",
+  "bisonLeadId": 12345  // optional - links to Bison CRM
 }
 
 Response:
 {
-  "podcasts": [...],
-  "total": 15,
-  "cached": true
+  "success": true,
+  "dashboard": {
+    "id": "88ee691e-e192-4007-85fc-810f9567832c",
+    "slug": "kwzx4pn5",
+    "dashboard_url": "https://getonapod.com/prospect/kwzx4pn5",
+    "spreadsheet_id": "1ABC123...",
+    "spreadsheet_url": "https://docs.google.com/spreadsheets/d/1ABC123..."
+  }
 }`}</pre>
-                  </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                  <h3 className="text-xl font-semibold text-white mt-6">Track Podcast Selection</h3>
-                  <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
-                    <pre>{`POST /functions/v1/select-prospect-podcasts
+                {/* Get Prospect */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-blue-600">GET</Badge>
+                      <CardTitle className="text-white text-xl">Get Prospect by Slug</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <p className="text-purple-200">No auth required - prospects access via public slug</p>
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`GET /rest/v1/prospect_dashboards?slug=eq.{slug}&is_active=eq.true&select=*
+
+Example:
+GET /rest/v1/prospect_dashboards?slug=eq.kwzx4pn5&is_active=eq.true
+
+Response:
+{
+  "id": "88ee691e-e192-4007-85fc-810f9567832c",
+  "slug": "kwzx4pn5",
+  "prospect_name": "John Doe",
+  "prospect_bio": "CEO of TechCorp...",
+  "prospect_title": "CEO",
+  "prospect_company": "TechCorp",
+  "profile_picture_url": "https://...",
+  "spreadsheet_id": "1ABC123...",
+  "tagline": "Hand-picked podcasts for your expertise",
+  "is_active": true,
+  "content_ready": true,
+  "created_at": "2024-02-08T12:00:00Z"
+}`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Match Podcasts */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-600">POST</Badge>
+                      <CardTitle className="text-white text-xl">Match Podcasts for Prospect</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <p>Uses OpenAI embeddings + vector similarity + Claude filtering to find best matches.</p>
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`POST /functions/v1/backfill-prospect-podcasts
 
 Body:
 {
-  "prospectDashboardId": "uuid",
-  "selectedPodcasts": ["podcast-id-1", "podcast-id-2"]
+  "prospectId": "88ee691e-e192-4007-85fc-810f9567832c"
+}
+
+Response:
+{
+  "success": true,
+  "prospect_name": "John Doe",
+  "total": 15,
+  "duration_seconds": 8.2
+}
+
+// This function:
+// 1. Generates embedding from prospect name + bio
+// 2. Searches 7,800+ podcasts via vector similarity
+// 3. Filters top matches with Claude AI
+// 4. Exports results to prospect's Google Sheet`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Get Podcasts */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-600">POST</Badge>
+                      <CardTitle className="text-white text-xl">Get Podcasts for Prospect</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <p>Fetches podcast recommendations from the prospect's Google Sheet.</p>
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`POST /functions/v1/get-prospect-podcasts
+
+Body:
+{
+  "spreadsheetId": "1ABC123...",
+  "prospectDashboardId": "88ee691e-...",
+  "prospectName": "John Doe",
+  "prospectBio": "CEO of TechCorp..."
+}
+
+Response:
+{
+  "podcasts": [
+    {
+      "podcast_name": "The SaaS Podcast",
+      "podcast_description": "Interviews with B2B founders...",
+      "episode_count": 450,
+      "itunes_rating": 4.8,
+      "podscan_podcast_id": "pod_abc123"
+    },
+    // ... more podcasts
+  ],
+  "total": 15,
+  "cached": true,
+  "source": "google_sheets"
 }`}</pre>
-                  </div>
-                </CardContent>
-              </Card>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Append Podcasts */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-600">POST</Badge>
+                      <CardTitle className="text-white text-xl">Append Podcasts to Sheet</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <p>Manually add podcasts to a prospect's Google Sheet.</p>
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`POST /functions/v1/append-prospect-sheet
+
+Body:
+{
+  "dashboardId": "88ee691e-...",
+  "podcasts": [
+    {
+      "podcast_name": "The Leadership Show",
+      "podcast_description": "Weekly leadership insights...",
+      "podscan_podcast_id": "pod_xyz789",
+      "episode_count": 200,
+      "itunes_rating": 4.9
+    }
+  ]
+}
+
+Response:
+{
+  "success": true,
+  "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/...",
+  "rowsAdded": 1,
+  "cacheSaved": 1
+}`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Track Selection */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-green-600">POST</Badge>
+                      <CardTitle className="text-white text-xl">Track Podcast Selection</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <p>Record which podcasts a prospect is interested in.</p>
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`POST /functions/v1/select-prospect-podcasts
+
+Body:
+{
+  "prospectDashboardId": "88ee691e-...",
+  "selectedPodcasts": [
+    "pod_abc123",
+    "pod_xyz789"
+  ],
+  "prospectEmail": "john@example.com"  // optional, for notifications
+}
+
+Response:
+{
+  "success": true,
+  "selected_count": 2,
+  "notification_sent": true
+}`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Update Prospect */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-yellow-600">PATCH</Badge>
+                      <CardTitle className="text-white text-xl">Update Prospect Dashboard</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`PATCH /rest/v1/prospect_dashboards?id=eq.{uuid}
+
+Headers:
+  Authorization: Bearer {SUPABASE_SERVICE_KEY}
+  Content-Type: application/json
+  Prefer: return=representation
+
+Body:
+{
+  "tagline": "Your personalized podcast matches",
+  "content_ready": true,
+  "is_active": true,
+  "prospect_bio": "Updated bio..."
+}
+
+Response:
+{
+  "id": "88ee691e-...",
+  "slug": "kwzx4pn5",
+  "tagline": "Your personalized podcast matches",
+  "content_ready": true,
+  // ... full updated record
+}`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Full Example */}
+                <Card className="bg-slate-800/50 border-purple-500/20">
+                  <CardHeader>
+                    <CardTitle className="text-white text-xl">Complete Example: Create & Populate Dashboard</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-gray-300 space-y-4">
+                    <div className="bg-slate-900 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                      <pre>{`# 1. Create the prospect dashboard
+curl -X POST "https://ysjwveqnwjysldpfqzov.supabase.co/functions/v1/create-prospect-sheet" \\
+  -H "Authorization: Bearer {SERVICE_KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "prospectName": "Jane Smith",
+    "prospectEmail": "jane@startup.com",
+    "prospectBio": "Founder of AI startup, former Google PM, expert in product strategy"
+  }'
+
+# Response: { "dashboard": { "id": "abc-123", "slug": "xyz789" } }
+
+# 2. Match and export podcasts
+curl -X POST "https://ysjwveqnwjysldpfqzov.supabase.co/functions/v1/backfill-prospect-podcasts" \\
+  -H "Authorization: Bearer {SERVICE_KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{ "prospectId": "abc-123" }'
+
+# Response: { "success": true, "total": 15 }
+
+# 3. Share the dashboard URL
+# https://getonapod.com/prospect/xyz789`}</pre>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {activeSection === "podcasts" && (
