@@ -20,10 +20,26 @@ serve(async (req) => {
   }
 
   const startTime = Date.now()
-  
+  const TIMEOUT_MS = 45000 // 45-second safety margin (Supabase edge functions timeout at 60s)
+
+  const fetchWithTimeout = (url: string, options: RequestInit, timeoutMs = 15000) => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout))
+  }
+
   try {
-    const { prospectId } = await req.json()
-    
+    let body: any
+    try {
+      body = await req.json()
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Request body must be valid JSON' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    const { prospectId } = body
+
     if (!prospectId) {
       return new Response(
         JSON.stringify({ error: 'prospectId is required' }),
@@ -68,15 +84,16 @@ serve(async (req) => {
     console.log(`   Bio length: ${prospect.prospect_bio?.length || 0}`)
     console.log(`   Spreadsheet ID: ${prospect.spreadsheet_id}`)
 
-    // 2. Create text for embedding
+    // 2. Create text for embedding (use full bio + tagline for richer context)
     const prospectText = [
-      `Guest: ${prospect.prospect_name}`,
-      prospect.prospect_bio ? `Background: ${prospect.prospect_bio.substring(0, 500)}` : ''
+      `Podcast guest: ${prospect.prospect_name}`,
+      prospect.prospect_bio ? `Professional background and expertise: ${prospect.prospect_bio.substring(0, 1000)}` : '',
+      prospect.personalized_tagline ? `Focus: ${prospect.personalized_tagline}` : ''
     ].filter(Boolean).join('\n')
 
     // 3. Generate embedding via OpenAI
     console.log('🔮 [EMBEDDING] Generating embedding...')
-    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+    const embeddingResponse = await fetchWithTimeout('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${openaiKey}`,
@@ -87,7 +104,7 @@ serve(async (req) => {
         input: prospectText,
         dimensions: 1536
       })
-    })
+    }, 10000)
 
     if (!embeddingResponse.ok) {
       const error = await embeddingResponse.text()
@@ -106,8 +123,8 @@ serve(async (req) => {
     console.log('🔍 [SEARCH] Searching for matching podcasts...')
     const { data: matches, error: searchError } = await supabase.rpc('search_similar_podcasts', {
       query_embedding: embedding,
-      match_threshold: 0.2,
-      match_count: 100
+      match_threshold: 0.35,
+      match_count: 50
     })
 
     if (searchError) {
@@ -131,38 +148,45 @@ serve(async (req) => {
       )
     }
 
-    // 5. Filter with Claude (top 30 for analysis)
-    let filteredMatches = matches.slice(0, 30)
-    
+    // 5. Filter with Claude Sonnet for quality ranking
+    let filteredMatches = matches.slice(0, 15)
+    let aiFilterApplied = false
+
     if (anthropicKey && matches.length > 15) {
-      console.log('🤖 [AI FILTER] Filtering with Claude...')
+      console.log('🤖 [AI FILTER] Filtering with Claude Sonnet...')
       try {
         const anthropic = new Anthropic({ apiKey: anthropicKey })
-        
-        const podcastSummaries = matches.slice(0, 50).map((m: any, i: number) => ({
+
+        const candidateCount = Math.min(matches.length, 30)
+        const podcastSummaries = matches.slice(0, candidateCount).map((m: any, i: number) => ({
           index: i,
           name: m.podcast_name,
-          description: m.podcast_description?.substring(0, 200) || 'No description'
+          description: m.podcast_description?.substring(0, 300) || 'No description',
+          audience: m.audience_size || 'unknown'
         }))
 
         const response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 2000,
-          temperature: 0.2,
+          model: 'claude-sonnet-4-5-20250929',
+          max_tokens: 200,
+          temperature: 0.1,
           messages: [{
             role: 'user',
-            content: `You're a podcast booking expert. Rate which podcasts are BEST for this guest.
+            content: `You are a podcast booking agent selecting the best podcast guest placements.
 
 GUEST PROFILE:
 ${prospectText}
 
-PODCASTS:
-${podcastSummaries.map((p: any) => `${p.index}. ${p.name}: ${p.description}`).join('\n')}
+CANDIDATE PODCASTS (${candidateCount} total, already ranked by semantic similarity):
+${podcastSummaries.map((p: any) => `${p.index}. ${p.name} (audience: ${p.audience}): ${p.description}`).join('\n')}
 
-Return ONLY a JSON array of indices for the TOP 15 most relevant podcasts, ordered by fit:
-[0, 5, 12, ...]
+Select the TOP 15 podcasts where this guest would be the best fit. Prioritize:
+1. Topic alignment — the podcast covers subjects the guest is an expert in
+2. Audience relevance — the listeners would benefit from the guest's expertise
+3. Show quality — higher audience size, active shows with recent episodes
+4. Diversity — mix of niche and broad-reach shows for maximum exposure
 
-No explanations, just the array.`
+Return ONLY a JSON array of the index numbers, best fit first:
+[0, 5, 12, ...]`
           }]
         })
 
@@ -171,30 +195,71 @@ No explanations, just the array.`
         if (jsonContent.startsWith('```')) {
           jsonContent = jsonContent.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
         }
-        
+
         const selectedIndices = JSON.parse(jsonContent)
         if (Array.isArray(selectedIndices)) {
           filteredMatches = selectedIndices
             .slice(0, 15)
+            .filter((idx: number) => idx >= 0 && idx < matches.length)
             .map((idx: number) => matches[idx])
             .filter(Boolean)
+          aiFilterApplied = true
           console.log(`   AI selected: ${filteredMatches.length} podcasts`)
         }
       } catch (err) {
-        console.warn('[AI FILTER FALLBACK] Using similarity-based selection')
+        console.warn('[AI FILTER FALLBACK] Using similarity-based selection:', err.message)
         filteredMatches = matches.slice(0, 15)
       }
-    } else {
-      filteredMatches = matches.slice(0, 15)
     }
+
+    console.log(`   AI filter applied: ${aiFilterApplied}`)
 
     console.log(`   Final matches: ${filteredMatches.length}`)
 
-    // 6. Write to Google Sheet via append-prospect-sheet function
+    let newAdded = filteredMatches.length
+    let duplicatesSkipped = 0
+
+    // 6. Deduplicate and write to Google Sheet
     if (prospect.spreadsheet_id && filteredMatches.length > 0) {
-      console.log('📊 [EXPORT] Appending to Google Sheet...')
-      
-      const podcasts = filteredMatches.map((m: any) => ({
+      console.log('📊 [EXPORT] Checking for duplicates before appending...')
+
+      // Read existing podcast IDs from the Google Sheet (column E) to prevent duplicates
+      let existingIds: Set<string> = new Set()
+      try {
+        const sheetResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/get-prospect-podcasts`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            spreadsheetId: prospect.spreadsheet_id,
+            cacheOnly: true
+          })
+        }, 10000)
+        if (sheetResponse.ok) {
+          const sheetData = await sheetResponse.json()
+          if (sheetData.podcasts) {
+            for (const p of sheetData.podcasts) {
+              if (p.podcast_id) existingIds.add(p.podcast_id)
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[DEDUP] Could not read sheet, proceeding without dedup')
+      }
+
+      // Filter out podcasts already in the sheet
+      const newMatches = filteredMatches.filter((m: any) => {
+        const id = m.podscan_id || m.id
+        return !existingIds.has(id)
+      })
+
+      duplicatesSkipped = filteredMatches.length - newMatches.length
+      newAdded = newMatches.length
+      console.log(`   Existing in sheet: ${existingIds.size}, New to add: ${newMatches.length}, Skipped duplicates: ${duplicatesSkipped}`)
+
+      const podcasts = newMatches.map((m: any) => ({
         podcast_name: m.podcast_name,
         podcast_description: m.podcast_description,
         podscan_podcast_id: m.podscan_id,
@@ -202,24 +267,28 @@ No explanations, just the array.`
         audience_size: m.audience_size
       }))
 
-      // Call the append function
-      const appendResponse = await fetch(`${supabaseUrl}/functions/v1/append-prospect-sheet`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dashboardId: prospectId,
-          podcasts
+      // Only append if there are new podcasts to add
+      if (podcasts.length > 0) {
+        const appendResponse = await fetchWithTimeout(`${supabaseUrl}/functions/v1/append-prospect-sheet`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            dashboardId: prospectId,
+            podcasts
+          })
         })
-      })
 
-      if (appendResponse.ok) {
-        const appendResult = await appendResponse.json()
-        console.log(`   ✅ Exported ${filteredMatches.length} podcasts to sheet`)
+        if (appendResponse.ok) {
+          const appendResult = await appendResponse.json()
+          console.log(`   ✅ Exported ${newMatches.length} new podcasts to sheet`)
+        } else {
+          console.warn('   ⚠️ Sheet export failed, but podcasts matched')
+        }
       } else {
-        console.warn('   ⚠️ Sheet export failed, but podcasts matched')
+        console.log('   ℹ️ All matched podcasts already in sheet, nothing to append')
       }
     }
 
@@ -234,7 +303,10 @@ No explanations, just the array.`
       JSON.stringify({
         success: true,
         prospect_name: prospect.prospect_name,
-        total: filteredMatches.length,
+        total_matched: filteredMatches.length,
+        new_added: newAdded,
+        duplicates_skipped: duplicatesSkipped,
+        ai_filter_applied: aiFilterApplied,
         duration_seconds: parseFloat(duration)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

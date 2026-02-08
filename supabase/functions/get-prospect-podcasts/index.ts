@@ -316,7 +316,11 @@ serve(async (req) => {
         { headers: { 'Authorization': `Bearer ${accessToken}` } }
       )
       if (!metaRes.ok) {
-        throw new Error(`Failed to get sheet metadata: ${await metaRes.text()}`)
+        console.error('[Get Prospect Podcasts] Sheet metadata error:', await metaRes.text())
+        return new Response(
+          JSON.stringify({ error: 'Spreadsheet not found or not accessible' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
       const meta = await metaRes.json()
       const sheetName = meta.sheets[0]?.properties?.title || 'Sheet1'
@@ -417,8 +421,11 @@ serve(async (req) => {
     )
 
     if (!metadataResponse.ok) {
-      const error = await metadataResponse.text()
-      throw new Error(`Failed to get sheet metadata: ${error}`)
+      console.error('[Get Prospect Podcasts] Sheet metadata error:', await metadataResponse.text())
+      return new Response(
+        JSON.stringify({ error: 'Spreadsheet not found or not accessible' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const metadata = await metadataResponse.json()

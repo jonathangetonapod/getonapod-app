@@ -15,6 +15,13 @@ serve(async (req) => {
   try {
     const { podcast_name, audience_size, episode_count, rating, reach_score, description, categories, publisher_name } = await req.json()
 
+    if (!podcast_name) {
+      return new Response(JSON.stringify({ error: 'podcast_name is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
     if (!anthropicApiKey) {
       throw new Error('ANTHROPIC_API_KEY not configured')

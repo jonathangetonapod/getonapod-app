@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateMissingEmbeddings } from '../_shared/podcastCache.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -184,9 +185,21 @@ serve(async (req) => {
       podcast.podscan_podcast_id || podcast.podcast_id || '',
     ])
 
+    // Get the actual sheet tab name (not always "Sheet1")
+    const metadataResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    )
+    let sheetName = 'Sheet1'
+    if (metadataResponse.ok) {
+      const metadata = await metadataResponse.json()
+      sheetName = metadata.sheets?.[0]?.properties?.title || 'Sheet1'
+      console.log('[Append Prospect Sheet] Using sheet tab:', sheetName)
+    }
+
     // Append data to the sheet
     const appendResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1:append?valueInputOption=RAW`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=RAW`,
       {
         method: 'POST',
         headers: {
@@ -275,9 +288,16 @@ serve(async (req) => {
     console.log(`   ⏩ Skipped (no ID): ${skippedCount}`)
     console.log(`   ❌ Errors: ${errorCount}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🚀 [BENEFIT] These podcasts now available for ALL prospects & clients!')
-    console.log('   Next time anyone fetches these → Cache hit!')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    // Fire-and-forget: generate embeddings for newly cached podcasts
+    const savedPodscanIds = podcasts
+      .map(p => p.podscan_podcast_id || p.podcast_id)
+      .filter(Boolean) as string[]
+    if (savedPodscanIds.length > 0) {
+      generateMissingEmbeddings(supabase, savedPodscanIds)
+        .then(count => { if (count > 0) console.log(`[Append Sheet] 🔮 Auto-embedded ${count} new podcasts`); })
+        .catch(err => console.error('[Append Sheet] Auto-embed error:', err));
+    }
 
     return new Response(
       JSON.stringify({

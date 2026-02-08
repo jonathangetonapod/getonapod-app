@@ -120,7 +120,10 @@ serve(async (req) => {
     const { clientId } = await req.json()
 
     if (!clientId) {
-      throw new Error('clientId is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'clientId is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('[READ-OUTREACH-LIST] Starting for client:', clientId)
