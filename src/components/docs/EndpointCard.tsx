@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Brain, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "./CodeBlock";
 import { ParamsTable } from "./ParamsTable";
@@ -58,12 +58,27 @@ export function EndpointCard({ endpoint }: EndpointCardProps) {
             </Button>
           </div>
           <p className="text-sm text-muted-foreground">{endpoint.description}</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground">Auth:</span>
             <Badge variant="outline" className="text-xs">
               {endpoint.auth}
             </Badge>
+            {endpoint.aiModel && (
+              <>
+                <span className="text-xs text-muted-foreground ml-2">AI Model:</span>
+                <Badge variant="secondary" className="text-xs gap-1">
+                  <Brain className="h-3 w-3" />
+                  {endpoint.aiModel}
+                </Badge>
+              </>
+            )}
           </div>
+          {endpoint.notes && (
+            <div className="flex gap-2 bg-muted/50 border rounded-md p-3 text-sm text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{endpoint.notes}</span>
+            </div>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">

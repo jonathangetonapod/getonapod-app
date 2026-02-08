@@ -15,6 +15,8 @@ export interface ApiEndpoint {
   params: ApiParam[];
   responseExample: string;
   category: string;
+  aiModel?: string;
+  notes?: string;
 }
 
 export interface ApiCategory {
@@ -28,6 +30,506 @@ const BASE_PATH = "/functions/v1";
 
 export const API_CATEGORIES: ApiCategory[] = [
   {
+    id: "prospect-dashboards",
+    name: "Prospect Dashboards",
+    description: "Create and manage public-facing prospect dashboards with curated podcast lists, Google Sheet backends, and AI-powered podcast analysis.",
+    endpoints: [
+      {
+        id: "create-prospect-sheet",
+        name: "Create Prospect Sheet",
+        method: "POST",
+        path: `${BASE_PATH}/create-prospect-sheet`,
+        description: "Creates a new prospect dashboard by copying a Google Sheet template, exporting podcast data, generating a public shareable link with an 8-character slug, and saving all podcasts to the central cache for cross-prospect reuse.",
+        auth: "API Key",
+        notes: "Also creates a record in prospect_dashboards table and upserts all podcasts to the central podcasts cache (shared globally). The Google Sheet is set to public read-only access.",
+        params: [
+          { name: "prospectName", type: "string", required: true, description: "Display name for the prospect" },
+          { name: "prospectBio", type: "string", required: false, description: "Bio text for AI matching context" },
+          { name: "prospectImageUrl", type: "string", required: false, description: "Profile image URL" },
+          { name: "podcasts", type: "PodcastExportData[]", required: true, description: "Array of podcast objects. Each requires podcast_name. Optional: publisher_name, podcast_description, audience_size, episode_count, itunes_rating, podcast_url, podscan_podcast_id, podcast_image_url, podcast_email, rss_feed, language, region, podcast_categories" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1abc...",
+          spreadsheetId: "1abc...",
+          sheetTitle: "Podcast Opportunities - John Doe - Jan 15, 2025",
+          rowsAdded: 15,
+          updatedRange: "Sheet1",
+          message: "Created prospect sheet with 15 podcasts",
+          dashboardUrl: "https://getonapod.com/prospect/a1b2c3d4",
+          dashboardSlug: "a1b2c3d4",
+          cacheSaved: 12,
+          cacheSkipped: 2,
+          cacheErrors: 1
+        }, null, 2),
+        category: "prospect-dashboards",
+      },
+      {
+        id: "append-prospect-sheet",
+        name: "Append Prospect Sheet",
+        method: "POST",
+        path: `${BASE_PATH}/append-prospect-sheet`,
+        description: "Appends additional podcasts to an existing prospect dashboard's Google Sheet. Looks up the dashboard by UUID, reuses the existing spreadsheet, and upserts all podcasts to the central cache.",
+        auth: "API Key",
+        notes: "Does not create a new sheet or change permissions. Identical caching behavior to create-prospect-sheet.",
+        params: [
+          { name: "dashboardId", type: "string", required: true, description: "UUID from prospect_dashboards table" },
+          { name: "podcasts", type: "PodcastExportData[]", required: true, description: "Array of podcast objects to append (same schema as create-prospect-sheet)" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1abc...",
+          rowsAdded: 5,
+          updatedRange: "Sheet1!A16:E20",
+          message: "Added 5 podcasts to \"John Doe\"'s sheet",
+          cacheSaved: 4,
+          cacheSkipped: 1,
+          cacheErrors: 0
+        }, null, 2),
+        category: "prospect-dashboards",
+      },
+      {
+        id: "get-prospect-podcasts",
+        name: "Get Prospect Podcasts",
+        method: "POST",
+        path: `${BASE_PATH}/get-prospect-podcasts`,
+        description: "Retrieves podcasts from a prospect's Google Sheet with central caching, Podscan API enrichment, and AI fit analysis via Claude Sonnet. Supports 4 operating modes: standard fetch, cacheOnly, aiAnalysisOnly, and checkStatusOnly. Has a 50-second runtime limit with early stopping.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (for AI fit analysis)",
+        notes: "Dual-layer caching: central podcasts table (shared, 7-day TTL) + prospect_podcast_analyses table (prospect-specific AI results). Reads podcast IDs from column E of the Google Sheet. Concurrent batch processing: 15 for Podscan, 30 for AI analysis. Stops early at 50 seconds to avoid function timeout.",
+        params: [
+          { name: "spreadsheetId", type: "string", required: true, description: "Google Sheet ID to read podcast IDs from" },
+          { name: "prospectDashboardId", type: "string", required: false, description: "UUID for linking AI analyses to this prospect" },
+          { name: "prospectName", type: "string", required: false, description: "Required for AI analysis - prospect's name" },
+          { name: "prospectBio", type: "string", required: false, description: "Required for AI analysis - prospect's bio" },
+          { name: "cacheOnly", type: "boolean", required: false, description: "Skip Podscan API, return only cached data. Default: false" },
+          { name: "skipAiAnalysis", type: "boolean", required: false, description: "Fetch podcasts but don't run AI analysis. Default: false" },
+          { name: "aiAnalysisOnly", type: "boolean", required: false, description: "Only run AI analysis on already-cached podcasts. Default: false" },
+          { name: "checkStatusOnly", type: "boolean", required: false, description: "Return stats without fetching. Default: false" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          podcasts: [
+            {
+              podcast_id: "pod_abc123",
+              podcast_name: "The SaaS Podcast",
+              podcast_description: "Interviews with B2B founders...",
+              podcast_image_url: "https://...",
+              podcast_url: "https://...",
+              publisher_name: "Sarah Lee",
+              itunes_rating: 4.8,
+              episode_count: 450,
+              audience_size: 50000,
+              podcast_categories: [{ category_id: 1, category_name: "Business" }],
+              ai_clean_description: "A weekly podcast featuring in-depth interviews with B2B SaaS founders...",
+              ai_fit_reasons: [
+                "Strong alignment with B2B SaaS expertise",
+                "Audience of 50K+ business decision-makers",
+                "Host regularly features growth strategy topics"
+              ],
+              ai_pitch_angles: [
+                { title: "Scaling from $1M to $10M ARR", description: "Share your proven framework for breaking through the $10M ARR ceiling..." },
+                { title: "Building Remote-First B2B Teams", description: "Discuss how remote team structures can accelerate SaaS growth..." }
+              ],
+              ai_analyzed_at: "2025-01-15T10:30:00Z"
+            }
+          ],
+          total: 15,
+          cached: 12,
+          fetched: 3,
+          stoppedEarly: false,
+          remaining: 0,
+          cachePerformance: {
+            cacheHitRate: 80,
+            apiCallsSaved: 24,
+            costSavings: 0.24
+          },
+          stats: {
+            fromSheet: 15,
+            fromCache: 12,
+            podscanFetched: 3,
+            aiAnalysesGenerated: 3,
+            demographicsFetched: 3,
+            cachedWithAi: 12,
+            cachedWithDemographics: 10
+          }
+        }, null, 2),
+        category: "prospect-dashboards",
+      },
+      {
+        id: "delete-podcast-from-sheet",
+        name: "Delete Podcast from Sheet",
+        method: "POST",
+        path: `${BASE_PATH}/delete-podcast-from-sheet`,
+        description: "Removes a podcast row from a Google Sheet by finding the matching Podscan ID in column E and deleting the entire row. Sheet-only deletion - does not remove from the database. Stale cleanup happens on the next get-prospect-podcasts call.",
+        auth: "API Key",
+        notes: "Searches column E for the podcast ID. Deletion is permanent and cannot be undone. Does NOT delete from the podcasts table or prospect_podcast_analyses.",
+        params: [
+          { name: "spreadsheetId", type: "string", required: true, description: "Google Sheet ID" },
+          { name: "podcastId", type: "string", required: true, description: "Podscan podcast ID to find and delete (matched in column E)" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          message: "Deleted podcast from row 5",
+          deletedPodcastId: "pod_abc123"
+        }, null, 2),
+        category: "prospect-dashboards",
+      },
+    ],
+  },
+  {
+    id: "ai-content",
+    name: "AI Content Generation",
+    description: "Generate AI-powered content using Claude models - taglines, bios, podcast summaries, Podscan search queries, guest resources, and blog posts.",
+    endpoints: [
+      {
+        id: "generate-tagline",
+        name: "Generate Tagline",
+        method: "POST",
+        path: `${BASE_PATH}/generate-tagline`,
+        description: "Generates a personalized tagline for a prospect dashboard using Claude Sonnet. Output starts with 'We've curated X podcasts perfect for...' and is 10-20 words. Optionally saves to prospect_dashboards table.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 100)",
+        notes: "Post-processes output to strip surrounding quotes. If dashboardId provided, saves tagline to prospect_dashboards.personalized_tagline (silent failure on DB error).",
+        params: [
+          { name: "prospectName", type: "string", required: true, description: "Prospect's name" },
+          { name: "prospectBio", type: "string", required: true, description: "Prospect's bio for context" },
+          { name: "podcastCount", type: "number", required: true, description: "Number of curated podcasts (used in tagline)" },
+          { name: "dashboardId", type: "string", required: false, description: "If provided, saves tagline to prospect_dashboards table" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          tagline: "We've curated 15 podcasts perfect for sharing your SaaS scaling expertise with engaged B2B audiences"
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-client-bio",
+        name: "Generate Client Bio",
+        method: "POST",
+        path: `${BASE_PATH}/generate-client-bio`,
+        description: "Generates a 3-4 paragraph professional bio optimized for podcast guest pitches using comprehensive onboarding data and Claude Sonnet. Returns bio only (no shortBio or talkingPoints).",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 1000, temperature: 0.7)",
+        params: [
+          { name: "name", type: "string", required: true, description: "Client's full name" },
+          { name: "company", type: "string", required: true, description: "Company name" },
+          { name: "bio", type: "string", required: true, description: "Existing bio or background" },
+          { name: "compellingStory", type: "string", required: true, description: "Client's compelling story or origin" },
+          { name: "uniqueJourney", type: "string", required: true, description: "What makes their journey unique" },
+          { name: "passions", type: "string", required: true, description: "Professional passions" },
+          { name: "audienceValue", type: "string", required: true, description: "Value they bring to podcast audiences" },
+          { name: "idealAudience", type: "string", required: true, description: "Their ideal listener audience" },
+          { name: "expertise", type: "string[]", required: true, description: "Areas of expertise" },
+          { name: "topicsConfident", type: "string[]", required: true, description: "Topics they're confident speaking on" },
+          { name: "goals", type: "string[]", required: true, description: "Podcast guesting goals" },
+          { name: "title", type: "string", required: false, description: "Job title" },
+          { name: "personalStories", type: "string", required: false, description: "Personal anecdotes for relatability" },
+          { name: "hobbies", type: "string", required: false, description: "Hobbies and interests" },
+          { name: "futureVision", type: "string", required: false, description: "Vision for the future" },
+          { name: "specificAngles", type: "string", required: false, description: "Specific pitch angles" },
+          { name: "socialFollowers", type: "string", required: false, description: "Social media following" },
+          { name: "previousPodcasts", type: "string", required: false, description: "Previous podcast appearances" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          bio: "John Doe is the founder and CEO of Acme Corp, where he's helped over 200 SaaS companies scale past $10M ARR. His journey from bootstrapped startup to leading a team of 50 began when he discovered that most founders were making the same three mistakes when it came to growth strategy..."
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-podcast-summary",
+        name: "Generate Podcast Summary",
+        method: "POST",
+        path: `${BASE_PATH}/generate-podcast-summary`,
+        description: "Generates a compelling 2-3 sentence 'Why This Show' description for a podcast using Claude Sonnet 3.5, focusing on the value proposition for potential guests.",
+        auth: "API Key",
+        aiModel: "claude-3-5-sonnet-20241022 (max_tokens: 200)",
+        params: [
+          { name: "podcast_name", type: "string", required: true, description: "Name of the podcast" },
+          { name: "audience_size", type: "string", required: false, description: "Estimated audience size" },
+          { name: "episode_count", type: "number", required: false, description: "Number of published episodes" },
+          { name: "rating", type: "number", required: false, description: "Podcast rating (1-5)" },
+          { name: "reach_score", type: "number", required: false, description: "Computed reach score (0-100)" },
+          { name: "description", type: "string", required: false, description: "Podcast description" },
+          { name: "categories", type: "string[]", required: false, description: "Podcast categories" },
+          { name: "publisher_name", type: "string", required: false, description: "Host or publisher name" },
+        ],
+        responseExample: JSON.stringify({
+          summary: "The Growth Show reaches an engaged audience of 50K+ business leaders looking for actionable growth strategies. With 450 episodes and a 4.8 rating, it's a top-tier platform for B2B thought leaders."
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-podcast-queries",
+        name: "Generate Podcast Queries",
+        method: "POST",
+        path: `${BASE_PATH}/generate-podcast-queries`,
+        description: "Generates optimized Podscan search queries using Claude Opus. Two modes: (A) Generate 5 strategic queries from a bio, or (B) Regenerate a single query if oldQuery is provided. Queries use advanced syntax: single quotes for exact phrases, wildcards (*), and boolean operators (AND, OR, NOT).",
+        auth: "API Key",
+        aiModel: "claude-opus-4-5-20251101 (5 queries: max_tokens 500, temp 0.8 | 1 query: max_tokens 100, temp 0.9)",
+        notes: "Dual-mode operation. Mode A returns { queries: [5 strings] }. Mode B returns { query: string }. Uses advanced Podscan search syntax: single quotes only, wildcards, boolean operators. At least 2 queries must use wildcards and 2 must use OR. Expected coverage: 100-300 podcasts per query. Has dual-stage JSON parsing with regex fallback.",
+        params: [
+          { name: "clientName", type: "string", required: false, description: "Client's name (required if no prospectName)" },
+          { name: "clientBio", type: "string", required: false, description: "Client's bio (required if no prospectBio)" },
+          { name: "clientEmail", type: "string", required: false, description: "Client's email" },
+          { name: "oldQuery", type: "string", required: false, description: "Previous query to regenerate (triggers single-query mode)" },
+          { name: "prospectName", type: "string", required: false, description: "Prospect name (switches to prospect mode)" },
+          { name: "prospectBio", type: "string", required: false, description: "Prospect bio (switches to prospect mode)" },
+        ],
+        responseExample: JSON.stringify({
+          queries: [
+            "'B2B SaaS' AND ('founder interview' OR 'CEO podcast')",
+            "'startup * growth' AND 'scaling' OR 'revenue'",
+            "'business leadership' AND 'podcast guest' NOT 'music'",
+            "'entrepreneur * story' OR 'founder journey' AND 'tech'",
+            "'SaaS growth' AND ('strategy podcast' OR 'business interview')"
+          ]
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-guest-resource",
+        name: "Generate Guest Resource",
+        method: "POST",
+        path: `${BASE_PATH}/generate-guest-resource`,
+        description: "Generates 800-1200 word HTML guest resources (guides, checklists, templates) using Claude Haiku. Output is semantic HTML with checkboxes and pro-tip blockquotes. Includes extensive UTF-8/Unicode character normalization (15+ regex replacements).",
+        auth: "API Key",
+        aiModel: "claude-haiku-4-5-20251001 (max_tokens: 4000, temperature: 0.7)",
+        notes: "Output is HTML with semantic tags (<h2>, <h3>, <p>, <ul>, <ol>, <blockquote>). ASCII-only constraint: no smart quotes, em-dashes, or special characters. Performs 15+ character replacement operations for UTF-8 fixing. Category must be one of: preparation, technical_setup, best_practices, promotion, examples, templates.",
+        params: [
+          { name: "topic", type: "string", required: true, description: "Topic for the resource" },
+          { name: "category", type: "string", required: false, description: "One of: preparation, technical_setup, best_practices, promotion, examples, templates" },
+          { name: "resourceType", type: "string", required: false, description: "Type: 'guide', 'checklist', or 'template'. Defaults to 'guide'" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          data: {
+            content: "<h2>Podcast Interview Preparation Checklist</h2><p>Getting ready for a podcast interview...</p><ul><li>Research the host and recent episodes</li></ul><blockquote><strong>Pro Tip:</strong> Listen to at least 3 episodes before your recording.</blockquote>",
+            wordCount: 950,
+            readTimeMinutes: 5
+          }
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-blog-content",
+        name: "Generate Blog Content",
+        method: "POST",
+        path: `${BASE_PATH}/generate-blog-content`,
+        description: "Generates a full SEO-optimized blog post using two Claude Sonnet API calls: one for the main HTML content (8000 tokens) and a second for the meta description (200 tokens). Includes a CTA linking to Premium Podcast Placements.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (Call 1: max_tokens 8000 | Call 2: max_tokens 200, both temp 0.7)",
+        notes: "Makes TWO separate Claude API calls. Structure: intro (150-200w), body (3-5 sections, 300-400w each with H2/H3), conclusion (150-200w). Always includes 'Get On A Pod' mention and CTA to Premium Placements. Meta description is 150-160 chars generated from first 500 chars of content.",
+        params: [
+          { name: "topic", type: "string", required: true, description: "Blog post topic" },
+          { name: "category", type: "string", required: false, description: "Blog category" },
+          { name: "keywords", type: "string[]", required: false, description: "Target SEO keywords (naturally incorporated)" },
+          { name: "tone", type: "string", required: false, description: "Writing tone. Defaults to 'professional'" },
+          { name: "wordCount", type: "number", required: false, description: "Target word count. Defaults to 1500" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          data: {
+            content: "<h2>Introduction</h2><p>Podcast guesting is one of the most effective ways to build authority...</p><h2>Why Podcast Guesting Works</h2>...",
+            metaDescription: "Learn how to get booked on top podcasts in 2025 with proven strategies for pitching hosts and building authority.",
+            wordCount: 1650,
+            readTimeMinutes: 9
+          }
+        }, null, 2),
+        category: "ai-content",
+      },
+    ],
+  },
+  {
+    id: "podcast-discovery",
+    name: "Podcast Discovery & Analysis",
+    description: "Find, score, and analyze podcasts for compatibility with client/prospect profiles. Includes central caching with 7-day TTL, Podscan API integration, and AI-powered scoring.",
+    endpoints: [
+      {
+        id: "score-podcast-compatibility",
+        name: "Score Podcast Compatibility",
+        method: "POST",
+        path: `${BASE_PATH}/score-podcast-compatibility`,
+        description: "Scores a batch of podcasts against a client/prospect bio using Claude Haiku for fast parallel processing. Each podcast scored independently on a 1-10 scale with reasoning. Supports both client and prospect modes (prospectBio takes precedence). Includes multi-stage JSON parsing with regex fallback.",
+        auth: "API Key",
+        aiModel: "claude-haiku-4-5-20251001 (max_tokens: 200, temperature: 0)",
+        notes: "All podcasts scored simultaneously via Promise.all(). If JSON parsing fails, attempts regex extraction of score number (loses reasoning). Score null on complete failure. Tracks successCount, errorCount, avgScore, highScores (>=7).",
+        params: [
+          { name: "clientBio", type: "string", required: false, description: "Client's bio for matching (required if no prospectBio)" },
+          { name: "prospectBio", type: "string", required: false, description: "Prospect's bio - takes precedence over clientBio" },
+          { name: "podcasts", type: "object[]", required: true, description: "Array of podcasts. Each needs: podcast_id, podcast_name. Optional: podcast_description, publisher_name, podcast_categories (array of {category_name}), audience_size, episode_count" },
+        ],
+        responseExample: JSON.stringify({
+          scores: [
+            {
+              podcast_id: "pod_abc123",
+              score: 9,
+              reasoning: "Strong alignment with B2B SaaS focus. Host regularly features growth experts and audience of 50K+ business leaders is ideal for this guest's expertise."
+            },
+            {
+              podcast_id: "pod_def456",
+              score: 4,
+              reasoning: "Primarily focuses on consumer marketing which doesn't align well with B2B SaaS expertise."
+            }
+          ]
+        }, null, 2),
+        category: "podcast-discovery",
+      },
+      {
+        id: "analyze-podcast-fit",
+        name: "Analyze Podcast Fit",
+        method: "POST",
+        path: `${BASE_PATH}/analyze-podcast-fit`,
+        description: "Deep AI analysis of podcast-client fit using Claude Sonnet, returning a cleaned description, fit reasons, and pitch angles. Results cached in podcast_fit_analyses table with composite key (podcast_id, client_id) and 7-day TTL. Includes multi-stage JSON parsing with 4 fallback attempts.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 2000)",
+        notes: "Cache key: (podcast_id, client_id). TTL: 7 days. If clientBio empty, uses fallback: 'Business professional and thought leader seeking to share expertise with podcast audiences.' JSON parsing has 4 fallback stages: code block extraction, raw JSON search, cleanup, manual field extraction. Can return partial data on parsing failure.",
+        params: [
+          { name: "podcastName", type: "string", required: true, description: "Name of the podcast" },
+          { name: "podcastId", type: "string", required: false, description: "Podcast ID (falls back to podcastName if not provided)" },
+          { name: "podcastDescription", type: "string", required: false, description: "Podcast description (may contain HTML)" },
+          { name: "podcastUrl", type: "string", required: false, description: "Podcast website URL" },
+          { name: "publisherName", type: "string", required: false, description: "Host/publisher name" },
+          { name: "hostName", type: "string", required: false, description: "Alias for publisherName" },
+          { name: "itunesRating", type: "number", required: false, description: "iTunes rating (1-5)" },
+          { name: "episodeCount", type: "number", required: false, description: "Number of episodes" },
+          { name: "audienceSize", type: "number", required: false, description: "Estimated audience size" },
+          { name: "clientId", type: "string", required: false, description: "Client ID for cache key. Defaults to 'legacy'" },
+          { name: "clientName", type: "string", required: false, description: "Client's name for analysis context" },
+          { name: "clientBio", type: "string", required: false, description: "Client's bio (uses generic fallback if empty)" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          cached: false,
+          analysis: {
+            clean_description: "A weekly podcast featuring in-depth interviews with B2B SaaS founders sharing their growth strategies and lessons learned.",
+            fit_reasons: [
+              "Host regularly features founders who've scaled past $10M ARR, aligning perfectly with your experience",
+              "Audience of 50K+ business decision-makers matches your ideal listener profile",
+              "Recent episodes on remote team building and growth strategy directly relate to your expertise",
+              "The interview style allows deep-dives into tactical advice, which showcases your strength"
+            ],
+            pitch_angles: [
+              { title: "Scaling B2B SaaS Past the $10M Ceiling", description: "Share your proven framework for breaking through revenue plateaus, including the three organizational changes that unlocked your next growth phase." },
+              { title: "Building Remote-First Teams That Outperform", description: "Discuss how your distributed team model has become a competitive advantage, with specific hiring and culture practices." },
+              { title: "From Bootstrapped to Category Leader", description: "Tell the story of building Acme Corp without outside funding and the unconventional growth strategies that got you there." }
+            ]
+          }
+        }, null, 2),
+        category: "podcast-discovery",
+      },
+      {
+        id: "fetch-podscan-email",
+        name: "Fetch Podscan Email",
+        method: "POST",
+        path: `${BASE_PATH}/fetch-podscan-email`,
+        description: "Fetches the contact email for a podcast from the Podscan API. Results cached indefinitely in the podcast_emails table (no TTL). Returns null if the podcast has no email on file.",
+        auth: "API Key",
+        notes: "Indefinite cache (no expiry - once cached, always returned). Fire-and-forget database insert (DB error doesn't fail the request). Extracts email from Podscan response at podcast.reach.email path.",
+        params: [
+          { name: "podcast_id", type: "string", required: true, description: "Podscan podcast ID" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          email: "host@podcast.com",
+          podcast_id: "pod_abc123",
+          cached: false
+        }, null, 2),
+        category: "podcast-discovery",
+      },
+      {
+        id: "read-outreach-list",
+        name: "Read Outreach List",
+        method: "POST",
+        path: `${BASE_PATH}/read-outreach-list`,
+        description: "Reads podcast IDs from column E of a client's Google Sheet, checks the central cache (7-day TTL), fetches missing podcasts from Podscan API in batches of 5, and returns full podcast data with cost tracking metrics.",
+        auth: "API Key",
+        notes: "Google Sheet range: E2:E1000 (up to 1000 rows). Uses batch upsert for efficient caching. Cost model: $0.01 per Podscan API call (2 calls per podcast). Returns empty array if no sheet found.",
+        params: [
+          { name: "clientId", type: "string", required: true, description: "UUID of the client (used to look up google_sheet_url)" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          podcasts: [
+            {
+              podcast_id: "pod_abc123",
+              podcast_name: "The Marketing Hour",
+              podcast_description: "Weekly marketing insights...",
+              podcast_image_url: "https://...",
+              podcast_url: "https://...",
+              publisher_name: "Sarah Lee",
+              itunes_rating: 4.5,
+              episode_count: 200,
+              audience_size: 25000,
+              podscan_email: "host@example.com"
+            }
+          ],
+          total: 25,
+          cached: 20,
+          fetched: 5,
+          cachePerformance: {
+            cacheHitRate: 80,
+            apiCallsSaved: 40,
+            apiCallsMade: 10,
+            costSavings: 0.40,
+            costSpent: 0.10
+          }
+        }, null, 2),
+        category: "podcast-discovery",
+      },
+      {
+        id: "get-client-outreach-podcasts",
+        name: "Get Client Outreach Podcasts",
+        method: "POST",
+        path: `${BASE_PATH}/get-client-outreach-podcasts`,
+        description: "Returns podcast IDs from a client's Google Sheet column E. Does NOT call the Podscan API (due to DNS limitations in Supabase Edge Functions). Use get-outreach-podcasts-v2 instead for full data.",
+        auth: "API Key",
+        notes: "Legacy endpoint - prefer get-outreach-podcasts-v2. Returns podcast IDs only, not full details. Frontend is responsible for fetching podcast data. Returns debug info if no podcasts found.",
+        params: [
+          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          podcastIds: ["pod_abc123", "pod_def456", "pod_ghi789"],
+          total: 3
+        }, null, 2),
+        category: "podcast-discovery",
+      },
+      {
+        id: "get-outreach-podcasts-v2",
+        name: "Get Outreach Podcasts V2",
+        method: "POST",
+        path: `${BASE_PATH}/get-outreach-podcasts-v2`,
+        description: "Enhanced version that actually fetches full podcast data from Podscan API (solves DNS issue from v1). Reads Google Sheet column E, checks central cache with 7-day staleness, fetches missing/stale podcasts in batches of 5, and includes podscan_email in response.",
+        auth: "API Key",
+        notes: "Replaces get-client-outreach-podcasts. Uses individual upserts per podcast (not batch). Includes podscan_email field. Multiple fallback paths for Podscan data fields.",
+        params: [
+          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          podcasts: [
+            {
+              podcast_id: "pod_abc123",
+              podcast_name: "Growth Hacking Today",
+              podcast_description: "Tactical growth strategies...",
+              podcast_image_url: "https://...",
+              podcast_url: "https://...",
+              publisher_name: "Mike Chen",
+              itunes_rating: 4.7,
+              episode_count: 300,
+              audience_size: 100000,
+              podscan_email: "mike@growthhacking.com"
+            }
+          ],
+          total: 25
+        }, null, 2),
+        category: "podcast-discovery",
+      },
+    ],
+  },
+  {
     id: "client-management",
     name: "Client Management",
     description: "Create and manage client accounts, Google Sheets, bookings, and podcast data.",
@@ -37,33 +539,24 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Create Client Account",
         method: "POST",
         path: `${BASE_PATH}/create-client-account`,
-        description: "Creates a new client account with full onboarding data including bio generation, Google Sheet setup, and Bison campaign creation.",
+        description: "Creates a new client account with optional portal access, Google Sheet creation, and invitation email.",
         auth: "API Key",
         params: [
           { name: "name", type: "string", required: true, description: "Client's full name" },
           { name: "email", type: "string", required: true, description: "Client's email address" },
-          { name: "company", type: "string", required: false, description: "Client's company name" },
-          { name: "title", type: "string", required: false, description: "Client's job title" },
-          { name: "industry", type: "string", required: false, description: "Client's industry" },
           { name: "bio", type: "string", required: false, description: "Client's bio text" },
-          { name: "topics", type: "string[]", required: false, description: "Array of podcast topics of interest" },
-          { name: "targetAudience", type: "string", required: false, description: "Description of target audience" },
-          { name: "goals", type: "string", required: false, description: "Client's podcast guesting goals" },
-          { name: "linkedinUrl", type: "string", required: false, description: "LinkedIn profile URL" },
-          { name: "websiteUrl", type: "string", required: false, description: "Personal or company website URL" },
-          { name: "headshotUrl", type: "string", required: false, description: "URL to client's headshot image" },
-          { name: "calendarLink", type: "string", required: false, description: "Calendly or scheduling link" },
+          { name: "linkedin_url", type: "string", required: false, description: "LinkedIn profile URL" },
+          { name: "website", type: "string", required: false, description: "Website URL" },
+          { name: "calendar_link", type: "string", required: false, description: "Scheduling link" },
+          { name: "contact_person", type: "string", required: false, description: "Contact person name" },
+          { name: "enable_portal_access", type: "boolean", required: false, description: "Enable client portal. Defaults to true" },
+          { name: "password", type: "string", required: false, description: "Portal password" },
+          { name: "create_google_sheet", type: "boolean", required: false, description: "Create tracking sheet. Defaults to false" },
         ],
         responseExample: JSON.stringify({
           success: true,
-          client: {
-            id: "uuid-here",
-            name: "John Doe",
-            email: "john@example.com",
-            status: "active"
-          },
-          googleSheet: { spreadsheetId: "1abc...", url: "https://docs.google.com/spreadsheets/d/..." },
-          bisonCampaign: { id: "campaign-123" }
+          message: "Client account created successfully",
+          client: { client_id: "uuid", name: "John Doe", email: "john@example.com", status: "active", portal_access_enabled: true, dashboard_slug: "abc123", dashboard_url: "https://getonapod.com/client/abc123" }
         }, null, 2),
         category: "client-management",
       },
@@ -72,7 +565,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Create Client Google Sheet",
         method: "POST",
         path: `${BASE_PATH}/create-client-google-sheet`,
-        description: "Creates a formatted Google Sheet for tracking a client's podcast outreach, bookings, and status.",
+        description: "Creates a formatted Google Sheet for tracking a client's podcast outreach by copying a template.",
         auth: "API Key",
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client" },
@@ -91,21 +584,15 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Get Client Bookings",
         method: "POST",
         path: `${BASE_PATH}/get-client-bookings`,
-        description: "Retrieves all podcast bookings for a specific client, including episode details and status.",
+        description: "Retrieves all podcast bookings and outreach messages for a client with optional session validation.",
         auth: "API Key",
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client" },
+          { name: "sessionToken", type: "string", required: false, description: "Optional session token for portal auth" },
         ],
         responseExample: JSON.stringify({
-          bookings: [
-            {
-              id: "booking-uuid",
-              podcast_name: "The Growth Show",
-              status: "confirmed",
-              recording_date: "2025-03-15",
-              episode_url: null
-            }
-          ]
+          bookings: [{ id: "uuid", podcast_name: "The Growth Show", status: "confirmed", recording_date: "2025-03-15" }],
+          outreachMessages: [{ id: "uuid", podcast_name: "Startup Stories", status: "sent" }]
         }, null, 2),
         category: "client-management",
       },
@@ -114,392 +601,25 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Get Client Podcasts",
         method: "POST",
         path: `${BASE_PATH}/get-client-podcasts`,
-        description: "Fetches podcast data for a client from their Google Sheet, including outreach status, podcast details, and approval states.",
-        auth: "API Key",
-        params: [
-          { name: "clientId", type: "string", required: false, description: "UUID of the client" },
-          { name: "slug", type: "string", required: false, description: "Client's URL slug (alternative to clientId)" },
-        ],
-        responseExample: JSON.stringify({
-          podcasts: [
-            {
-              id: "row-1",
-              podcast_name: "Startup Stories",
-              status: "pitched",
-              host_name: "Jane Smith",
-              audience_size: "50K",
-              categories: ["Business", "Entrepreneurship"]
-            }
-          ],
-          client: { name: "John Doe", slug: "john-doe" }
-        }, null, 2),
-        category: "client-management",
-      },
-    ],
-  },
-  {
-    id: "prospect-dashboards",
-    name: "Prospect Dashboards",
-    description: "Create and manage public-facing prospect dashboards with curated podcast lists.",
-    endpoints: [
-      {
-        id: "create-prospect-sheet",
-        name: "Create Prospect Sheet",
-        method: "POST",
-        path: `${BASE_PATH}/create-prospect-sheet`,
-        description: "Creates a new prospect dashboard with a Google Sheet backend, including formatted podcast data and a public shareable link.",
-        auth: "API Key",
-        params: [
-          { name: "prospectName", type: "string", required: true, description: "Name of the prospect" },
-          { name: "prospectBio", type: "string", required: false, description: "Brief bio or description of the prospect" },
-          { name: "prospectImageUrl", type: "string", required: false, description: "URL to prospect's profile image" },
-          { name: "podcasts", type: "object[]", required: true, description: "Array of podcast objects to include in the dashboard" },
-        ],
-        responseExample: JSON.stringify({
-          success: true,
-          dashboard: {
-            id: "uuid",
-            slug: "john-doe-abc123",
-            url: "https://getonapod.com/prospect/john-doe-abc123",
-            spreadsheetId: "1abc..."
-          }
-        }, null, 2),
-        category: "prospect-dashboards",
-      },
-      {
-        id: "append-prospect-sheet",
-        name: "Append Prospect Sheet",
-        method: "POST",
-        path: `${BASE_PATH}/append-prospect-sheet`,
-        description: "Adds additional podcasts to an existing prospect dashboard's Google Sheet.",
-        auth: "API Key",
-        params: [
-          { name: "dashboardId", type: "string", required: true, description: "UUID of the prospect dashboard" },
-          { name: "podcasts", type: "object[]", required: true, description: "Array of podcast objects to append" },
-        ],
-        responseExample: JSON.stringify({
-          success: true,
-          addedCount: 5
-        }, null, 2),
-        category: "prospect-dashboards",
-      },
-      {
-        id: "get-prospect-podcasts",
-        name: "Get Prospect Podcasts",
-        method: "POST",
-        path: `${BASE_PATH}/get-prospect-podcasts`,
-        description: "Retrieves all podcasts from a prospect dashboard by slug or ID, used to render the public prospect view.",
-        auth: "None",
-        params: [
-          { name: "slug", type: "string", required: false, description: "Public URL slug of the prospect dashboard" },
-          { name: "dashboardId", type: "string", required: false, description: "UUID of the dashboard (alternative to slug)" },
-        ],
-        responseExample: JSON.stringify({
-          podcasts: [
-            {
-              podcast_name: "The Marketing Hour",
-              audience_size: "25K",
-              categories: ["Marketing"],
-              host_name: "Sarah Lee",
-              reach_score: 85,
-              why_this_show: "Great fit for B2B topics..."
-            }
-          ],
-          dashboard: { name: "John Doe", bio: "CEO of Acme Corp" }
-        }, null, 2),
-        category: "prospect-dashboards",
-      },
-      {
-        id: "delete-podcast-from-sheet",
-        name: "Delete Podcast from Sheet",
-        method: "POST",
-        path: `${BASE_PATH}/delete-podcast-from-sheet`,
-        description: "Removes a specific podcast row from a prospect dashboard's Google Sheet.",
+        description: "Fetches podcast data for a client from their Google Sheet with central cache, Podscan enrichment, and AI analysis. Same architecture as get-prospect-podcasts.",
         auth: "API Key",
         params: [
           { name: "spreadsheetId", type: "string", required: true, description: "Google Sheet ID" },
-          { name: "podcastId", type: "string", required: true, description: "ID of the podcast row to delete" },
+          { name: "clientId", type: "string", required: false, description: "UUID of the client" },
+          { name: "clientName", type: "string", required: false, description: "Client name for AI analysis" },
+          { name: "clientBio", type: "string", required: false, description: "Client bio for AI analysis" },
+          { name: "cacheOnly", type: "boolean", required: false, description: "Skip Podscan, cache only" },
+          { name: "skipAiAnalysis", type: "boolean", required: false, description: "Don't run AI analysis" },
         ],
         responseExample: JSON.stringify({
           success: true,
-          message: "Podcast removed from sheet"
+          podcasts: [{ podcast_id: "pod_abc123", podcast_name: "Startup Stories", publisher_name: "Jane Smith", itunes_rating: 4.8, audience_size: 50000 }],
+          total: 15,
+          cached: 12,
+          fetched: 3,
+          cachePerformance: { cacheHitRate: 80, apiCallsSaved: 24, costSavings: 0.24 }
         }, null, 2),
-        category: "prospect-dashboards",
-      },
-    ],
-  },
-  {
-    id: "ai-content",
-    name: "AI Content Generation",
-    description: "Generate AI-powered content including taglines, bios, podcast summaries, search queries, guest resources, and blog posts.",
-    endpoints: [
-      {
-        id: "generate-tagline",
-        name: "Generate Tagline",
-        method: "POST",
-        path: `${BASE_PATH}/generate-tagline`,
-        description: "Generates a catchy tagline for a client based on their profile and industry using Claude AI.",
-        auth: "API Key",
-        params: [
-          { name: "name", type: "string", required: true, description: "Client's name" },
-          { name: "company", type: "string", required: false, description: "Company name" },
-          { name: "industry", type: "string", required: false, description: "Industry vertical" },
-          { name: "bio", type: "string", required: false, description: "Client bio for context" },
-        ],
-        responseExample: JSON.stringify({
-          tagline: "Helping SaaS founders scale to $10M ARR through strategic podcast appearances"
-        }, null, 2),
-        category: "ai-content",
-      },
-      {
-        id: "generate-client-bio",
-        name: "Generate Client Bio",
-        method: "POST",
-        path: `${BASE_PATH}/generate-client-bio`,
-        description: "Generates a professional bio optimized for podcast guest pitches using onboarding data and Claude AI.",
-        auth: "API Key",
-        params: [
-          { name: "name", type: "string", required: true, description: "Client's full name" },
-          { name: "company", type: "string", required: false, description: "Company name" },
-          { name: "title", type: "string", required: false, description: "Job title" },
-          { name: "industry", type: "string", required: false, description: "Industry" },
-          { name: "topics", type: "string[]", required: false, description: "Topics of expertise" },
-          { name: "targetAudience", type: "string", required: false, description: "Target audience description" },
-          { name: "goals", type: "string", required: false, description: "Podcast guesting goals" },
-          { name: "linkedinUrl", type: "string", required: false, description: "LinkedIn URL for additional context" },
-          { name: "websiteUrl", type: "string", required: false, description: "Website URL for additional context" },
-        ],
-        responseExample: JSON.stringify({
-          bio: "John Doe is the founder and CEO of Acme Corp, a leading...",
-          shortBio: "Founder of Acme Corp. Expert in B2B SaaS growth.",
-          talkingPoints: ["Scaling from $1M to $10M ARR", "Building remote-first teams"]
-        }, null, 2),
-        category: "ai-content",
-      },
-      {
-        id: "generate-podcast-summary",
-        name: "Generate Podcast Summary",
-        method: "POST",
-        path: `${BASE_PATH}/generate-podcast-summary`,
-        description: "Generates a compelling 'Why This Show' description for a podcast, explaining why a guest should appear on it.",
-        auth: "API Key",
-        params: [
-          { name: "podcast_name", type: "string", required: true, description: "Name of the podcast" },
-          { name: "audience_size", type: "string", required: false, description: "Estimated audience size" },
-          { name: "episode_count", type: "number", required: false, description: "Number of published episodes" },
-          { name: "rating", type: "number", required: false, description: "Podcast rating (1-5)" },
-          { name: "reach_score", type: "number", required: false, description: "Computed reach score (0-100)" },
-          { name: "description", type: "string", required: false, description: "Podcast description" },
-          { name: "categories", type: "string[]", required: false, description: "Podcast categories" },
-          { name: "publisher_name", type: "string", required: false, description: "Host or publisher name" },
-        ],
-        responseExample: JSON.stringify({
-          summary: "The Growth Show reaches an engaged audience of 50K+ business leaders..."
-        }, null, 2),
-        category: "ai-content",
-      },
-      {
-        id: "generate-podcast-queries",
-        name: "Generate Podcast Queries",
-        method: "POST",
-        path: `${BASE_PATH}/generate-podcast-queries`,
-        description: "Generates optimized search queries for finding relevant podcasts based on client and prospect profiles.",
-        auth: "API Key",
-        params: [
-          { name: "clientName", type: "string", required: true, description: "Client's name" },
-          { name: "clientBio", type: "string", required: true, description: "Client's bio" },
-          { name: "clientEmail", type: "string", required: false, description: "Client's email" },
-          { name: "oldQuery", type: "string", required: false, description: "Previous query to improve upon" },
-          { name: "prospectName", type: "string", required: false, description: "Prospect name for targeted queries" },
-          { name: "prospectBio", type: "string", required: false, description: "Prospect bio for targeted queries" },
-        ],
-        responseExample: JSON.stringify({
-          queries: [
-            "B2B SaaS founder podcast interview",
-            "startup growth strategy podcast",
-            "entrepreneur leadership podcast guest"
-          ]
-        }, null, 2),
-        category: "ai-content",
-      },
-      {
-        id: "generate-guest-resource",
-        name: "Generate Guest Resource",
-        method: "POST",
-        path: `${BASE_PATH}/generate-guest-resource`,
-        description: "Generates downloadable guest resources (guides, checklists, templates) on a given topic using AI.",
-        auth: "API Key",
-        params: [
-          { name: "topic", type: "string", required: true, description: "Topic for the resource" },
-          { name: "category", type: "string", required: false, description: "Resource category" },
-          { name: "resourceType", type: "string", required: false, description: "Type: 'guide', 'checklist', or 'template'. Defaults to 'guide'" },
-        ],
-        responseExample: JSON.stringify({
-          title: "The Ultimate Podcast Guesting Checklist",
-          content: "# Podcast Guesting Checklist\n\n## Before the Interview\n- [ ] Research the host...",
-          resourceType: "checklist"
-        }, null, 2),
-        category: "ai-content",
-      },
-      {
-        id: "generate-blog-content",
-        name: "Generate Blog Content",
-        method: "POST",
-        path: `${BASE_PATH}/generate-blog-content`,
-        description: "Generates a full blog post with title, meta description, and formatted content using Claude AI.",
-        auth: "API Key",
-        params: [
-          { name: "topic", type: "string", required: true, description: "Blog post topic" },
-          { name: "category", type: "string", required: false, description: "Blog category" },
-          { name: "keywords", type: "string[]", required: false, description: "Target SEO keywords" },
-          { name: "tone", type: "string", required: false, description: "Writing tone. Defaults to 'professional'" },
-          { name: "wordCount", type: "number", required: false, description: "Target word count. Defaults to 1500" },
-        ],
-        responseExample: JSON.stringify({
-          title: "How to Get Booked on Top Podcasts in 2025",
-          metaDescription: "Learn the proven strategies...",
-          content: "<h2>Introduction</h2><p>Podcast guesting is one of the most effective...</p>",
-          category: "Podcast Strategy"
-        }, null, 2),
-        category: "ai-content",
-      },
-    ],
-  },
-  {
-    id: "podcast-discovery",
-    name: "Podcast Discovery & Analysis",
-    description: "Find, score, and analyze podcasts for compatibility with client profiles.",
-    endpoints: [
-      {
-        id: "score-podcast-compatibility",
-        name: "Score Podcast Compatibility",
-        method: "POST",
-        path: `${BASE_PATH}/score-podcast-compatibility`,
-        description: "Scores how well a list of podcasts match a client's profile using AI analysis of bios and podcast descriptions.",
-        auth: "API Key",
-        params: [
-          { name: "clientBio", type: "string", required: true, description: "Client's bio for matching" },
-          { name: "prospectBio", type: "string", required: false, description: "Prospect's bio for additional context" },
-          { name: "podcasts", type: "object[]", required: true, description: "Array of podcast objects to score" },
-        ],
-        responseExample: JSON.stringify({
-          scoredPodcasts: [
-            {
-              podcast_name: "The Growth Show",
-              compatibility_score: 92,
-              reasoning: "Strong alignment with B2B SaaS focus..."
-            }
-          ]
-        }, null, 2),
-        category: "podcast-discovery",
-      },
-      {
-        id: "analyze-podcast-fit",
-        name: "Analyze Podcast Fit",
-        method: "POST",
-        path: `${BASE_PATH}/analyze-podcast-fit`,
-        description: "Performs deep AI analysis of how well a client fits a specific podcast, including talking points and pitch angles.",
-        auth: "API Key",
-        params: [
-          { name: "clientBio", type: "string", required: true, description: "Client's detailed bio" },
-          { name: "podcastName", type: "string", required: true, description: "Name of the podcast" },
-          { name: "podcastDescription", type: "string", required: false, description: "Podcast description" },
-          { name: "hostName", type: "string", required: false, description: "Host name" },
-          { name: "categories", type: "string[]", required: false, description: "Podcast categories" },
-        ],
-        responseExample: JSON.stringify({
-          fitScore: 88,
-          analysis: "Strong fit based on overlapping expertise in...",
-          suggestedTopics: ["Scaling B2B SaaS", "Remote team management"],
-          pitchAngle: "Position as a growth expert who has..."
-        }, null, 2),
-        category: "podcast-discovery",
-      },
-      {
-        id: "fetch-podscan-email",
-        name: "Fetch Podscan Email",
-        method: "POST",
-        path: `${BASE_PATH}/fetch-podscan-email`,
-        description: "Fetches the contact email for a podcast from the Podscan API using the podcast's Podscan ID.",
-        auth: "API Key",
-        params: [
-          { name: "podcast_id", type: "string", required: true, description: "Podscan podcast ID" },
-        ],
-        responseExample: JSON.stringify({
-          email: "host@podcast.com",
-          source: "podscan"
-        }, null, 2),
-        category: "podcast-discovery",
-      },
-      {
-        id: "read-outreach-list",
-        name: "Read Outreach List",
-        method: "POST",
-        path: `${BASE_PATH}/read-outreach-list`,
-        description: "Reads a client's outreach list from their Google Sheet, returning all podcast targets and their current status.",
-        auth: "API Key",
-        params: [
-          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-        ],
-        responseExample: JSON.stringify({
-          podcasts: [
-            {
-              podcast_name: "The Marketing Hour",
-              status: "pitched",
-              host_email: "host@example.com",
-              last_contacted: "2025-01-15"
-            }
-          ]
-        }, null, 2),
-        category: "podcast-discovery",
-      },
-      {
-        id: "get-client-outreach-podcasts",
-        name: "Get Client Outreach Podcasts",
-        method: "POST",
-        path: `${BASE_PATH}/get-client-outreach-podcasts`,
-        description: "Retrieves all podcasts in a client's outreach pipeline from the Google Sheet with full metadata.",
-        auth: "API Key",
-        params: [
-          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-        ],
-        responseExample: JSON.stringify({
-          podcasts: [
-            {
-              id: "row-1",
-              podcast_name: "Startup Stories",
-              host_name: "Jane Smith",
-              status: "approved",
-              audience_size: "50K"
-            }
-          ]
-        }, null, 2),
-        category: "podcast-discovery",
-      },
-      {
-        id: "get-outreach-podcasts-v2",
-        name: "Get Outreach Podcasts V2",
-        method: "POST",
-        path: `${BASE_PATH}/get-outreach-podcasts-v2`,
-        description: "Enhanced version of outreach podcast retrieval with additional filtering, sorting, and pagination support.",
-        auth: "API Key",
-        params: [
-          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-        ],
-        responseExample: JSON.stringify({
-          podcasts: [
-            {
-              id: "row-1",
-              podcast_name: "Growth Hacking Today",
-              host_name: "Mike Chen",
-              status: "pitched",
-              audience_size: "100K",
-              reach_score: 88
-            }
-          ],
-          total: 25
-        }, null, 2),
-        category: "podcast-discovery",
+        category: "client-management",
       },
     ],
   },
@@ -513,19 +633,16 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Login with Password",
         method: "POST",
         path: `${BASE_PATH}/login-with-password`,
-        description: "Authenticates a client portal user with email and password, returning a session token.",
+        description: "Authenticates a client with email and password, creates a session token with rate limiting and activity logging.",
         auth: "None",
         params: [
           { name: "email", type: "string", required: true, description: "Client's email address" },
           { name: "password", type: "string", required: true, description: "Client's password" },
         ],
         responseExample: JSON.stringify({
-          success: true,
-          session: {
-            token: "session-token-here",
-            expiresAt: "2025-02-15T00:00:00Z"
-          },
-          client: { id: "uuid", name: "John Doe", email: "john@example.com" }
+          session_token: "session-token-here",
+          client: { id: "uuid", name: "John Doe", email: "john@example.com" },
+          expires_at: "2025-02-15T00:00:00Z"
         }, null, 2),
         category: "auth-portal",
       },
@@ -534,15 +651,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Send Portal Magic Link",
         method: "POST",
         path: `${BASE_PATH}/send-portal-magic-link`,
-        description: "Sends a passwordless magic link email to the client for portal authentication.",
+        description: "Sends a passwordless magic link email via Resend with rate limiting and suppression checks.",
         auth: "None",
         params: [
           { name: "email", type: "string", required: true, description: "Client's email address" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          message: "Magic link sent to john@example.com"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "Magic link sent" }, null, 2),
         category: "auth-portal",
       },
       {
@@ -550,18 +664,15 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Verify Portal Token",
         method: "POST",
         path: `${BASE_PATH}/verify-portal-token`,
-        description: "Verifies a magic link token and creates a new portal session.",
+        description: "Validates a magic link token, marks it as used, and creates a new session.",
         auth: "None",
         params: [
           { name: "token", type: "string", required: true, description: "Magic link token from email" },
         ],
         responseExample: JSON.stringify({
           success: true,
-          session: {
-            token: "session-token-here",
-            expiresAt: "2025-02-15T00:00:00Z"
-          },
-          client: { id: "uuid", name: "John Doe" }
+          session: { session_token: "token", expires_at: "2025-02-15T00:00:00Z", client_id: "uuid" },
+          client: { id: "uuid", name: "John Doe", email: "john@example.com" }
         }, null, 2),
         category: "auth-portal",
       },
@@ -570,15 +681,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Validate Portal Session",
         method: "POST",
         path: `${BASE_PATH}/validate-portal-session`,
-        description: "Validates an existing session token and returns the associated client data.",
+        description: "Validates an existing session token and updates last_active_at.",
         auth: "Session Token",
         params: [
-          { name: "sessionToken", type: "string", required: true, description: "Active session token to validate" },
+          { name: "sessionToken", type: "string", required: true, description: "Active session token" },
         ],
-        responseExample: JSON.stringify({
-          valid: true,
-          client: { id: "uuid", name: "John Doe", email: "john@example.com" }
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, client: { id: "uuid", name: "John Doe", email: "john@example.com" } }, null, 2),
         category: "auth-portal",
       },
       {
@@ -586,15 +694,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Logout Portal Session",
         method: "POST",
         path: `${BASE_PATH}/logout-portal-session`,
-        description: "Invalidates a portal session token, logging the client out.",
+        description: "Deletes a session and logs the logout activity.",
         auth: "Session Token",
         params: [
           { name: "sessionToken", type: "string", required: true, description: "Session token to invalidate" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          message: "Session invalidated"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true }, null, 2),
         category: "auth-portal",
       },
     ],
@@ -602,27 +707,25 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "outreach-email",
     name: "Outreach & Email",
-    description: "Create outreach messages, trigger email campaigns, and manage leads in Bison.",
+    description: "Create outreach messages, trigger email campaigns, manage Bison leads, and fetch email threads.",
     endpoints: [
       {
         id: "create-outreach-message",
         name: "Create Outreach Message",
         method: "POST",
         path: `${BASE_PATH}/create-outreach-message`,
-        description: "Generates a personalized podcast outreach email using AI, tailored to the podcast host and client profile.",
+        description: "Creates an outreach message from Clay data with podcast and host information for email campaigns.",
         auth: "API Key",
         params: [
-          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-          { name: "podcastName", type: "string", required: true, description: "Name of the target podcast" },
-          { name: "hostName", type: "string", required: false, description: "Podcast host's name" },
-          { name: "hostEmail", type: "string", required: true, description: "Host's email address" },
-          { name: "podcastDescription", type: "string", required: false, description: "Podcast description for context" },
+          { name: "client_id", type: "string", required: true, description: "UUID of the client" },
+          { name: "final_host_email", type: "string", required: true, description: "Host's email address" },
+          { name: "email_1", type: "string", required: true, description: "Email body content" },
+          { name: "subject_line", type: "string", required: true, description: "Email subject line" },
+          { name: "host_name", type: "string", required: false, description: "Host's name" },
+          { name: "podcast_name", type: "string", required: false, description: "Podcast name" },
+          { name: "podcast_id", type: "string", required: false, description: "Podcast ID" },
         ],
-        responseExample: JSON.stringify({
-          subject: "Guest Pitch: John Doe on The Growth Show",
-          body: "Hi Sarah,\n\nI came across The Growth Show and loved your recent episode on...",
-          messageId: "msg-uuid"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "Outreach message created", data: { id: "uuid", client_id: "uuid", podcast_name: "The Growth Show", status: "pending" } }, null, 2),
         category: "outreach-email",
       },
       {
@@ -630,17 +733,13 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Send Outreach Webhook",
         method: "POST",
         path: `${BASE_PATH}/send-outreach-webhook`,
-        description: "Triggers the outreach email sending workflow via webhook, updating the podcast status in the client's sheet.",
+        description: "Sends a podcast outreach event to a configured client webhook URL.",
         auth: "API Key",
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-          { name: "podcastId", type: "string", required: true, description: "ID of the podcast being pitched" },
+          { name: "podcastId", type: "string", required: true, description: "ID of the podcast" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          status: "sent",
-          messageId: "msg-uuid"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "Webhook sent", webhookStatus: 200 }, null, 2),
         category: "outreach-email",
       },
       {
@@ -648,19 +747,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Create Bison Lead",
         method: "POST",
         path: `${BASE_PATH}/create-bison-lead`,
-        description: "Creates or updates a lead in Bison CRM from a campaign message, syncing email reply data.",
+        description: "Creates or updates a lead in Bison CRM from an outreach message, optionally attaching to a campaign.",
         auth: "API Key",
         params: [
-          { name: "message_id", type: "string", required: true, description: "Bison message ID to sync" },
+          { name: "message_id", type: "string", required: true, description: "Outreach message ID to convert" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          lead: {
-            email: "host@podcast.com",
-            status: "replied",
-            campaign: "Q1 Outreach"
-          }
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, lead_id: 12345, lead_already_existed: false, campaign_attached: true, campaign_id: 678 }, null, 2),
         category: "outreach-email",
       },
       {
@@ -668,17 +760,14 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Send Reply",
         method: "POST",
         path: `${BASE_PATH}/send-reply`,
-        description: "Sends a reply to a podcast host's email via Bison, continuing an existing conversation thread.",
+        description: "Sends a reply to an email via the Bison email API.",
         auth: "API Key",
         params: [
-          { name: "bisonReplyId", type: "string", required: true, description: "Bison reply thread ID" },
+          { name: "bisonReplyId", type: "string", required: true, description: "Bison reply ID" },
           { name: "message", type: "string", required: true, description: "Reply message body" },
-          { name: "subject", type: "string", required: false, description: "Email subject (optional, uses Re: thread subject)" },
+          { name: "subject", type: "string", required: false, description: "Email subject" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          messageId: "reply-uuid"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "Reply sent" }, null, 2),
         category: "outreach-email",
       },
       {
@@ -686,20 +775,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Fetch Email Thread",
         method: "POST",
         path: `${BASE_PATH}/fetch-email-thread`,
-        description: "Fetches a full email conversation thread from Bison by reply ID, returning all messages in the thread.",
+        description: "Fetches a full email conversation thread from Bison by reply ID.",
         auth: "API Key",
         params: [
-          { name: "replyId", type: "string", required: true, description: "Bison reply ID to fetch the conversation thread for" },
+          { name: "replyId", type: "string", required: true, description: "Bison reply ID" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          data: {
-            messages: [
-              { from: "you@company.com", to: "host@podcast.com", subject: "Guest Pitch", body: "Hi...", date: "2025-01-15T10:00:00Z" },
-              { from: "host@podcast.com", to: "you@company.com", subject: "Re: Guest Pitch", body: "Thanks for reaching out...", date: "2025-01-16T14:30:00Z" }
-            ]
-          }
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, data: { messages: [{ from: "you@company.com", to: "host@podcast.com", subject: "Guest Pitch", body: "Hi..." }] } }, null, 2),
         category: "outreach-email",
       },
     ],
@@ -707,21 +788,17 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "webhooks",
     name: "Webhooks",
-    description: "Receive and process incoming webhooks from Stripe, Resend, and Bison campaign replies.",
+    description: "Receive and process incoming webhooks from Stripe, Resend, and Bison.",
     endpoints: [
       {
         id: "stripe-webhook",
         name: "Stripe Webhook",
         method: "POST",
         path: `${BASE_PATH}/stripe-webhook`,
-        description: "Processes Stripe payment events including checkout completions, subscription updates, and invoice payments.",
+        description: "Processes Stripe events: checkout.session.completed, payment_intent.payment_failed, charge.refunded.",
         auth: "Webhook Signature",
-        params: [
-          { name: "(Stripe Event)", type: "object", required: true, description: "Stripe webhook event payload (sent automatically by Stripe)" },
-        ],
-        responseExample: JSON.stringify({
-          received: true
-        }, null, 2),
+        params: [{ name: "(Stripe Event)", type: "object", required: true, description: "Stripe webhook event payload" }],
+        responseExample: JSON.stringify({ received: true }, null, 2),
         category: "webhooks",
       },
       {
@@ -729,15 +806,10 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Resend Webhook",
         method: "POST",
         path: `${BASE_PATH}/resend-webhook`,
-        description: "Processes Resend email delivery webhooks including bounces, complaints, deliveries, and opens.",
+        description: "Processes Resend email events: sent, delivered, delayed, bounced, complained, opened, clicked.",
         auth: "Webhook Signature",
-        params: [
-          { name: "(Resend Event)", type: "object", required: true, description: "Resend webhook event payload (sent automatically by Resend)" },
-        ],
-        responseExample: JSON.stringify({
-          received: true,
-          type: "email.delivered"
-        }, null, 2),
+        params: [{ name: "(Resend Event)", type: "object", required: true, description: "Resend webhook event payload" }],
+        responseExample: JSON.stringify({ received: true, event_type: "email.delivered" }, null, 2),
         category: "webhooks",
       },
       {
@@ -745,15 +817,10 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Campaign Reply Webhook",
         method: "POST",
         path: `${BASE_PATH}/campaign-reply-webhook`,
-        description: "Processes incoming campaign reply notifications from Bison, creating leads and updating outreach status.",
+        description: "Processes Bison campaign reply events with duplicate detection.",
         auth: "Webhook Signature",
-        params: [
-          { name: "(Bison Event)", type: "object", required: true, description: "Bison campaign reply payload (sent automatically by Bison)" },
-        ],
-        responseExample: JSON.stringify({
-          received: true,
-          leadCreated: true
-        }, null, 2),
+        params: [{ name: "(Bison Event)", type: "object", required: true, description: "Bison campaign reply payload" }],
+        responseExample: JSON.stringify({ success: true, message: "Reply processed", reply_id: "uuid" }, null, 2),
         category: "webhooks",
       },
     ],
@@ -768,22 +835,13 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Analyze Sales Call",
         method: "POST",
         path: `${BASE_PATH}/analyze-sales-call`,
-        description: "Performs AI analysis of a sales call recording, extracting key insights, objections, and next steps.",
+        description: "Analyzes a sales call transcript against the Corey Jackson Sales Framework using Claude AI.",
         auth: "API Key",
         params: [
-          { name: "sales_call_id", type: "string", required: true, description: "UUID of the sales call record" },
-          { name: "recording_id", type: "string", required: false, description: "Fathom recording ID (auto-detected if not provided)" },
+          { name: "sales_call_id", type: "string", required: true, description: "UUID of the sales call" },
+          { name: "recording_id", type: "string", required: false, description: "Fathom recording ID" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          analysis: {
-            sentiment: "positive",
-            keyTopics: ["pricing", "timeline", "onboarding"],
-            objections: ["Budget concerns for Q1"],
-            nextSteps: ["Send proposal", "Schedule follow-up"],
-            score: 78
-          }
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, data: { overall_score: 78, framework_adherence_score: 82, strengths: ["Strong discovery"], recommendations: ["Improve close"] } }, null, 2),
         category: "sales-analytics",
       },
       {
@@ -791,17 +849,10 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Classify Sales Call",
         method: "POST",
         path: `${BASE_PATH}/classify-sales-call`,
-        description: "Classifies a sales call into categories (discovery, demo, closing, etc.) using AI analysis.",
+        description: "Classifies a call as 'sales' or 'non-sales' using Claude Haiku.",
         auth: "API Key",
-        params: [
-          { name: "sales_call_id", type: "string", required: true, description: "UUID of the sales call record" },
-        ],
-        responseExample: JSON.stringify({
-          success: true,
-          classification: "discovery",
-          confidence: 0.92,
-          stage: "top-of-funnel"
-        }, null, 2),
+        params: [{ name: "sales_call_id", type: "string", required: true, description: "UUID of the sales call" }],
+        responseExample: JSON.stringify({ success: true, data: { call_type: "sales" } }, null, 2),
         category: "sales-analytics",
       },
       {
@@ -809,17 +860,10 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Sync Fathom Calls",
         method: "POST",
         path: `${BASE_PATH}/sync-fathom-calls`,
-        description: "Syncs recent call recordings from Fathom API into the local database for analysis.",
+        description: "Syncs recent call recordings from Fathom API into the database.",
         auth: "API Key",
-        params: [
-          { name: "since", type: "string", required: false, description: "ISO date string to sync calls from (defaults to last 7 days)" },
-        ],
-        responseExample: JSON.stringify({
-          success: true,
-          synced: 12,
-          newCalls: 3,
-          updatedCalls: 9
-        }, null, 2),
+        params: [{ name: "daysBack", type: "number", required: false, description: "Days to look back. Defaults to 30" }],
+        responseExample: JSON.stringify({ success: true, data: { total_meetings: 12, new_calls: 3, updated_calls: 9 } }, null, 2),
         category: "sales-analytics",
       },
       {
@@ -827,16 +871,14 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Sync Replies",
         method: "POST",
         path: `${BASE_PATH}/sync-replies`,
-        description: "Syncs email replies from Bison campaigns into the local database, updating lead statuses.",
+        description: "Syncs email replies from Bison with smart sync and duplicate detection.",
         auth: "API Key",
         params: [
-          { name: "since", type: "string", required: false, description: "ISO date string to sync replies from" },
+          { name: "syncType", type: "string", required: false, description: "'manual' or 'auto'. Defaults to 'manual'" },
+          { name: "unreadOnly", type: "boolean", required: false, description: "Only sync unread. Defaults to false" },
+          { name: "daysBack", type: "number", required: false, description: "Days to look back. Defaults to 7" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          synced: 8,
-          newReplies: 2
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, data: { total_processed: 8, new_replies: 2, updated_replies: 4, skipped_replies: 2 } }, null, 2),
         category: "sales-analytics",
       },
     ],
@@ -844,23 +886,21 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "payments",
     name: "Payments",
-    description: "Handle Stripe checkout sessions for products, add-ons, and manage outreach podcast deletions.",
+    description: "Handle Stripe checkout sessions and manage outreach podcast deletions.",
     endpoints: [
       {
         id: "create-checkout-session",
         name: "Create Checkout Session",
         method: "POST",
         path: `${BASE_PATH}/create-checkout-session`,
-        description: "Creates a Stripe Checkout session for purchasing products, with support for multiple cart items.",
+        description: "Creates a Stripe Checkout session for premium placement purchases.",
         auth: "None",
         params: [
-          { name: "cartItems", type: "object[]", required: true, description: "Array of items with priceId and quantity" },
-          { name: "customerEmail", type: "string", required: false, description: "Customer's email for pre-filling checkout" },
-          { name: "customerName", type: "string", required: false, description: "Customer's name" },
+          { name: "cartItems", type: "object[]", required: true, description: "Array of items with podcastId, podcastName, price, priceDisplay" },
+          { name: "customerEmail", type: "string", required: true, description: "Customer's email" },
+          { name: "customerName", type: "string", required: true, description: "Customer's name" },
         ],
-        responseExample: JSON.stringify({
-          url: "https://checkout.stripe.com/c/pay/cs_live_..."
-        }, null, 2),
+        responseExample: JSON.stringify({ sessionId: "cs_live_...", url: "https://checkout.stripe.com/..." }, null, 2),
         category: "payments",
       },
       {
@@ -868,15 +908,13 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Create Add-on Checkout",
         method: "POST",
         path: `${BASE_PATH}/create-addon-checkout`,
-        description: "Creates a Stripe Checkout session specifically for add-on purchases linked to an existing client.",
+        description: "Creates a Stripe Checkout session for add-on services linked to a client.",
         auth: "API Key",
         params: [
-          { name: "addons", type: "object[]", required: true, description: "Array of add-on items with priceId and quantity" },
-          { name: "clientId", type: "string", required: true, description: "UUID of the existing client" },
+          { name: "addons", type: "object[]", required: true, description: "Array with bookingId and serviceId" },
+          { name: "clientId", type: "string", required: true, description: "UUID of the client" },
         ],
-        responseExample: JSON.stringify({
-          url: "https://checkout.stripe.com/c/pay/cs_live_..."
-        }, null, 2),
+        responseExample: JSON.stringify({ sessionId: "cs_live_...", url: "https://checkout.stripe.com/..." }, null, 2),
         category: "payments",
       },
       {
@@ -884,16 +922,13 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Delete Outreach Podcast",
         method: "POST",
         path: `${BASE_PATH}/delete-outreach-podcast`,
-        description: "Removes a podcast from a client's outreach list in their Google Sheet and updates the database.",
+        description: "Removes a podcast from a client's Google Sheet outreach list.",
         auth: "API Key",
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-          { name: "podcastId", type: "string", required: true, description: "ID of the podcast to remove" },
+          { name: "podcastId", type: "string", required: true, description: "Podcast ID to remove" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          message: "Podcast removed from outreach list"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "Deleted podcast from row 5", deletedRow: 5 }, null, 2),
         category: "payments",
       },
     ],
@@ -901,24 +936,20 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "seo-integrations",
     name: "SEO & Integrations",
-    description: "Submit URLs for Google indexing, check indexing status, and export data to Google Sheets.",
+    description: "Submit URLs for Google indexing, check status, and export to Google Sheets.",
     endpoints: [
       {
         id: "submit-to-indexing",
         name: "Submit to Indexing",
         method: "POST",
         path: `${BASE_PATH}/submit-to-indexing`,
-        description: "Submits a URL to Google's Indexing API to request fast indexing of new or updated pages.",
+        description: "Submits a URL to Google's Indexing API for fast indexing.",
         auth: "API Key",
         params: [
-          { name: "url", type: "string", required: true, description: "Full URL to submit for indexing" },
-          { name: "postId", type: "string", required: false, description: "Associated blog post ID for tracking" },
+          { name: "url", type: "string", required: true, description: "URL to submit" },
+          { name: "postId", type: "string", required: true, description: "Blog post ID for tracking" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          status: "URL_UPDATED",
-          notifyTime: "2025-01-15T10:30:00Z"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "URL submitted for indexing" }, null, 2),
         category: "seo-integrations",
       },
       {
@@ -926,17 +957,13 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Check Indexing Status",
         method: "POST",
         path: `${BASE_PATH}/check-indexing-status`,
-        description: "Checks the current Google indexing status of a URL via the Indexing API.",
+        description: "Checks Google indexing status via Search Console API.",
         auth: "API Key",
         params: [
-          { name: "url", type: "string", required: true, description: "URL to check indexing status for" },
-          { name: "postId", type: "string", required: false, description: "Associated blog post ID" },
+          { name: "url", type: "string", required: true, description: "URL to check" },
+          { name: "postId", type: "string", required: true, description: "Blog post ID" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          status: "indexed",
-          lastCrawled: "2025-01-14T08:00:00Z"
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, data: { isIndexed: true, coverageState: "Submitted and indexed", lastCrawlTime: "2025-01-14T08:00:00Z" } }, null, 2),
         category: "seo-integrations",
       },
       {
@@ -944,18 +971,13 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Export to Google Sheets",
         method: "POST",
         path: `${BASE_PATH}/export-to-google-sheets`,
-        description: "Exports podcast data to a client's Google Sheet with formatted headers, styling, and data validation.",
+        description: "Exports podcast data to a client's Google Sheet with central cache saving.",
         auth: "API Key",
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client" },
-          { name: "podcasts", type: "object[]", required: true, description: "Array of podcast objects to export" },
+          { name: "podcasts", type: "object[]", required: true, description: "Array of podcast objects" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          spreadsheetId: "1abc...",
-          rowsAdded: 15,
-          spreadsheetUrl: "https://docs.google.com/spreadsheets/d/..."
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, rowsAdded: 15, updatedRange: "Sheet1", cacheSaved: 12, cacheSkipped: 2, cacheErrors: 1 }, null, 2),
         category: "seo-integrations",
       },
     ],
@@ -970,20 +992,16 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Manage Admin Users",
         method: "POST",
         path: `${BASE_PATH}/manage-admin-users`,
-        description: "Performs admin user management operations including listing, creating, updating, and deleting admin accounts.",
+        description: "Admin user management: list, create, delete, reset-password. Requires JWT Bearer token from an existing admin.",
         auth: "API Key",
         params: [
-          { name: "action", type: "string", required: true, description: "Action to perform: 'list', 'create', 'update', or 'delete'" },
-          { name: "email", type: "string", required: false, description: "Admin user's email (required for create/update/delete)" },
-          { name: "role", type: "string", required: false, description: "Admin role: 'admin' or 'super_admin'" },
-          { name: "name", type: "string", required: false, description: "Admin user's display name" },
+          { name: "action", type: "string", required: true, description: "'list', 'create', 'delete', or 'reset-password'" },
+          { name: "email", type: "string", required: false, description: "Required for create/delete/reset-password" },
+          { name: "password", type: "string", required: false, description: "For create action. Min 8 characters" },
+          { name: "newPassword", type: "string", required: false, description: "For reset-password. Min 8 characters" },
+          { name: "name", type: "string", required: false, description: "Admin display name" },
         ],
-        responseExample: JSON.stringify({
-          success: true,
-          users: [
-            { id: "uuid", email: "admin@getonapod.com", role: "super_admin", name: "Jonathan" }
-          ]
-        }, null, 2),
+        responseExample: JSON.stringify({ success: true, admins: [{ id: "uuid", email: "admin@getonapod.com", role: "super_admin", name: "Jonathan" }] }, null, 2),
         category: "admin",
       },
     ],
@@ -1005,7 +1023,8 @@ export function searchEndpoints(query: string): ApiEndpoint[] {
       e.name.toLowerCase().includes(lower) ||
       e.description.toLowerCase().includes(lower) ||
       e.path.toLowerCase().includes(lower) ||
-      e.id.toLowerCase().includes(lower)
+      e.id.toLowerCase().includes(lower) ||
+      (e.aiModel && e.aiModel.toLowerCase().includes(lower))
   );
 }
 
@@ -1013,13 +1032,14 @@ export function generateCurlExample(endpoint: ApiEndpoint): string {
   const url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
   const hasBody = endpoint.params.length > 0 && endpoint.method === "POST";
 
-  const bodyObj: Record<string, string | number | boolean> = {};
+  const bodyObj: Record<string, unknown> = {};
   if (hasBody) {
-    for (const p of endpoint.params.filter((p) => p.required)) {
+    for (const p of endpoint.params.filter((p) => p.required && !p.name.startsWith("("))) {
       if (p.type === "string") bodyObj[p.name] = `your-${p.name}`;
-      else if (p.type === "string[]") bodyObj[p.name] = ["value1", "value2"] as unknown as string;
+      else if (p.type === "string[]") bodyObj[p.name] = ["value1", "value2"];
       else if (p.type === "number") bodyObj[p.name] = 0;
-      else if (p.type === "object[]") bodyObj[p.name] = [] as unknown as string;
+      else if (p.type === "boolean") bodyObj[p.name] = true;
+      else if (p.type.includes("[]")) bodyObj[p.name] = [];
       else bodyObj[p.name] = `your-${p.name}`;
     }
   }
@@ -1043,11 +1063,12 @@ export function generateJsExample(endpoint: ApiEndpoint): string {
 
   const bodyObj: Record<string, unknown> = {};
   if (hasBody) {
-    for (const p of endpoint.params.filter((p) => p.required)) {
+    for (const p of endpoint.params.filter((p) => p.required && !p.name.startsWith("("))) {
       if (p.type === "string") bodyObj[p.name] = `your-${p.name}`;
       else if (p.type === "string[]") bodyObj[p.name] = ["value1", "value2"];
       else if (p.type === "number") bodyObj[p.name] = 0;
-      else if (p.type === "object[]") bodyObj[p.name] = [];
+      else if (p.type === "boolean") bodyObj[p.name] = true;
+      else if (p.type.includes("[]")) bodyObj[p.name] = [];
       else bodyObj[p.name] = `your-${p.name}`;
     }
   }
@@ -1077,11 +1098,12 @@ export function generatePythonExample(endpoint: ApiEndpoint): string {
 
   const bodyObj: Record<string, unknown> = {};
   if (hasBody) {
-    for (const p of endpoint.params.filter((p) => p.required)) {
+    for (const p of endpoint.params.filter((p) => p.required && !p.name.startsWith("("))) {
       if (p.type === "string") bodyObj[p.name] = `your-${p.name}`;
       else if (p.type === "string[]") bodyObj[p.name] = ["value1", "value2"];
       else if (p.type === "number") bodyObj[p.name] = 0;
-      else if (p.type === "object[]") bodyObj[p.name] = [];
+      else if (p.type === "boolean") bodyObj[p.name] = true;
+      else if (p.type.includes("[]")) bodyObj[p.name] = [];
       else bodyObj[p.name] = `your-${p.name}`;
     }
   }
