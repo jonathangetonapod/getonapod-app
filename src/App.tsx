@@ -64,6 +64,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/docs" element={<Docs />} />
             <Route path="/resources" element={<Resources />} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/premium-placements" element={<PremiumPlacements />} />
