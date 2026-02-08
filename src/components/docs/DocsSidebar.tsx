@@ -17,6 +17,17 @@ export function DocsSidebar({ categories, activeId }: DocsSidebarProps) {
 
   return (
     <nav className="space-y-4">
+      <button
+        onClick={() => handleClick("rate-limits")}
+        className={cn(
+          "text-sm font-semibold w-full text-left px-3 py-1.5 rounded-md transition-colors",
+          activeId === "rate-limits"
+            ? "text-foreground bg-muted"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        Rate Limits & Performance
+      </button>
       {categories.map((category) => (
         <div key={category.id}>
           <button

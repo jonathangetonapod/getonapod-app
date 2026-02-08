@@ -102,7 +102,9 @@ export function EndpointCard({ endpoint }: EndpointCardProps) {
       <CardContent className="space-y-6">
         {endpoint.params.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold mb-3">Request Body</h4>
+            <h4 className="text-sm font-semibold mb-3">
+              {endpoint.method === "GET" || endpoint.method === "DELETE" ? "Query Parameters" : "Request Body"}
+            </h4>
             <ParamsTable params={endpoint.params} />
           </div>
         )}

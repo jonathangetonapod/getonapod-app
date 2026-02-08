@@ -824,9 +824,9 @@ export const API_CATEGORIES: ApiCategory[] = [
         params: [
           { name: "bisonReplyId", type: "string", required: true, description: "Bison reply ID" },
           { name: "message", type: "string", required: true, description: "Reply message body" },
-          { name: "subject", type: "string", required: false, description: "Email subject" },
+          { name: "subject", type: "string", required: false, description: "Email subject (accepted but not currently passed to Bison API)" },
         ],
-        responseExample: JSON.stringify({ success: true, message: "Reply sent" }, null, 2),
+        responseExample: JSON.stringify({ success: true, message: "Reply sent successfully", data: {} }, null, 2),
         category: "outreach-email",
       },
       {
@@ -878,6 +878,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         path: `${BASE_PATH}/campaign-reply-webhook`,
         description: "Processes Bison campaign reply events with duplicate detection.",
         auth: "Webhook Signature",
+        notes: "Uses x-webhook-secret header for authentication (shared secret comparison, not cryptographic signature).",
         params: [{ name: "(Bison Event)", type: "object", required: true, description: "Bison campaign reply payload" }],
         responseExample: JSON.stringify({ success: true, message: "Reply processed", reply_id: "uuid" }, null, 2),
         category: "webhooks",
@@ -896,6 +897,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         path: `${BASE_PATH}/analyze-sales-call`,
         description: "Analyzes a sales call transcript against the Corey Jackson Sales Framework using Claude AI.",
         auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 4096)",
         params: [
           { name: "sales_call_id", type: "string", required: true, description: "UUID of the sales call" },
           { name: "recording_id", type: "string", required: false, description: "Fathom recording ID" },
@@ -910,6 +912,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         path: `${BASE_PATH}/classify-sales-call`,
         description: "Classifies a call as 'sales' or 'non-sales' using Claude Haiku.",
         auth: "API Key",
+        aiModel: "claude-haiku-4-5-20251001 (max_tokens: 10)",
         params: [{ name: "sales_call_id", type: "string", required: true, description: "UUID of the sales call" }],
         responseExample: JSON.stringify({ success: true, data: { call_type: "sales" } }, null, 2),
         category: "sales-analytics",
@@ -1052,10 +1055,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         method: "POST",
         path: `${BASE_PATH}/manage-admin-users`,
         description: "Admin user management: list, create, delete, reset-password. Requires JWT Bearer token from an existing admin.",
-        auth: "API Key",
+        auth: "Session Token",
+        notes: "Uses Supabase JWT auth (not API key). The Authorization header must contain a valid JWT from supabase.auth, and the user's email must exist in the admin_users table.",
         params: [
           { name: "action", type: "string", required: true, description: "'list', 'create', 'delete', or 'reset-password'" },
-          { name: "email", type: "string", required: false, description: "Required for create/delete/reset-password" },
+          { name: "email", type: "string", required: false, description: "Required for create/reset-password. For delete, used to prevent self-deletion" },
+          { name: "id", type: "string", required: false, description: "Required for delete action. UUID of the admin to remove" },
           { name: "password", type: "string", required: false, description: "For create action. Min 8 characters" },
           { name: "newPassword", type: "string", required: false, description: "For reset-password. Min 8 characters" },
           { name: "name", type: "string", required: false, description: "Admin display name" },
@@ -1088,8 +1093,7 @@ export function searchEndpoints(query: string): ApiEndpoint[] {
 }
 
 export function generateCurlExample(endpoint: ApiEndpoint): string {
-  const url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
-  const hasBody = endpoint.params.length > 0 && endpoint.method === "POST";
+  const hasBody = endpoint.params.length > 0 && ["POST", "PUT", "PATCH"].includes(endpoint.method);
 
   const bodyObj: Record<string, unknown> = {};
   if (hasBody) {
@@ -1103,8 +1107,20 @@ export function generateCurlExample(endpoint: ApiEndpoint): string {
     }
   }
 
+  // Build query string for GET/DELETE params
+  let url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
+  if (!hasBody && endpoint.params.length > 0) {
+    const queryParams = endpoint.params
+      .filter((p) => p.required && !p.name.startsWith("("))
+      .map((p) => `${p.name}=your-${p.name}`)
+      .join("&");
+    if (queryParams) url += `?${queryParams}`;
+  }
+
   let cmd = `curl -X ${endpoint.method} "${url}"`;
-  cmd += ` \\\n  -H "Content-Type: application/json"`;
+  if (hasBody) {
+    cmd += ` \\\n  -H "Content-Type: application/json"`;
+  }
   if (endpoint.auth === "API Key") {
     cmd += ` \\\n  -H "Authorization: Bearer YOUR_ANON_KEY"`;
     cmd += ` \\\n  -H "apikey: YOUR_ANON_KEY"`;
@@ -1117,8 +1133,7 @@ export function generateCurlExample(endpoint: ApiEndpoint): string {
 }
 
 export function generateJsExample(endpoint: ApiEndpoint): string {
-  const url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
-  const hasBody = endpoint.params.length > 0 && endpoint.method === "POST";
+  const hasBody = endpoint.params.length > 0 && ["POST", "PUT", "PATCH"].includes(endpoint.method);
 
   const bodyObj: Record<string, unknown> = {};
   if (hasBody) {
@@ -1132,9 +1147,20 @@ export function generateJsExample(endpoint: ApiEndpoint): string {
     }
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  // Build URL with query params for GET/DELETE
+  let url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
+  if (!hasBody && endpoint.params.length > 0) {
+    const queryParams = endpoint.params
+      .filter((p) => p.required && !p.name.startsWith("("))
+      .map((p) => `${p.name}=your-${p.name}`)
+      .join("&");
+    if (queryParams) url += `?${queryParams}`;
+  }
+
+  const headers: Record<string, string> = {};
+  if (hasBody) {
+    headers["Content-Type"] = "application/json";
+  }
   if (endpoint.auth === "API Key") {
     headers["Authorization"] = "Bearer YOUR_ANON_KEY";
     headers["apikey"] = "YOUR_ANON_KEY";
@@ -1152,8 +1178,8 @@ export function generateJsExample(endpoint: ApiEndpoint): string {
 }
 
 export function generatePythonExample(endpoint: ApiEndpoint): string {
-  const url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
-  const hasBody = endpoint.params.length > 0 && endpoint.method === "POST";
+  const hasBody = endpoint.params.length > 0 && ["POST", "PUT", "PATCH"].includes(endpoint.method);
+  const methodLower = endpoint.method.toLowerCase();
 
   const bodyObj: Record<string, unknown> = {};
   if (hasBody) {
@@ -1167,24 +1193,44 @@ export function generatePythonExample(endpoint: ApiEndpoint): string {
     }
   }
 
+  // Build URL with query params for GET/DELETE
+  let url = `https://YOUR_PROJECT_REF.supabase.co${endpoint.path}`;
+  if (!hasBody && endpoint.params.length > 0) {
+    const queryParams = endpoint.params
+      .filter((p) => p.required && !p.name.startsWith("("))
+      .map((p) => `${p.name}=your-${p.name}`)
+      .join("&");
+    if (queryParams) url += `?${queryParams}`;
+  }
+
   let code = `import requests\n\n`;
   code += `url = "${url}"\n`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers: Record<string, string> = {};
+  if (hasBody) {
+    headers["Content-Type"] = "application/json";
+  }
   if (endpoint.auth === "API Key") {
     headers["Authorization"] = "Bearer YOUR_ANON_KEY";
     headers["apikey"] = "YOUR_ANON_KEY";
   }
 
-  code += `headers = ${JSON.stringify(headers, null, 4).replace(/"/g, '"')}\n`;
+  // Convert to Python dict syntax
+  const headerEntries = Object.entries(headers)
+    .map(([k, v]) => `    "${k}": "${v}"`)
+    .join(",\n");
+  code += `headers = {\n${headerEntries}\n}\n`;
 
   if (hasBody && Object.keys(bodyObj).length > 0) {
-    code += `payload = ${JSON.stringify(bodyObj, null, 4)}\n\n`;
-    code += `response = requests.post(url, json=payload, headers=headers)\n`;
+    // Convert JSON to valid Python (true→True, false→False, null→None)
+    const pyPayload = JSON.stringify(bodyObj, null, 4)
+      .replace(/\btrue\b/g, "True")
+      .replace(/\bfalse\b/g, "False")
+      .replace(/\bnull\b/g, "None");
+    code += `payload = ${pyPayload}\n\n`;
+    code += `response = requests.${methodLower}(url, json=payload, headers=headers)\n`;
   } else {
-    code += `\nresponse = requests.post(url, headers=headers)\n`;
+    code += `\nresponse = requests.${methodLower}(url, headers=headers)\n`;
   }
   code += `print(response.json())`;
 

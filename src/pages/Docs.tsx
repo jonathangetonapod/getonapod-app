@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import { DocsSidebar } from "@/components/docs/DocsSidebar";
 import { DocsSearch } from "@/components/docs/DocsSearch";
 import { EndpointCard } from "@/components/docs/EndpointCard";
+import { RateLimitsSection } from "@/components/docs/RateLimitsSection";
 import { API_CATEGORIES, getAllEndpoints, searchEndpoints } from "@/lib/api-docs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ const Docs = () => {
   // IntersectionObserver for active section tracking
   useEffect(() => {
     const ids = [
+      "rate-limits",
       ...API_CATEGORIES.map((c) => c.id),
       ...allEndpoints.map((e) => e.id),
     ];
@@ -123,6 +125,8 @@ const Docs = () => {
 
             {/* Main Content */}
             <div className="flex-1 min-w-0 space-y-12">
+              {!search && <RateLimitsSection />}
+
               {filteredCategories.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   No endpoints match "{search}"
