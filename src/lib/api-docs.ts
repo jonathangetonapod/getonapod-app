@@ -626,18 +626,18 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "auth-portal",
     name: "Authentication & Portal",
-    description: "Handle client portal authentication with password login, magic links, and session management.",
+    description: "Handle client portal authentication (not prospects). Clients log in via password or magic link to access their portal dashboard, bookings, and outreach data. Sessions are stored in client_portal_sessions.",
     endpoints: [
       {
         id: "login-with-password",
         name: "Login with Password",
         method: "POST",
         path: `${BASE_PATH}/login-with-password`,
-        description: "Authenticates a client with email and password, creates a session token with rate limiting and activity logging.",
+        description: "Authenticates a client (from the clients table) with email and password. Checks portal_access_enabled, creates a client_portal_session token (24-hour expiry), and logs attempts to client_portal_activity_log with rate limiting.",
         auth: "None",
         params: [
-          { name: "email", type: "string", required: true, description: "Client's email address" },
-          { name: "password", type: "string", required: true, description: "Client's password" },
+          { name: "email", type: "string", required: true, description: "Client's email address (matched against clients table)" },
+          { name: "password", type: "string", required: true, description: "Client's portal password (checked against clients.portal_password)" },
         ],
         responseExample: JSON.stringify({
           session_token: "session-token-here",
@@ -651,10 +651,10 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Send Portal Magic Link",
         method: "POST",
         path: `${BASE_PATH}/send-portal-magic-link`,
-        description: "Sends a passwordless magic link email via Resend with rate limiting and suppression checks.",
+        description: "Sends a passwordless magic link email to a client (looked up in clients table) via Resend. Creates a client_portal_token (15-minute expiry) with rate limiting and suppression checks. Not for prospects.",
         auth: "None",
         params: [
-          { name: "email", type: "string", required: true, description: "Client's email address" },
+          { name: "email", type: "string", required: true, description: "Client's email address (must exist in clients table with portal_access_enabled)" },
         ],
         responseExample: JSON.stringify({ success: true, message: "Magic link sent" }, null, 2),
         category: "auth-portal",
@@ -664,7 +664,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Verify Portal Token",
         method: "POST",
         path: `${BASE_PATH}/verify-portal-token`,
-        description: "Validates a magic link token, marks it as used, and creates a new session.",
+        description: "Validates a client's magic link token from client_portal_tokens, marks it as used, and creates a new client_portal_session (24-hour expiry). Returns the authenticated client record.",
         auth: "None",
         params: [
           { name: "token", type: "string", required: true, description: "Magic link token from email" },
@@ -681,7 +681,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Validate Portal Session",
         method: "POST",
         path: `${BASE_PATH}/validate-portal-session`,
-        description: "Validates an existing session token and updates last_active_at.",
+        description: "Validates an existing client_portal_session token, checks expiry, updates last_active_at, and returns the associated client record.",
         auth: "Session Token",
         params: [
           { name: "sessionToken", type: "string", required: true, description: "Active session token" },
@@ -694,7 +694,7 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Logout Portal Session",
         method: "POST",
         path: `${BASE_PATH}/logout-portal-session`,
-        description: "Deletes a session and logs the logout activity.",
+        description: "Deletes a client_portal_session and logs the logout to client_portal_activity_log.",
         auth: "Session Token",
         params: [
           { name: "sessionToken", type: "string", required: true, description: "Session token to invalidate" },
