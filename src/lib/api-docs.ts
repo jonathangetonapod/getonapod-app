@@ -17,6 +17,12 @@ export interface ApiEndpoint {
   category: string;
   aiModel?: string;
   notes?: string;
+  performance?: {
+    avgLatency: string;
+    maxConcurrency: string;
+    rateLimit?: string;
+    bottleneck?: string;
+  };
 }
 
 export interface ApiCategory {
@@ -69,9 +75,15 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Append Prospect Sheet",
         method: "POST",
         path: `${BASE_PATH}/append-prospect-sheet`,
-        description: "Appends additional podcasts to an existing prospect dashboard's Google Sheet. Looks up the dashboard by UUID, reuses the existing spreadsheet, and upserts all podcasts to the central cache.",
+        description: "Appends additional podcasts to an existing prospect dashboard's Google Sheet. Automatically discovers the correct sheet tab name via metadata API (not hardcoded). Upserts all podcasts to the central cache and auto-generates OpenAI embeddings for any new podcasts.",
         auth: "API Key",
-        notes: "Does not create a new sheet or change permissions. Identical caching behavior to create-prospect-sheet.",
+        notes: "Discovers actual sheet tab name via Google Sheets metadata API (e.g. 'Podcast Matches') instead of hardcoding 'Sheet1'. Auto-generates embeddings for new podcasts via fire-and-forget call to generateMissingEmbeddings. Identical caching behavior to create-prospect-sheet.",
+        performance: {
+          avgLatency: "~2s",
+          maxConcurrency: "20+ concurrent (tested)",
+          rateLimit: "Google Sheets: ~30 read requests/min per service account",
+          bottleneck: "Google Sheets API (2 calls: metadata + append)"
+        },
         params: [
           { name: "dashboardId", type: "string", required: true, description: "UUID from prospect_dashboards table" },
           { name: "podcasts", type: "PodcastExportData[]", required: true, description: "Array of podcast objects to append (same schema as create-prospect-sheet)" },
@@ -97,6 +109,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         auth: "API Key",
         aiModel: "claude-sonnet-4-5-20250929 (for AI fit analysis)",
         notes: "Dual-layer caching: central podcasts table (shared, 7-day TTL) + prospect_podcast_analyses table (prospect-specific AI results). Reads podcast IDs from column E of the Google Sheet. Concurrent batch processing: 15 for Podscan, 30 for AI analysis. Stops early at 50 seconds to avoid function timeout.",
+        performance: {
+          avgLatency: "~1.5s (cacheOnly) / ~2.3s (full sheet read)",
+          maxConcurrency: "20+ concurrent (tested at 100% success)",
+          rateLimit: "Google Sheets: ~30 read requests/min per service account. Use cacheOnly with prospectDashboardId to bypass Google Sheets entirely for unlimited throughput.",
+          bottleneck: "Google Sheets API is the sole chokepoint. cacheOnly+prospectDashboardId mode hits only Supabase DB (handles 200+ concurrent)."
+        },
         params: [
           { name: "spreadsheetId", type: "string", required: true, description: "Google Sheet ID to read podcast IDs from" },
           { name: "prospectDashboardId", type: "string", required: false, description: "UUID for linking AI analyses to this prospect" },
@@ -153,6 +171,35 @@ export const API_CATEGORIES: ApiCategory[] = [
             cachedWithAi: 12,
             cachedWithDemographics: 10
           }
+        }, null, 2),
+        category: "prospect-dashboards",
+      },
+      {
+        id: "backfill-prospect-podcasts",
+        name: "Backfill Prospect Podcasts",
+        method: "POST",
+        path: `${BASE_PATH}/backfill-prospect-podcasts`,
+        description: "Core podcast matching pipeline. Generates an OpenAI embedding from the prospect's profile, runs pgvector similarity search against 7,900+ cached podcasts, optionally filters with Claude Sonnet AI for quality ranking, deduplicates against existing sheet entries, and appends new matches to the prospect's Google Sheet. Auto-generates embeddings for any new podcasts added to the cache.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (AI filter, max_tokens: 200, temp: 0.1) + OpenAI text-embedding-3-small (1536 dims)",
+        notes: "Two-stage matching: (1) Vector search with 0.35 cosine similarity threshold, top 50 candidates. (2) If >15 matches and ANTHROPIC_API_KEY set, Claude Sonnet selects top 15 by topic alignment, audience relevance, show quality, and diversity. Deduplicates via get-prospect-podcasts cacheOnly mode before appending. Has 45-second safety timeout with fetchWithTimeout helper. All API calls individually timeout at 10-15 seconds.",
+        performance: {
+          avgLatency: "~7.5s",
+          maxConcurrency: "10+ concurrent (tested)",
+          rateLimit: "Google Sheets: ~30 req/min. OpenAI: no issues at 10 concurrent.",
+          bottleneck: "OpenAI embedding (~1s) + vector search (~0.5s) + dedup sheet read (~1.5s)"
+        },
+        params: [
+          { name: "prospectId", type: "string", required: true, description: "UUID from prospect_dashboards table" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          prospect_name: "Beth Morgan",
+          total_matched: 15,
+          new_added: 8,
+          duplicates_skipped: 7,
+          ai_filter_applied: true,
+          duration_seconds: 7.5
         }, null, 2),
         category: "prospect-dashboards",
       },
@@ -443,9 +490,15 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Read Outreach List",
         method: "POST",
         path: `${BASE_PATH}/read-outreach-list`,
-        description: "Reads podcast IDs from column E of a client's Google Sheet, checks the central cache (7-day TTL), fetches missing podcasts from Podscan API in batches of 5, and returns full podcast data with cost tracking metrics.",
+        description: "Reads podcast IDs from column E of a client's Google Sheet, checks the central cache (7-day TTL), fetches missing podcasts from Podscan API in batches of 5, and returns full podcast data with cost tracking metrics. Auto-generates embeddings for newly cached podcasts.",
         auth: "API Key",
-        notes: "Google Sheet range: E2:E1000 (up to 1000 rows). Uses batch upsert for efficient caching. Cost model: $0.01 per Podscan API call (2 calls per podcast). Returns empty array if no sheet found.",
+        notes: "Google Sheet range: E2:E1000 (up to 1000 rows). Uses batch upsert for efficient caching with auto-embedding. Cost model: $0.01 per Podscan API call (2 calls per podcast). Returns empty array if no sheet found.",
+        performance: {
+          avgLatency: "~1.5s (cached) / ~5-10s (first fetch with Podscan)",
+          maxConcurrency: "5-8 safe (Google Sheets limited)",
+          rateLimit: "Google Sheets: ~30 read requests/min. Podscan: batch of 5.",
+          bottleneck: "Google Sheets API for reads; Podscan API for uncached podcasts"
+        },
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client (used to look up google_sheet_url)" },
         ],
@@ -501,9 +554,15 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Get Outreach Podcasts V2",
         method: "POST",
         path: `${BASE_PATH}/get-outreach-podcasts-v2`,
-        description: "Enhanced version that actually fetches full podcast data from Podscan API (solves DNS issue from v1). Reads Google Sheet column E, checks central cache with 7-day staleness, fetches missing/stale podcasts in batches of 5, and includes podscan_email in response.",
+        description: "Enhanced version that actually fetches full podcast data from Podscan API (solves DNS issue from v1). Reads Google Sheet column E, checks central cache with 7-day staleness, fetches missing/stale podcasts in batches of 5, and includes podscan_email in response. Auto-generates embeddings for newly cached podcasts.",
         auth: "API Key",
-        notes: "Replaces get-client-outreach-podcasts. Uses individual upserts per podcast (not batch). Includes podscan_email field. Multiple fallback paths for Podscan data fields.",
+        notes: "Replaces get-client-outreach-podcasts. Uses individual upserts per podcast (not batch) with auto-embedding. Includes podscan_email field. Multiple fallback paths for Podscan data fields.",
+        performance: {
+          avgLatency: "~1.5s (cached) / ~5-10s (first fetch)",
+          maxConcurrency: "5-8 safe (Google Sheets limited)",
+          rateLimit: "Google Sheets: ~30 read requests/min per service account",
+          bottleneck: "Google Sheets API for sheet reads"
+        },
         params: [
           { name: "clientId", type: "string", required: true, description: "UUID of the client" },
         ],

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Copy, Brain, Info } from "lucide-react";
+import { Check, Copy, Brain, Info, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "./CodeBlock";
 import { ParamsTable } from "./ParamsTable";
@@ -77,6 +77,24 @@ export function EndpointCard({ endpoint }: EndpointCardProps) {
             <div className="flex gap-2 bg-muted/50 border rounded-md p-3 text-sm text-muted-foreground">
               <Info className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{endpoint.notes}</span>
+            </div>
+          )}
+          {endpoint.performance && (
+            <div className="bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-md p-3 text-sm space-y-1.5">
+              <div className="flex items-center gap-1.5 font-medium text-blue-700 dark:text-blue-300 mb-2">
+                <Gauge className="h-4 w-4" />
+                Performance & Rate Limits
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-blue-600 dark:text-blue-400">
+                <div><span className="font-medium">Avg Latency:</span> {endpoint.performance.avgLatency}</div>
+                <div><span className="font-medium">Max Concurrency:</span> {endpoint.performance.maxConcurrency}</div>
+                {endpoint.performance.rateLimit && (
+                  <div className="sm:col-span-2"><span className="font-medium">Rate Limit:</span> {endpoint.performance.rateLimit}</div>
+                )}
+                {endpoint.performance.bottleneck && (
+                  <div className="sm:col-span-2"><span className="font-medium">Bottleneck:</span> {endpoint.performance.bottleneck}</div>
+                )}
+              </div>
             </div>
           )}
         </div>

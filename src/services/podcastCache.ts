@@ -29,6 +29,12 @@ export interface CacheStatistics {
     bookings: number
   }
   estimated_credits_saved: number
+  embedding_coverage?: {
+    total_podcasts: number
+    with_embeddings: number
+    without_embeddings: number
+    coverage_percent: number
+  }
 }
 
 export interface PodcastOutreachAction {
@@ -304,7 +310,7 @@ export async function findCachedPodcastsMetadata(
  * Get global cache statistics across all sources
  */
 export async function getCacheStatistics(): Promise<CacheStatistics> {
-  const [clientCount, prospectCount, bookingCount, uniqueCount] = await Promise.all([
+  const [clientCount, prospectCount, bookingCount, uniqueCount, totalPodcasts, withEmbeddings] = await Promise.all([
     supabase
       .from('client_dashboard_podcasts')
       .select('podcast_id', { count: 'exact', head: true }),
@@ -319,10 +325,24 @@ export async function getCacheStatistics(): Promise<CacheStatistics> {
       .not('podcast_id', 'is', null),
 
     // Get unique count via RPC function
-    supabase.rpc('count_unique_cached_podcasts').catch(() => ({ data: 0 }))
+    supabase.rpc('count_unique_cached_podcasts').catch(() => ({ data: 0 })),
+
+    // Embedding coverage: total podcasts in the podcasts table
+    supabase
+      .from('podcasts')
+      .select('id', { count: 'exact', head: true }),
+
+    // Embedding coverage: podcasts with embeddings
+    supabase
+      .from('podcasts')
+      .select('id', { count: 'exact', head: true })
+      .not('embedding', 'is', null)
   ])
 
   const totalUnique = uniqueCount.data || 0
+  const totalPodcastCount = totalPodcasts.count || 0
+  const withEmbeddingsCount = withEmbeddings.count || 0
+  const withoutEmbeddingsCount = totalPodcastCount - withEmbeddingsCount
 
   return {
     total_cached: totalUnique,
@@ -332,7 +352,15 @@ export async function getCacheStatistics(): Promise<CacheStatistics> {
       bookings: bookingCount.count || 0
     },
     // Estimate 2 API calls saved per podcast (initial fetch + updates)
-    estimated_credits_saved: totalUnique * 2
+    estimated_credits_saved: totalUnique * 2,
+    embedding_coverage: {
+      total_podcasts: totalPodcastCount,
+      with_embeddings: withEmbeddingsCount,
+      without_embeddings: withoutEmbeddingsCount,
+      coverage_percent: totalPodcastCount > 0
+        ? Math.round((withEmbeddingsCount / totalPodcastCount) * 1000) / 10
+        : 0
+    }
   }
 }
 

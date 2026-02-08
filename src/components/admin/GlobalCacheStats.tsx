@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Database, CheckCircle2, TrendingUp } from 'lucide-react'
+import { Database, TrendingUp, Cpu } from 'lucide-react'
 import { getCacheStatistics } from '@/services/podcastCache'
 
 export function GlobalCacheStats() {
@@ -73,6 +73,36 @@ export function GlobalCacheStats() {
         </div>
 
         <Separator />
+
+        {stats?.embedding_coverage && (
+          <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Cpu className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                Vector Search Readiness
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2 mb-1">
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                {stats.embedding_coverage.coverage_percent}%
+              </div>
+              <div className="text-xs text-blue-500 dark:text-blue-400">
+                ({stats.embedding_coverage.with_embeddings.toLocaleString()} / {stats.embedding_coverage.total_podcasts.toLocaleString()})
+              </div>
+            </div>
+            <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2">
+              <div
+                className="bg-blue-600 dark:bg-blue-400 h-2 rounded-full transition-all"
+                style={{ width: `${Math.min(stats.embedding_coverage.coverage_percent, 100)}%` }}
+              />
+            </div>
+            {stats.embedding_coverage.without_embeddings > 0 && (
+              <div className="text-xs text-blue-500 dark:text-blue-400 mt-1">
+                {stats.embedding_coverage.without_embeddings.toLocaleString()} podcasts pending embedding
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
           <div className="flex items-center gap-2 mb-1">
