@@ -106,6 +106,12 @@ interface ProspectDashboard {
   heygen_video_url: string | null
   heygen_video_thumbnail_url: string | null
   heygen_video_generated_at: string | null
+  prospect_industry: string | null
+  prospect_expertise: string[] | null
+  prospect_topics: string[] | null
+  prospect_target_audience: string | null
+  prospect_company: string | null
+  prospect_title: string | null
 }
 
 interface PodcastFeedback {
@@ -140,7 +146,13 @@ export default function ProspectDashboards() {
     name: '',
     bio: '',
     imageUrl: '',
-    spreadsheetUrl: ''
+    spreadsheetUrl: '',
+    industry: '',
+    expertise: '',
+    topics: '',
+    targetAudience: '',
+    company: '',
+    title: ''
   })
 
   // Edit spreadsheet URL
@@ -679,6 +691,13 @@ export default function ProspectDashboards() {
         }
       }
 
+      const expertiseArr = newProspect.expertise.trim()
+        ? newProspect.expertise.split(',').map(s => s.trim()).filter(Boolean)
+        : null
+      const topicsArr = newProspect.topics.trim()
+        ? newProspect.topics.split(',').map(s => s.trim()).filter(Boolean)
+        : null
+
       const { data, error } = await supabase
         .from('prospect_dashboards')
         .insert({
@@ -689,7 +708,13 @@ export default function ProspectDashboards() {
           spreadsheet_id: spreadsheetId || null,
           spreadsheet_url: spreadsheetUrl || null,
           is_active: true,
-          view_count: 0
+          view_count: 0,
+          prospect_industry: newProspect.industry.trim() || null,
+          prospect_expertise: expertiseArr,
+          prospect_topics: topicsArr,
+          prospect_target_audience: newProspect.targetAudience.trim() || null,
+          prospect_company: newProspect.company.trim() || null,
+          prospect_title: newProspect.title.trim() || null
         })
         .select()
         .single()
@@ -698,7 +723,7 @@ export default function ProspectDashboards() {
 
       setDashboards(prev => [data, ...prev])
       setCreateDialogOpen(false)
-      setNewProspect({ name: '', bio: '', imageUrl: '', spreadsheetUrl: '' })
+      setNewProspect({ name: '', bio: '', imageUrl: '', spreadsheetUrl: '', industry: '', expertise: '', topics: '', targetAudience: '', company: '', title: '' })
       toast.success('Prospect created successfully!')
 
       // Open the side panel for the new prospect
@@ -3325,6 +3350,64 @@ export default function ProspectDashboards() {
                 value={newProspect.bio}
                 onChange={(e) => setNewProspect(prev => ({ ...prev, bio: e.target.value }))}
                 className="min-h-[100px]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="prospect-title">Job Title</Label>
+                <Input
+                  id="prospect-title"
+                  placeholder="e.g., CEO, VP of Marketing"
+                  value={newProspect.title}
+                  onChange={(e) => setNewProspect(prev => ({ ...prev, title: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="prospect-company">Company</Label>
+                <Input
+                  id="prospect-company"
+                  placeholder="e.g., Acme Corp"
+                  value={newProspect.company}
+                  onChange={(e) => setNewProspect(prev => ({ ...prev, company: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-industry">Industry</Label>
+              <Input
+                id="prospect-industry"
+                placeholder="e.g., SaaS, Healthcare, Finance"
+                value={newProspect.industry}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, industry: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-expertise">Areas of Expertise</Label>
+              <Input
+                id="prospect-expertise"
+                placeholder="e.g., Growth Marketing, AI, Leadership (comma-separated)"
+                value={newProspect.expertise}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, expertise: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated list of expertise areas</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-topics">Speaking Topics</Label>
+              <Input
+                id="prospect-topics"
+                placeholder="e.g., Scaling startups, Team culture, Product strategy (comma-separated)"
+                value={newProspect.topics}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, topics: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated list of topics</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prospect-audience">Target Audience</Label>
+              <Input
+                id="prospect-audience"
+                placeholder="e.g., B2B SaaS founders, Marketing professionals"
+                value={newProspect.targetAudience}
+                onChange={(e) => setNewProspect(prev => ({ ...prev, targetAudience: e.target.value }))}
               />
             </div>
             <div className="space-y-2">

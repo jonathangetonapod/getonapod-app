@@ -5,6 +5,12 @@ interface CreateProspectInput {
   bio?: string;
   profile_picture_url?: string;
   google_sheet_url?: string;
+  industry?: string;
+  expertise?: string[];
+  topics?: string[];
+  target_audience?: string;
+  company?: string;
+  title?: string;
 }
 
 interface CreateProspectResponse {
@@ -60,7 +66,13 @@ export async function createProspect(
         prospect_image_url: input.profile_picture_url || null,
         spreadsheet_id: spreadsheetId,
         spreadsheet_url: spreadsheetUrl,
-        content_ready: true
+        content_ready: true,
+        prospect_industry: input.industry || null,
+        prospect_expertise: input.expertise || null,
+        prospect_topics: input.topics || null,
+        prospect_target_audience: input.target_audience || null,
+        prospect_company: input.company || null,
+        prospect_title: input.title || null
       })
       .select('id, prospect_name, slug, spreadsheet_url')
       .single();

@@ -15,7 +15,10 @@ serve(async (req) => {
     const { topic, category, resourceType = 'guide' } = await req.json()
 
     if (!topic) {
-      throw new Error('Topic is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'Topic is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const anthropic = new Anthropic({

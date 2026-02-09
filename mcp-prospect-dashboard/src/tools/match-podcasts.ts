@@ -10,7 +10,7 @@ const anthropic = new Anthropic({ apiKey: config.anthropic.apiKey });
 const MatchPodcastsInputSchema = z.object({
   prospect_name: z.string().min(1, 'Prospect name is required'),
   prospect_bio: z.string().optional(),
-  match_threshold: z.number().min(0).max(1).optional().default(0.2),
+  match_threshold: z.number().min(0).max(1).optional().default(0.30),
   match_count: z.number().min(1).max(100).optional().default(50),
   prospect_id: z.string().uuid().optional(),
   export_to_sheet: z.boolean().optional().default(false),
@@ -27,6 +27,10 @@ interface PodcastMatch {
   podcast_categories: any;
   audience_size: number | null;
   similarity: number;
+  itunes_rating?: number | null;
+  episode_count?: number | null;
+  last_posted_at?: string | null;
+  publisher_name?: string | null;
   relevance_score?: number; // 0-10 AI-evaluated relevance
   relevance_reason?: string; // Why this podcast is relevant
 }
@@ -55,27 +59,39 @@ async function filterPodcastsWithAI(
   if (matches.length === 0) return [];
 
   try {
-    // Prepare podcast summaries for AI evaluation
-    const podcastSummaries = matches.map((m, i) => ({
-      index: i,
-      name: m.podcast_name,
-      description: m.podcast_description?.substring(0, 300) || 'No description',
-      categories: Array.isArray(m.podcast_categories)
-        ? m.podcast_categories.map((c: any) => c.category_name).join(', ')
-        : 'Unknown'
-    }));
+    // Prepare podcast summaries for AI evaluation with quality metadata
+    const podcastSummaries = matches.map((m, i) => {
+      const meta: string[] = [];
+      if (m.audience_size) meta.push(`audience: ${m.audience_size}`);
+      if (m.itunes_rating) meta.push(`rating: ${m.itunes_rating}/5`);
+      if (m.episode_count) meta.push(`${m.episode_count} episodes`);
+      if (m.last_posted_at) {
+        const daysAgo = Math.floor((Date.now() - new Date(m.last_posted_at).getTime()) / (1000 * 60 * 60 * 24));
+        meta.push(`last episode: ${daysAgo}d ago`);
+      }
+      return {
+        index: i,
+        name: m.podcast_name,
+        description: m.podcast_description?.substring(0, 300) || 'No description',
+        categories: Array.isArray(m.podcast_categories)
+          ? m.podcast_categories.map((c: any) => c.category_name).join(', ')
+          : 'Unknown',
+        metaStr: meta.length > 0 ? meta.join(', ') : ''
+      };
+    });
 
     const prompt = `You are an expert podcast booker evaluating which podcasts would be the best fit for a guest. Consider:
 1. Topical alignment - Does the podcast cover topics the guest is expert in?
 2. Audience match - Would the podcast's listeners benefit from this guest?
 3. Format fit - Does the podcast style suit this guest's profile?
 4. Authority fit - Does the guest's expertise level match the podcast's depth?
+5. Show quality - Higher ratings, more episodes, and recent activity indicate active shows
 
 GUEST PROFILE:
 ${prospectText}
 
 PODCAST CANDIDATES (sorted by semantic similarity):
-${podcastSummaries.map(p => `${p.index}. ${p.name}
+${podcastSummaries.map(p => `${p.index}. ${p.name}${p.metaStr ? ` (${p.metaStr})` : ''}
    Categories: ${p.categories}
    Description: ${p.description}`).join('\n\n')}
 
@@ -220,14 +236,45 @@ export async function matchPodcastsForProspect(
     // Validate input
     const validated = MatchPodcastsInputSchema.parse(input);
 
-    // Create prospect text representation
-    const prospectText = createProspectText(validated.prospect_name, validated.prospect_bio);
+    // If prospect_id is provided, fetch structured fields for richer embedding
+    let prospectProfile: Partial<import('../services/openai.js').ProspectProfile> | undefined;
+    if (validated.prospect_id) {
+      const { data: prospect } = await supabase
+        .from('prospect_dashboards')
+        .select('prospect_industry, prospect_expertise, prospect_topics, prospect_target_audience, prospect_company, prospect_title')
+        .eq('id', validated.prospect_id)
+        .single();
+      if (prospect) {
+        prospectProfile = {
+          industry: prospect.prospect_industry || undefined,
+          expertise: prospect.prospect_expertise || undefined,
+          topics: prospect.prospect_topics || undefined,
+          target_audience: prospect.prospect_target_audience || undefined,
+          company: prospect.prospect_company || undefined,
+          title: prospect.prospect_title || undefined
+        };
+      }
+    }
+
+    // Create prospect text representation with structured fields
+    const prospectText = createProspectText(validated.prospect_name, validated.prospect_bio, prospectProfile);
 
     if (!prospectText || prospectText.trim().length < 5) {
       return {
         success: false,
         error: 'Insufficient prospect information. Please provide at least a name.'
       };
+    }
+
+    // Query rejected podcasts to exclude from results
+    let rejectedIds: string[] = [];
+    if (validated.prospect_id) {
+      const { data: rejectedFeedback } = await supabase
+        .from('prospect_podcast_feedback')
+        .select('podcast_id')
+        .eq('prospect_dashboard_id', validated.prospect_id)
+        .eq('status', 'rejected');
+      rejectedIds = (rejectedFeedback || []).map((f: any) => f.podcast_id);
     }
 
     // Generate embedding for prospect
@@ -252,7 +299,8 @@ export async function matchPodcastsForProspect(
     const { data: matches, error: searchError } = await supabase.rpc('search_similar_podcasts', {
       query_embedding: embedding,
       match_threshold: validated.match_threshold,
-      match_count: initialCount
+      match_count: initialCount,
+      p_exclude_podcast_ids: rejectedIds.length > 0 ? rejectedIds : null
     });
 
     if (searchError) {
@@ -270,7 +318,8 @@ export async function matchPodcastsForProspect(
       const { data: additionalMatches, error: additionalError } = await supabase.rpc('search_similar_podcasts', {
         query_embedding: embedding,
         match_threshold: -1.0, // Negative threshold to guarantee getting enough results
-        match_count: 100 // Get many candidates
+        match_count: 100, // Get many candidates
+        p_exclude_podcast_ids: rejectedIds.length > 0 ? rejectedIds : null
       });
 
       if (!additionalError && additionalMatches) {
@@ -290,7 +339,8 @@ export async function matchPodcastsForProspect(
       const { data: extraMatches } = await supabase.rpc('search_similar_podcasts', {
         query_embedding: embedding,
         match_threshold: -1.0, // Negative threshold ensures we get all podcasts
-        match_count: 100 // Get many candidates for AI to filter
+        match_count: 100, // Get many candidates for AI to filter
+        p_exclude_podcast_ids: rejectedIds.length > 0 ? rejectedIds : null
       });
 
       if (extraMatches) {

@@ -393,6 +393,7 @@ serve(async (req) => {
         updatedRange: appendResult.updates?.updatedRange || 'Sheet1',
         message: `Created "${sheetTitle}" with ${podcasts.length} podcasts`,
         // New fields for prospect dashboard
+        dashboardId: dashboardRecord?.id || null,
         dashboardUrl,
         dashboardSlug: slug,
         // Cache statistics

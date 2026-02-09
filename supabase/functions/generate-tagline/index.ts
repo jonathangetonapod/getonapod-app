@@ -17,7 +17,10 @@ serve(async (req) => {
     const { prospectName, prospectBio, podcastCount, dashboardId } = body
 
     if (!prospectName || !prospectBio || !podcastCount) {
-      throw new Error('prospectName, prospectBio, and podcastCount are required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'prospectName, prospectBio, and podcastCount are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('[Generate Tagline] Generating for:', prospectName)

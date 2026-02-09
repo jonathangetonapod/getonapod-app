@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Copy, Brain, Info, Gauge } from "lucide-react";
+import { Check, Copy, Brain, Info, Gauge, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "./CodeBlock";
 import { ParamsTable } from "./ParamsTable";
@@ -77,6 +77,12 @@ export function EndpointCard({ endpoint }: EndpointCardProps) {
             <div className="flex gap-2 bg-muted/50 border rounded-md p-3 text-sm text-muted-foreground">
               <Info className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{endpoint.notes}</span>
+            </div>
+          )}
+          {endpoint.bestPractices && (
+            <div className="flex gap-2 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-700 dark:text-amber-300">
+              <Lightbulb className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{endpoint.bestPractices}</span>
             </div>
           )}
           {endpoint.performance && (

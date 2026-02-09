@@ -46,7 +46,10 @@ serve(async (req) => {
     })
 
     if (!podcastName) {
-      throw new Error('podcastName is required')
+      return new Response(
+        JSON.stringify({ success: false, error: 'podcastName is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Use a default bio if none provided

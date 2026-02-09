@@ -23,6 +23,7 @@ export interface ApiEndpoint {
     rateLimit?: string;
     bottleneck?: string;
   };
+  bestPractices?: string;
 }
 
 export interface ApiCategory {
@@ -48,9 +49,10 @@ export const API_CATEGORIES: ApiCategory[] = [
         description: "Creates a new prospect dashboard by copying a Google Sheet template, exporting podcast data, generating a public shareable link with an 8-character slug, and saving all podcasts to the central cache for cross-prospect reuse.",
         auth: "API Key",
         notes: "Also creates a record in prospect_dashboards table and upserts all podcasts to the central podcasts cache (shared globally). The Google Sheet is set to public read-only access.",
+        bestPractices: "For best downstream matching via backfill-prospect-podcasts: (1) Always include a detailed prospectBio (100+ chars recommended) — this is the primary input for AI enrichment and embedding generation. (2) Include prospectIndustry, prospectExpertise, and prospectTopics if known — these structured fields dramatically improve vector search quality. (3) Provide at least 5-10 initial podcasts to seed the sheet for dedup and feedback.",
         params: [
           { name: "prospectName", type: "string", required: true, description: "Display name for the prospect" },
-          { name: "prospectBio", type: "string", required: false, description: "Bio text for AI matching context" },
+          { name: "prospectBio", type: "string", required: false, description: "Bio text (strongly recommended, 100+ chars). Drives AI enrichment and embedding quality for podcast matching. Without a bio, the backfill pipeline has almost nothing to match against." },
           { name: "prospectImageUrl", type: "string", required: false, description: "Profile image URL" },
           { name: "podcasts", type: "PodcastExportData[]", required: true, description: "Array of podcast objects. Each requires podcast_name. Optional: publisher_name, podcast_description, audience_size, episode_count, itunes_rating, podcast_url, podscan_podcast_id, podcast_image_url, podcast_email, rss_feed, language, region, podcast_categories" },
         ],
@@ -62,6 +64,7 @@ export const API_CATEGORIES: ApiCategory[] = [
           rowsAdded: 15,
           updatedRange: "Sheet1",
           message: "Created prospect sheet with 15 podcasts",
+          dashboardId: "uuid-of-dashboard-record",
           dashboardUrl: "https://getonapod.com/prospect/a1b2c3d4",
           dashboardSlug: "a1b2c3d4",
           cacheSaved: 12,
@@ -108,22 +111,23 @@ export const API_CATEGORIES: ApiCategory[] = [
         description: "Retrieves podcasts from a prospect's Google Sheet with central caching, Podscan API enrichment, and AI fit analysis via Claude Sonnet. Supports 4 operating modes: standard fetch, cacheOnly, aiAnalysisOnly, and checkStatusOnly. Has a 50-second runtime limit with early stopping.",
         auth: "API Key",
         aiModel: "claude-sonnet-4-5-20250929 (for AI fit analysis)",
-        notes: "Dual-layer caching: central podcasts table (shared, 7-day TTL) + prospect_podcast_analyses table (prospect-specific AI results). Reads podcast IDs from column E of the Google Sheet. Concurrent batch processing: 15 for Podscan, 30 for AI analysis. Stops early at 50 seconds to avoid function timeout.",
+        notes: "Dual-layer caching: central podcasts table (shared, 7-day TTL) + prospect_podcast_analyses table (prospect-specific AI results). Reads podcast IDs from column E of the Google Sheet. Concurrent batch processing: 15 for Podscan, 30 for AI analysis. Stops early at 50 seconds to avoid function timeout. Response shape varies by mode — standard: { success, podcasts, total, cached, fetched, stoppedEarly, remaining, cachePerformance, stats }. cacheOnly: { success, podcasts, total, cached, missing, fastPath, hasAiAnalysis, stats }. checkStatusOnly: { success, podcastIds, status: { totalInSheet, cached, missing, withAi, withoutAi, withDemographics } }. aiAnalysisOnly: { success, aiComplete, stoppedEarly, analyzed, remaining, total }.",
         performance: {
           avgLatency: "~1.5s (cacheOnly) / ~2.3s (full sheet read)",
           maxConcurrency: "20+ concurrent (tested at 100% success)",
           rateLimit: "Google Sheets: ~30 read requests/min per service account. Use cacheOnly with prospectDashboardId to bypass Google Sheets entirely for unlimited throughput.",
           bottleneck: "Google Sheets API is the sole chokepoint. cacheOnly+prospectDashboardId mode hits only Supabase DB (handles 200+ concurrent)."
         },
+        bestPractices: "For AI analysis, always pass prospectDashboardId + prospectName + prospectBio. Use cacheOnly: true for fast reads (dashboard loading, dedup checks). Use aiAnalysisOnly: true after initial fetch to generate fit reasons without re-reading the sheet. Use checkStatusOnly: true to check progress before committing to a full fetch.",
         params: [
           { name: "spreadsheetId", type: "string", required: true, description: "Google Sheet ID to read podcast IDs from" },
-          { name: "prospectDashboardId", type: "string", required: false, description: "UUID for linking AI analyses to this prospect" },
-          { name: "prospectName", type: "string", required: false, description: "Required for AI analysis - prospect's name" },
-          { name: "prospectBio", type: "string", required: false, description: "Required for AI analysis - prospect's bio" },
-          { name: "cacheOnly", type: "boolean", required: false, description: "Skip Podscan API, return only cached data. Default: false" },
-          { name: "skipAiAnalysis", type: "boolean", required: false, description: "Fetch podcasts but don't run AI analysis. Default: false" },
-          { name: "aiAnalysisOnly", type: "boolean", required: false, description: "Only run AI analysis on already-cached podcasts. Default: false" },
-          { name: "checkStatusOnly", type: "boolean", required: false, description: "Return stats without fetching. Default: false" },
+          { name: "prospectDashboardId", type: "string", required: false, description: "UUID for linking AI analyses to this prospect. Required for AI analysis and cache-only mode." },
+          { name: "prospectName", type: "string", required: false, description: "Prospect's name. Required for AI fit analysis — without it, AI analysis is skipped." },
+          { name: "prospectBio", type: "string", required: false, description: "Prospect's bio. Required for AI fit analysis — the more detailed, the better the fit reasons and pitch angles." },
+          { name: "cacheOnly", type: "boolean", required: false, description: "Skip Google Sheets + Podscan API, return only cached data from DB. Fastest mode (~1.5s). Default: false" },
+          { name: "skipAiAnalysis", type: "boolean", required: false, description: "Fetch and cache podcasts but skip AI analysis. Use when you just need podcast data without fit scoring. Default: false" },
+          { name: "aiAnalysisOnly", type: "boolean", required: false, description: "Only run AI analysis on already-cached podcasts (no sheet read, no Podscan fetch). Default: false" },
+          { name: "checkStatusOnly", type: "boolean", required: false, description: "Return stats only (total, cached, with AI) without fetching any data. Default: false" },
         ],
         responseExample: JSON.stringify({
           success: true,
@@ -138,17 +142,11 @@ export const API_CATEGORIES: ApiCategory[] = [
               itunes_rating: 4.8,
               episode_count: 450,
               audience_size: 50000,
+              podscan_email: "host@saaspodcast.com",
               podcast_categories: [{ category_id: 1, category_name: "Business" }],
               ai_clean_description: "A weekly podcast featuring in-depth interviews with B2B SaaS founders...",
-              ai_fit_reasons: [
-                "Strong alignment with B2B SaaS expertise",
-                "Audience of 50K+ business decision-makers",
-                "Host regularly features growth strategy topics"
-              ],
-              ai_pitch_angles: [
-                { title: "Scaling from $1M to $10M ARR", description: "Share your proven framework for breaking through the $10M ARR ceiling..." },
-                { title: "Building Remote-First B2B Teams", description: "Discuss how remote team structures can accelerate SaaS growth..." }
-              ],
+              ai_fit_reasons: ["Strong alignment with B2B SaaS expertise", "Audience of 50K+ business decision-makers"],
+              ai_pitch_angles: [{ title: "Scaling from $1M to $10M ARR", description: "Share your proven framework..." }],
               ai_analyzed_at: "2025-01-15T10:30:00Z"
             }
           ],
@@ -157,20 +155,8 @@ export const API_CATEGORIES: ApiCategory[] = [
           fetched: 3,
           stoppedEarly: false,
           remaining: 0,
-          cachePerformance: {
-            cacheHitRate: 80,
-            apiCallsSaved: 24,
-            costSavings: 0.24
-          },
-          stats: {
-            fromSheet: 15,
-            fromCache: 12,
-            podscanFetched: 3,
-            aiAnalysesGenerated: 3,
-            demographicsFetched: 3,
-            cachedWithAi: 12,
-            cachedWithDemographics: 10
-          }
+          cachePerformance: { cacheHitRate: 80, apiCallsSaved: 24, costSavings: 0.24 },
+          stats: { fromSheet: 15, fromCache: 12, podscanFetched: 3, aiAnalysesGenerated: 3, demographicsFetched: 3, cachedWithAi: 12, cachedWithDemographics: 10 }
         }, null, 2),
         category: "prospect-dashboards",
       },
@@ -179,27 +165,32 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Backfill Prospect Podcasts",
         method: "POST",
         path: `${BASE_PATH}/backfill-prospect-podcasts`,
-        description: "Core podcast matching pipeline. Generates an OpenAI embedding from the prospect's profile, runs pgvector similarity search against 7,900+ cached podcasts, optionally filters with Claude Sonnet AI for quality ranking, deduplicates against existing sheet entries, and appends new matches to the prospect's Google Sheet. Auto-generates embeddings for any new podcasts added to the cache.",
+        description: "Three-stage podcast matching pipeline: (1) Auto-enriches thin prospect profiles using Claude Haiku to extract structured fields (industry, expertise, topics) from bio — runs once per prospect, skipped on subsequent calls. (2) Generates an OpenAI embedding from the enriched profile, runs pgvector similarity search against 7,900+ cached podcasts. (3) Scores all candidates with Claude Sonnet using a 0-10 rubric — only podcasts scoring 6+ are returned with individual relevance reasons. Deduplicates against existing sheet entries and appends new matches to the prospect's Google Sheet.",
         auth: "API Key",
-        aiModel: "claude-sonnet-4-5-20250929 (AI filter, max_tokens: 200, temp: 0.1) + OpenAI text-embedding-3-small (1536 dims)",
-        notes: "Two-stage matching: (1) Vector search with 0.35 cosine similarity threshold, top 50 candidates. (2) If >15 matches and ANTHROPIC_API_KEY set, Claude Sonnet selects top 15 by topic alignment, audience relevance, show quality, and diversity. Deduplicates via get-prospect-podcasts cacheOnly mode before appending. Has 45-second safety timeout with fetchWithTimeout helper. All API calls individually timeout at 10-15 seconds.",
+        aiModel: "claude-haiku-4-5-20251001 (auto-enrich, max_tokens: 500, temp: 0, ~$0.001/call) + claude-sonnet-4-5-20250929 (scored AI filter, max_tokens: 2000, temp: 0) + OpenAI text-embedding-3-small (1536 dims)",
+        notes: "Three-stage matching: (1) Auto-enrich: If prospect_industry, prospect_expertise, and prospect_topics are all null AND bio > 20 chars, Claude Haiku extracts structured fields and saves to DB (one-time cost, ~1.5s). (2) Vector search: 0.30 cosine similarity threshold, top 50 candidates. (3) Scored AI filter: If >2 matches and ANTHROPIC_API_KEY set, Claude Sonnet evaluates up to 50 candidates on a 0-10 scale (topical alignment, audience match, format fit, authority fit, show quality). Only podcasts scoring 5+ are kept (capped at 20), sorted by score. Includes rich approved podcast context (name, categories, audience size, description) when feedback exists. Falls back to similarity-based top-15 if no podcasts score 6+ or if AI call fails. Deduplicates via get-prospect-podcasts cacheOnly mode before appending. 45-second safety timeout.",
         performance: {
-          avgLatency: "~7.5s",
+          avgLatency: "~12-16s first run (includes enrichment), ~10-14s subsequent runs",
           maxConcurrency: "10+ concurrent (tested)",
           rateLimit: "Google Sheets: ~30 req/min. OpenAI: no issues at 10 concurrent.",
-          bottleneck: "OpenAI embedding (~1s) + vector search (~0.5s) + dedup sheet read (~1.5s)"
+          bottleneck: "Auto-enrich Haiku (~1.5s first run only) + OpenAI embedding (~1s) + vector search (~0.5s) + Sonnet scored filter (~5-7s) + dedup sheet read (~1.5s)"
         },
+        bestPractices: "For best matching results, ensure the prospect has: (1) A detailed bio (>20 chars) — this drives auto-enrichment and embedding quality. (2) Structured fields populated (prospect_industry, prospect_expertise, prospect_topics) — auto-populated from bio on first run, or set manually for best control. (3) Approved/rejected podcast feedback — the AI filter uses approved podcasts as positive examples (with categories, audience size, descriptions) to find similar patterns.",
         params: [
-          { name: "prospectId", type: "string", required: true, description: "UUID from prospect_dashboards table" },
+          { name: "prospectId", type: "string", required: true, description: "UUID from prospect_dashboards table. Prospect should have a detailed bio for best results — structured fields (industry, expertise, topics) will be auto-extracted from bio on first run if missing." },
         ],
         responseExample: JSON.stringify({
           success: true,
           prospect_name: "Beth Morgan",
-          total_matched: 15,
-          new_added: 8,
-          duplicates_skipped: 7,
+          total_matched: 12,
+          new_added: 11,
+          duplicates_skipped: 1,
           ai_filter_applied: true,
-          duration_seconds: 7.5
+          matches: [
+            { podcast_name: "The SaaS Podcast", podscan_id: "pod_abc123", relevance_score: 9, relevance_reason: "Direct alignment with SaaS scaling expertise and B2B audience" },
+            { podcast_name: "Growth Marketing Today", podscan_id: "pod_def456", relevance_score: 7, relevance_reason: "Strong audience overlap with growth-focused listeners" }
+          ],
+          duration_seconds: 14.2
         }, null, 2),
         category: "prospect-dashboards",
       },
@@ -367,7 +358,12 @@ export const API_CATEGORIES: ApiCategory[] = [
         description: "Generates a full SEO-optimized blog post using two Claude Sonnet API calls: one for the main HTML content (8000 tokens) and a second for the meta description (200 tokens). Includes a CTA linking to Premium Podcast Placements.",
         auth: "API Key",
         aiModel: "claude-sonnet-4-5-20250929 (Call 1: max_tokens 8000 | Call 2: max_tokens 200, both temp 0.7)",
-        notes: "Makes TWO separate Claude API calls. Structure: intro (150-200w), body (3-5 sections, 300-400w each with H2/H3), conclusion (150-200w). Always includes 'Get On A Pod' mention and CTA to Premium Placements. Meta description is 150-160 chars generated from first 500 chars of content.",
+        notes: "Makes TWO separate Claude API calls (content + meta description). Requires 90s+ timeout — the content generation alone can take 60s at 8000 max_tokens. Structure: intro (150-200w), body (3-5 sections, 300-400w each with H2/H3), conclusion (150-200w). Always includes 'Get On A Pod' mention and CTA to Premium Placements. Meta description is 150-160 chars generated from first 500 chars of content.",
+        performance: {
+          avgLatency: "~60-90s (two sequential Claude API calls)",
+          maxConcurrency: "5-10 concurrent",
+          bottleneck: "Two sequential Claude Sonnet calls (8000 + 200 max_tokens)"
+        },
         params: [
           { name: "topic", type: "string", required: true, description: "Blog post topic" },
           { name: "category", type: "string", required: false, description: "Blog category" },
@@ -402,10 +398,11 @@ export const API_CATEGORIES: ApiCategory[] = [
         auth: "API Key",
         aiModel: "claude-haiku-4-5-20251001 (max_tokens: 200, temperature: 0)",
         notes: "At least one of clientBio or prospectBio is required. All podcasts scored simultaneously via Promise.all(). If JSON parsing fails, attempts regex extraction of score number (loses reasoning). Score null on complete failure. Tracks successCount, errorCount, avgScore, highScores (>=7).",
+        bestPractices: "For best scoring accuracy: (1) Use a detailed bio (100+ chars) with specific expertise, credentials, and topics — a short name-only bio produces generic scores. (2) Include podcast_description, podcast_categories, and audience_size in each podcast object — more metadata gives Claude better context for scoring. (3) Use prospectBio (not clientBio) for prospect matching — it activates prospect-specific scoring mode.",
         params: [
-          { name: "clientBio", type: "string", required: false, description: "Client's bio for matching (required if no prospectBio)" },
-          { name: "prospectBio", type: "string", required: false, description: "Prospect's bio - takes precedence over clientBio" },
-          { name: "podcasts", type: "object[]", required: true, description: "Array of podcasts. Each needs: podcast_id, podcast_name. Optional: podcast_description, publisher_name, podcast_categories (array of {category_name}), audience_size, episode_count" },
+          { name: "clientBio", type: "string", required: false, description: "Client's bio for matching (required if no prospectBio). More detail = better scores — include expertise areas, credentials, and target audience." },
+          { name: "prospectBio", type: "string", required: false, description: "Prospect's bio — takes precedence over clientBio. Activates prospect-specific scoring mode." },
+          { name: "podcasts", type: "object[]", required: true, description: "Array of podcasts to score. Each needs: podcast_id, podcast_name. Strongly recommended: podcast_description, podcast_categories (array of {category_name}), audience_size, publisher_name, episode_count — more metadata produces more accurate scores." },
         ],
         responseExample: JSON.stringify({
           scores: [
@@ -432,19 +429,20 @@ export const API_CATEGORIES: ApiCategory[] = [
         auth: "API Key",
         aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 2000)",
         notes: "Cache key: (podcast_id, client_id). TTL: 7 days. If clientBio empty, uses fallback: 'Business professional and thought leader seeking to share expertise with podcast audiences.' JSON parsing has 4 fallback stages: code block extraction, raw JSON search, cleanup, manual field extraction. Can return partial data on parsing failure.",
+        bestPractices: "For high-quality fit analysis and pitch angles: (1) Always pass a detailed clientBio — without it, Claude uses a generic fallback and produces vague fit reasons. The prompt explicitly instructs Claude to 'reference actual elements from the client's bio'. (2) Include podcastDescription, publisherName, audienceSize, and episodeCount — these are all fed to the Sonnet prompt and directly improve analysis quality. (3) Pass clientId to enable caching — same podcast+client combo returns instantly for 7 days.",
         params: [
           { name: "podcastName", type: "string", required: true, description: "Name of the podcast" },
-          { name: "podcastId", type: "string", required: false, description: "Podcast ID (falls back to podcastName if not provided)" },
-          { name: "podcastDescription", type: "string", required: false, description: "Podcast description (may contain HTML)" },
+          { name: "podcastId", type: "string", required: false, description: "Podcast ID for caching (falls back to podcastName if not provided)" },
+          { name: "podcastDescription", type: "string", required: false, description: "Podcast description (may contain HTML). Strongly recommended — gives Claude the core context for fit analysis." },
           { name: "podcastUrl", type: "string", required: false, description: "Podcast website URL" },
-          { name: "publisherName", type: "string", required: false, description: "Host/publisher name" },
+          { name: "publisherName", type: "string", required: false, description: "Host/publisher name. Helps Claude tailor pitch angles to the host's style." },
           { name: "hostName", type: "string", required: false, description: "Alias for publisherName" },
           { name: "itunesRating", type: "number", required: false, description: "iTunes rating (1-5)" },
-          { name: "episodeCount", type: "number", required: false, description: "Number of episodes" },
-          { name: "audienceSize", type: "number", required: false, description: "Estimated audience size" },
-          { name: "clientId", type: "string", required: false, description: "Client ID for cache key. Defaults to 'legacy'" },
+          { name: "episodeCount", type: "number", required: false, description: "Number of episodes — signals show maturity to the AI" },
+          { name: "audienceSize", type: "number", required: false, description: "Estimated audience size — used in fit reasons to reference reach" },
+          { name: "clientId", type: "string", required: false, description: "Client/prospect UUID for cache key. Defaults to 'legacy'. Always pass this to enable 7-day result caching." },
           { name: "clientName", type: "string", required: false, description: "Client's name for analysis context" },
-          { name: "clientBio", type: "string", required: false, description: "Client's bio (uses generic fallback if empty)" },
+          { name: "clientBio", type: "string", required: false, description: "Client's bio — CRITICAL for quality. Without it, uses generic fallback producing vague results. Include expertise, credentials, topics, and target audience for best fit reasons and pitch angles." },
         ],
         responseExample: JSON.stringify({
           success: true,
