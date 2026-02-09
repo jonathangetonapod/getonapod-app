@@ -254,7 +254,24 @@ serve(async (req) => {
       podcast.itunes_rating?.toString() || '',
       podcast.episode_count?.toString() || '',
       podcast.podscan_podcast_id || podcast.podcast_id || '',
+      podcast.compatibility_score?.toString() || '',
+      podcast.compatibility_reasoning || '',
     ])
+
+    // Write headers for score columns (F1:G1) that aren't in the template
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!F1:G1?valueInputOption=RAW`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: [['Compatibility Score', 'Compatibility Reasoning']],
+        }),
+      }
+    )
 
     // Append data to the sheet
     const appendResponse = await fetch(

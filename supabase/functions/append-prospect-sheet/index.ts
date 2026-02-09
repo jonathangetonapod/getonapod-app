@@ -183,6 +183,8 @@ serve(async (req) => {
       podcast.itunes_rating?.toString() || '',
       podcast.episode_count?.toString() || '',
       podcast.podscan_podcast_id || podcast.podcast_id || '',
+      podcast.compatibility_score?.toString() || '',
+      podcast.compatibility_reasoning || '',
     ])
 
     // Get the actual sheet tab name (not always "Sheet1")

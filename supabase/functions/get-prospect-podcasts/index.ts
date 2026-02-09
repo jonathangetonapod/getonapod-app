@@ -122,6 +122,8 @@ interface CachedPodcast {
   ai_pitch_angles: Array<{ title: string; description: string }> | null
   ai_analyzed_at: string | null
   demographics: Record<string, unknown> | null
+  compatibility_score: number | null
+  compatibility_reasoning: string | null
 }
 
 interface FitAnalysis {
@@ -325,19 +327,29 @@ serve(async (req) => {
       const meta = await metaRes.json()
       const sheetName = meta.sheets[0]?.properties?.title || 'Sheet1'
 
-      // Read podcast IDs from column E
+      // Read podcast IDs + compatibility scores from columns E:G
       const sheetRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!E:E`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!E:G`,
         { headers: { 'Authorization': `Bearer ${accessToken}` } }
       )
       if (!sheetRes.ok) {
         throw new Error(`Failed to read Google Sheet: ${await sheetRes.text()}`)
       }
       const sheetData = await sheetRes.json()
-      const podcastIds: string[] = (sheetData.values || [])
-        .slice(1)
+      const sheetRows = (sheetData.values || []).slice(1)
+      const podcastIds: string[] = sheetRows
         .map((row: string[]) => row[0])
         .filter((id: string) => id && id.trim() !== '')
+      const sheetScores = new Map<string, { score: number | null; reasoning: string | null }>()
+      for (const row of sheetRows) {
+        const id = row[0]?.trim()
+        if (id) {
+          sheetScores.set(id, {
+            score: row[1] ? parseInt(row[1], 10) || null : null,
+            reasoning: row[2] || null,
+          })
+        }
+      }
 
       console.log('[Get Prospect Podcasts] FAST PATH - found', podcastIds.length, 'podcast IDs in sheet')
 
@@ -433,8 +445,8 @@ serve(async (req) => {
 
     console.log('[Get Prospect Podcasts] First sheet name:', firstSheetName)
 
-    // Read column E (Podcast ID) - using dynamic sheet name
-    const range = `${firstSheetName}!E:E`
+    // Read columns E:G (Podcast ID, Compatibility Score, Compatibility Reasoning)
+    const range = `${firstSheetName}!E:G`
     console.log('[Get Prospect Podcasts] Reading range:', range)
 
     const sheetResponse = await fetch(
@@ -448,10 +460,20 @@ serve(async (req) => {
 
     const sheetData = await sheetResponse.json()
     const rows = sheetData.values || []
-    const podcastIds: string[] = rows
-      .slice(1)
+    const dataRows = rows.slice(1)
+    const podcastIds: string[] = dataRows
       .map((row: string[]) => row[0])
       .filter((id: string) => id && id.trim() !== '')
+    const sheetScores = new Map<string, { score: number | null; reasoning: string | null }>()
+    for (const row of dataRows) {
+      const id = row[0]?.trim()
+      if (id) {
+        sheetScores.set(id, {
+          score: row[1] ? parseInt(row[1], 10) || null : null,
+          reasoning: row[2] || null,
+        })
+      }
+    }
 
     console.log('[Get Prospect Podcasts] Found', podcastIds.length, 'podcast IDs in sheet')
 
@@ -517,22 +539,28 @@ serve(async (req) => {
     const { cached: centralCached, missing: centralMissing } = await getCachedPodcasts(supabase, podcastIds, 7)
 
     // Map central cache to CachedPodcast format for compatibility
-    let cachedPodcasts: CachedPodcast[] = centralCached.map((p: any) => ({
-      podcast_id: p.podscan_id,
-      podcast_name: p.podcast_name,
-      podcast_description: p.podcast_description,
-      podcast_image_url: p.podcast_image_url,
-      podcast_url: p.podcast_url,
-      publisher_name: p.publisher_name,
-      itunes_rating: p.itunes_rating,
-      episode_count: p.episode_count,
-      audience_size: p.audience_size,
-      podcast_categories: p.podcast_categories,
-      demographics: p.demographics,
-      ai_clean_description: null,  // Will load from prospect_podcast_analyses if needed
-      ai_fit_reasons: null,
-      ai_pitch_angles: null,
-    }))
+    let cachedPodcasts: CachedPodcast[] = centralCached.map((p: any) => {
+      const scores = sheetScores.get(p.podscan_id)
+      return {
+        podcast_id: p.podscan_id,
+        podcast_name: p.podcast_name,
+        podcast_description: p.podcast_description,
+        podcast_image_url: p.podcast_image_url,
+        podcast_url: p.podcast_url,
+        publisher_name: p.publisher_name,
+        itunes_rating: p.itunes_rating,
+        episode_count: p.episode_count,
+        audience_size: p.audience_size,
+        podcast_categories: p.podcast_categories,
+        demographics: p.demographics,
+        ai_clean_description: null,  // Will load from prospect_podcast_analyses if needed
+        ai_fit_reasons: null,
+        ai_pitch_angles: null,
+        ai_analyzed_at: null,
+        compatibility_score: scores?.score ?? null,
+        compatibility_reasoning: scores?.reasoning ?? null,
+      }
+    })
 
     const cachedPodcastIds = new Set<string>(centralCached.map((p: any) => p.podscan_id))
 
@@ -877,6 +905,7 @@ serve(async (req) => {
                 }
               }
 
+              const podcastScores = sheetScores.get(podcastId)
               const podcastData: CachedPodcast = {
                 podcast_id: podcastId,
                 podcast_name: podcast.podcast_name || 'Unknown Podcast',
@@ -892,7 +921,10 @@ serve(async (req) => {
                 ai_clean_description: null,
                 ai_fit_reasons: null,
                 ai_pitch_angles: null,
+                ai_analyzed_at: null,
                 demographics,
+                compatibility_score: podcastScores?.score ?? null,
+                compatibility_reasoning: podcastScores?.reasoning ?? null,
               }
 
               // 3. Get AI analysis if we have prospect info (and not skipping)
