@@ -850,9 +850,9 @@ export default function ClientApprovalView() {
                 {loadingPodcasts ? (
                   <span>Loading your personalized podcast matches...</span>
                 ) : personalizedTagline ? (
-                  <span>{personalizedTagline.replace(/\d+\s*podcasts?/i, `${sortedPodcasts.length} podcast${sortedPodcasts.length !== 1 ? 's' : ''}`)}</span>
+                  <span>{personalizedTagline}</span>
                 ) : (
-                  <>We've curated <span className="font-bold text-foreground">{sortedPodcasts.length}</span> podcast{sortedPodcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
+                  <><span className="font-bold text-foreground">{sortedPodcasts.length}</span> podcast{sortedPodcasts.length !== 1 ? 's' : ''} matched to your expertise</>
                 )}
               </p>
             </div>

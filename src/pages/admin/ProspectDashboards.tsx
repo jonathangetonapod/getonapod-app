@@ -540,10 +540,8 @@ export default function ProspectDashboards() {
       setEditLoomVideoTitle(selectedDashboard.loom_video_title || 'Your Personal Video Message')
       setEditProspectName(selectedDashboard.prospect_name || '')
       setSelectedTestimonials(selectedDashboard.testimonial_ids || [])
-      // Extract the custom part of tagline (after "perfect for ")
-      const tagline = selectedDashboard.personalized_tagline || ''
-      const match = tagline.match(/perfect for\s+(.+)$/i)
-      setEditTagline(match ? match[1] : '')
+      // Set the full tagline for editing
+      setEditTagline(selectedDashboard.personalized_tagline || '')
       setBioExpanded(false)
       setIsEditingName(false)
       // Reset cache status when switching dashboards
@@ -791,10 +789,7 @@ export default function ProspectDashboards() {
 
     setSavingTagline(true)
     try {
-      // Construct full tagline with "We've curated X podcasts perfect for " prefix
-      const fullTagline = editTagline.trim()
-        ? `We've curated podcasts perfect for ${editTagline.trim()}`
-        : null
+      const fullTagline = editTagline.trim() || null
 
       const { error } = await supabase
         .from('prospect_dashboards')
@@ -2197,17 +2192,16 @@ export default function ProspectDashboards() {
                       Dashboard Tagline
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Customize what appears after "We've curated X podcasts perfect for..."
+                      Short tagline describing their expertise area (under 60 chars)
                     </p>
                     <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
                       <p className="text-sm text-muted-foreground mb-2">Preview:</p>
                       <p className="text-sm font-medium">
-                        We've curated {cacheStatusData?.totalInSheet || '...'} podcasts perfect for{' '}
-                        <span className="text-primary">{editTagline || 'your expertise'}</span>
+                        <span className="text-primary">{editTagline || 'Podcast opportunities matched to your expertise'}</span>
                       </p>
                     </div>
                     <Textarea
-                      placeholder="e.g., sharing your mission to transform healthcare through technology"
+                      placeholder="e.g., Transforming healthcare through technology innovation"
                       value={editTagline}
                       onChange={(e) => setEditTagline(e.target.value)}
                       className="text-sm min-h-[80px]"

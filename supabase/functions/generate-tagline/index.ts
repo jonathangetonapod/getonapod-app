@@ -16,9 +16,9 @@ serve(async (req) => {
     const body = await req.json()
     const { prospectName, prospectBio, podcastCount, dashboardId } = body
 
-    if (!prospectName || !prospectBio || !podcastCount) {
+    if (!prospectName || !prospectBio) {
       return new Response(
-        JSON.stringify({ success: false, error: 'prospectName, prospectBio, and podcastCount are required' }),
+        JSON.stringify({ success: false, error: 'prospectName and prospectBio are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -31,31 +31,33 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
-    const prompt = `You are a copywriter creating a personalized, compelling one-liner for a podcast booking dashboard.
+    const prompt = `Write a punchy tagline (MAX 6 words, under 45 characters) for ${prospectName}.
 
-## PROSPECT INFO
-Name: ${prospectName}
 Bio: ${prospectBio}
-Number of podcasts curated: ${podcastCount}
 
-## YOUR TASK
-Create a single, personalized tagline that:
-1. References their specific goal, mission, or objective from their bio
-2. Is warm and exciting
-3. Mentions the number of podcasts (${podcastCount})
-4. Is 10-20 words max
-5. Starts with "We've curated ${podcastCount} podcasts perfect for..."
+STRICT RULES:
+- MAX 6 words, MAX 45 characters. Shorter is better.
+- Describe THEIR specific expertise or mission
+- NEVER start with: Amplifying, Unlocking, Transforming, Empowering, Elevating, Connecting, Accelerating, Advancing
+- NEVER mention: podcast, voice, strategic, visibility, platform, storytelling, leadership (unless it's their actual field)
+- No periods at the end
+- Be concrete and specific to their actual work
 
-## EXAMPLES (for inspiration only - create something unique):
-- "We've curated 12 podcasts perfect for spreading your message on sustainable investing"
-- "We've curated 8 podcasts perfect for your campaign to revolutionize healthcare"
-- "We've curated 15 podcasts perfect for sharing your expertise in AI ethics"
-- "We've curated 9 podcasts perfect for amplifying your mission to empower entrepreneurs"
+STYLE: Think magazine headline, not marketing copy.
 
-## IMPORTANT
-- Focus on THEIR objective, not generic expertise
-- Be specific to what makes them unique
-- Return ONLY the tagline, nothing else`
+Examples (note: short, punchy, specific):
+- "SaaS Growth Through AI"
+- "Cold Calling Mastery"
+- "Grief to Courage"
+- "Clean Energy Policy Wonk"
+- "Fractional Real Estate Investing"
+- "Speed Thinking for Innovation"
+- "B2B Revenue at Scale"
+- "Neurotech Pain Solutions"
+- "Women in Beauty & Business"
+- "Cross-Border Wealth Strategy"
+
+Return ONLY the tagline, nothing else. Keep it SHORT.`
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -65,8 +67,8 @@ Create a single, personalized tagline that:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 100,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
         messages: [
           {
             role: 'user',

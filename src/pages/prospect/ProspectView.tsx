@@ -942,9 +942,9 @@ export default function ProspectView() {
                 {loadingPodcasts ? (
                   <span>Loading your personalized podcast matches...</span>
                 ) : personalizedTagline ? (
-                  <span>{personalizedTagline.replace(/\d+\s*podcasts?/i, `${sortedPodcasts.length} podcast${sortedPodcasts.length !== 1 ? 's' : ''}`)}</span>
+                  <span>{personalizedTagline}</span>
                 ) : (
-                  <>We've curated <span className="font-bold text-foreground">{sortedPodcasts.length}</span> podcast{sortedPodcasts.length !== 1 ? 's' : ''} perfect for your expertise</>
+                  <><span className="font-bold text-foreground">{sortedPodcasts.length}</span> podcast{sortedPodcasts.length !== 1 ? 's' : ''} matched to your expertise</>
                 )}
               </p>
             </div>
@@ -1663,7 +1663,7 @@ export default function ProspectView() {
             </h2>
 
             <p className="text-muted-foreground text-sm sm:text-base lg:text-lg max-w-2xl mx-auto px-2">
-              We've curated {podcasts.length} podcasts perfect for you. Our team handles everything —
+              {podcasts.length} podcasts matched to your profile. Our team handles everything —
               you just show up and share your expertise.
             </p>
           </div>
