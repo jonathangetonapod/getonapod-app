@@ -20,10 +20,10 @@ export function DocsSidebar({ categories, activeId }: DocsSidebarProps) {
       <button
         onClick={() => handleClick("rate-limits")}
         className={cn(
-          "text-sm font-semibold w-full text-left px-3 py-1.5 rounded-md transition-colors",
+          "text-sm font-semibold w-full text-left px-3 py-1.5 rounded-md transition-colors cursor-pointer",
           activeId === "rate-limits"
             ? "text-foreground bg-muted"
-            : "text-muted-foreground hover:text-foreground"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
         )}
       >
         Rate Limits & Performance
@@ -33,10 +33,10 @@ export function DocsSidebar({ categories, activeId }: DocsSidebarProps) {
           <button
             onClick={() => handleClick(category.id)}
             className={cn(
-              "text-sm font-semibold w-full text-left px-3 py-1.5 rounded-md transition-colors",
+              "text-sm font-semibold w-full text-left px-3 py-1.5 rounded-md transition-colors cursor-pointer",
               activeId === category.id
                 ? "text-foreground bg-muted"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             )}
           >
             {category.name}
@@ -47,10 +47,10 @@ export function DocsSidebar({ categories, activeId }: DocsSidebarProps) {
                 <button
                   onClick={() => handleClick(endpoint.id)}
                   className={cn(
-                    "text-sm w-full text-left px-3 py-1 rounded-md transition-colors truncate block",
+                    "text-sm w-full text-left px-3 py-1 rounded-md transition-colors truncate cursor-pointer",
                     activeId === endpoint.id
                       ? "text-foreground bg-muted/80"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                 >
                   {endpoint.name}
