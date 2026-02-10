@@ -4648,7 +4648,7 @@ export default function PortalDashboard() {
               </div>
 
               {/* Categories */}
-              {viewingOutreachPodcast.podcast_categories && viewingOutreachPodcast.podcast_categories.length > 0 && (
+              {Array.isArray(viewingOutreachPodcast.podcast_categories) && viewingOutreachPodcast.podcast_categories.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="font-semibold flex items-center gap-2">
                     <Tag className="h-4 w-4 text-primary" />

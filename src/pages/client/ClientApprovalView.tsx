@@ -1431,7 +1431,7 @@ export default function ClientApprovalView() {
                   </div>
 
                   {/* Categories */}
-                  {podcast.podcast_categories && podcast.podcast_categories.length > 0 && (
+                  {Array.isArray(podcast.podcast_categories) && podcast.podcast_categories.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {podcast.podcast_categories.slice(0, 2).map((cat) => (
                         <span
@@ -1810,7 +1810,7 @@ export default function ClientApprovalView() {
                   </div>
 
                   {/* Categories */}
-                  {selectedPodcast.podcast_categories && selectedPodcast.podcast_categories.length > 0 && (
+                  {Array.isArray(selectedPodcast.podcast_categories) && selectedPodcast.podcast_categories.length > 0 && (
                     <div className="space-y-2 sm:space-y-3">
                       <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
                         <Tag className="h-3 w-3" />

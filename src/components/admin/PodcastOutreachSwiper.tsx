@@ -186,7 +186,7 @@ export function PodcastOutreachSwiper({
           </div>
 
           {/* Categories */}
-          {currentPodcast.podcast_categories && currentPodcast.podcast_categories.length > 0 && (
+          {Array.isArray(currentPodcast.podcast_categories) && currentPodcast.podcast_categories.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               <Tag className="h-4 w-4 text-muted-foreground" />
               {currentPodcast.podcast_categories.slice(0, 3).map((cat) => (
