@@ -690,7 +690,7 @@ serve(async (req) => {
               console.log('[Get Client Podcasts] Fetching from Podscan:', podcastId)
               const podscanRes = await fetch(
                 `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-                { headers: { 'Authorization': `Bearer ${podscanApiKey}` } }
+                { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
               )
 
               if (!podscanRes.ok) {
@@ -725,7 +725,7 @@ serve(async (req) => {
                 console.log('[Get Client Podcasts] Fetching demographics for:', podcastData.podcast_name)
                 const demoRes = await fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}` } }
+                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
                 )
                 if (demoRes.ok) {
                   const demoData = await demoRes.json()
