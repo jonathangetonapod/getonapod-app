@@ -23,6 +23,14 @@ export function initSentry() {
       }),
     ],
 
+    // Ignore known noisy errors
+    ignoreErrors: [
+      // Stripe Buy Button internal race condition - harmless
+      /Cannot read properties of undefined \(reading 'payload'\)/,
+      // Stripe telemetry blocked by ad blockers
+      /Error fetching https:\/\/r\.stripe\.com/,
+    ],
+
     // Performance Monitoring
     tracesSampleRate: 1.0, // Capture 100% of transactions in production you may want to lower this
 
