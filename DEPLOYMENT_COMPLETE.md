@@ -18,7 +18,7 @@ All updated edge functions have been successfully deployed to Supabase:
    - Fixed: Podscan API field mappings (podcast.name → podcast.podcast_name, etc.)
    - Updated: Uses centralized podcasts table with batch upsert
 
-4. **get-outreach-podcasts-v2** - ✅ Deployed
+4. **get-outreach-podcasts** - ✅ Deployed
    - Fixed: API endpoint (api.podscan.fm → podscan.fm/api/v1)
    - Fixed: Auth header (X-API-KEY → Authorization: Bearer)
    - Fixed: Podscan API field mappings
@@ -174,7 +174,7 @@ LIMIT 10;
 Check edge function logs for successful API calls:
 
 ```bash
-supabase functions logs get-outreach-podcasts-v2 --limit 20
+supabase functions logs get-outreach-podcasts --limit 20
 ```
 
 **Expected:**
@@ -299,12 +299,12 @@ supabase functions logs get-client-podcasts --limit 50 | grep "Podscan"
 
 **Check endpoint and auth:**
 ```bash
-supabase functions logs get-outreach-podcasts-v2 --limit 50 | grep "401\|404"
+supabase functions logs get-outreach-podcasts --limit 50 | grep "401\|404"
 ```
 
 **If found:** Redeploy the function:
 ```bash
-supabase functions deploy get-outreach-podcasts-v2 --no-verify-jwt
+supabase functions deploy get-outreach-podcasts --no-verify-jwt
 ```
 
 ---
@@ -326,7 +326,7 @@ If you encounter any issues:
   - [x] get-client-podcasts
   - [x] get-prospect-podcasts
   - [x] read-outreach-list
-  - [x] get-outreach-podcasts-v2
+  - [x] get-outreach-podcasts
 - [x] Git commits pushed to GitHub (4 commits)
 - [ ] **Database migration run** ⬅️ DO THIS NOW
 - [ ] Test cache statistics (baseline)

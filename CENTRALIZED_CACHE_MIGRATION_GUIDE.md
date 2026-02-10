@@ -314,7 +314,7 @@ ALTER TABLE client_dashboard_podcasts
 3. ⏳ `supabase/functions/get-client-podcasts/index.ts` - Update needed
 4. ⏳ `supabase/functions/get-prospect-podcasts/index.ts` - Update needed
 5. ⏳ `supabase/functions/read-outreach-list/index.ts` - Update needed
-6. ⏳ `supabase/functions/get-outreach-podcasts-v2/index.ts` - Update needed
+6. ⏳ `supabase/functions/get-outreach-podcasts/index.ts` - Update needed
 7. ⏳ `src/services/podcastCache.ts` - Update frontend cache queries
 
 ## Testing Checklist

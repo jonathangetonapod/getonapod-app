@@ -155,7 +155,7 @@ The following edge functions need to be updated to use the centralized cache:
    - Check central cache first
    - Fetch only missing podcasts
 
-4. **`get-outreach-podcasts-v2/index.ts`** ⏳
+4. **`get-outreach-podcasts/index.ts`** ⏳
    - Integrate with central cache
 
 5. **`fetch-podscan-email/index.ts`** ⏳ (Optional)

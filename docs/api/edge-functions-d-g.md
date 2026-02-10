@@ -23,7 +23,7 @@ This document provides comprehensive documentation for all Supabase Edge Functio
   - [get-client-bookings](#get-client-bookings)
   - [get-client-outreach-podcasts](#get-client-outreach-podcasts)
   - [get-client-podcasts](#get-client-podcasts)
-  - [get-outreach-podcasts-v2](#get-outreach-podcasts-v2)
+  - [get-outreach-podcasts](#get-outreach-podcasts)
   - [get-prospect-podcasts](#get-prospect-podcasts)
 
 ## Delete Functions
@@ -1125,11 +1125,11 @@ curl -X POST https://your-project.supabase.co/functions/v1/get-client-podcasts \
 
 ---
 
-### get-outreach-podcasts-v2
+### get-outreach-podcasts
 
 Enhanced version of outreach podcast fetching with improved caching and error handling.
 
-**Endpoint:** `/functions/v1/get-outreach-podcasts-v2`  
+**Endpoint:** `/functions/v1/get-outreach-podcasts`  
 **Method:** `POST`  
 **Authentication:** Google Service Account + Podscan API key
 
@@ -1181,7 +1181,7 @@ Enhanced version of outreach podcast fetching with improved caching and error ha
 
 #### Example Request
 ```bash
-curl -X POST https://your-project.supabase.co/functions/v1/get-outreach-podcasts-v2 \
+curl -X POST https://your-project.supabase.co/functions/v1/get-outreach-podcasts \
   -H "Authorization: Bearer YOUR_ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{

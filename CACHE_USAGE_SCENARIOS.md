@@ -65,7 +65,7 @@ This document lists all the places where the app now checks the centralized `pod
 ---
 
 ### ✅ SCENARIO 4: Outreach Podcasts V2 - Fetch Podcasts
-**Edge Function:** `get-outreach-podcasts-v2`
+**Edge Function:** `get-outreach-podcasts`
 **User Action:** System fetches podcasts for outreach campaigns (v2 endpoint)
 **Cache Flow:**
 1. ✅ Checks central `podcasts` table first

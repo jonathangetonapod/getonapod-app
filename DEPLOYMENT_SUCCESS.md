@@ -14,7 +14,7 @@
 - **get-client-podcasts** - Deployed & Live
 - **get-prospect-podcasts** - Deployed & Live
 - **read-outreach-list** - Deployed & Live
-- **get-outreach-podcasts-v2** - Deployed & Live
+- **get-outreach-podcasts** - Deployed & Live
 
 ### Database Migration ✅
 - **Trigger:** `trigger_auto_increment_fetch_count` - Installed & Working
@@ -92,7 +92,7 @@ supabase functions logs get-client-podcasts --limit 50 | grep "Cache hits"
 supabase functions logs get-client-podcasts --limit 50 | grep -i "error"
 
 # Check Podscan API calls
-supabase functions logs get-outreach-podcasts-v2 --limit 50 | grep "Podscan"
+supabase functions logs get-outreach-podcasts --limit 50 | grep "Podscan"
 ```
 
 ---
@@ -265,7 +265,7 @@ Based on monitoring data:
   - [x] get-client-podcasts
   - [x] get-prospect-podcasts
   - [x] read-outreach-list
-  - [x] get-outreach-podcasts-v2
+  - [x] get-outreach-podcasts
 - [x] Database migration run
 - [x] Trigger installed and tested
 - [x] Auto-increment verified (1 → 2)

@@ -102,10 +102,10 @@ if (analysis) {
 ### Commit 2: Podscan API Fixes (6a81144)
 **Files Modified:**
 - `supabase/functions/read-outreach-list/index.ts`
-- `supabase/functions/get-outreach-podcasts-v2/index.ts`
+- `supabase/functions/get-outreach-podcasts/index.ts`
 
 #### Bug #3: Wrong API Endpoint ❌ → ✅
-**Location:** `get-outreach-podcasts-v2/index.ts:255-262`
+**Location:** `get-outreach-podcasts/index.ts:255-262`
 
 **Problem:**
 ```typescript
@@ -136,7 +136,7 @@ const response = await fetch(
 ```
 
 #### Bug #4: Wrong Podscan API Field Mappings ❌ → ✅
-**Location:** `read-outreach-list/index.ts:284-294`, `get-outreach-podcasts-v2/index.ts:272-282`
+**Location:** `read-outreach-list/index.ts:284-294`, `get-outreach-podcasts/index.ts:272-282`
 
 **Problem:**
 ```typescript
@@ -306,7 +306,7 @@ CREATE TRIGGER trigger_auto_increment_fetch_count
 2. `supabase/functions/get-client-podcasts/index.ts`
 3. `supabase/functions/get-prospect-podcasts/index.ts`
 4. `supabase/functions/read-outreach-list/index.ts`
-5. `supabase/functions/get-outreach-podcasts-v2/index.ts`
+5. `supabase/functions/get-outreach-podcasts/index.ts`
 
 ---
 
