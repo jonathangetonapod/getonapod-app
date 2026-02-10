@@ -2,7 +2,7 @@
 verify_jwt = false
 
 [functions.create-checkout-session]
-verify_jwt = false
+verify_jwt = true
 
 [functions.login-with-password]
 verify_jwt = false
@@ -48,4 +48,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.generate-tagline]
-verify_jwt = false
+verify_jwt = true
+
+[functions.generate-podcast-queries]
+verify_jwt = true
+
+[functions.generate-guest-resource]
+verify_jwt = true
+
+[functions.generate-blog-content]
+verify_jwt = true

@@ -63,6 +63,7 @@ serve(async (req) => {
     const response = await fetch(`https://podscan.fm/api/v1/podcasts/${podcast_id}`, {
       headers: {
         'Authorization': `Bearer ${podscanApiKey}`,
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
       }
     })

@@ -873,11 +873,11 @@ serve(async (req) => {
               const [podscanRes, demoRes] = await Promise.all([
                 fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}` } }
+                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
                 ),
                 fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}` } }
+                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
                 ).catch(() => null),
               ])
 

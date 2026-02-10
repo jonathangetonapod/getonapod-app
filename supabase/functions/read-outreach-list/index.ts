@@ -301,6 +301,7 @@ serve(async (req) => {
               {
                 headers: {
                   'Authorization': `Bearer ${podscanApiKey}`,
+                  'Accept': 'application/json',
                 },
               }
             )
