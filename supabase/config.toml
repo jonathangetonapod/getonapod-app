@@ -46,3 +46,6 @@ verify_jwt = false
 
 [functions.create-bison-lead]
 verify_jwt = false
+
+[functions.generate-tagline]
+verify_jwt = false
