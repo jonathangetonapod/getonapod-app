@@ -28,6 +28,28 @@ serve(async (req) => {
       podcasts: PodcastForScoring[]
     }
 
+    // Type validation
+    if (clientBio !== undefined && typeof clientBio !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'clientBio must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (prospectBio !== undefined && typeof prospectBio !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'prospectBio must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!Array.isArray(podcasts)) {
+      return new Response(
+        JSON.stringify({ error: 'podcasts must be an array' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Support both client and prospect mode
     const targetBio = prospectBio || clientBio
     const isProspectMode = !!prospectBio

@@ -144,6 +144,21 @@ serve(async (req) => {
       podcasts: PodcastExportData[]
     }
 
+    // Type validation
+    if (typeof prospectName !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'prospectName must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!Array.isArray(podcasts)) {
+      return new Response(
+        JSON.stringify({ error: 'podcasts must be an array' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     if (!prospectName) {
       return new Response(
         JSON.stringify({ error: 'Prospect name is required' }),

@@ -90,6 +90,21 @@ serve(async (req) => {
       api_key,
     }: RequestBody = await req.json()
 
+    // Type validation
+    if (typeof name !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'name must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (typeof email !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'email must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Validation
     if (!name || !name.trim()) {
       return new Response(

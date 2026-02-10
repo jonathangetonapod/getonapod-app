@@ -14,6 +14,35 @@ serve(async (req) => {
   try {
     const { clientName, clientBio, clientEmail, oldQuery, prospectName, prospectBio } = await req.json()
 
+    // Type validation
+    if (clientName !== undefined && typeof clientName !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'clientName must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (clientBio !== undefined && typeof clientBio !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'clientBio must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (prospectName !== undefined && typeof prospectName !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'prospectName must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (prospectBio !== undefined && typeof prospectBio !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'prospectBio must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Support both client and prospect mode
     const targetName = prospectName || clientName
     const targetBio = prospectBio || clientBio

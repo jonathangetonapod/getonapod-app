@@ -19,6 +19,14 @@ serve(async (req) => {
   try {
     const { token }: RequestBody = await req.json()
 
+    // Type validation
+    if (typeof token !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'token must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Validation
     if (!token || !token.trim()) {
       return new Response(

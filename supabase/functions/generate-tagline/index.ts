@@ -16,6 +16,21 @@ serve(async (req) => {
     const body = await req.json()
     const { prospectName, prospectBio, podcastCount, dashboardId } = body
 
+    // Type validation
+    if (typeof prospectName !== 'string') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'prospectName must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (typeof prospectBio !== 'string') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'prospectBio must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     if (!prospectName || !prospectBio) {
       return new Response(
         JSON.stringify({ success: false, error: 'prospectName and prospectBio are required' }),

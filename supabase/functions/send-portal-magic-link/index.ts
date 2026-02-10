@@ -20,6 +20,14 @@ serve(async (req) => {
   try {
     const { email }: RequestBody = await req.json()
 
+    // Type validation
+    if (typeof email !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'email must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Validation
     if (!email || !email.trim()) {
       return new Response(
