@@ -9,11 +9,17 @@ export const config = {
   },
   app: {
     url: process.env.APP_URL || 'https://authoritybuilt.com'
+  },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY!
+  },
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY!
   }
 };
 
 // Validate required env vars
-const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}`);

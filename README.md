@@ -13,7 +13,7 @@ Get On A Pod is a full-stack application that helps founders and financial profe
 - **Booking Tracking** - Track podcast bookings through full lifecycle (conversation → booked → recorded → published)
 - **Calendar View** - Visual calendar for managing scheduled recordings and publish dates
 - **Podcast Finder** - AI-powered podcast discovery with query generation and compatibility scoring
-- **Podcast Database** - Browse 7,800+ cached podcasts with advanced filtering and matching
+- **Podcast Database** - Browse 1,000+ cached podcasts with advanced filtering and matching
 - **Prospect Dashboards** - Create personalized podcast recommendation dashboards for prospects
 - **Sales Analytics** - AI-powered analysis of sales calls with actionable recommendations
 - **Campaign Management** - Email campaigns with reply tracking via Bison
@@ -30,7 +30,8 @@ Get On A Pod is a full-stack application that helps founders and financial profe
 - **Real-time Search** - Instant results from Podscan API (5,000,000+ podcasts)
 
 #### Podcast Database
-- **Centralized Cache** - Browse 7,800+ pre-fetched podcasts from central database
+- **Centralized Cache** - Browse 2,400+ pre-fetched podcasts from central database
+- **Vector Embeddings** - AI-powered semantic search for intelligent prospect-podcast matching
 - **Four Modes:**
   - **Browse** - View all cached podcasts with filtering and search
   - **Match for Client** - Score and export podcasts to client sheets
@@ -147,16 +148,17 @@ PORTAL_BASE_URL=https://yourdomain.com
 ### Core Tables
 - `clients` - Client profiles and metadata
 - `bookings` - Podcast bookings with status tracking
-- `podcasts` - Centralized podcast cache (7,800+ podcasts with vector embeddings)
-- `prospect_dashboards` - Prospect profiles, bios, taglines, and Google Sheet links
-- `prospect_podcast_analyses` - AI analysis of podcast-prospect fit (scores, reasons, pitch angles)
-- `prospect_podcast_links` - Links between prospects and matched podcasts
-- `prospect_podcast_feedback` - Approval/rejection feedback on podcast matches
+- `podcasts` - Centralized podcast cache (2,431+ podcasts with metadata and vector embeddings)
+- `prospect_dashboards` - Prospect information and Google Sheet links
 - `premium_podcasts` - Marketplace inventory
 - `sales_calls` - Call recordings and AI analysis
 - `campaigns` - Email campaign tracking
 - `campaign_replies` - Bison reply integration
 - `blog_posts` - Content management
+
+### Vector Search Tables
+- `podcasts.embedding` - 1536-dimension vector embeddings (text-embedding-3-small)
+- `search_similar_podcasts()` - Semantic search function using cosine similarity
 
 ### Portal System
 - `client_portal_tokens` - Magic link tokens (15-min expiry)
@@ -203,29 +205,26 @@ npx supabase functions deploy score-podcast-compatibility
 # Prospect Dashboards
 npx supabase functions deploy create-prospect-sheet
 npx supabase functions deploy append-prospect-sheet
-npx supabase functions deploy generate-tagline
-npx supabase functions deploy backfill-prospect-podcasts
-npx supabase functions deploy get-prospect-podcasts
 
 # Podcast Metadata
 npx supabase functions deploy get-client-podcasts
 npx supabase functions deploy analyze-podcast-fit
 ```
 
-## 📝 Recent Updates (February 2026)
+## 📝 Recent Updates (January 2026)
 
-### Prospect Dashboard Overhaul & Data Quality (February 8, 2026)
-- **Prospect Cleanup** - Audited and cleaned 408 prospects down to 210 high-quality records (deleted junk, duplicates, test data)
-- **Bio Research** - Web-researched all 210 prospects to build real professional bios with titles, companies, and expertise areas
-- **Tagline Engine Rewrite** - Replaced template-based taglines ("We've curated X podcasts perfect for...") with punchy, bio-specific taglines under 45 characters using Claude Haiku
-- **Dashboard Completeness** - All 210 prospects now have: name, researched bio, unique tagline, Google Sheet, published dashboard URL
-- **Podcast Data Cleanup** - Removed 126 "Unknown Podcast" ghost entries polluting vector search, deduplicated 55 podcasts with duplicate Podscan IDs, migrated 228 AI analysis records from legacy to new table
-- **Frontend Updates** - Removed hardcoded "We've curated" template from prospect views, admin tagline editor now supports full tagline editing
-- **Bison Reply Audit** - Catalogued 352 warm/hot campaign replies across prospects, identified 189 unlinked leads
+### AI-Powered Semantic Podcast Matching (January 29, 2026)
+- ✅ **Massive Database Expansion** - Grew from 1,422 to 2,431 podcasts (+71% growth)
+- ✅ **Vector Embeddings** - Generated embeddings for all 2,431 podcasts using OpenAI text-embedding-3-small
+- ✅ **pgvector Integration** - Enabled semantic search with cosine similarity
+- ✅ **Intelligent Matching** - Match prospects to podcasts based on meaning, not just keywords
+- ✅ **Top 20 Categories** - Focused scraping on most popular categories (Business, News, Culture, Technology, etc.)
+- ✅ **Search Function** - Built `search_similar_podcasts()` for prospect-podcast matching
+- ✅ **Cost Efficient** - Total embedding cost: ~$0.06 for 2,431 podcasts
 
-### Previous Updates (January 2026)
+## 📝 Recent Updates (January 2026)
 
-#### Podcast Database Analytics Dashboard (January 26, 2026)
+### Podcast Database Analytics Dashboard (January 26, 2026)
 - ✅ **Comprehensive Analytics View** - New Analytics mode with 7 database views
 - ✅ **Growth Tracking** - Daily, weekly, and monthly podcast additions
 - ✅ **Coverage Statistics** - Email coverage %, demographics %, geographic diversity
@@ -236,7 +235,7 @@ npx supabase functions deploy analyze-podcast-fit
 - ✅ **Visual Analytics** - Progress bars, stat cards, and ranking lists
 - ✅ **Auto-refresh** - Live data updates every 60 seconds
 
-#### Email Extraction & UX Improvements (January 25, 2026)
+### Email Extraction & UX Improvements (January 25, 2026)
 - ✅ **Automatic Email Extraction** - All podcast fetches now capture contact emails from Podscan API
 - ✅ **Database Column Rename** - Renamed `email` to `podscan_email` for clarity
 - ✅ **Email Filter** - Filter podcasts by email availability
@@ -245,7 +244,7 @@ npx supabase functions deploy analyze-podcast-fit
 - ✅ **Column Visibility** - Show/hide table columns based on preference
 - ✅ **Enhanced Caching** - Emails automatically saved to central cache
 
-#### AI-Powered Podcast Discovery System
+### AI-Powered Podcast Discovery System
 - ✅ Built complete Podcast Finder with AI query generation (Claude Sonnet)
 - ✅ Implemented compatibility scoring with Claude Haiku (1-10 scale with reasoning)
 - ✅ Created Podcast Database page with centralized cache (1,000+ podcasts)
@@ -253,7 +252,7 @@ npx supabase functions deploy analyze-podcast-fit
 - ✅ Integrated Google Sheets export for clients and prospects
 - ✅ Built prospect dashboard system with shareable public URLs
 
-#### Cache Optimization & Cost Reduction
+### Cache Optimization & Cost Reduction
 - ✅ Implemented proactive caching during export (saves API calls)
 - ✅ Created centralized `podcasts` table for deduplication across clients
 - ✅ Added epic logging to all edge functions for observability
@@ -261,7 +260,7 @@ npx supabase functions deploy analyze-podcast-fit
 - ✅ Built `podcast_cache_statistics` view for monitoring savings
 - ✅ Added detailed analytics views for comprehensive insights
 
-#### Prospect Dashboard Features
+### Prospect Dashboard Features
 - ✅ Create personalized podcast recommendations for prospects
 - ✅ Google Sheets integration (one sheet per prospect)
 - ✅ Public dashboard URLs with slug-based routing

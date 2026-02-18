@@ -1027,13 +1027,12 @@ export default function ClientDetail() {
     setDashboardCacheLoading(true)
     try {
       toast({
-        title: '🔍 Checking Central Podcast Database...',
-        description: 'Looking for podcasts already in our shared cache'
+        title: 'Fetching & caching podcast metadata...',
+        description: 'Checking central database and Podscan'
       })
 
-      // Step 1: Get podcast IDs from Google Sheet
       const { data: session } = await supabase.auth.getSession()
-      const sheetResponse = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1044,16 +1043,14 @@ export default function ClientDetail() {
           clientId: client.id,
           clientName: client.name,
           clientBio: client.bio || '',
-          checkStatusOnly: true // Just get IDs, don't fetch yet
+          skipAiAnalysis: true,
         })
       })
 
-      const sheetResult = await sheetResponse.json()
-      if (!sheetResponse.ok) throw new Error(sheetResult.error || 'Failed to read Google Sheet')
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
 
-      const podcastIds = sheetResult.podcastIds || []
-
-      if (podcastIds.length === 0) {
+      if (!result.podcasts || result.podcasts.length === 0) {
         toast({
           title: 'No podcasts found',
           description: 'Google Sheet is empty or has no valid podcast IDs',
@@ -1062,137 +1059,51 @@ export default function ClientDetail() {
         return
       }
 
-      // Step 2: Check what's cached anywhere
-      const cachedMetadata = await findCachedPodcastsMetadata(podcastIds)
-
-      // Step 3: Copy universal metadata from other sources to this client's cache
-      const toCopy = Array.from(cachedMetadata.values()).filter(
-        p => p.source !== 'client_dashboard' // Don't copy if already in client cache
+      // Sync all returned podcasts into client_dashboard_podcasts.
+      // ignoreDuplicates preserves existing AI analysis on rows already present.
+      const { error: upsertError } = await supabase.from('client_dashboard_podcasts').upsert(
+        result.podcasts.map((p: any) => ({
+          client_id: client.id,
+          podcast_id: p.podcast_id,
+          podcast_name: p.podcast_name,
+          podcast_description: p.podcast_description,
+          podcast_image_url: p.podcast_image_url,
+          podcast_url: p.podcast_url,
+          publisher_name: p.publisher_name,
+          itunes_rating: p.itunes_rating,
+          episode_count: p.episode_count,
+          audience_size: p.audience_size,
+          podcast_categories: p.podcast_categories,
+          last_posted_at: p.last_posted_at,
+          demographics: p.demographics,
+          demographics_fetched_at: p.demographics ? new Date().toISOString() : null,
+          ai_clean_description: null,
+          ai_fit_reasons: null,
+          ai_pitch_angles: null,
+          ai_analyzed_at: null
+        })),
+        { onConflict: 'client_id,podcast_id', ignoreDuplicates: true }
       )
 
-      if (toCopy.length > 0) {
-        await supabase.from('client_dashboard_podcasts').upsert(
-          toCopy.map(p => ({
-            client_id: client.id,
-            // Universal podcast metadata (NO AI analysis)
-            podcast_id: p.podcast_id,
-            podcast_name: p.podcast_name,
-            podcast_description: p.podcast_description,
-            podcast_image_url: p.podcast_image_url,
-            podcast_url: p.podcast_url,
-            publisher_name: p.publisher_name,
-            itunes_rating: p.itunes_rating,
-            episode_count: p.episode_count,
-            audience_size: p.audience_size,
-            podcast_categories: p.podcast_categories,
-            last_posted_at: p.last_posted_at,
-            // Demographics (universal listener data)
-            demographics: p.demographics,
-            demographics_fetched_at: p.has_demographics ? new Date().toISOString() : null,
-            // AI fields explicitly NULL - will be generated later
-            ai_clean_description: null,
-            ai_fit_reasons: null,
-            ai_pitch_angles: null,
-            ai_analyzed_at: null
-          })),
-          { onConflict: 'client_id,podcast_id' }
-        )
+      if (upsertError) throw new Error(`Failed to save podcasts: ${upsertError.message}`)
 
+      const fetched = result.fetched || 0
+      const fromCache = result.cached || 0
+      const stoppedEarly = result.stoppedEarly || false
+
+      if (stoppedEarly) {
         toast({
-          title: `✅ Copied ${toCopy.length} from cache`,
-          description: `Saved ${toCopy.length} Podscan API calls!`
+          title: `Partial fetch — ${fetched} new, ${result.remaining} remaining`,
+          description: 'Click again to continue fetching'
+        })
+      } else {
+        toast({
+          title: '✅ Metadata Cache Complete',
+          description: `${fromCache} from cache, ${fetched} newly fetched. Click "Run AI Analysis" to personalize.`
         })
       }
 
-      // Step 4: Fetch only missing podcasts from Podscan
-      const missingIds = podcastIds.filter(id => !cachedMetadata.has(id))
-
-      if (missingIds.length > 0) {
-        toast({
-          title: `Fetching ${missingIds.length} from Podscan...`,
-          description: 'This may take a moment'
-        })
-
-        // Now actually fetch the missing ones
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.session?.access_token || ''}`
-          },
-          body: JSON.stringify({
-            spreadsheetId,
-            clientId: client.id,
-            clientName: client.name,
-            clientBio: client.bio || '',
-            skipAiAnalysis: true,
-            podcastIds: missingIds // Only fetch these IDs
-          })
-        })
-
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
-
-        // Write the fetched/cached podcasts to client_dashboard_podcasts for this client.
-        // The edge function saves to the central 'podcasts' table but not client_dashboard_podcasts,
-        // so we need to bridge the gap here using the returned podcast data.
-        if (result.podcasts && result.podcasts.length > 0) {
-          const missingIdSet = new Set(missingIds)
-          const podcastsToSave = result.podcasts.filter((p: any) => missingIdSet.has(p.podcast_id))
-          if (podcastsToSave.length > 0) {
-            await supabase.from('client_dashboard_podcasts').upsert(
-              podcastsToSave.map((p: any) => ({
-                client_id: client.id,
-                podcast_id: p.podcast_id,
-                podcast_name: p.podcast_name,
-                podcast_description: p.podcast_description,
-                podcast_image_url: p.podcast_image_url,
-                podcast_url: p.podcast_url,
-                publisher_name: p.publisher_name,
-                itunes_rating: p.itunes_rating,
-                episode_count: p.episode_count,
-                audience_size: p.audience_size,
-                podcast_categories: p.podcast_categories,
-                last_posted_at: p.last_posted_at,
-                demographics: p.demographics,
-                demographics_fetched_at: p.demographics ? new Date().toISOString() : null,
-                ai_clean_description: null,
-                ai_fit_reasons: null,
-                ai_pitch_angles: null,
-                ai_analyzed_at: null
-              })),
-              { onConflict: 'client_id,podcast_id' }
-            )
-          }
-        }
-
-        // Show cache performance if available
-        if (result.cachePerformance) {
-          const { cacheHitRate, apiCallsSaved, costSavings } = result.cachePerformance
-          toast({
-            title: `✅ Fetched ${missingIds.length} new podcasts`,
-            description: `💾 Cache Hit Rate: ${cacheHitRate}% | 💰 Saved ${apiCallsSaved} API calls ($${costSavings})`
-          })
-        } else {
-          toast({
-            title: `✅ Fetched ${missingIds.length} new podcasts`,
-            description: `Used ${missingIds.length} Podscan credits`
-          })
-        }
-      }
-
-      // Final summary
-      const totalCopied = toCopy.length
-      const totalFetched = missingIds.length
-
-      toast({
-        title: '🎉 Metadata Cache Complete',
-        description: `✅ Cached: ${totalCopied} | 🆕 Fetched: ${totalFetched} | 💰 Saved ${totalCopied * 2} API calls! Click "Run AI Analysis" to personalize.`
-      })
-
-      // Refresh cache status automatically
       await handleCheckDashboardCache()
-
       queryClient.invalidateQueries({ queryKey: ['client', id] })
     } catch (error) {
       toast({
