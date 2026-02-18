@@ -1103,7 +1103,26 @@ export default function ClientDetail() {
         })
       }
 
-      await handleCheckDashboardCache()
+      // Refresh cache status directly without calling handleCheckDashboardCache,
+      // which would reset dashboardCacheLoading mid-function and cause state conflicts.
+      const podcastIds = result.podcasts.map((p: any) => p.podcast_id)
+      const cacheStatus = await getClientCacheStatus(client.id, podcastIds)
+      const { data: aiRows } = await supabase
+        .from('client_dashboard_podcasts')
+        .select('ai_analyzed_at')
+        .eq('client_id', client.id)
+        .not('ai_analyzed_at', 'is', null)
+      setDashboardCacheStatus({
+        total: cacheStatus.total,
+        cached: cacheStatus.cached_in_client,
+        aiAnalyzed: aiRows?.length || 0,
+        cached_in_client: cacheStatus.cached_in_client,
+        cached_in_other_clients: cacheStatus.cached_in_other_clients,
+        cached_in_prospects: cacheStatus.cached_in_prospects,
+        cached_in_bookings: cacheStatus.cached_in_bookings,
+        needs_fetch: cacheStatus.needs_fetch,
+      })
+
       queryClient.invalidateQueries({ queryKey: ['client', id] })
     } catch (error) {
       toast({
