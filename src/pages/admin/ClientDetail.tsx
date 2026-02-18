@@ -1133,6 +1133,39 @@ export default function ClientDetail() {
         const result = await response.json()
         if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
 
+        // Write the fetched/cached podcasts to client_dashboard_podcasts for this client.
+        // The edge function saves to the central 'podcasts' table but not client_dashboard_podcasts,
+        // so we need to bridge the gap here using the returned podcast data.
+        if (result.podcasts && result.podcasts.length > 0) {
+          const missingIdSet = new Set(missingIds)
+          const podcastsToSave = result.podcasts.filter((p: any) => missingIdSet.has(p.podcast_id))
+          if (podcastsToSave.length > 0) {
+            await supabase.from('client_dashboard_podcasts').upsert(
+              podcastsToSave.map((p: any) => ({
+                client_id: client.id,
+                podcast_id: p.podcast_id,
+                podcast_name: p.podcast_name,
+                podcast_description: p.podcast_description,
+                podcast_image_url: p.podcast_image_url,
+                podcast_url: p.podcast_url,
+                publisher_name: p.publisher_name,
+                itunes_rating: p.itunes_rating,
+                episode_count: p.episode_count,
+                audience_size: p.audience_size,
+                podcast_categories: p.podcast_categories,
+                last_posted_at: p.last_posted_at,
+                demographics: p.demographics,
+                demographics_fetched_at: p.demographics ? new Date().toISOString() : null,
+                ai_clean_description: null,
+                ai_fit_reasons: null,
+                ai_pitch_angles: null,
+                ai_analyzed_at: null
+              })),
+              { onConflict: 'client_id,podcast_id' }
+            )
+          }
+        }
+
         // Show cache performance if available
         if (result.cachePerformance) {
           const { cacheHitRate, apiCallsSaved, costSavings } = result.cachePerformance
