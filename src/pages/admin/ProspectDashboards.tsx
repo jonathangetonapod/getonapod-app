@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -132,6 +133,9 @@ export default function ProspectDashboards() {
   const [allTestimonials, setAllTestimonials] = useState<any[]>([])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [dashboardToDelete, setDashboardToDelete] = useState<ProspectDashboard | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
+  const [deletingBulk, setDeletingBulk] = useState(false)
   const [selectedDashboard, setSelectedDashboard] = useState<ProspectDashboard | null>(null)
   const [editImageUrl, setEditImageUrl] = useState('')
   const [savingImage, setSavingImage] = useState(false)
@@ -366,6 +370,40 @@ export default function ProspectDashboards() {
       setDeleteDialogOpen(false)
       setDashboardToDelete(null)
     }
+  }
+
+  const deleteSelectedDashboards = async () => {
+    if (selectedIds.size === 0) return
+    setDeletingBulk(true)
+    try {
+      const ids = Array.from(selectedIds)
+      const { error } = await supabase
+        .from('prospect_dashboards')
+        .delete()
+        .in('id', ids)
+      if (error) throw error
+      setDashboards(prev => prev.filter(d => !selectedIds.has(d.id)))
+      if (selectedDashboard && selectedIds.has(selectedDashboard.id)) {
+        setSelectedDashboard(null)
+      }
+      setSelectedIds(new Set())
+      toast.success(`Deleted ${ids.length} dashboard${ids.length !== 1 ? 's' : ''}`)
+    } catch (error) {
+      console.error('Error deleting dashboards:', error)
+      toast.error('Failed to delete dashboards')
+    } finally {
+      setDeletingBulk(false)
+      setBulkDeleteDialogOpen(false)
+    }
+  }
+
+  const toggleSelectDashboard = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const copyLink = (slug: string, includeTour: boolean = false) => {
@@ -1729,15 +1767,55 @@ export default function ProspectDashboards() {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search prospects..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search + Bulk Actions */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search prospects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          {!loading && filteredDashboards.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (selectedIds.size === filteredDashboards.length) {
+                  setSelectedIds(new Set())
+                } else {
+                  setSelectedIds(new Set(filteredDashboards.map(d => d.id)))
+                }
+              }}
+            >
+              {selectedIds.size === filteredDashboards.length ? 'Deselect All' : 'Select All'}
+            </Button>
+          )}
+        </div>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-3 py-2 bg-muted rounded-md">
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Selected
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Dashboard Cards */}
@@ -1786,19 +1864,25 @@ export default function ProspectDashboards() {
               className={cn(
                 "border-0 shadow-md hover:shadow-lg transition-all cursor-pointer group",
                 !dashboard.is_active && "opacity-60",
-                selectedDashboard?.id === dashboard.id && "ring-2 ring-primary"
+                selectedDashboard?.id === dashboard.id && "ring-2 ring-primary",
+                selectedIds.has(dashboard.id) && "ring-2 ring-destructive"
               )}
               onClick={() => setSelectedDashboard(dashboard)}
             >
               <CardContent className="p-5">
                 <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
-                      {dashboard.prospect_name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Created {formatDistanceToNow(new Date(dashboard.created_at), { addSuffix: true })}
-                    </p>
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    <div onClick={(e) => { e.stopPropagation(); toggleSelectDashboard(dashboard.id) }} className="mt-1 shrink-0">
+                      <Checkbox checked={selectedIds.has(dashboard.id)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
+                        {dashboard.prospect_name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Created {formatDistanceToNow(new Date(dashboard.created_at), { addSuffix: true })}
+                      </p>
+                    </div>
                   </div>
                   <Badge
                     variant={dashboard.is_active ? 'default' : 'secondary'}
@@ -3310,6 +3394,36 @@ export default function ProspectDashboards() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} Dashboard{selectedIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectedIds.size} selected dashboard{selectedIds.size !== 1 ? 's' : ''}.
+              The Google Sheets will remain but the shareable links will no longer work.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingBulk}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteSelectedDashboards}
+              disabled={deletingBulk}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingBulk ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                `Delete ${selectedIds.size}`
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
