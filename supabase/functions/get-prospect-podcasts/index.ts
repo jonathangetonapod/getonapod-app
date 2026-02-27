@@ -523,8 +523,11 @@ serve(async (req) => {
     }
 
     if (podcastIds.length === 0) {
+      const emptyPayload = checkStatusOnly
+        ? { success: true, podcastIds: [], status: { totalInSheet: 0, cached: 0, missing: 0, withAi: 0, withoutAi: 0, withDemographics: 0 } }
+        : { success: true, podcasts: [], total: 0 }
       return new Response(
-        JSON.stringify({ success: true, podcasts: [], total: 0 }),
+        JSON.stringify(emptyPayload),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

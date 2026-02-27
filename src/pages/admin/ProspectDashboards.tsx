@@ -1095,16 +1095,22 @@ export default function ProspectDashboards() {
       }
 
       const data = await response.json()
-      setCacheStatusData(data.status)
+      const status = data.status
+
+      if (!status) {
+        throw new Error('Unexpected response from server — no status returned')
+      }
+
+      setCacheStatusData(status)
 
       // Clear fetch status when checking fresh
       setFetchStatus(null)
       setAiStatus(null)
 
-      if (data.status.missing === 0 && data.status.withoutAi === 0) {
-        toast.success(`All ${data.status.totalInSheet} podcasts ready!`)
+      if (status.missing === 0 && status.withoutAi === 0) {
+        toast.success(`All ${status.totalInSheet} podcasts ready!`)
       } else {
-        toast.info(`Found ${data.status.totalInSheet} podcasts: ${data.status.cached} cached, ${data.status.missing} missing, ${data.status.withoutAi} need AI`)
+        toast.info(`Found ${status.totalInSheet} podcasts: ${status.cached} cached, ${status.missing} missing, ${status.withoutAi} need AI`)
       }
     } catch (error) {
       console.error('Error checking cache status:', error)
