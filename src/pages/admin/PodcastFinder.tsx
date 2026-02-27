@@ -80,6 +80,7 @@ export default function PodcastFinder() {
   // Existing prospects
   const [existingProspects, setExistingProspects] = useState<ExistingProspect[]>([])
   const [loadingProspects, setLoadingProspects] = useState(false)
+  const [savingProspect, setSavingProspect] = useState(false)
 
   // Determine mode based on selection
   const isNewProspectMode = selectedTarget === '__new_prospect__'
@@ -335,6 +336,47 @@ export default function PodcastFinder() {
       toast.error(error instanceof Error ? error.message : 'Failed to fetch chart podcasts')
     } finally {
       setLoadingCharts(false)
+    }
+  }
+
+  const handleSaveNewProspect = async () => {
+    if (!prospectName.trim()) {
+      toast.error('Prospect name is required')
+      return
+    }
+    if (!prospectBio.trim()) {
+      toast.error('Prospect bio is required')
+      return
+    }
+    setSavingProspect(true)
+    try {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+      let slug = ''
+      for (let i = 0; i < 8; i++) slug += chars.charAt(Math.floor(Math.random() * chars.length))
+
+      const { data, error } = await supabase
+        .from('prospect_dashboards')
+        .insert({
+          slug,
+          prospect_name: prospectName.trim(),
+          prospect_bio: prospectBio.trim(),
+          prospect_image_url: prospectImageUrl.trim() || null,
+          is_active: true,
+          view_count: 0,
+        })
+        .select('id, prospect_name, prospect_bio, prospect_image_url, spreadsheet_url, slug')
+        .single()
+
+      if (error) throw error
+
+      setExistingProspects(prev => [data, ...prev])
+      setSelectedTarget(`__prospect_${data.id}`)
+      toast.success(`Prospect "${data.prospect_name}" saved! You can now search and export podcasts to their dashboard.`)
+    } catch (error) {
+      console.error('Error saving prospect:', error)
+      toast.error('Failed to save prospect')
+    } finally {
+      setSavingProspect(false)
     }
   }
 
@@ -1670,6 +1712,24 @@ export default function PodcastFinder() {
                     </p>
                   </div>
                 </div>
+                <Button
+                  onClick={handleSaveNewProspect}
+                  disabled={savingProspect || !prospectName.trim() || !prospectBio.trim()}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {savingProspect ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Save Prospect
+                    </>
+                  )}
+                </Button>
                 {(!prospectName || !prospectBio) && (
                   <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
                     <span className="text-amber-500">⚠️</span>
