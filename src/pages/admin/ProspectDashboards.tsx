@@ -1042,10 +1042,7 @@ export default function ProspectDashboards() {
 
       const data = await response.json()
       if (data.tagline) {
-        // Extract just the custom part after "perfect for "
-        const match = data.tagline.match(/perfect for\s+(.+)$/i)
-        const customPart = match ? match[1] : data.tagline
-        setEditTagline(customPart)
+        setEditTagline(data.tagline)
 
         // Update local state with full tagline
         setDashboards(prev =>

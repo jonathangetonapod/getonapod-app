@@ -52,33 +52,27 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
-    const prompt = `Write a punchy tagline (MAX 6 words, under 45 characters) for ${prospectName}.
+    const prompt = `Write a one-sentence tagline for a curated podcast list built for ${prospectName}.
 
 Bio: ${prospectBio}
 
-STRICT RULES:
-- MAX 6 words, MAX 45 characters. Shorter is better.
-- Describe THEIR specific expertise or mission
-- NEVER start with: Amplifying, Unlocking, Transforming, Empowering, Elevating, Connecting, Accelerating, Advancing
-- NEVER mention: podcast, voice, strategic, visibility, platform, storytelling, leadership (unless it's their actual field)
-- No periods at the end
-- Be concrete and specific to their actual work
+FORMAT: Start with "We put together podcasts about" followed by 2-4 specific topics from their bio.
 
-STYLE: Think magazine headline, not marketing copy.
+RULES:
+- Always start with exactly: "We put together podcasts about"
+- List the 2-4 most specific, concrete topics from their background
+- Keep it under 15 words total
+- No period at the end
+- Be specific, not generic — use their actual domain/niche
 
-Examples (note: short, punchy, specific):
-- "SaaS Growth Through AI"
-- "Cold Calling Mastery"
-- "Grief to Courage"
-- "Clean Energy Policy Wonk"
-- "Fractional Real Estate Investing"
-- "Speed Thinking for Innovation"
-- "B2B Revenue at Scale"
-- "Neurotech Pain Solutions"
-- "Women in Beauty & Business"
-- "Cross-Border Wealth Strategy"
+EXAMPLES:
+- "We put together podcasts about SaaS growth, product-led sales, and B2B marketing"
+- "We put together podcasts about clean energy, climate policy, and sustainable investing"
+- "We put together podcasts about e-commerce, DTC brands, and consumer retail"
+- "We put together podcasts about real estate investing, wealth building, and financial freedom"
+- "We put together podcasts about leadership, organizational culture, and executive coaching"
 
-Return ONLY the tagline, nothing else. Keep it SHORT.`
+Return ONLY the tagline, nothing else.`
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
