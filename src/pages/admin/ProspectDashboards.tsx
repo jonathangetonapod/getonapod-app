@@ -1019,11 +1019,13 @@ export default function ProspectDashboards() {
 
     setGeneratingTagline(true)
     try {
+      const { data: { session: taglineSession } } = await supabase.auth.getSession()
       const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-tagline`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          ...(taglineSession && { 'Authorization': `Bearer ${taglineSession.access_token}` }),
         },
         body: JSON.stringify({
           prospectName: selectedDashboard.prospect_name,

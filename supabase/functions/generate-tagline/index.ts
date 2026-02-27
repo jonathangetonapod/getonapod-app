@@ -13,25 +13,11 @@ serve(async (req) => {
   }
 
   try {
-    // Auth check - verify user is authenticated
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    // No user auth required — called from public prospect pages and admin pages alike.
+    // Gateway-level apikey auth (Supabase anon key) is sufficient here.
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const authClient = createClient(supabaseUrl, supabaseServiceKey)
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token)
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
 
     const body = await req.json()
     const { prospectName, prospectBio, podcastCount, dashboardId } = body
