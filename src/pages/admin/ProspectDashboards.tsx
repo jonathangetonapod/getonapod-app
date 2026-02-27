@@ -3431,14 +3431,14 @@ export default function ProspectDashboards() {
 
       {/* Create Prospect Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Create New Prospect</DialogTitle>
             <DialogDescription>
               Add a new prospect to track podcast opportunities for. You can link a Google Sheet later.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-1">
             <div className="space-y-2">
               <Label htmlFor="prospect-name">
                 Prospect Name <span className="text-destructive">*</span>
