@@ -1,58 +1,25 @@
 import { Button } from '@/components/ui/button';
 import { Check, Sparkles, ArrowRight, Info } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
 
 const plans = [
   {
     name: "Starter",
-    price: "$1,000",
+    price: "$749",
     period: "/month",
     features: [
-      "2 podcast bookings/month",
+      "2 podcast bookings/month, minimum",
       "Podcast Command Center access",
       "Reporting & analytics dashboard",
     ],
-    popular: false,
-  },
-  {
-    name: "Pro",
-    price: "$2,000",
-    period: "/month",
-    features: [
-      "Minimum 3 bookings/month",
-      "Podcast Command Center access",
-      "2 blog posts per episode",
-      "Guest prep kit",
-      "9 video clips (3 per podcast)",
-      "Reporting & analytics dashboard",
-    ],
-    popular: true,
   },
 ];
 
 const PricingSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
-  const [stripeReady, setStripeReady] = useState(false);
-
-  useEffect(() => {
-    // Wait for Stripe script to be ready
-    const checkStripe = () => {
-      if (typeof window !== 'undefined' && (window as any).Stripe) {
-        setStripeReady(true);
-      }
-    };
-
-    // Check immediately
-    checkStripe();
-
-    // Also check after a short delay to ensure script is loaded
-    const timer = setTimeout(() => setStripeReady(true), 1000);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <section id="pricing" className="py-8 md:py-16 bg-surface-subtle px-4">
@@ -67,26 +34,13 @@ const PricingSection = () => {
             Choose Your Plan
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-w-3xl mx-auto">
+          <div className="max-w-sm mx-auto">
             {plans.map((plan, index) => (
               <div
                 key={index}
-                className={`relative flex flex-col p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl transition-all duration-300 ${
-                  plan.popular
-                    ? 'bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl md:scale-105 order-first md:order-none'
-                    : 'bg-background border border-border hover:border-foreground/20'
-                }`}
-                style={{ transitionDelay: `${index * 100}ms` }}
+                className="relative flex flex-col p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl bg-background border border-border hover:border-foreground/20 transition-all duration-300"
               >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="px-3 py-1 text-xs font-semibold bg-primary text-white rounded-full whitespace-nowrap">
-                      Most Popular
-                    </span>
-                  </div>
-                )}
-
-                <div className="mb-3 sm:mb-4 mt-1 sm:mt-0">
+                <div className="mb-3 sm:mb-4">
                   <h3 className="text-lg sm:text-xl font-semibold text-foreground">
                     {plan.name}
                   </h3>
@@ -104,17 +58,11 @@ const PricingSection = () => {
                   {plan.features.map((feature, i) => (
                     <li
                       key={i}
-                      className={`flex items-start gap-2 sm:gap-3 cursor-pointer group transition-all duration-200 rounded-lg -mx-2 px-2 py-1.5 sm:py-1 ${
-                        plan.popular
-                          ? 'hover:bg-primary/10'
-                          : 'hover:bg-muted'
-                      }`}
+                      className="flex items-start gap-2 sm:gap-3 cursor-pointer group transition-all duration-200 rounded-lg -mx-2 px-2 py-1.5 sm:py-1 hover:bg-muted"
                       onClick={() => setSelectedFeature(feature)}
                     >
-                      <Check className={`w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5 ${
-                        plan.popular ? 'text-primary' : 'text-green-500'
-                      }`} />
-                      <span className={`flex-1 text-sm sm:text-base text-muted-foreground ${plan.popular ? 'font-medium' : ''}`}>
+                      <Check className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5 text-green-500" />
+                      <span className="flex-1 text-sm sm:text-base text-muted-foreground">
                         {feature}
                       </span>
                       <Info className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
@@ -122,25 +70,13 @@ const PricingSection = () => {
                   ))}
                 </ul>
 
-                <div className="space-y-3">
-                  <Button
-                    size="lg"
-                    className="w-full min-h-[48px] text-sm sm:text-base"
-                    asChild
-                  >
-                    <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
-                  </Button>
-
-                  {stripeReady && (
-                    <div className="flex justify-center [&>stripe-buy-button]:w-full [&>stripe-buy-button]:max-w-full">
-                      {/* @ts-ignore */}
-                      <stripe-buy-button
-                        buy-button-id={plan.name === "Starter" ? "buy_btn_1So6wjDUPtBnbWkaAkoqwcLf" : "buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"}
-                        publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                      />
-                    </div>
-                  )}
-                </div>
+                <Button
+                  size="lg"
+                  className="w-full min-h-[48px] text-sm sm:text-base"
+                  asChild
+                >
+                  <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book a Call</a>
+                </Button>
               </div>
             ))}
           </div>
