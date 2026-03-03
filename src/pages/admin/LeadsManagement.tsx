@@ -85,6 +85,30 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+// Format email body — separates quoted content from the main message
+function formatEmailBody(text: string): { main: string; quoted: string | null } {
+  // Common patterns for quoted email indicators
+  const quotePatterns = [
+    /\nOn .+wrote:\s*\n/,        // "On Mon, Mar 2... wrote:"
+    /\n-{2,}\s*Original Message/i, // "-- Original Message"
+    /\n>{2,}/,                     // Multiple ">" quote markers
+    /\nFrom:\s*.+\nSent:\s*/,     // Outlook-style "From: ... Sent:"
+    /\nSent via .+\n/i,           // "Sent via Superhuman" etc
+  ]
+
+  for (const pattern of quotePatterns) {
+    const match = text.search(pattern)
+    if (match > 0) {
+      return {
+        main: text.substring(0, match).trim(),
+        quoted: text.substring(match).trim(),
+      }
+    }
+  }
+
+  return { main: text, quoted: null }
+}
+
 // Classification badge
 function ClassificationBadge({ type, confidence }: { type: string | null; confidence?: string | null }) {
   if (!type) return <Badge variant="outline" className="text-xs">Unclassified</Badge>
@@ -978,9 +1002,16 @@ export default function LeadsManagement() {
                 {/* Email Thread */}
                 {selectedReply.bison_reply_id && (
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <MessageSquare className="h-4 w-4" />
-                      <h3 className="text-sm font-semibold">Email Thread</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        <h3 className="text-sm font-semibold">Email Thread</h3>
+                        {threadMessages.length > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            ({threadMessages.length} message{threadMessages.length !== 1 ? 's' : ''})
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {threadLoading ? (
@@ -991,35 +1022,87 @@ export default function LeadsManagement() {
                     ) : threadMessages.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No thread data available</p>
                     ) : (
-                      <div className="space-y-3">
-                        {threadMessages.map((msg, i) => (
-                          <div
-                            key={msg.id || i}
-                            className="border rounded-lg p-3 text-sm space-y-1"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium text-xs">
-                                {msg.from_name || msg.from_email_address}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(msg.date_received).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: 'numeric',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                            </div>
-                            {msg.subject && (
-                              <p className="text-xs text-muted-foreground">
-                                Subject: {msg.subject}
-                              </p>
-                            )}
-                            <p className="text-sm whitespace-pre-wrap leading-relaxed mt-1">
-                              {msg.text_body || (msg.html_body ? stripHtml(msg.html_body) : 'No content')}
-                            </p>
-                          </div>
-                        ))}
+                      <div className="relative">
+                        {/* Vertical timeline line */}
+                        <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
+
+                        <div className="space-y-4">
+                          {threadMessages.map((msg, i) => {
+                            const isFromLead = msg.from_email_address?.toLowerCase() === selectedReply.email.toLowerCase()
+                            const rawBody = msg.text_body || (msg.html_body ? stripHtml(msg.html_body) : '')
+                            const { main, quoted } = formatEmailBody(rawBody)
+
+                            return (
+                              <div key={msg.id || i} className="relative pl-12">
+                                {/* Timeline dot */}
+                                <div className={`absolute left-3.5 top-3 h-3 w-3 rounded-full border-2 border-background ${
+                                  isFromLead ? 'bg-blue-500' : 'bg-emerald-500'
+                                }`} />
+
+                                <div className={`rounded-lg border p-4 ${
+                                  isFromLead
+                                    ? 'bg-blue-50/50 border-blue-100'
+                                    : 'bg-emerald-50/30 border-emerald-100'
+                                }`}>
+                                  {/* Header */}
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
+                                        isFromLead ? 'bg-blue-500' : 'bg-emerald-500'
+                                      }`}>
+                                        {(msg.from_name || msg.from_email_address || '?').charAt(0).toUpperCase()}
+                                      </div>
+                                      <div>
+                                        <span className="text-sm font-medium">
+                                          {msg.from_name || msg.from_email_address}
+                                        </span>
+                                        {msg.from_name && (
+                                          <span className="text-xs text-muted-foreground ml-1.5">
+                                            {msg.from_email_address}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(msg.date_received).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                      })}
+                                    </span>
+                                  </div>
+
+                                  {/* Subject (only show if different from previous or first message) */}
+                                  {msg.subject && i === 0 && (
+                                    <p className="text-xs text-muted-foreground mb-2">
+                                      {msg.subject}
+                                    </p>
+                                  )}
+
+                                  {/* Main body */}
+                                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                                    {main || 'No content'}
+                                  </p>
+
+                                  {/* Quoted / forwarded content - collapsed */}
+                                  {quoted && (
+                                    <details className="mt-3">
+                                      <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                                        Show quoted text
+                                      </summary>
+                                      <div className="mt-2 pl-3 border-l-2 border-muted-foreground/20">
+                                        <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                                          {quoted}
+                                        </p>
+                                      </div>
+                                    </details>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
