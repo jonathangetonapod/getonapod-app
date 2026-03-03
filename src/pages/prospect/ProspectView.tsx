@@ -1668,24 +1668,23 @@ export default function ProspectView() {
             </p>
           </div>
 
-          {/* Pricing Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 lg:gap-8 max-w-3xl mx-auto mb-8 sm:mb-10">
-            {/* Starter */}
+          {/* Pricing Card */}
+          <div className="max-w-sm mx-auto mb-8 sm:mb-10">
             <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg">
               <div className="mb-3 sm:mb-4">
                 <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
                 <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$1,000</span>
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$749</span>
                   <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>
               <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
                 <li
                   className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('2 podcasts/month')}
+                  onClick={() => setSelectedPricingFeature('2 podcasts/month, minimum')}
                 >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2 podcasts/month</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2 podcasts/month, minimum</span>
                   <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
                 <li
@@ -1705,108 +1704,13 @@ export default function ProspectView() {
                   <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
               </ul>
-              <div className="space-y-3">
-                <Button
-                  size="sm"
-                  className="w-full sm:h-10"
-                  onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
-                >
-                  Book a Call
-                </Button>
-                {stripeReady && (
-                  <div className="flex justify-center">
-                    {/* @ts-ignore */}
-                    <stripe-buy-button
-                      buy-button-id="buy_btn_1So6wjDUPtBnbWkaAkoqwcLf"
-                      publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Pro - Most Popular */}
-            <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-gradient-to-b from-primary/5 to-purple-500/5 border-2 border-primary shadow-xl md:scale-105 order-first md:order-none">
-              <div className="absolute -top-2.5 sm:-top-3 left-1/2 -translate-x-1/2">
-                <span className="px-2.5 sm:px-3 py-1 text-[10px] sm:text-xs font-semibold bg-primary text-white rounded-full whitespace-nowrap">
-                  Most Popular
-                </span>
-              </div>
-              <div className="mb-3 sm:mb-4 mt-1 sm:mt-0">
-                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Pro</h3>
-                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$2,000</span>
-                  <span className="text-sm text-muted-foreground">/month</span>
-                </div>
-              </div>
-              <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
-                  onClick={() => setSelectedPricingFeature('3+ podcasts/month')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium flex-1">3+ podcasts/month</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Podcast Command Center')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Podcast Command Center</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
-                  onClick={() => setSelectedPricingFeature('2 blog posts/episode')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2 blog posts/episode</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Guest prep kit')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Guest prep kit</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
-                  onClick={() => setSelectedPricingFeature('9 video clips/month')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">9 video clips/month</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-primary/10 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Reporting & analytics')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Reporting & analytics</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-              </ul>
-              <div className="space-y-3">
-                <Button
-                  size="sm"
-                  className="w-full sm:h-10"
-                  onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
-                >
-                  Book a Call
-                </Button>
-                {stripeReady && (
-                  <div className="flex justify-center">
-                    {/* @ts-ignore */}
-                    <stripe-buy-button
-                      buy-button-id="buy_btn_1So79ZDUPtBnbWkaaZSbIvKU"
-                      publishable-key="pk_live_51O4PfBDUPtBnbWkaMgFdAHoSG9rnT54pePADcz6zzWxeDlcrkZzQa03Cfk9g5bPaJfbZJpSgsf0nfdLsduYTi5U900RbgGg9Lm"
-                    />
-                  </div>
-                )}
-              </div>
+              <Button
+                size="sm"
+                className="w-full sm:h-10"
+                onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
+              >
+                Book a Call
+              </Button>
             </div>
           </div>
 
