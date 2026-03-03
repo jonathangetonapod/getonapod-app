@@ -25,6 +25,14 @@ ADD COLUMN IF NOT EXISTS awaiting_reply BOOLEAN DEFAULT true;
 ALTER TABLE campaign_replies
 ADD COLUMN IF NOT EXISTS last_reply_from TEXT;
 
+-- When we last checked the thread status
+ALTER TABLE campaign_replies
+ADD COLUMN IF NOT EXISTS thread_checked_at TIMESTAMPTZ;
+
+-- Total messages in the thread
+ALTER TABLE campaign_replies
+ADD COLUMN IF NOT EXISTS thread_message_count INTEGER;
+
 -- Index for unclassified replies (for bulk reclassify)
 CREATE INDEX IF NOT EXISTS idx_campaign_replies_ai_classified
 ON campaign_replies(ai_classified_at)

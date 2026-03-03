@@ -60,9 +60,13 @@ async function fetchThread(
 function checkLastReply(
   messages: any[],
   leadEmail: string
-): { awaiting_reply: boolean; last_reply_from: string | null } {
+): {
+  awaiting_reply: boolean
+  last_reply_from: string | null
+  thread_message_count: number
+} {
   if (messages.length === 0) {
-    return { awaiting_reply: true, last_reply_from: null }
+    return { awaiting_reply: true, last_reply_from: null, thread_message_count: 0 }
   }
 
   const lastMsg = messages[messages.length - 1]
@@ -75,7 +79,8 @@ function checkLastReply(
 
   return {
     awaiting_reply: awaiting,
-    last_reply_from: lastMsg.from_email_address || null,
+    last_reply_from: lastMsg.from_name || lastMsg.from_email_address || null,
+    thread_message_count: messages.length,
   }
 }
 
@@ -234,6 +239,8 @@ serve(async (req) => {
           .update({
             awaiting_reply: threadStatus.awaiting_reply,
             last_reply_from: threadStatus.last_reply_from,
+            thread_checked_at: new Date().toISOString(),
+            thread_message_count: threadStatus.thread_message_count,
           })
           .eq('id', existing.id)
 
@@ -265,6 +272,8 @@ serve(async (req) => {
             ai_classified_at: new Date().toISOString(),
             awaiting_reply: threadStatus.awaiting_reply,
             last_reply_from: threadStatus.last_reply_from,
+            thread_checked_at: new Date().toISOString(),
+            thread_message_count: threadStatus.thread_message_count,
             notes: `[AI] ${result.reason}`,
           })
           .eq('id', existing.id)
@@ -325,6 +334,8 @@ serve(async (req) => {
           ai_classified_at: new Date().toISOString(),
           awaiting_reply: threadStatus.awaiting_reply,
           last_reply_from: threadStatus.last_reply_from,
+          thread_checked_at: new Date().toISOString(),
+          thread_message_count: threadStatus.thread_message_count,
           notes: `[AI] ${result.reason}`,
         })
         .eq('id', inserted.id)

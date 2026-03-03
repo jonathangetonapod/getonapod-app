@@ -63,6 +63,8 @@ interface CampaignReply {
   ai_confidence: 'high' | 'medium' | 'low' | null
   awaiting_reply: boolean | null
   last_reply_from: string | null
+  thread_checked_at: string | null
+  thread_message_count: number | null
   created_at: string
   updated_at: string
 }
@@ -758,7 +760,7 @@ export default function LeadsManagement() {
                 </div>
 
                 {/* Campaign & Date */}
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                   {selectedReply.campaign_name && (
                     <span className="flex items-center gap-1">
                       <Mail className="h-3.5 w-3.5" />
@@ -774,7 +776,35 @@ export default function LeadsManagement() {
                       minute: '2-digit',
                     })}
                   </span>
+                  {selectedReply.thread_message_count && (
+                    <span>{selectedReply.thread_message_count} messages in thread</span>
+                  )}
                 </div>
+
+                {/* Thread Status */}
+                {selectedReply.last_reply_from && (
+                  <div className={`rounded-lg p-3 text-sm ${
+                    selectedReply.awaiting_reply
+                      ? 'bg-orange-50 border border-orange-200'
+                      : 'bg-gray-50 border border-gray-200'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-medium">
+                          {selectedReply.awaiting_reply ? 'We owe a reply' : 'Waiting on them'}
+                        </span>
+                        <span className="text-muted-foreground ml-2">
+                          — Last message from: <strong>{selectedReply.last_reply_from}</strong>
+                        </span>
+                      </div>
+                      {selectedReply.thread_checked_at && (
+                        <span className="text-xs text-muted-foreground">
+                          Checked {timeAgo(selectedReply.thread_checked_at)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Actions Bar */}
                 <div className="flex items-center gap-2 flex-wrap border-y py-3">
