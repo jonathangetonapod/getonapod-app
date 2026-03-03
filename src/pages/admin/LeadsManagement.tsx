@@ -99,12 +99,16 @@ function ClassificationBadge({ type, confidence }: { type: string | null; confid
 
   const c = config[type] || config.other
   const Icon = c.icon
+  const isLow = confidence === 'low'
 
   return (
-    <Badge variant="outline" className={`text-xs ${c.className}`}>
+    <Badge
+      variant="outline"
+      className={`text-xs ${c.className} ${isLow ? 'border-dashed opacity-70' : ''}`}
+      title={confidence ? `AI confidence: ${confidence}` : undefined}
+    >
       <Icon className="h-3 w-3 mr-1" />
       {c.label}
-      {confidence === 'low' && <span className="ml-1 opacity-60">?</span>}
     </Badge>
   )
 }
