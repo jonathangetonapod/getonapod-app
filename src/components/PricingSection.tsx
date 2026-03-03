@@ -82,7 +82,7 @@ const PricingSection = () => {
           </div>
 
           <p className="text-center text-sm sm:text-base text-muted-foreground mt-6 sm:mt-8">
-            All plans require a 3-month minimum commitment.
+            Month-to-month. Cancel anytime.
           </p>
           <div className="text-center mt-8">
             <Button

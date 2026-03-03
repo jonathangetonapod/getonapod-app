@@ -52,8 +52,8 @@ export const faqCategories = [
         answer: "$749/month for 2 podcast bookings minimum, full Podcast Command Center access, and reporting & analytics.",
       },
       {
-        question: "Why the 3-month minimum?",
-        answer: "Authority isn't built in 30 days. Podcast episodes take time to book, record, and air. The 3-month minimum ensures you see real results and build momentum.",
+        question: "Is there a long-term commitment?",
+        answer: "No. We're month-to-month — cancel anytime. That said, authority builds over time, so clients who stick with it see compounding results.",
       },
     ],
   },
