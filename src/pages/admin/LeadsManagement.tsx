@@ -39,6 +39,7 @@ import {
   ChevronDown,
   Filter,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -484,6 +485,49 @@ export default function LeadsManagement() {
       if (selectedReplyId === reply.id) setSelectedReplyId(null)
     },
     [updateReply, selectedReplyId]
+  )
+
+  // Delete reply (from Bison + database)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const deleteReply = useCallback(
+    async (reply: CampaignReply) => {
+      setDeletingId(reply.id)
+      try {
+        const session = await supabase.auth.getSession()
+        const token = session.data.session?.access_token
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-reply`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ reply_id: reply.id }),
+          }
+        )
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null)
+          throw new Error(errData?.error || 'Delete failed')
+        }
+        const data = await res.json()
+        toast.success(
+          data.data?.bison_deleted
+            ? 'Deleted from Bison and database'
+            : 'Deleted from database'
+        )
+        if (selectedReplyId === reply.id) setSelectedReplyId(null)
+        setConfirmDeleteId(null)
+        refetchReplies()
+      } catch (err: any) {
+        toast.error(err.message || 'Delete failed')
+      } finally {
+        setDeletingId(null)
+      }
+    },
+    [refetchReplies, selectedReplyId]
   )
 
   return (
@@ -966,6 +1010,43 @@ export default function LeadsManagement() {
                     )}
                     {selectedReply.archived ? 'Restore' : 'Archive'}
                   </Button>
+
+                  {/* Delete */}
+                  {confirmDeleteId === selectedReply.id ? (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={deletingId === selectedReply.id}
+                        onClick={() => deleteReply(selectedReply)}
+                      >
+                        {deletingId === selectedReply.id ? (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3 w-3 mr-1" />
+                        )}
+                        Confirm
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setConfirmDeleteId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => setConfirmDeleteId(selectedReply.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
 
                 {/* Reply Composer */}
