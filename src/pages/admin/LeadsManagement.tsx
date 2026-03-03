@@ -1022,87 +1022,82 @@ export default function LeadsManagement() {
                     ) : threadMessages.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No thread data available</p>
                     ) : (
-                      <div className="relative">
-                        {/* Vertical timeline line */}
-                        <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
+                      <div className="space-y-3">
+                        {threadMessages.map((msg, i) => {
+                          const isFromLead = msg.from_email_address?.toLowerCase() === selectedReply.email.toLowerCase()
+                          const rawBody = msg.text_body || (msg.html_body ? stripHtml(msg.html_body) : '')
+                          const { main, quoted } = formatEmailBody(rawBody)
 
-                        <div className="space-y-4">
-                          {threadMessages.map((msg, i) => {
-                            const isFromLead = msg.from_email_address?.toLowerCase() === selectedReply.email.toLowerCase()
-                            const rawBody = msg.text_body || (msg.html_body ? stripHtml(msg.html_body) : '')
-                            const { main, quoted } = formatEmailBody(rawBody)
-
-                            return (
-                              <div key={msg.id || i} className="relative pl-12">
-                                {/* Timeline dot */}
-                                <div className={`absolute left-3.5 top-3 h-3 w-3 rounded-full border-2 border-background ${
-                                  isFromLead ? 'bg-blue-500' : 'bg-emerald-500'
-                                }`} />
-
-                                <div className={`rounded-lg border p-4 ${
-                                  isFromLead
-                                    ? 'bg-blue-50/50 border-blue-100'
-                                    : 'bg-emerald-50/30 border-emerald-100'
-                                }`}>
-                                  {/* Header */}
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
-                                        isFromLead ? 'bg-blue-500' : 'bg-emerald-500'
+                          return (
+                            <div key={msg.id || i} className={`flex ${isFromLead ? 'justify-start' : 'justify-end'}`}>
+                              <div className={`max-w-[85%] rounded-lg border p-4 ${
+                                isFromLead
+                                  ? 'bg-white border-border'
+                                  : 'bg-emerald-50 border-emerald-200'
+                              }`}>
+                                {/* Header */}
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${
+                                    isFromLead ? 'bg-blue-500' : 'bg-emerald-500'
+                                  }`}>
+                                    {(msg.from_name || msg.from_email_address || '?').charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-sm font-medium truncate">
+                                        {msg.from_name || msg.from_email_address}
+                                      </span>
+                                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 flex-shrink-0 ${
+                                        isFromLead
+                                          ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                          : 'bg-emerald-100 text-emerald-700 border-emerald-200'
                                       }`}>
-                                        {(msg.from_name || msg.from_email_address || '?').charAt(0).toUpperCase()}
-                                      </div>
-                                      <div>
-                                        <span className="text-sm font-medium">
-                                          {msg.from_name || msg.from_email_address}
-                                        </span>
-                                        {msg.from_name && (
-                                          <span className="text-xs text-muted-foreground ml-1.5">
-                                            {msg.from_email_address}
-                                          </span>
-                                        )}
-                                      </div>
+                                        {isFromLead ? 'Lead' : 'Our Team'}
+                                      </Badge>
                                     </div>
-                                    <span className="text-xs text-muted-foreground">
-                                      {new Date(msg.date_received).toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: 'numeric',
-                                        minute: '2-digit',
-                                      })}
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {msg.from_email_address}
                                     </span>
                                   </div>
-
-                                  {/* Subject (only show if different from previous or first message) */}
-                                  {msg.subject && i === 0 && (
-                                    <p className="text-xs text-muted-foreground mb-2">
-                                      {msg.subject}
-                                    </p>
-                                  )}
-
-                                  {/* Main body */}
-                                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                                    {main || 'No content'}
-                                  </p>
-
-                                  {/* Quoted / forwarded content - collapsed */}
-                                  {quoted && (
-                                    <details className="mt-3">
-                                      <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
-                                        Show quoted text
-                                      </summary>
-                                      <div className="mt-2 pl-3 border-l-2 border-muted-foreground/20">
-                                        <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                                          {quoted}
-                                        </p>
-                                      </div>
-                                    </details>
-                                  )}
+                                  <span className="text-[11px] text-muted-foreground flex-shrink-0 whitespace-nowrap">
+                                    {new Date(msg.date_received).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: '2-digit',
+                                    })}
+                                  </span>
                                 </div>
+
+                                {/* Subject - first message only */}
+                                {msg.subject && i === 0 && (
+                                  <p className="text-xs text-muted-foreground mb-2 font-medium">
+                                    {msg.subject}
+                                  </p>
+                                )}
+
+                                {/* Main body */}
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                                  {main || 'No content'}
+                                </p>
+
+                                {/* Quoted content - collapsed */}
+                                {quoted && (
+                                  <details className="mt-3">
+                                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+                                      Show quoted text
+                                    </summary>
+                                    <div className="mt-2 pl-3 border-l-2 border-muted-foreground/20">
+                                      <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                                        {quoted}
+                                      </p>
+                                    </div>
+                                  </details>
+                                )}
                               </div>
-                            )
-                          })}
-                        </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
