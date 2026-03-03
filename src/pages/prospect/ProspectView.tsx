@@ -1715,7 +1715,7 @@ export default function ProspectView() {
           </div>
 
           <p className="text-center text-xs sm:text-sm text-muted-foreground mb-4">
-            All plans require a 3-month minimum commitment.
+            Month-to-month. Cancel anytime.
           </p>
           <div className="text-center mb-8 sm:mb-12">
             <Button
@@ -1750,7 +1750,7 @@ export default function ProspectView() {
           {/* Bottom CTA */}
           <div className="text-center px-2 mt-8 sm:mt-12">
             <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
-              Not sure which plan is right for you?
+              Month-to-month. Cancel anytime.
             </p>
             <Button
               size="default"
@@ -1759,11 +1759,8 @@ export default function ProspectView() {
               onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
             >
               <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
-              Schedule a Free Strategy Call
+              Book a Call
             </Button>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-2 sm:mt-3">
-              15-minute call • No commitment • Custom plans available
-            </p>
           </div>
         </div>
       </section>
