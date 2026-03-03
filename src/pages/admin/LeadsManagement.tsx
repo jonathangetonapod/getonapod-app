@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
   DialogContent,
@@ -318,8 +319,14 @@ export default function LeadsManagement() {
   )
 
   // Fetch & Classify mutation — pulls interested replies from Bison and classifies each
+  const [fetchProgress, setFetchProgress] = useState<{ active: boolean; message: string }>({
+    active: false,
+    message: '',
+  })
+
   const fetchAndClassifyMutation = useMutation({
     mutationFn: async () => {
+      setFetchProgress({ active: true, message: 'Fetching interested replies from Bison...' })
       const session = await supabase.auth.getSession()
       const token = session.data.session?.access_token
       const res = await fetch(
@@ -333,17 +340,25 @@ export default function LeadsManagement() {
           body: JSON.stringify({}),
         }
       )
-      if (!res.ok) throw new Error('Fetch & classify failed')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(errData?.error || `Fetch & classify failed (${res.status})`)
+      }
+      setFetchProgress({ active: true, message: 'Classifying replies with AI...' })
       return res.json()
     },
     onSuccess: (data) => {
+      setFetchProgress({ active: false, message: '' })
       const d = data.data
       toast.success(
         `Found ${d?.total_interested || 0} interested replies — ${d?.new_replies || 0} new, ${d?.classified || 0} classified`
       )
       refetchReplies()
     },
-    onError: () => toast.error('Fetch & classify failed'),
+    onError: (err: Error) => {
+      setFetchProgress({ active: false, message: '' })
+      toast.error(err.message || 'Fetch & classify failed')
+    },
   })
 
   // Send reply mutation
@@ -511,6 +526,22 @@ export default function LeadsManagement() {
             </Button>
           </div>
         </div>
+
+        {/* Fetch & Classify Progress Bar */}
+        {(fetchAndClassifyMutation.isPending || fetchProgress.active) && (
+          <div className="rounded-lg border bg-card p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                <span className="text-sm font-medium">{fetchProgress.message || 'Processing...'}</span>
+              </div>
+              <span className="text-xs text-muted-foreground">This may take a moment</span>
+            </div>
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '100%', animationDuration: '1.5s' }} />
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
