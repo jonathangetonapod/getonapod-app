@@ -1,13 +1,994 @@
+import { useState, useMemo, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Search,
+  Mail,
+  MailOpen,
+  TrendingUp,
+  Briefcase,
+  Headphones,
+  HelpCircle,
+  Archive,
+  ArchiveRestore,
+  RefreshCw,
+  Send,
+  MessageSquare,
+  Bot,
+  Loader2,
+  ChevronDown,
+  Filter,
+  Sparkles,
+  X,
+} from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 
-const LeadsManagement = () => {
+// Types
+interface CampaignReply {
+  id: string
+  email: string
+  name: string | null
+  company: string | null
+  reply_content: string | null
+  campaign_name: string | null
+  received_at: string
+  lead_type: 'sales' | 'fulfillment' | 'podcasts' | 'client_podcast' | 'other' | null
+  status: 'new' | 'contacted' | 'qualified' | 'not_interested' | 'converted'
+  notes: string | null
+  read: boolean
+  bison_reply_id: number | null
+  archived: boolean
+  archived_at: string | null
+  ai_classified_at: string | null
+  ai_confidence: 'high' | 'medium' | 'low' | null
+  awaiting_reply: boolean | null
+  last_reply_from: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface ThreadMessage {
+  id: number
+  from_name: string
+  from_email_address: string
+  subject: string
+  text_body: string | null
+  html_body: string | null
+  date_received: string
+  folder: string
+}
+
+// Helper to strip HTML
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// Classification badge
+function ClassificationBadge({ type, confidence }: { type: string | null; confidence?: string | null }) {
+  if (!type) return <Badge variant="outline" className="text-xs">Unclassified</Badge>
+
+  const config: Record<string, { className: string; icon: typeof Briefcase; label: string }> = {
+    sales: { className: 'bg-blue-100 text-blue-800 border-blue-200', icon: Briefcase, label: 'Sales' },
+    fulfillment: { className: 'bg-green-100 text-green-800 border-green-200', icon: Headphones, label: 'Fulfillment' },
+    other: { className: 'bg-gray-100 text-gray-600 border-gray-200', icon: HelpCircle, label: 'Other' },
+    podcasts: { className: 'bg-purple-100 text-purple-800 border-purple-200', icon: Headphones, label: 'Premium' },
+    client_podcast: { className: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: Headphones, label: 'Client' },
+  }
+
+  const c = config[type] || config.other
+  const Icon = c.icon
+
+  return (
+    <Badge variant="outline" className={`text-xs ${c.className}`}>
+      <Icon className="h-3 w-3 mr-1" />
+      {c.label}
+      {confidence === 'low' && <span className="ml-1 opacity-60">?</span>}
+    </Badge>
+  )
+}
+
+// Status badge
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, string> = {
+    new: 'bg-yellow-100 text-yellow-800',
+    contacted: 'bg-blue-100 text-blue-800',
+    qualified: 'bg-green-100 text-green-800',
+    not_interested: 'bg-red-100 text-red-800',
+    converted: 'bg-purple-100 text-purple-800',
+  }
+
+  return (
+    <Badge variant="outline" className={`text-xs ${config[status] || ''}`}>
+      {status.replace('_', ' ')}
+    </Badge>
+  )
+}
+
+// Time ago helper
+function timeAgo(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (seconds < 60) return 'just now'
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export default function LeadsManagement() {
+  const queryClient = useQueryClient()
+
+  // State
+  const [searchTerm, setSearchTerm] = useState('')
+  const [classificationFilter, setClassificationFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [readFilter, setReadFilter] = useState<string>('all')
+  const [replyOwnerFilter, setReplyOwnerFilter] = useState<string>('all')
+  const [showArchived, setShowArchived] = useState(false)
+  const [selectedReplyId, setSelectedReplyId] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [showReplyComposer, setShowReplyComposer] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [reclassifyingIds, setReclassifyingIds] = useState<Set<string>>(new Set())
+  const [bulkClassifying, setBulkClassifying] = useState(false)
+
+  // Fetch all replies
+  const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
+    queryKey: ['campaign-replies'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('campaign_replies')
+        .select('*')
+        .order('received_at', { ascending: false })
+
+      if (error) throw error
+      return data as CampaignReply[]
+    },
+  })
+
+  // Filtered replies
+  const filteredReplies = useMemo(() => {
+    return replies.filter((r) => {
+      // Archive filter
+      if (!showArchived && r.archived) return false
+      if (showArchived && !r.archived) return false
+
+      // Search
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase()
+        const matchesSearch =
+          (r.name || '').toLowerCase().includes(term) ||
+          r.email.toLowerCase().includes(term) ||
+          (r.company || '').toLowerCase().includes(term) ||
+          (r.reply_content || '').toLowerCase().includes(term) ||
+          (r.campaign_name || '').toLowerCase().includes(term)
+        if (!matchesSearch) return false
+      }
+
+      // Classification
+      if (classificationFilter !== 'all') {
+        if (classificationFilter === 'unclassified') {
+          if (r.lead_type !== null) return false
+        } else {
+          if (r.lead_type !== classificationFilter) return false
+        }
+      }
+
+      // Status
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false
+
+      // Read
+      if (readFilter === 'unread' && r.read) return false
+      if (readFilter === 'read' && !r.read) return false
+
+      // Reply owner (who owes a reply)
+      if (replyOwnerFilter === 'needs_reply' && !r.awaiting_reply) return false
+      if (replyOwnerFilter === 'waiting' && r.awaiting_reply !== false) return false
+
+      return true
+    })
+  }, [replies, searchTerm, classificationFilter, statusFilter, readFilter, replyOwnerFilter, showArchived])
+
+  // Stats
+  const stats = useMemo(() => {
+    const nonArchived = replies.filter((r) => !r.archived)
+    return {
+      total: nonArchived.length,
+      unread: nonArchived.filter((r) => !r.read).length,
+      sales: nonArchived.filter((r) => r.lead_type === 'sales').length,
+      fulfillment: nonArchived.filter((r) => r.lead_type === 'fulfillment').length,
+      unclassified: nonArchived.filter((r) => r.lead_type === null).length,
+      needsReply: nonArchived.filter((r) => r.awaiting_reply === true).length,
+    }
+  }, [replies])
+
+  // Selected reply
+  const selectedReply = useMemo(
+    () => replies.find((r) => r.id === selectedReplyId) || null,
+    [replies, selectedReplyId]
+  )
+
+  // Fetch thread for selected reply
+  const { data: threadData, isLoading: threadLoading } = useQuery({
+    queryKey: ['email-thread', selectedReply?.bison_reply_id],
+    queryFn: async () => {
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-email-thread`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ replyId: selectedReply!.bison_reply_id }),
+        }
+      )
+      if (!res.ok) throw new Error('Failed to fetch thread')
+      const json = await res.json()
+      return json.data?.data || json.data
+    },
+    enabled: !!selectedReply?.bison_reply_id,
+  })
+
+  // Thread messages
+  const threadMessages = useMemo(() => {
+    if (!threadData) return []
+    const msgs: ThreadMessage[] = [
+      ...(threadData.older_messages || []).reverse(),
+      threadData.current_reply,
+      ...(threadData.newer_messages || []),
+    ].filter(Boolean)
+    return msgs
+  }, [threadData])
+
+  // Mark as read when selecting
+  const markRead = useCallback(
+    async (reply: CampaignReply) => {
+      if (!reply.read) {
+        await supabase.from('campaign_replies').update({ read: true }).eq('id', reply.id)
+        queryClient.invalidateQueries({ queryKey: ['campaign-replies'] })
+      }
+    },
+    [queryClient]
+  )
+
+  // Select a reply
+  const handleSelectReply = useCallback(
+    (reply: CampaignReply) => {
+      setSelectedReplyId(reply.id)
+      setShowReplyComposer(false)
+      setReplyText('')
+      markRead(reply)
+    },
+    [markRead]
+  )
+
+  // Fetch & Classify mutation — pulls interested replies from Bison and classifies each
+  const fetchAndClassifyMutation = useMutation({
+    mutationFn: async () => {
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-and-classify-replies`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        }
+      )
+      if (!res.ok) throw new Error('Fetch & classify failed')
+      return res.json()
+    },
+    onSuccess: (data) => {
+      const d = data.data
+      toast.success(
+        `Found ${d?.total_interested || 0} interested replies — ${d?.new_replies || 0} new, ${d?.classified || 0} classified`
+      )
+      refetchReplies()
+    },
+    onError: () => toast.error('Fetch & classify failed'),
+  })
+
+  // Send reply mutation
+  const sendReplyMutation = useMutation({
+    mutationFn: async ({ bisonReplyId, message }: { bisonReplyId: number; message: string }) => {
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ bisonReplyId, message }),
+        }
+      )
+      if (!res.ok) throw new Error('Send failed')
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success('Reply sent')
+      setShowReplyComposer(false)
+      setReplyText('')
+      if (selectedReply) {
+        supabase
+          .from('campaign_replies')
+          .update({ status: 'contacted' })
+          .eq('id', selectedReply.id)
+          .then(() => refetchReplies())
+      }
+    },
+    onError: () => toast.error('Failed to send reply'),
+  })
+
+  // Update reply field
+  const updateReply = useCallback(
+    async (id: string, updates: Partial<CampaignReply>) => {
+      const { error } = await supabase.from('campaign_replies').update(updates).eq('id', id)
+      if (error) {
+        toast.error('Update failed')
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['campaign-replies'] })
+      }
+    },
+    [queryClient]
+  )
+
+  // Classify a single reply
+  const classifyReply = useCallback(
+    async (replyId: string) => {
+      setReclassifyingIds((prev) => new Set([...prev, replyId]))
+      try {
+        const session = await supabase.auth.getSession()
+        const token = session.data.session?.access_token
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/classify-reply`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ reply_id: replyId }),
+          }
+        )
+        if (!res.ok) throw new Error('Classification failed')
+        const data = await res.json()
+        toast.success(`Classified as ${data.data?.classification || 'unknown'}`)
+        refetchReplies()
+      } catch {
+        toast.error('Classification failed')
+      } finally {
+        setReclassifyingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(replyId)
+          return next
+        })
+      }
+    },
+    [refetchReplies]
+  )
+
+  // Bulk classify unclassified
+  const bulkClassify = useCallback(async () => {
+    const unclassified = replies.filter((r) => !r.lead_type && !r.archived)
+    if (unclassified.length === 0) {
+      toast('No unclassified replies')
+      return
+    }
+    setBulkClassifying(true)
+    let done = 0
+    for (const reply of unclassified) {
+      try {
+        const session = await supabase.auth.getSession()
+        const token = session.data.session?.access_token
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/classify-reply`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reply_id: reply.id }),
+        })
+        done++
+      } catch {
+        // continue
+      }
+    }
+    toast.success(`Classified ${done}/${unclassified.length} replies`)
+    setBulkClassifying(false)
+    refetchReplies()
+  }, [replies, refetchReplies])
+
+  // Archive / restore
+  const toggleArchive = useCallback(
+    (reply: CampaignReply) => {
+      updateReply(reply.id, {
+        archived: !reply.archived,
+        archived_at: reply.archived ? null : new Date().toISOString(),
+      } as any)
+      if (selectedReplyId === reply.id) setSelectedReplyId(null)
+    },
+    [updateReply, selectedReplyId]
+  )
+
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
-        Coming soon
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Leads</h1>
+            <p className="text-muted-foreground">Campaign replies with AI classification</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {stats.unclassified > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={bulkClassify}
+                disabled={bulkClassifying}
+              >
+                {bulkClassifying ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-2" />
+                )}
+                Classify All ({stats.unclassified})
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchAndClassifyMutation.mutate()}
+              disabled={fetchAndClassifyMutation.isPending}
+            >
+              {fetchAndClassifyMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Fetch & Classify
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+          <Card className="cursor-pointer hover:border-foreground/20 transition-colors" onClick={() => { setClassificationFilter('all'); setShowArchived(false) }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total</CardTitle>
+              <Mail className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.total}</div>
+              <p className="text-xs text-muted-foreground">{stats.unread} unread</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:border-blue-300 transition-colors" onClick={() => { setClassificationFilter('sales'); setShowArchived(false) }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sales</CardTitle>
+              <Briefcase className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">{stats.sales}</div>
+              <p className="text-xs text-muted-foreground">New business leads</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:border-green-300 transition-colors" onClick={() => { setClassificationFilter('fulfillment'); setShowArchived(false) }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Fulfillment</CardTitle>
+              <Headphones className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{stats.fulfillment}</div>
+              <p className="text-xs text-muted-foreground">Podcast replies</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:border-yellow-300 transition-colors" onClick={() => { setClassificationFilter('unclassified'); setShowArchived(false) }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Unclassified</CardTitle>
+              <Bot className="h-4 w-4 text-yellow-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">{stats.unclassified}</div>
+              <p className="text-xs text-muted-foreground">Needs AI review</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:border-orange-300 transition-colors" onClick={() => { setReplyOwnerFilter('needs_reply'); setShowArchived(false); setClassificationFilter('all') }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Needs Reply</CardTitle>
+              <Send className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">{stats.needsReply}</div>
+              <p className="text-xs text-muted-foreground">We owe a response</p>
+            </CardContent>
+          </Card>
+
+          <Card className="cursor-pointer hover:border-gray-300 transition-colors" onClick={() => { setShowArchived(true); setClassificationFilter('all') }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Archived</CardTitle>
+              <Archive className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{replies.filter((r) => r.archived).length}</div>
+              <p className="text-xs text-muted-foreground">Hidden from view</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Search & Filters */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search name, email, company, content..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Button
+            variant={showFilters ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="h-4 w-4 mr-1" />
+            Filters
+            {(classificationFilter !== 'all' || statusFilter !== 'all' || readFilter !== 'all' || replyOwnerFilter !== 'all') && (
+              <span className="ml-1 h-2 w-2 rounded-full bg-blue-500" />
+            )}
+          </Button>
+        </div>
+
+        {showFilters && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <Select value={classificationFilter} onValueChange={setClassificationFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Classification" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="sales">Sales</SelectItem>
+                <SelectItem value="fulfillment">Fulfillment</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+                <SelectItem value="unclassified">Unclassified</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="contacted">Contacted</SelectItem>
+                <SelectItem value="qualified">Qualified</SelectItem>
+                <SelectItem value="not_interested">Not Interested</SelectItem>
+                <SelectItem value="converted">Converted</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={readFilter} onValueChange={setReadFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Read status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="unread">Unread</SelectItem>
+                <SelectItem value="read">Read</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={replyOwnerFilter} onValueChange={setReplyOwnerFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Reply status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Threads</SelectItem>
+                <SelectItem value="needs_reply">Needs Our Reply</SelectItem>
+                <SelectItem value="waiting">Waiting on Them</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setClassificationFilter('all')
+                setStatusFilter('all')
+                setReadFilter('all')
+                setReplyOwnerFilter('all')
+                setShowArchived(false)
+              }}
+            >
+              Clear filters
+            </Button>
+          </div>
+        )}
+
+        {/* Main Split View */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4" style={{ minHeight: 'calc(100vh - 420px)' }}>
+          {/* Reply List - Left Panel */}
+          <div className="lg:col-span-2 space-y-1 overflow-y-auto max-h-[calc(100vh-420px)] border rounded-lg">
+            {repliesLoading ? (
+              <div className="p-4 space-y-3">
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : filteredReplies.length === 0 ? (
+              <div className="flex items-center justify-center h-40 text-muted-foreground">
+                No replies found
+              </div>
+            ) : (
+              filteredReplies.map((reply) => (
+                <div
+                  key={reply.id}
+                  onClick={() => handleSelectReply(reply)}
+                  className={`flex items-start gap-3 p-3 cursor-pointer border-b transition-colors hover:bg-muted/50 ${
+                    selectedReplyId === reply.id ? 'bg-muted' : ''
+                  } ${!reply.read ? 'bg-blue-50/50' : ''}`}
+                >
+                  {/* Avatar */}
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                    {(reply.name || reply.email).charAt(0).toUpperCase()}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm truncate ${!reply.read ? 'font-semibold' : ''}`}>
+                        {reply.name || reply.email}
+                      </span>
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {timeAgo(reply.received_at)}
+                      </span>
+                    </div>
+
+                    {reply.company && (
+                      <p className="text-xs text-muted-foreground truncate">{reply.company}</p>
+                    )}
+
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {reply.reply_content
+                        ? stripHtml(reply.reply_content).substring(0, 100)
+                        : 'No content'}
+                    </p>
+
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <ClassificationBadge type={reply.lead_type} confidence={reply.ai_confidence} />
+                      <StatusBadge status={reply.status} />
+                      {reply.awaiting_reply === true && (
+                        <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                          Needs Reply
+                        </Badge>
+                      )}
+                      {reply.awaiting_reply === false && (
+                        <Badge variant="outline" className="text-xs bg-gray-100 text-gray-500 border-gray-200">
+                          Waiting
+                        </Badge>
+                      )}
+                      {!reply.read && (
+                        <span className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Detail Panel - Right */}
+          <div className="lg:col-span-3 border rounded-lg overflow-y-auto max-h-[calc(100vh-420px)]">
+            {!selectedReply ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8">
+                <MailOpen className="h-12 w-12 mb-4 opacity-30" />
+                <p>Select a reply to view details</p>
+              </div>
+            ) : (
+              <div className="p-4 space-y-4">
+                {/* Reply Header */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      {selectedReply.name || 'Unknown'}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">{selectedReply.email}</p>
+                    {selectedReply.company && (
+                      <p className="text-sm text-muted-foreground">{selectedReply.company}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ClassificationBadge
+                      type={selectedReply.lead_type}
+                      confidence={selectedReply.ai_confidence}
+                    />
+                    {selectedReply.awaiting_reply === true && (
+                      <Badge variant="outline" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                        Needs Reply
+                      </Badge>
+                    )}
+                    {selectedReply.awaiting_reply === false && (
+                      <Badge variant="outline" className="text-xs bg-gray-100 text-gray-500 border-gray-200">
+                        Waiting on them
+                      </Badge>
+                    )}
+                    {selectedReply.ai_classified_at && (
+                      <span className="text-xs text-muted-foreground">
+                        AI classified {timeAgo(selectedReply.ai_classified_at)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Campaign & Date */}
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  {selectedReply.campaign_name && (
+                    <span className="flex items-center gap-1">
+                      <Mail className="h-3.5 w-3.5" />
+                      {selectedReply.campaign_name}
+                    </span>
+                  )}
+                  <span>
+                    {new Date(selectedReply.received_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+
+                {/* Actions Bar */}
+                <div className="flex items-center gap-2 flex-wrap border-y py-3">
+                  {/* Reclassify buttons */}
+                  <div className="flex items-center gap-1 mr-2">
+                    <span className="text-xs text-muted-foreground mr-1">Label:</span>
+                    <Button
+                      variant={selectedReply.lead_type === 'sales' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => updateReply(selectedReply.id, { lead_type: 'sales' } as any)}
+                    >
+                      Sales
+                    </Button>
+                    <Button
+                      variant={selectedReply.lead_type === 'fulfillment' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => updateReply(selectedReply.id, { lead_type: 'fulfillment' } as any)}
+                    >
+                      Fulfillment
+                    </Button>
+                    <Button
+                      variant={selectedReply.lead_type === 'other' ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => updateReply(selectedReply.id, { lead_type: 'other' } as any)}
+                    >
+                      Other
+                    </Button>
+                  </div>
+
+                  <div className="h-6 w-px bg-border" />
+
+                  {/* Status */}
+                  <Select
+                    value={selectedReply.status}
+                    onValueChange={(val) => updateReply(selectedReply.id, { status: val } as any)}
+                  >
+                    <SelectTrigger className="h-7 w-[130px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="contacted">Contacted</SelectItem>
+                      <SelectItem value="qualified">Qualified</SelectItem>
+                      <SelectItem value="not_interested">Not Interested</SelectItem>
+                      <SelectItem value="converted">Converted</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <div className="h-6 w-px bg-border" />
+
+                  {/* AI Reclassify */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => classifyReply(selectedReply.id)}
+                    disabled={reclassifyingIds.has(selectedReply.id)}
+                  >
+                    {reclassifyingIds.has(selectedReply.id) ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3 mr-1" />
+                    )}
+                    AI Reclassify
+                  </Button>
+
+                  {/* Reply button */}
+                  {selectedReply.bison_reply_id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setShowReplyComposer(!showReplyComposer)}
+                    >
+                      <Send className="h-3 w-3 mr-1" />
+                      Reply
+                    </Button>
+                  )}
+
+                  {/* Archive */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs ml-auto"
+                    onClick={() => toggleArchive(selectedReply)}
+                  >
+                    {selectedReply.archived ? (
+                      <ArchiveRestore className="h-3 w-3 mr-1" />
+                    ) : (
+                      <Archive className="h-3 w-3 mr-1" />
+                    )}
+                    {selectedReply.archived ? 'Restore' : 'Archive'}
+                  </Button>
+                </div>
+
+                {/* Reply Composer */}
+                {showReplyComposer && selectedReply.bison_reply_id && (
+                  <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                    <Textarea
+                      placeholder="Type your reply..."
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      rows={4}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowReplyComposer(false)
+                          setReplyText('')
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={!replyText.trim() || sendReplyMutation.isPending}
+                        onClick={() =>
+                          sendReplyMutation.mutate({
+                            bisonReplyId: selectedReply.bison_reply_id!,
+                            message: replyText,
+                          })
+                        }
+                      >
+                        {sendReplyMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4 mr-2" />
+                        )}
+                        Send
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reply Content */}
+                <div className="bg-muted/30 rounded-lg p-4">
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                    {selectedReply.reply_content
+                      ? stripHtml(selectedReply.reply_content)
+                      : 'No content'}
+                  </p>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Notes</p>
+                  <Textarea
+                    placeholder="Add notes..."
+                    value={selectedReply.notes || ''}
+                    onChange={(e) => updateReply(selectedReply.id, { notes: e.target.value } as any)}
+                    rows={2}
+                    className="text-sm"
+                  />
+                </div>
+
+                {/* Email Thread */}
+                {selectedReply.bison_reply_id && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <MessageSquare className="h-4 w-4" />
+                      <h3 className="text-sm font-semibold">Email Thread</h3>
+                    </div>
+
+                    {threadLoading ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-24 w-full" />
+                        <Skeleton className="h-24 w-full" />
+                      </div>
+                    ) : threadMessages.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No thread data available</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {threadMessages.map((msg, i) => (
+                          <div
+                            key={msg.id || i}
+                            className="border rounded-lg p-3 text-sm space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-xs">
+                                {msg.from_name || msg.from_email_address}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(msg.date_received).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                            {msg.subject && (
+                              <p className="text-xs text-muted-foreground">
+                                Subject: {msg.subject}
+                              </p>
+                            )}
+                            <p className="text-sm whitespace-pre-wrap leading-relaxed mt-1">
+                              {msg.text_body || (msg.html_body ? stripHtml(msg.html_body) : 'No content')}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   )
 }
-
-export default LeadsManagement
