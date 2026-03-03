@@ -48,20 +48,12 @@ export const faqCategories = [
     category: "Pricing & Plans",
     faqs: [
       {
-        question: "What's the difference between Starter and Pro?",
-        answer: "Starter ($1,000/mo) gets you 2 podcast bookings per month plus full Command Center and analytics access. Pro ($1,500/mo) gets you 3+ bookings plus a full content package: 9 video clips, 2 blog posts, and a guest prep kit for every episode.",
+        question: "How much does it cost?",
+        answer: "$749/month for 2 podcast bookings minimum, full Podcast Command Center access, and reporting & analytics.",
       },
       {
         question: "Why the 3-month minimum?",
         answer: "Authority isn't built in 30 days. Podcast episodes take time to book, record, and air. The 3-month minimum ensures you see real results and build momentum.",
-      },
-      {
-        question: "What's included in the Pro content package?",
-        answer: "For every podcast episode: 9 short-form video clips (3 per podcast), 2 blog posts, and a guest prep kit so you show up confident. Everything is optimized for LinkedIn, Twitter, and repurposing.",
-      },
-      {
-        question: "Can I upgrade from Starter to Pro?",
-        answer: "Yes. You can upgrade at any time after your initial 3 months to get the full content package.",
       },
     ],
   },

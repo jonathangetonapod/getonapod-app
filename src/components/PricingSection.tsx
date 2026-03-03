@@ -31,7 +31,7 @@ const PricingSection = () => {
           }`}
         >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground text-center mb-6 sm:mb-12 md:mb-16">
-            Choose Your Plan
+            Starter Plan
           </h2>
 
           <div className="max-w-sm mx-auto">

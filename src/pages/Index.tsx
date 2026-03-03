@@ -10,7 +10,6 @@ import GuaranteeSection from '@/components/GuaranteeSection';
 import WhyProSection from '@/components/WhyProSection';
 import WhoItsForSection from '@/components/WhoItsForSection';
 import SocialProofSection from '@/components/SocialProofSection';
-import LeadMagnetSection from '@/components/LeadMagnetSection';
 import FAQSection from '@/components/FAQSection';
 import FinalCTASection from '@/components/FinalCTASection';
 import Footer from '@/components/Footer';
@@ -31,7 +30,6 @@ const Index = () => {
       <GuaranteeSection />
       <WhyProSection />
       <WhoItsForSection />
-      <LeadMagnetSection />
       <FAQSection />
       <FinalCTASection />
       <Footer />
