@@ -710,6 +710,12 @@ export default function LeadsManagement() {
                         <span className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
                       )}
                     </div>
+
+                    {reply.thread_checked_at && (
+                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                        Thread checked {timeAgo(reply.thread_checked_at)}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))
