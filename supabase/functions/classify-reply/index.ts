@@ -161,7 +161,7 @@ Respond with EXACTLY this JSON format (no other text):
     if (!haikuResponse.ok) {
       const errorText = await haikuResponse.text()
       console.error('[Classify Reply] Haiku API error:', errorText)
-      throw new Error(`Haiku API error: ${haikuResponse.status}`)
+      throw new Error(`Haiku API error: ${haikuResponse.status} - ${errorText}`)
     }
 
     const haikuData = await haikuResponse.json()
