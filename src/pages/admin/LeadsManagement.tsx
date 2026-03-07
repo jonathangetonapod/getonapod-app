@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -63,6 +63,7 @@ interface CampaignReply {
   archived_at: string | null
   ai_classified_at: string | null
   ai_confidence: 'high' | 'medium' | 'low' | null
+  ai_reason: string | null
   awaiting_reply: boolean | null
   last_reply_from: string | null
   thread_checked_at: string | null
@@ -185,6 +186,9 @@ export default function LeadsManagement() {
   const [showFilters, setShowFilters] = useState(false)
   const [reclassifyingIds, setReclassifyingIds] = useState<Set<string>>(new Set())
   const [bulkClassifying, setBulkClassifying] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
+  const [localNotes, setLocalNotes] = useState('')
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Fetch all replies
   const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
@@ -311,12 +315,38 @@ export default function LeadsManagement() {
   // Select a reply
   const handleSelectReply = useCallback(
     (reply: CampaignReply) => {
+      if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
       setSelectedReplyId(reply.id)
       setShowReplyComposer(false)
       setReplyText('')
+      setLocalNotes(reply.notes || '')
       markRead(reply)
     },
     [markRead]
+  )
+
+  // Sync local notes when selected reply changes externally
+  useEffect(() => {
+    setLocalNotes(selectedReply?.notes || '')
+  }, [selectedReply?.id])
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
+    }
+  }, [])
+
+  // Debounced notes save
+  const handleNotesChange = useCallback(
+    (id: string, value: string) => {
+      setLocalNotes(value)
+      if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
+      notesTimerRef.current = setTimeout(() => {
+        updateReply(id, { notes: value } as any)
+      }, 500)
+    },
+    [updateReply]
   )
 
   // Fetch & Classify mutation — pulls interested replies from Bison and classifies each
@@ -452,6 +482,7 @@ export default function LeadsManagement() {
       return
     }
     setBulkClassifying(true)
+    setBulkProgress({ done: 0, total: unclassified.length })
     let done = 0
     for (const reply of unclassified) {
       try {
@@ -467,11 +498,13 @@ export default function LeadsManagement() {
         })
         done++
       } catch {
-        // continue
+        done++
       }
+      setBulkProgress({ done, total: unclassified.length })
     }
     toast.success(`Classified ${done}/${unclassified.length} replies`)
     setBulkClassifying(false)
+    setBulkProgress(null)
     refetchReplies()
   }, [replies, refetchReplies])
 
@@ -583,6 +616,25 @@ export default function LeadsManagement() {
             </div>
             <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '100%', animationDuration: '1.5s' }} />
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Classify Progress Bar */}
+        {bulkClassifying && bulkProgress && (
+          <div className="rounded-lg border bg-card p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+                <span className="text-sm font-medium">Classifying replies with AI...</span>
+              </div>
+              <span className="text-sm font-medium">{bulkProgress.done}/{bulkProgress.total}</span>
+            </div>
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-purple-500 rounded-full transition-all duration-300"
+                style={{ width: `${(bulkProgress.done / bulkProgress.total) * 100}%` }}
+              />
             </div>
           </div>
         )}
@@ -872,7 +924,7 @@ export default function LeadsManagement() {
                   {selectedReply.campaign_name && (
                     <span className="flex items-center gap-1">
                       <Mail className="h-3.5 w-3.5" />
-                      {selectedReply.campaign_name}
+                      Subject: {selectedReply.campaign_name}
                     </span>
                   )}
                   <span>
@@ -1090,13 +1142,21 @@ export default function LeadsManagement() {
                   </p>
                 </div>
 
+                {/* AI Reason */}
+                {selectedReply.ai_reason && (
+                  <div className="flex items-start gap-2 rounded-lg bg-purple-50 border border-purple-200 p-3">
+                    <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-purple-800">{selectedReply.ai_reason}</p>
+                  </div>
+                )}
+
                 {/* Notes */}
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Notes</p>
                   <Textarea
                     placeholder="Add notes..."
-                    value={selectedReply.notes || ''}
-                    onChange={(e) => updateReply(selectedReply.id, { notes: e.target.value } as any)}
+                    value={localNotes}
+                    onChange={(e) => handleNotesChange(selectedReply.id, e.target.value)}
                     rows={2}
                     className="text-sm"
                   />

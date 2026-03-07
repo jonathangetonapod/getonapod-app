@@ -202,9 +202,7 @@ Respond with EXACTLY this JSON format (no other text):
         lead_type: classification,
         ai_confidence: confidence,
         ai_classified_at: new Date().toISOString(),
-        notes: reply.notes
-          ? `${reply.notes}\n\n[AI] ${reason}`
-          : `[AI] ${reason}`,
+        ai_reason: reason,
       })
       .eq('id', reply_id)
 

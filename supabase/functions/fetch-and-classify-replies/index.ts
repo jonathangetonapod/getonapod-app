@@ -274,7 +274,7 @@ serve(async (req) => {
             last_reply_from: threadStatus.last_reply_from,
             thread_checked_at: new Date().toISOString(),
             thread_message_count: threadStatus.thread_message_count,
-            notes: `[AI] ${result.reason}`,
+            ai_reason: result.reason,
           })
           .eq('id', existing.id)
 
