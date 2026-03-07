@@ -690,7 +690,6 @@ export default function LeadsManagement() {
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="sales">Sales</SelectItem>
                 <SelectItem value="fulfillment">Fulfillment</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
                 <SelectItem value="unclassified">Unclassified</SelectItem>
               </SelectContent>
             </Select>
@@ -935,14 +934,6 @@ export default function LeadsManagement() {
                       onClick={() => updateReply(selectedReply.id, { lead_type: 'fulfillment' } as any)}
                     >
                       Fulfillment
-                    </Button>
-                    <Button
-                      variant={selectedReply.lead_type === 'other' ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => updateReply(selectedReply.id, { lead_type: 'other' } as any)}
-                    >
-                      Other
                     </Button>
                   </div>
 
