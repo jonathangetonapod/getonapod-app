@@ -44,6 +44,8 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import { searchPodcasts, type PodcastData } from '@/services/podscan'
+import { Mic, Copy, ExternalLink, PanelRightOpen, PanelRightClose, Star } from 'lucide-react'
 
 // Types
 interface CampaignReply {
@@ -222,6 +224,10 @@ export default function LeadsManagement() {
   const promptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [generatingReply, setGeneratingReply] = useState(false)
   const [customPrompt, setCustomPrompt] = useState('')
+  const [showPodcastSidebar, setShowPodcastSidebar] = useState(false)
+  const [podcastSearchTerm, setPodcastSearchTerm] = useState('')
+  const [podcastResults, setPodcastResults] = useState<PodcastData[]>([])
+  const [podcastSearching, setPodcastSearching] = useState(false)
 
   // Fetch all replies
   const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
@@ -525,6 +531,28 @@ export default function LeadsManagement() {
     }
   }, [selectedReply])
 
+  // Search podcasts
+  const handlePodcastSearch = useCallback(async () => {
+    if (!podcastSearchTerm.trim()) return
+    setPodcastSearching(true)
+    try {
+      const res = await searchPodcasts({
+        query: podcastSearchTerm,
+        per_page: 20,
+        order_by: 'best_match',
+        has_guests: true,
+      })
+      setPodcastResults(res.podcasts || [])
+      if ((res.podcasts || []).length === 0) {
+        toast('No podcasts found for that search')
+      }
+    } catch {
+      toast.error('Podcast search failed')
+    } finally {
+      setPodcastSearching(false)
+    }
+  }, [podcastSearchTerm])
+
   // Classify a single reply
   const classifyReply = useCallback(
     async (replyId: string) => {
@@ -686,6 +714,18 @@ export default function LeadsManagement() {
                 <RefreshCw className="h-4 w-4 mr-2" />
               )}
               Fetch & Classify
+            </Button>
+            <Button
+              variant={showPodcastSidebar ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setShowPodcastSidebar(!showPodcastSidebar)}
+            >
+              {showPodcastSidebar ? (
+                <PanelRightClose className="h-4 w-4 mr-2" />
+              ) : (
+                <PanelRightOpen className="h-4 w-4 mr-2" />
+              )}
+              Podcasts
             </Button>
           </div>
         </div>
@@ -884,8 +924,10 @@ export default function LeadsManagement() {
           </div>
         )}
 
+        {/* Main Content + Podcast Sidebar */}
+        <div className="flex gap-4">
         {/* Main Split View */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4" style={{ minHeight: 'calc(100vh - 420px)' }}>
+        <div className={`grid grid-cols-1 lg:grid-cols-5 gap-4 flex-1 min-w-0`} style={{ minHeight: 'calc(100vh - 420px)' }}>
           {/* Reply List - Left Panel */}
           <div className="lg:col-span-2 space-y-1 overflow-y-auto max-h-[calc(100vh-420px)] border rounded-lg">
             {repliesLoading ? (
@@ -1405,6 +1447,140 @@ export default function LeadsManagement() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Podcast Search Sidebar */}
+        {showPodcastSidebar && (
+          <div className="w-80 flex-shrink-0 border rounded-lg overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 420px)' }}>
+            <div className="p-3 border-b bg-muted/30">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Mic className="h-4 w-4" />
+                  Podcast Search
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={() => setShowPodcastSidebar(false)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handlePodcastSearch()
+                }}
+                className="flex gap-1.5"
+              >
+                <Input
+                  placeholder="Search keywords..."
+                  value={podcastSearchTerm}
+                  onChange={(e) => setPodcastSearchTerm(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="h-8 px-3"
+                  disabled={podcastSearching || !podcastSearchTerm.trim()}
+                >
+                  {podcastSearching ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Search className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </form>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {podcastResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground p-4">
+                  <Mic className="h-8 w-8 mb-2 opacity-30" />
+                  <p className="text-sm text-center">Search for podcasts by keyword to find matches</p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {podcastResults.map((podcast) => (
+                    <div key={podcast.podcast_id} className="p-3 hover:bg-muted/30 transition-colors">
+                      <div className="flex items-start gap-2">
+                        {podcast.podcast_image_url ? (
+                          <img
+                            src={podcast.podcast_image_url}
+                            alt=""
+                            className="h-10 w-10 rounded flex-shrink-0 object-cover"
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded bg-purple-100 flex items-center justify-center flex-shrink-0">
+                            <Mic className="h-5 w-5 text-purple-500" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{podcast.podcast_name}</p>
+                          {podcast.publisher_name && (
+                            <p className="text-xs text-muted-foreground truncate">{podcast.publisher_name}</p>
+                          )}
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            {podcast.podcast_reach_score != null && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                <Star className="h-2.5 w-2.5 mr-0.5" />
+                                {podcast.podcast_reach_score}
+                              </Badge>
+                            )}
+                            {podcast.reach?.audience_size != null && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {podcast.reach.audience_size.toLocaleString()} listeners
+                              </Badge>
+                            )}
+                            {podcast.podcast_categories?.slice(0, 2).map((cat) => (
+                              <Badge key={cat.category_id} variant="outline" className="text-[10px] px-1.5 py-0 bg-purple-50 text-purple-700 border-purple-200">
+                                {cat.category_name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 mt-2 ml-12">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={() => {
+                            const text = `${podcast.podcast_name}${podcast.podcast_url ? ` - ${podcast.podcast_url}` : ''}`
+                            navigator.clipboard.writeText(text)
+                            toast.success('Copied to clipboard')
+                          }}
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy
+                        </Button>
+                        {podcast.podcast_url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs"
+                            onClick={() => window.open(podcast.podcast_url, '_blank')}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            Open
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {podcastResults.length > 0 && (
+              <div className="p-2 border-t bg-muted/30">
+                <p className="text-xs text-muted-foreground text-center">{podcastResults.length} results</p>
+              </div>
+            )}
+          </div>
+        )}
         </div>
       </div>
     </DashboardLayout>
