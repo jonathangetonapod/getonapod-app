@@ -338,57 +338,6 @@ export default function LeadsManagement() {
     }
   }, [])
 
-  // Debounced notes save
-  const handleNotesChange = useCallback(
-    (id: string, value: string) => {
-      setLocalNotes(value)
-      if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
-      notesTimerRef.current = setTimeout(() => {
-        updateReply(id, { notes: value } as any)
-      }, 500)
-    },
-    [updateReply]
-  )
-
-  // Generate AI reply
-  const generateReply = useCallback(async () => {
-    if (!selectedReply?.bison_reply_id) return
-    setGeneratingReply(true)
-    try {
-      const session = await supabase.auth.getSession()
-      const token = session.data.session?.access_token
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-reply`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            bisonReplyId: selectedReply.bison_reply_id,
-            name: selectedReply.name,
-            email: selectedReply.email,
-            company: selectedReply.company,
-            leadType: selectedReply.lead_type,
-            aiReason: selectedReply.ai_reason,
-          }),
-        }
-      )
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null)
-        throw new Error(errData?.error || 'Failed to generate reply')
-      }
-      const data = await res.json()
-      setReplyText(data.data?.reply || '')
-      toast.success('Response generated')
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to generate reply')
-    } finally {
-      setGeneratingReply(false)
-    }
-  }, [selectedReply])
-
   // Fetch & Classify mutation — pulls interested replies from Bison and classifies each
   const [fetchProgress, setFetchProgress] = useState<{ active: boolean; message: string }>({
     active: false,
@@ -478,6 +427,57 @@ export default function LeadsManagement() {
     },
     [queryClient]
   )
+
+  // Debounced notes save
+  const handleNotesChange = useCallback(
+    (id: string, value: string) => {
+      setLocalNotes(value)
+      if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
+      notesTimerRef.current = setTimeout(() => {
+        updateReply(id, { notes: value } as any)
+      }, 500)
+    },
+    [updateReply]
+  )
+
+  // Generate AI reply
+  const generateReply = useCallback(async () => {
+    if (!selectedReply?.bison_reply_id) return
+    setGeneratingReply(true)
+    try {
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            bisonReplyId: selectedReply.bison_reply_id,
+            name: selectedReply.name,
+            email: selectedReply.email,
+            company: selectedReply.company,
+            leadType: selectedReply.lead_type,
+            aiReason: selectedReply.ai_reason,
+          }),
+        }
+      )
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(errData?.error || 'Failed to generate reply')
+      }
+      const data = await res.json()
+      setReplyText(data.data?.reply || '')
+      toast.success('Response generated')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate reply')
+    } finally {
+      setGeneratingReply(false)
+    }
+  }, [selectedReply])
 
   // Classify a single reply
   const classifyReply = useCallback(
