@@ -189,6 +189,7 @@ export default function LeadsManagement() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [localNotes, setLocalNotes] = useState('')
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [generatingReply, setGeneratingReply] = useState(false)
 
   // Fetch all replies
   const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
@@ -348,6 +349,45 @@ export default function LeadsManagement() {
     },
     [updateReply]
   )
+
+  // Generate AI reply
+  const generateReply = useCallback(async () => {
+    if (!selectedReply?.bison_reply_id) return
+    setGeneratingReply(true)
+    try {
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            bisonReplyId: selectedReply.bison_reply_id,
+            name: selectedReply.name,
+            email: selectedReply.email,
+            company: selectedReply.company,
+            leadType: selectedReply.lead_type,
+            aiReason: selectedReply.ai_reason,
+          }),
+        }
+      )
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(errData?.error || 'Failed to generate reply')
+      }
+      const data = await res.json()
+      setReplyText(data.data?.reply || '')
+      toast.success('Response generated')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate reply')
+    } finally {
+      setGeneratingReply(false)
+    }
+  }, [selectedReply])
 
   // Fetch & Classify mutation — pulls interested replies from Bison and classifies each
   const [fetchProgress, setFetchProgress] = useState<{ active: boolean; message: string }>({
@@ -1111,6 +1151,19 @@ export default function LeadsManagement() {
                         }}
                       >
                         Cancel
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={generateReply}
+                        disabled={generatingReply}
+                      >
+                        {generatingReply ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4 mr-2" />
+                        )}
+                        Generate
                       </Button>
                       <Button
                         size="sm"
