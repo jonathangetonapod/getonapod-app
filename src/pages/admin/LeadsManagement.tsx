@@ -587,6 +587,15 @@ export default function LeadsManagement() {
     }
   }, [podcastSearchTerm, podcastPage, podcastSortBy])
 
+  // Re-search when sort changes
+  const prevSortRef = useRef(podcastSortBy)
+  useEffect(() => {
+    if (prevSortRef.current !== podcastSortBy && podcastSearchTerm.trim()) {
+      prevSortRef.current = podcastSortBy
+      handlePodcastSearch()
+    }
+  }, [podcastSortBy, podcastSearchTerm, handlePodcastSearch])
+
   // Classify a single reply
   const classifyReply = useCallback(
     async (replyId: string) => {
@@ -1533,7 +1542,9 @@ export default function LeadsManagement() {
                   variant={podcastSortBy === 'best_match' ? 'secondary' : 'ghost'}
                   size="sm"
                   className="h-5 text-[10px] px-1.5"
-                  onClick={() => setPodcastSortBy('best_match')}
+                  onClick={() => {
+                    setPodcastSortBy('best_match')
+                  }}
                 >
                   Relevance
                 </Button>
@@ -1541,7 +1552,9 @@ export default function LeadsManagement() {
                   variant={podcastSortBy === 'audience_size' ? 'secondary' : 'ghost'}
                   size="sm"
                   className="h-5 text-[10px] px-1.5"
-                  onClick={() => setPodcastSortBy('audience_size')}
+                  onClick={() => {
+                    setPodcastSortBy('audience_size')
+                  }}
                 >
                   Audience Size
                 </Button>
