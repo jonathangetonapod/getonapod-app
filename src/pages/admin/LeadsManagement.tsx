@@ -541,6 +541,7 @@ export default function LeadsManagement() {
         per_page: 20,
         order_by: 'best_match',
         has_guests: true,
+        min_audience_size: 500,
       })
       setPodcastResults(res.podcasts || [])
       if ((res.podcasts || []).length === 0) {
