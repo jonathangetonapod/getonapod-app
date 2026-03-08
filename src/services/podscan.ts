@@ -76,6 +76,7 @@ interface SearchOptions {
   max_last_episode_posted_at?: string;
   has_guests?: boolean;
   has_sponsors?: boolean;
+  page?: number;
 }
 
 /**

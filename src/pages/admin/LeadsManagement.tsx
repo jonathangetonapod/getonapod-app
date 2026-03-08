@@ -228,6 +228,9 @@ export default function LeadsManagement() {
   const [podcastSearchTerm, setPodcastSearchTerm] = useState('')
   const [podcastResults, setPodcastResults] = useState<PodcastData[]>([])
   const [podcastSearching, setPodcastSearching] = useState(false)
+  const [podcastPage, setPodcastPage] = useState(1)
+  const [podcastHasMore, setPodcastHasMore] = useState(false)
+  const [podcastLoadingMore, setPodcastLoadingMore] = useState(false)
 
   // Fetch all replies
   const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
@@ -535,15 +538,19 @@ export default function LeadsManagement() {
   const handlePodcastSearch = useCallback(async () => {
     if (!podcastSearchTerm.trim()) return
     setPodcastSearching(true)
+    setPodcastPage(1)
     try {
       const res = await searchPodcasts({
         query: podcastSearchTerm,
         per_page: 20,
+        page: 1,
         order_by: 'best_match',
         has_guests: true,
         min_audience_size: 500,
       })
       setPodcastResults(res.podcasts || [])
+      const lastPage = parseInt(res.pagination?.last_page || '1', 10)
+      setPodcastHasMore(1 < lastPage)
       if ((res.podcasts || []).length === 0) {
         toast('No podcasts found for that search')
       }
@@ -553,6 +560,29 @@ export default function LeadsManagement() {
       setPodcastSearching(false)
     }
   }, [podcastSearchTerm])
+
+  const loadMorePodcasts = useCallback(async () => {
+    const nextPage = podcastPage + 1
+    setPodcastLoadingMore(true)
+    try {
+      const res = await searchPodcasts({
+        query: podcastSearchTerm,
+        per_page: 20,
+        page: nextPage,
+        order_by: 'best_match',
+        has_guests: true,
+        min_audience_size: 500,
+      })
+      setPodcastResults((prev) => [...prev, ...(res.podcasts || [])])
+      setPodcastPage(nextPage)
+      const lastPage = parseInt(res.pagination?.last_page || '1', 10)
+      setPodcastHasMore(nextPage < lastPage)
+    } catch {
+      toast.error('Failed to load more')
+    } finally {
+      setPodcastLoadingMore(false)
+    }
+  }, [podcastSearchTerm, podcastPage])
 
   // Classify a single reply
   const classifyReply = useCallback(
@@ -1576,7 +1606,21 @@ export default function LeadsManagement() {
             </div>
 
             {podcastResults.length > 0 && (
-              <div className="p-2 border-t bg-muted/30">
+              <div className="p-2 border-t bg-muted/30 space-y-1.5">
+                {podcastHasMore && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-7 text-xs"
+                    onClick={loadMorePodcasts}
+                    disabled={podcastLoadingMore}
+                  >
+                    {podcastLoadingMore ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : null}
+                    Load More
+                  </Button>
+                )}
                 <p className="text-xs text-muted-foreground text-center">{podcastResults.length} results</p>
               </div>
             )}
