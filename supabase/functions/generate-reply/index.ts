@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { bisonReplyId, name, email, company, leadType, aiReason } = await req.json()
+    const { bisonReplyId, name, email, company, leadType, aiReason, customPrompt } = await req.json()
 
     if (!bisonReplyId) {
       return new Response(
@@ -96,6 +96,8 @@ Write a concise, natural reply to the most recent message. Rules:
 - Do not sign off with a name — the email system handles signatures
 - Write in plain text, no HTML or markdown`
 
+    const finalPrompt = customPrompt || prompt
+
     console.log('[Generate Reply] Calling Claude Sonnet...')
 
     const sonnetRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -108,7 +110,7 @@ Write a concise, natural reply to the most recent message. Rules:
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 500,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: finalPrompt }],
       }),
     })
 
@@ -126,7 +128,7 @@ Write a concise, natural reply to the most recent message. Rules:
     return new Response(
       JSON.stringify({
         success: true,
-        data: { reply: generatedReply },
+        data: { reply: generatedReply, defaultPrompt: prompt },
       }),
       {
         status: 200,

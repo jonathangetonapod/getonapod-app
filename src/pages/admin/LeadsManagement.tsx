@@ -190,6 +190,9 @@ export default function LeadsManagement() {
   const [localNotes, setLocalNotes] = useState('')
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [generatingReply, setGeneratingReply] = useState(false)
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [customPrompt, setCustomPrompt] = useState('')
+  const [defaultPrompt, setDefaultPrompt] = useState('')
 
   // Fetch all replies
   const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
@@ -441,7 +444,7 @@ export default function LeadsManagement() {
   )
 
   // Generate AI reply
-  const generateReply = useCallback(async () => {
+  const generateReply = useCallback(async (promptOverride?: string) => {
     if (!selectedReply?.bison_reply_id) return
     setGeneratingReply(true)
     try {
@@ -462,6 +465,7 @@ export default function LeadsManagement() {
             company: selectedReply.company,
             leadType: selectedReply.lead_type,
             aiReason: selectedReply.ai_reason,
+            ...(promptOverride ? { customPrompt: promptOverride } : {}),
           }),
         }
       )
@@ -471,13 +475,18 @@ export default function LeadsManagement() {
       }
       const data = await res.json()
       setReplyText(data.data?.reply || '')
+      if (data.data?.defaultPrompt && !defaultPrompt) {
+        setDefaultPrompt(data.data.defaultPrompt)
+        setCustomPrompt(data.data.defaultPrompt)
+      }
+      setShowPromptEditor(false)
       toast.success('Response generated')
     } catch (err: any) {
       toast.error(err.message || 'Failed to generate reply')
     } finally {
       setGeneratingReply(false)
     }
-  }, [selectedReply])
+  }, [selectedReply, defaultPrompt])
 
   // Classify a single reply
   const classifyReply = useCallback(
@@ -1141,12 +1150,58 @@ export default function LeadsManagement() {
                       onChange={(e) => setReplyText(e.target.value)}
                       rows={4}
                     />
+
+                    {/* Prompt Editor */}
+                    {showPromptEditor && (
+                      <div className="border rounded-lg p-3 space-y-2 bg-purple-50/50">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-purple-700">Edit AI Prompt</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-purple-600"
+                            onClick={() => setCustomPrompt(defaultPrompt)}
+                          >
+                            Reset to default
+                          </Button>
+                        </div>
+                        <Textarea
+                          value={customPrompt}
+                          onChange={(e) => setCustomPrompt(e.target.value)}
+                          rows={10}
+                          className="text-xs font-mono"
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowPromptEditor(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => generateReply(customPrompt)}
+                            disabled={generatingReply || !customPrompt.trim()}
+                          >
+                            {generatingReply ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-4 w-4 mr-2" />
+                            )}
+                            Generate with this prompt
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           setShowReplyComposer(false)
+                          setShowPromptEditor(false)
                           setReplyText('')
                         }}
                       >
@@ -1155,7 +1210,15 @@ export default function LeadsManagement() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={generateReply}
+                        onClick={() => {
+                          if (showPromptEditor) {
+                            setShowPromptEditor(false)
+                          } else if (defaultPrompt) {
+                            setShowPromptEditor(true)
+                          } else {
+                            generateReply()
+                          }
+                        }}
                         disabled={generatingReply}
                       >
                         {generatingReply ? (
@@ -1163,8 +1226,23 @@ export default function LeadsManagement() {
                         ) : (
                           <Sparkles className="h-4 w-4 mr-2" />
                         )}
-                        Generate
+                        {defaultPrompt ? (showPromptEditor ? 'Hide Prompt' : 'Edit Prompt') : 'Generate'}
                       </Button>
+                      {!showPromptEditor && defaultPrompt && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => generateReply()}
+                          disabled={generatingReply}
+                        >
+                          {generatingReply ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-4 w-4 mr-2" />
+                          )}
+                          Regenerate
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         disabled={!replyText.trim() || sendReplyMutation.isPending}
