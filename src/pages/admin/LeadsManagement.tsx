@@ -64,6 +64,7 @@ interface CampaignReply {
   ai_classified_at: string | null
   ai_confidence: 'high' | 'medium' | 'low' | null
   ai_reason: string | null
+  custom_prompt: string | null
   awaiting_reply: boolean | null
   last_reply_from: string | null
   thread_checked_at: string | null
@@ -218,6 +219,7 @@ export default function LeadsManagement() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [localNotes, setLocalNotes] = useState('')
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const promptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [generatingReply, setGeneratingReply] = useState(false)
   const [customPrompt, setCustomPrompt] = useState('')
 
@@ -361,10 +363,11 @@ export default function LeadsManagement() {
     setLocalNotes(selectedReply?.notes || '')
   }, [selectedReply?.id])
 
-  // Cleanup timer on unmount
+  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
+      if (promptTimerRef.current) clearTimeout(promptTimerRef.current)
     }
   }, [])
 
@@ -465,6 +468,18 @@ export default function LeadsManagement() {
       if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
       notesTimerRef.current = setTimeout(() => {
         updateReply(id, { notes: value } as any)
+      }, 500)
+    },
+    [updateReply]
+  )
+
+  // Debounced prompt save
+  const handlePromptChange = useCallback(
+    (id: string, value: string) => {
+      setCustomPrompt(value)
+      if (promptTimerRef.current) clearTimeout(promptTimerRef.current)
+      promptTimerRef.current = setTimeout(() => {
+        updateReply(id, { custom_prompt: value } as any)
       }, 500)
     },
     [updateReply]
@@ -1106,7 +1121,7 @@ export default function LeadsManagement() {
                       onClick={() => {
                         setShowReplyComposer(!showReplyComposer)
                         if (!showReplyComposer && selectedReply) {
-                          setCustomPrompt(buildDefaultPrompt(selectedReply))
+                          setCustomPrompt(selectedReply.custom_prompt || buildDefaultPrompt(selectedReply))
                         }
                       }}
                     >
@@ -1182,14 +1197,18 @@ export default function LeadsManagement() {
                           variant="ghost"
                           size="sm"
                           className="h-6 text-xs text-purple-600"
-                          onClick={() => setCustomPrompt(buildDefaultPrompt(selectedReply))}
+                          onClick={() => {
+                            const defaultPrompt = buildDefaultPrompt(selectedReply)
+                            setCustomPrompt(defaultPrompt)
+                            updateReply(selectedReply.id, { custom_prompt: null } as any)
+                          }}
                         >
                           Reset to default
                         </Button>
                       </div>
                       <Textarea
                         value={customPrompt}
-                        onChange={(e) => setCustomPrompt(e.target.value)}
+                        onChange={(e) => handlePromptChange(selectedReply.id, e.target.value)}
                         rows={6}
                         className="text-xs font-mono bg-purple-50/50 border-purple-200"
                       />
