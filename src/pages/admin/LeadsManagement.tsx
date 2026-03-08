@@ -231,6 +231,7 @@ export default function LeadsManagement() {
   const [podcastPage, setPodcastPage] = useState(1)
   const [podcastHasMore, setPodcastHasMore] = useState(false)
   const [podcastLoadingMore, setPodcastLoadingMore] = useState(false)
+  const [podcastSortBy, setPodcastSortBy] = useState<'best_match' | 'audience_size'>('best_match')
 
   // Fetch all replies
   const { data: replies = [], isLoading: repliesLoading, refetch: refetchReplies } = useQuery({
@@ -544,7 +545,8 @@ export default function LeadsManagement() {
         query: podcastSearchTerm,
         per_page: 20,
         page: 1,
-        order_by: 'best_match',
+        order_by: podcastSortBy,
+        order_dir: podcastSortBy === 'audience_size' ? 'desc' : undefined,
         has_guests: true,
         min_audience_size: 500,
       })
@@ -559,7 +561,7 @@ export default function LeadsManagement() {
     } finally {
       setPodcastSearching(false)
     }
-  }, [podcastSearchTerm])
+  }, [podcastSearchTerm, podcastSortBy])
 
   const loadMorePodcasts = useCallback(async () => {
     const nextPage = podcastPage + 1
@@ -569,7 +571,8 @@ export default function LeadsManagement() {
         query: podcastSearchTerm,
         per_page: 20,
         page: nextPage,
-        order_by: 'best_match',
+        order_by: podcastSortBy,
+        order_dir: podcastSortBy === 'audience_size' ? 'desc' : undefined,
         has_guests: true,
         min_audience_size: 500,
       })
@@ -582,7 +585,7 @@ export default function LeadsManagement() {
     } finally {
       setPodcastLoadingMore(false)
     }
-  }, [podcastSearchTerm, podcastPage])
+  }, [podcastSearchTerm, podcastPage, podcastSortBy])
 
   // Classify a single reply
   const classifyReply = useCallback(
@@ -1524,6 +1527,25 @@ export default function LeadsManagement() {
                   )}
                 </Button>
               </form>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className="text-[10px] text-muted-foreground">Sort:</span>
+                <Button
+                  variant={podcastSortBy === 'best_match' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-5 text-[10px] px-1.5"
+                  onClick={() => setPodcastSortBy('best_match')}
+                >
+                  Relevance
+                </Button>
+                <Button
+                  variant={podcastSortBy === 'audience_size' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-5 text-[10px] px-1.5"
+                  onClick={() => setPodcastSortBy('audience_size')}
+                >
+                  Audience Size
+                </Button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
