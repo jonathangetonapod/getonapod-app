@@ -38,6 +38,9 @@ serve(async (req) => {
 
     console.log('[Send Reply] Sending reply for Bison reply ID:', bisonReplyId)
 
+    // Convert newlines to HTML breaks for proper email formatting
+    const htmlMessage = message.replace(/\n/g, '<br>')
+
     // Call Email Bison API to send reply
     const bisonResponse = await fetch(
       `https://send.leadgenjay.com/api/replies/${bisonReplyId}/reply`,
@@ -51,8 +54,8 @@ serve(async (req) => {
         body: JSON.stringify({
           reply_all: true, // Automatically choose sender and recipients
           inject_previous_email_body: true, // Include previous email thread
-          message: message,
-          content_type: 'text', // Send as plain text
+          message: htmlMessage,
+          content_type: 'html', // Send as HTML for proper line breaks
           use_dedicated_ips: false,
         }),
       }
