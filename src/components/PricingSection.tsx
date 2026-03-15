@@ -77,44 +77,56 @@ const PricingSection = () => {
             </div>
           </div>
 
-          <p className="text-center text-sm sm:text-base text-muted-foreground mt-6 sm:mt-8">
-            No long-term contracts. Cancel anytime. Results guaranteed.
-          </p>
+          {/* Reassurance pills */}
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-8">
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span>No long-term contracts</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span>Cancel anytime</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <span>Results guaranteed</span>
+            </div>
+          </div>
 
           {/* Comparison callout */}
-          <div className="max-w-md mx-auto mt-8 sm:mt-10 rounded-xl border border-border bg-background/60 p-4 sm:p-6">
-            <p className="text-xs sm:text-sm font-medium text-muted-foreground text-center mb-3 sm:mb-4 uppercase tracking-wide">
-              How we compare
+          <div className="max-w-lg mx-auto mt-10 sm:mt-12">
+            <p className="text-xs font-semibold text-muted-foreground text-center mb-4 uppercase tracking-widest">
+              Why this is a no-brainer
             </p>
-            <div className="space-y-2.5 sm:space-y-3">
-              <div className="flex items-center justify-between text-sm sm:text-base">
-                <span className="text-muted-foreground">Hiring a VA</span>
-                <span className="text-muted-foreground/70 line-through">$2,000–3,000/mo</span>
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              <div className="text-center p-3 sm:p-4 rounded-xl bg-background border border-border">
+                <p className="text-xs sm:text-sm text-muted-foreground mb-1">DIY outreach</p>
+                <p className="text-sm sm:text-base font-semibold text-muted-foreground/60 line-through">$2,000–3,000</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground/50 mt-0.5">per month</p>
               </div>
-              <div className="flex items-center justify-between text-sm sm:text-base">
-                <span className="text-muted-foreground">Traditional agency</span>
-                <span className="text-muted-foreground/70 line-through">$3,000–5,000/mo</span>
+              <div className="text-center p-3 sm:p-4 rounded-xl bg-background border border-border">
+                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Booking agency</p>
+                <p className="text-sm sm:text-base font-semibold text-muted-foreground/60 line-through">$3,000–5,000</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground/50 mt-0.5">per month</p>
               </div>
-              <div className="border-t border-border pt-2.5 sm:pt-3 flex items-center justify-between text-sm sm:text-base">
-                <span className="font-semibold text-foreground">Get On A Pod</span>
-                <span className="font-semibold text-[hsl(243,75%,59%)]">$499/mo</span>
+              <div className="text-center p-3 sm:p-4 rounded-xl bg-primary/5 border-2 border-primary/30">
+                <p className="text-xs sm:text-sm font-semibold text-primary mb-1">Get On A Pod</p>
+                <p className="text-sm sm:text-base font-bold text-foreground">$499</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">per month</p>
               </div>
             </div>
           </div>
 
-          <div className="text-center mt-8">
-            <Button
-              variant="ghost"
-              size="lg"
-              className="gap-2 text-primary hover:text-primary hover:bg-primary/10 border border-primary/20 hover:border-primary/40 transition-all duration-300 group"
-              asChild
+          {/* Post-signup link */}
+          <div className="text-center mt-10 sm:mt-12">
+            <a
+              href="/what-to-expect"
+              className="group inline-flex items-center gap-2 text-sm sm:text-base text-primary font-medium hover:gap-3 transition-all"
             >
-              <a href="/what-to-expect">
-                <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
-                Curious what happens after you sign up?
-                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </a>
-            </Button>
+              <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              See exactly what happens after you sign up
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+            </a>
           </div>
         </div>
       </div>
