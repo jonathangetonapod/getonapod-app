@@ -12,7 +12,6 @@ const steps = [
       "Pick the right plan"
     ],
     icon: Calendar,
-    color: "from-blue-500/20 to-blue-600/20"
   },
   {
     number: "02",
@@ -24,7 +23,6 @@ const steps = [
       "Follow up until they say yes"
     ],
     icon: Target,
-    color: "from-purple-500/20 to-purple-600/20"
   },
   {
     number: "03",
@@ -33,10 +31,9 @@ const steps = [
     details: [
       "Get your guest prep kit",
       "Show up and share your story",
-      "Receive content for promotion"
+      "We handle all the logistics"
     ],
     icon: Mic,
-    color: "from-green-500/20 to-green-600/20"
   },
   {
     number: "04",
@@ -48,7 +45,6 @@ const steps = [
       "Become the go-to expert"
     ],
     icon: TrendingUp,
-    color: "from-orange-500/20 to-orange-600/20"
   },
 ];
 
@@ -74,58 +70,51 @@ const HowItWorksSection = () => {
             </p>
           </div>
 
-          {/* Steps */}
-          <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6 md:space-y-8">
+          {/* Timeline Steps */}
+          <div className="max-w-4xl mx-auto">
             {steps.map((step, index) => {
               const Icon = step.icon;
+              const isLast = index === steps.length - 1;
               return (
                 <div
                   key={index}
-                  className="relative"
+                  className="relative flex gap-4 sm:gap-6 md:gap-8"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
-                  <div className="group relative bg-background rounded-xl sm:rounded-2xl border-2 border-border p-4 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl">
-                    <div className="flex flex-col md:flex-row gap-4 md:gap-8">
-                      {/* Number & Icon */}
-                      <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0">
-                          <div className={`relative w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-br ${step.color} flex items-center justify-center`}>
-                            <Icon className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 text-foreground" />
-                            <div className="absolute -top-2 -right-2 w-7 h-7 sm:w-8 sm:h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-bold text-xs sm:text-sm">
-                              {step.number}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1">
-                        <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground mb-2 md:mb-3">
-                          {step.title}
-                        </h3>
-                        <p className="text-base sm:text-lg text-muted-foreground mb-3 md:mb-4">
-                          {step.description}
-                        </p>
-
-                        {/* Details List */}
-                        <ul className="space-y-2">
-                          {step.details.map((detail, detailIndex) => (
-                            <li key={detailIndex} className="flex items-start gap-2 sm:gap-3 text-foreground text-sm sm:text-base">
-                              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0 mt-0.5" />
-                              <span>{detail}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                  {/* Timeline Column */}
+                  <div className="flex flex-col items-center flex-shrink-0">
+                    {/* Numbered Circle */}
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm sm:text-base z-10">
+                      {step.number}
                     </div>
+                    {/* Vertical Line */}
+                    {!isLast && (
+                      <div className="w-px flex-1 bg-border" />
+                    )}
                   </div>
 
-                  {/* Arrow Connector */}
-                  {index < steps.length - 1 && (
-                    <div className="flex justify-center py-2 sm:py-4">
-                      <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-primary animate-bounce" style={{ animationDuration: '2s' }} />
+                  {/* Card Content */}
+                  <div className={`group flex-1 bg-background rounded-xl sm:rounded-2xl border-2 border-border p-4 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl ${isLast ? 'mb-0' : 'mb-4 sm:mb-6 md:mb-8'}`}>
+                    <div className="flex items-start gap-3 sm:gap-4 mb-2 md:mb-3">
+                      <Icon className="w-6 h-6 sm:w-7 sm:h-7 text-primary flex-shrink-0 mt-0.5" />
+                      <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground">
+                        {step.title}
+                      </h3>
                     </div>
-                  )}
+                    <p className="text-base sm:text-lg text-muted-foreground mb-3 md:mb-4 ml-9 sm:ml-11">
+                      {step.description}
+                    </p>
+
+                    {/* Details List */}
+                    <ul className="space-y-2 ml-9 sm:ml-11">
+                      {step.details.map((detail, detailIndex) => (
+                        <li key={detailIndex} className="flex items-start gap-2 sm:gap-3 text-foreground text-sm sm:text-base">
+                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0 mt-0.5" />
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               );
             })}

@@ -154,20 +154,6 @@ const steps = [
   },
   {
     number: "11",
-    title: "Content Repurposing",
-    duration: "After Episode Airs",
-    icon: Sparkles,
-    description: "Pro clients get full content repurposing — blog posts and short-form video clips. Everything gets your approval before we publish anything.",
-    details: [
-      "2 blog posts per episode",
-      "Short-form video clips",
-      "You approve before publishing",
-      "Maximize every appearance"
-    ],
-    proBadge: true
-  },
-  {
-    number: "12",
     title: "Ongoing Reporting & Analytics",
     duration: "Always Available",
     icon: BarChart3,
@@ -298,7 +284,7 @@ const WhatToExpect = () => {
                   </div>
                   <h3 className="font-semibold text-sm sm:text-base mb-1.5 sm:mb-2">You Approve Everything</h3>
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    Podcasts, messaging, blog posts, video clips — nothing goes out without your approval first.
+                    Podcasts, messaging, and outreach — nothing goes out without your approval first.
                   </p>
                 </CardContent>
               </Card>

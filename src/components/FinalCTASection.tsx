@@ -18,7 +18,7 @@ const FinalCTASection = () => {
           </h2>
 
           <p className="text-sm sm:text-base md:text-lg lg:text-xl text-primary-foreground/80 mb-6 sm:mb-8 md:mb-10">
-            Book a call to see if Get On A Pod is right for you.
+            Join 50+ founders and executives who stopped being their industry's best-kept secret.
           </p>
 
           <Button
@@ -27,8 +27,12 @@ const FinalCTASection = () => {
             className="shadow-lg min-h-[48px] sm:min-h-[56px] w-full sm:w-auto text-sm sm:text-base"
             asChild
           >
-            <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Book Your Call</a>
+            <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">Secure Your Spot</a>
           </Button>
+
+          <p className="text-sm sm:text-base text-primary-foreground/70 mt-3 sm:mt-4">
+            See your custom podcast plan in 30 minutes
+          </p>
 
           <p className="text-xs sm:text-sm text-primary-foreground/60 mt-4 sm:mt-6">
             No pitch. No pressure. Just a conversation to see if we're a fit.

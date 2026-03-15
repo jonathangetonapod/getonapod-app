@@ -98,28 +98,6 @@ export const featureDetails: Record<string, FeatureDetail> = {
       "Performance trends over time",
     ],
   },
-  "2 blog posts per episode": {
-    title: "2 Blog Posts Per Episode",
-    description: "Professional blog content created from each podcast episode, ready to publish on your website or LinkedIn.",
-    details: [
-      "Written by professional content writers",
-      "SEO-optimized for your target keywords",
-      "Captures key insights from your conversation",
-      "Formatted and ready to publish",
-      "Extends the life of your podcast appearance",
-    ],
-  },
-  "2 blog posts/episode": {
-    title: "2 Blog Posts Per Episode",
-    description: "Professional blog content created from each podcast episode, ready to publish on your website or LinkedIn.",
-    details: [
-      "Written by professional content writers",
-      "SEO-optimized for your target keywords",
-      "Captures key insights from your conversation",
-      "Formatted and ready to publish",
-      "Extends the life of your podcast appearance",
-    ],
-  },
   "Guest prep kit": {
     title: "Guest Prep Kit",
     description: "Everything you need to show up confident and deliver your best performance on every podcast.",
@@ -129,28 +107,6 @@ export const featureDetails: Record<string, FeatureDetail> = {
       "Suggested talking points tailored to the show",
       "Common questions the host asks",
       "Tips to maximize your appearance",
-    ],
-  },
-  "9 video clips (3 per podcast)": {
-    title: "9 Short-Form Video Clips",
-    description: "Professional video clips created from your podcast appearances, optimized for social media.",
-    details: [
-      "3 clips per podcast episode",
-      "Edited with captions and branding",
-      "Optimized for LinkedIn, Twitter, Instagram",
-      "Vertical and horizontal formats available",
-      "Ready to post immediately",
-    ],
-  },
-  "9 video clips/month": {
-    title: "9 Short-Form Video Clips",
-    description: "Professional video clips created from your podcast appearances, optimized for social media.",
-    details: [
-      "3 clips per podcast episode",
-      "Edited with captions and branding",
-      "Optimized for LinkedIn, Twitter, Instagram",
-      "Vertical and horizontal formats available",
-      "Ready to post immediately",
     ],
   },
 };

@@ -1,30 +1,18 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Shield, CheckCircle2, Target, Zap } from 'lucide-react';
+import { Shield, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-const guarantees = [
-  {
-    icon: Shield,
-    title: "We Work Until You're Booked",
-    description: "We don't stop working until you get the podcast placements we promised. If we don't hit the number in your agreed timeframe, we keep working for free until we do."
-  },
-  {
-    icon: Target,
-    title: "Results-Guaranteed Service",
-    description: "You get the exact number of podcast placements promised in your plan. If we fall short, we continue working at no additional cost until we deliver."
-  },
-  {
-    icon: Zap,
-    title: "No Excuses, Just Results",
-    description: "Time limit expires before we hit your number? We keep pitching, booking, and coordinating—completely free—until every promised placement is secured."
-  }
+const checkmarks = [
+  "Every placement delivered",
+  "No time limits on our guarantee",
+  "No excuses, just results",
 ];
 
 const GuaranteeSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-8 md:py-16 bg-gradient-to-b from-primary/5 via-background to-background px-4" id="guarantee">
+    <section className="py-12 md:py-20 bg-primary/5 px-4" id="guarantee">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -32,75 +20,41 @@ const GuaranteeSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          {/* Header */}
-          <div className="text-center mb-8 sm:mb-12">
-            <Badge className="mb-4 bg-success/10 text-success border-success/20">
+          <div className="max-w-3xl mx-auto text-center rounded-3xl border-2 border-primary/30 bg-background p-8 sm:p-10 md:p-14 shadow-lg">
+            {/* Badge */}
+            <Badge className="mb-6 bg-success/10 text-success border-success/20">
               Results Guaranteed
             </Badge>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4 sm:mb-6">
-              Our Iron-Clad Guarantee
-            </h2>
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-              You get every podcast placement we promise—no matter how long it takes us to deliver.
-            </p>
-          </div>
 
-          {/* Guarantee Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto mb-8 sm:mb-12">
-            {guarantees.map((guarantee, index) => {
-              const Icon = guarantee.icon;
-              return (
-                <div
-                  key={index}
-                  className="relative bg-background rounded-2xl border-2 border-border p-5 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl"
-                  style={{ transitionDelay: `${index * 100}ms` }}
-                >
-                  {/* Icon */}
-                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 mb-4 sm:mb-6">
-                    <Icon className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-primary" />
-                  </div>
-
-                  {/* Content */}
-                  <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2 sm:mb-3 pr-8">
-                    {guarantee.title}
-                  </h3>
-                  <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                    {guarantee.description}
-                  </p>
-
-                  {/* Checkmark */}
-                  <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
-                    <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6 text-success" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Trust Badge */}
-          <div className="max-w-3xl mx-auto text-center p-5 sm:p-6 md:p-8 bg-gradient-to-r from-primary/10 via-purple-500/10 to-primary/10 rounded-2xl border-2 border-primary/20">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mb-4">
-              <Shield className="h-7 w-7 sm:h-8 sm:w-8 md:h-10 md:w-10 text-primary flex-shrink-0" />
-              <h3 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-foreground text-center">
-                If We Don't Hit Your Number, We Work For Free
-              </h3>
+            {/* Shield Icon */}
+            <div className="flex items-center justify-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10">
+                <Shield className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
+              </div>
             </div>
-            <p className="text-sm sm:text-base md:text-lg text-muted-foreground mb-4 sm:mb-6">
-              Miss the deadline? We keep going—for free—until every promised placement is delivered. You paid for X podcasts, you get X podcasts. Period.
+
+            {/* Main Heading */}
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4 sm:mb-6">
+              If We Don't Deliver, We Work For Free
+            </h2>
+
+            {/* Subtext */}
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed">
+              You get the exact number of podcast placements promised in your plan. If we fall short
+              in your agreed timeframe, we keep pitching, booking, and coordinating at no additional
+              cost until every placement is delivered.
             </p>
-            <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
-                <span>Get every placement promised</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
-                <span>We work free until delivered</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
-                <span>No excuses, just results</span>
-              </div>
+
+            {/* Checkmarks */}
+            <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-8">
+              {checkmarks.map((label) => (
+                <div key={label} className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
+                  <span className="text-sm sm:text-base font-medium text-foreground">
+                    {label}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

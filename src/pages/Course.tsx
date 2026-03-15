@@ -215,7 +215,7 @@ const Course = () => {
           <div className="p-5 md:p-8 bg-surface-subtle rounded-xl border border-border">
             <Clock className="h-10 w-10 md:h-12 md:w-12 text-primary mx-auto mb-3 md:mb-4" />
             <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground mb-3 md:mb-4">
-              Launching Q1 2025
+              Coming Soon
             </h2>
             <p className="text-sm md:text-base text-muted-foreground mb-5 md:mb-6">
               Join the waitlist to get early access pricing and exclusive bonuses when we launch.

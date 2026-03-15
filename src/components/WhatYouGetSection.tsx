@@ -1,5 +1,5 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Monitor, FileText, Video, BarChart3, CheckCircle2, Sparkles, ThumbsUp, Brain } from 'lucide-react';
+import { Monitor, FileText, BarChart3, CheckCircle2, Sparkles, ThumbsUp, Brain } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const features = [
@@ -28,19 +28,6 @@ const features = [
     ],
     color: "from-purple-500/20 to-purple-600/20",
     badge: "Your Call"
-  },
-  {
-    icon: Video,
-    title: "Content Package",
-    description: "Maximize every appearance with ready-to-post promotional assets.",
-    items: [
-      "9 short-form video clips (3 per podcast)",
-      "2 blog posts per episode",
-      "Optimized for LinkedIn & social",
-      "Ready to repurpose everywhere"
-    ],
-    color: "from-green-500/20 to-green-600/20",
-    badge: "Pro Plan"
   },
   {
     icon: BarChart3,
@@ -137,7 +124,7 @@ const WhatYouGetSection = () => {
           {/* Bottom Note */}
           <div className="text-center mt-8 sm:mt-12 md:mt-16 px-2">
             <p className="text-base sm:text-lg text-muted-foreground">
-              <span className="font-semibold text-foreground">Pro clients</span> get the full content package—video clips, blog posts, and guest prep kits for every episode.
+              <span className="font-semibold text-foreground">Pro clients</span> get guest prep kits for every episode so you show up confident and deliver your best.
             </p>
           </div>
         </div>

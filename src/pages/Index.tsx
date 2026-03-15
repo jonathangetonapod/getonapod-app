@@ -7,7 +7,6 @@ import WhatYouGetSection from '@/components/WhatYouGetSection';
 import PodcastShowcaseSection from '@/components/PodcastShowcaseSection';
 import PricingSection from '@/components/PricingSection';
 import GuaranteeSection from '@/components/GuaranteeSection';
-import WhyProSection from '@/components/WhyProSection';
 import WhoItsForSection from '@/components/WhoItsForSection';
 import SocialProofSection from '@/components/SocialProofSection';
 import FAQSection from '@/components/FAQSection';
@@ -22,13 +21,12 @@ const Index = () => {
       <HeroSection />
       <ProblemSection />
       <SolutionSection />
-      <SocialProofSection />
-      <PodcastShowcaseSection />
       <HowItWorksSection />
       <WhatYouGetSection />
-      <PricingSection />
       <GuaranteeSection />
-      <WhyProSection />
+      <SocialProofSection />
+      <PodcastShowcaseSection />
+      <PricingSection />
       <WhoItsForSection />
       <FAQSection />
       <FinalCTASection />

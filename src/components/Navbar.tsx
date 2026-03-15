@@ -20,8 +20,6 @@ const Navbar = () => {
     { href: '/#pricing', label: 'Pricing', isExternal: false },
     { href: '/premium-placements', label: 'Premium Placements', isExternal: true },
     { href: '/blog', label: 'Blog', isExternal: true },
-    { href: '/resources', label: 'Resources', isExternal: true },
-    { href: '/course', label: 'Course', isExternal: true },
     { href: '/#faq', label: 'FAQ', isExternal: false },
   ];
 
