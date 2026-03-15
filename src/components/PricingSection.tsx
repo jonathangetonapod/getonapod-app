@@ -47,7 +47,7 @@ const PricingSection = () => {
                   </span>
                 </div>
                 <p className="mt-1.5 text-xs sm:text-sm text-muted-foreground/80">
-                  That's ~$250 per placement — less than any agency or VA
+                  That's ~$250 per podcast booking
                 </p>
               </div>
 
