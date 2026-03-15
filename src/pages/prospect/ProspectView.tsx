@@ -63,7 +63,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal'
 import { PricingFAQ } from '@/components/pricing/PricingFAQ'
 
@@ -1674,7 +1674,7 @@ export default function ProspectView() {
               <div className="mb-3 sm:mb-4">
                 <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
                 <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$749</span>
+                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$499</span>
                   <span className="text-sm text-muted-foreground">/month</span>
                 </div>
               </div>
