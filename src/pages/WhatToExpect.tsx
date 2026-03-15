@@ -1,3 +1,4 @@
+import { Helmet } from 'react-helmet-async';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import Navbar from '@/components/Navbar';
@@ -170,6 +171,21 @@ const steps = [
 const WhatToExpect = () => {
   return (
     <div className="min-h-screen bg-background">
+      <Helmet>
+        <title>What to Expect After You Sign Up | Get On A Pod</title>
+        <meta name="description" content="Full transparency on our podcast booking process. From strategy call to published episode — see every step of your journey with Get On A Pod." />
+        <link rel="canonical" href="https://getonapod.com/what-to-expect" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://getonapod.com/what-to-expect" />
+        <meta property="og:title" content="What to Expect After You Sign Up | Get On A Pod" />
+        <meta property="og:description" content="Full transparency on our podcast booking process. From strategy call to published episode — see every step of your journey with Get On A Pod." />
+        <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
+        <meta property="og:site_name" content="Get On A Pod" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="What to Expect After You Sign Up | Get On A Pod" />
+        <meta name="twitter:description" content="Full transparency on our podcast booking process. From strategy call to published episode — see every step of your journey with Get On A Pod." />
+        <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
+      </Helmet>
       <Navbar />
 
       {/* Hero Section */}

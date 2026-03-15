@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -67,6 +68,21 @@ const Course = () => {
 
   return (
     <main className="min-h-screen bg-background">
+      <Helmet>
+        <title>Podcast Guesting Course | Get On A Pod</title>
+        <meta name="description" content="Learn how to get booked on podcasts, prepare for interviews, and build authority. Coming soon from Get On A Pod." />
+        <link rel="canonical" href="https://getonapod.com/course" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://getonapod.com/course" />
+        <meta property="og:title" content="Podcast Guesting Course | Get On A Pod" />
+        <meta property="og:description" content="Learn how to get booked on podcasts, prepare for interviews, and build authority. Coming soon from Get On A Pod." />
+        <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
+        <meta property="og:site_name" content="Get On A Pod" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Podcast Guesting Course | Get On A Pod" />
+        <meta name="twitter:description" content="Learn how to get booked on podcasts, prepare for interviews, and build authority. Coming soon from Get On A Pod." />
+        <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
+      </Helmet>
       <Navbar />
 
       {/* Hero Section */}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -234,6 +235,21 @@ const PremiumPlacements = () => {
 
   return (
     <main className="min-h-screen bg-background">
+      <Helmet>
+        <title>Premium Podcast Placements | Get On A Pod</title>
+        <meta name="description" content="Browse and book premium podcast placements. Get featured on top shows in your industry with guaranteed placement slots." />
+        <link rel="canonical" href="https://getonapod.com/premium-placements" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://getonapod.com/premium-placements" />
+        <meta property="og:title" content="Premium Podcast Placements | Get On A Pod" />
+        <meta property="og:description" content="Browse and book premium podcast placements. Get featured on top shows in your industry with guaranteed placement slots." />
+        <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
+        <meta property="og:site_name" content="Get On A Pod" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Premium Podcast Placements | Get On A Pod" />
+        <meta name="twitter:description" content="Browse and book premium podcast placements. Get featured on top shows in your industry with guaranteed placement slots." />
+        <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
+      </Helmet>
       <Navbar />
 
       {/* Hero Section */}
