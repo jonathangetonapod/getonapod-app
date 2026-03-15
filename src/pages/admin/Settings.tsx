@@ -667,7 +667,7 @@ const data = await response.json()`
               <Label>Features</Label>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
                 <li>Create client accounts with all profile details</li>
-                <li>Enable portal access with password or magic link</li>
+                <li>Enable portal access with password</li>
                 <li>Automatically create Google Sheet for outreach</li>
                 <li>Send welcome invitation emails</li>
                 <li>Optional API key authentication</li>

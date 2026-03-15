@@ -24,7 +24,7 @@ const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'Jul
 
 
 export default function CalendarDashboard() {
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 0, 1)) // January 2025
+  const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState<{ date: Date; bookings: any[] } | null>(null)
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const [bookingsStatusFilter, setBookingsStatusFilter] = useState('all')

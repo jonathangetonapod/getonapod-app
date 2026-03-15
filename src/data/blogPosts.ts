@@ -55,7 +55,7 @@ export const blogPosts: BlogPost[] = [
   {
     id: '4',
     slug: 'best-podcasts-for-saas-founders',
-    title: '50 Best Podcasts for SaaS Founders to Target in 2025',
+    title: '50 Best Podcasts for SaaS Founders to Target in 2026',
     excerpt: 'A curated list of high-impact podcasts with engaged audiences, including listener demographics and how to get booked on each one.',
     content: '',
     author: 'Get On A Pod Team',
@@ -64,19 +64,6 @@ export const blogPosts: BlogPost[] = [
     tags: ['SaaS', 'Founders', 'Resources'],
     imageUrl: 'https://images.unsplash.com/photo-1�������������������������������������������������������������������������������������������������������������������������������������?w=800&h=500&fit=crop',
     readTime: '10 min read'
-  },
-  {
-    id: '5',
-    slug: 'repurposing-podcast-content',
-    title: 'How to Repurpose Your Podcast Interview into 20+ Pieces of Content',
-    excerpt: 'Maximize the value of every podcast appearance with our content repurposing framework that generates months of marketing materials.',
-    content: '',
-    author: 'Get On A Pod Team',
-    publishedAt: '2024-12-30',
-    category: 'Content Strategy',
-    tags: ['Content Marketing', 'Repurposing', 'Social Media'],
-    imageUrl: 'https://images.unsplash.com/photo-1611162616475-46b635cb6868?w=800&h=500&fit=crop',
-    readTime: '7 min read'
   },
   {
     id: '6',

@@ -2200,7 +2200,7 @@ export default function ClientDetail() {
                           </Button>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Password allows client to login without magic link
+                          Password for client portal login
                         </p>
                       </div>
                     )}

@@ -45,7 +45,6 @@ import Settings from "./pages/admin/Settings";
 import Analytics from "./pages/admin/Analytics";
 import AnalyticsTest from "./pages/AnalyticsTest";
 import PortalLogin from "./pages/portal/Login";
-import PortalAuth from "./pages/portal/Auth";
 import PortalDashboard from "./pages/portal/Dashboard";
 import PortalResources from "./pages/portal/Resources";
 import ProspectView from "./pages/prospect/ProspectView";
@@ -84,7 +83,6 @@ const App = () => (
             {/* Client Portal routes */}
             <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
             <Route path="/portal/login" element={<PortalLogin />} />
-            <Route path="/portal/auth" element={<PortalAuth />} />
             {/* Public prospect dashboard */}
             <Route path="/prospect/:slug" element={<ProspectView />} />
             {/* Public client approval dashboard */}

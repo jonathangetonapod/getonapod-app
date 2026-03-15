@@ -14,24 +14,6 @@ export interface ClientPortalAuthResponse {
 }
 
 /**
- * Request a magic link to be sent to the specified email address
- */
-export async function requestMagicLink(email: string): Promise<void> {
-  const { data, error } = await supabase.functions.invoke('send-portal-magic-link', {
-    body: { email }
-  })
-
-  if (error) {
-    console.error('Failed to request magic link:', error)
-    throw new Error(error.message || 'Failed to send login link')
-  }
-
-  if (!data.success) {
-    throw new Error(data.error || 'Failed to send login link')
-  }
-}
-
-/**
  * Login with email and password
  */
 export async function loginWithPassword(email: string, password: string): Promise<ClientPortalAuthResponse> {
@@ -54,29 +36,6 @@ export async function loginWithPassword(email: string, password: string): Promis
       expires_at: data.expires_at,
       client_id: data.client.id
     },
-    client: data.client
-  }
-}
-
-/**
- * Verify a magic link token and create a session
- */
-export async function verifyToken(token: string): Promise<ClientPortalAuthResponse> {
-  const { data, error } = await supabase.functions.invoke('verify-portal-token', {
-    body: { token }
-  })
-
-  if (error) {
-    console.error('Failed to verify token:', error)
-    throw new Error(error.message || 'Invalid or expired login link')
-  }
-
-  if (!data.success) {
-    throw new Error(data.error || 'Invalid or expired login link')
-  }
-
-  return {
-    session: data.session,
     client: data.client
   }
 }
@@ -252,9 +211,15 @@ export async function sendPortalInvitation(clientId: string): Promise<void> {
     throw new Error('Portal access is not enabled for this client')
   }
 
-  // Note: Invitation emails should use the portal invitation template
-  // For now, we'll just send a magic link as the invitation
-  await requestMagicLink(client.email)
+  // Send invitation email with portal login URL
+  const { error: inviteError } = await supabase.functions.invoke('send-portal-invitation', {
+    body: { clientId: client.id, email: client.email, name: client.name }
+  })
+
+  if (inviteError) {
+    console.error('Failed to send portal invitation:', inviteError)
+    throw new Error('Failed to send portal invitation')
+  }
 
   // Update invitation sent timestamp
   await supabase

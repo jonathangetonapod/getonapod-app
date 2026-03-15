@@ -703,7 +703,7 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "auth-portal",
     name: "Authentication & Portal",
-    description: "Handle client portal authentication (not prospects). Clients log in via password or magic link to access their portal dashboard, bookings, and outreach data. Sessions are stored in client_portal_sessions.",
+    description: "Handle client portal authentication (not prospects). Clients log in via password to access their portal dashboard, bookings, and outreach data. Sessions are stored in client_portal_sessions.",
     endpoints: [
       {
         id: "login-with-password",
@@ -720,36 +720,6 @@ export const API_CATEGORIES: ApiCategory[] = [
           session_token: "session-token-here",
           client: { id: "uuid", name: "John Doe", email: "john@example.com" },
           expires_at: "2025-02-15T00:00:00Z"
-        }, null, 2),
-        category: "auth-portal",
-      },
-      {
-        id: "send-portal-magic-link",
-        name: "Send Portal Magic Link",
-        method: "POST",
-        path: `${BASE_PATH}/send-portal-magic-link`,
-        description: "Sends a passwordless magic link email to a client (looked up in clients table) via Resend. Creates a client_portal_token (15-minute expiry) with rate limiting and suppression checks. Not for prospects.",
-        auth: "None",
-        params: [
-          { name: "email", type: "string", required: true, description: "Client's email address (must exist in clients table with portal_access_enabled)" },
-        ],
-        responseExample: JSON.stringify({ success: true, message: "Magic link sent" }, null, 2),
-        category: "auth-portal",
-      },
-      {
-        id: "verify-portal-token",
-        name: "Verify Portal Token",
-        method: "POST",
-        path: `${BASE_PATH}/verify-portal-token`,
-        description: "Validates a client's magic link token from client_portal_tokens, marks it as used, and creates a new client_portal_session (24-hour expiry). Returns the authenticated client record.",
-        auth: "None",
-        params: [
-          { name: "token", type: "string", required: true, description: "Magic link token from email" },
-        ],
-        responseExample: JSON.stringify({
-          success: true,
-          session: { session_token: "token", expires_at: "2025-02-15T00:00:00Z", client_id: "uuid" },
-          client: { id: "uuid", name: "John Doe", email: "john@example.com" }
         }, null, 2),
         category: "auth-portal",
       },

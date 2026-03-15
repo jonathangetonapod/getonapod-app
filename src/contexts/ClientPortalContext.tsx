@@ -2,8 +2,6 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { Client } from '@/services/clients'
 import {
   type ClientPortalSession,
-  requestMagicLink as apiRequestMagicLink,
-  verifyToken as apiVerifyToken,
   validateSession as apiValidateSession,
   loginWithPassword as apiLoginWithPassword,
   logout as apiLogout,
@@ -16,8 +14,6 @@ interface ClientPortalContextType {
   session: ClientPortalSession | null
   loading: boolean
   isImpersonating: boolean
-  requestMagicLink: (email: string) => Promise<void>
-  loginWithToken: (token: string) => Promise<void>
   loginWithPassword: (email: string, password: string) => Promise<void>
   impersonateClient: (client: Client) => void
   exitImpersonation: () => void
@@ -111,41 +107,6 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     return () => clearTimeout(timeoutId)
   }, [session])
 
-  const requestMagicLink = async (email: string) => {
-    await apiRequestMagicLink(email)
-  }
-
-  const loginWithToken = async (token: string) => {
-    // Clear any existing session first to avoid race conditions
-    sessionStorage.clear()
-    setSession(null)
-    setClient(null)
-
-    setLoading(true)
-    try {
-      const { session: newSession, client: newClient } = await apiVerifyToken(token)
-
-      // Store in localStorage
-      sessionStorage.save(newSession, newClient)
-
-      // Update state
-      setSession(newSession)
-      setClient(newClient)
-
-      // Set user in Sentry
-      setSentryUser({
-        id: newClient.id,
-        email: newClient.email || undefined,
-        name: newClient.name
-      })
-    } catch (error) {
-      console.error('[ClientPortal] Login failed:', error)
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const loginWithPassword = async (email: string, password: string) => {
     // Clear any existing session first to avoid race conditions
     sessionStorage.clear()
@@ -238,8 +199,6 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
         session,
         loading,
         isImpersonating,
-        requestMagicLink,
-        loginWithToken,
         loginWithPassword,
         impersonateClient,
         exitImpersonation,

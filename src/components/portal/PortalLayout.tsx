@@ -165,7 +165,7 @@ export function PortalLayout({ children }: PortalLayoutProps) {
       <footer className="border-t mt-auto">
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-            <p>© 2025 Get On A Pod. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} Get On A Pod. All rights reserved.</p>
             <div className="flex gap-4">
               <a href="mailto:support@getonapod.com" className="hover:text-foreground transition-colors">
                 Contact Support
