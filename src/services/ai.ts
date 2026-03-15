@@ -21,8 +21,6 @@ interface PodcastSummaryInput {
  */
 export async function generatePodcastSummary(input: PodcastSummaryInput): Promise<string> {
   try {
-    console.log('🤖 Generating AI summary for:', input.podcast_name);
-
     const prompt = `You are a podcast booking agency expert. Write a compelling 2-3 sentence description explaining why guests should appear on this podcast and who it's ideal for.
 
 Podcast Details:
@@ -58,7 +56,6 @@ Guidelines:
     });
 
     const summary = message.content[0].type === 'text' ? message.content[0].text : '';
-    console.log('✅ AI summary generated:', summary);
 
     return summary.trim();
   } catch (error) {

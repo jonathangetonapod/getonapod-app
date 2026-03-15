@@ -89,16 +89,6 @@ export async function getClientBookings(clientId: string): Promise<ClientPortalD
   // Get session token if exists
   const { session } = sessionStorage.get()
 
-  console.log('[getClientBookings] Session from storage:', {
-    hasSession: !!session,
-    sessionToken: session?.session_token ? session.session_token.substring(0, 20) + '...' : 'missing',
-    sessionTokenLength: session?.session_token?.length,
-    clientId,
-    sessionClientId: session?.client_id,
-    expiresAt: session?.expires_at,
-    fullSessionObject: session
-  })
-
   // Use client ID from session if available (to ensure it matches the session token)
   const effectiveClientId = session?.client_id || clientId
 
@@ -109,12 +99,6 @@ export async function getClientBookings(clientId: string): Promise<ClientPortalD
 
   if (session?.session_token) {
     requestBody.sessionToken = session.session_token
-    console.log('[getClientBookings] Including session token in request:', {
-      tokenPreview: session.session_token.substring(0, 20) + '...',
-      tokenLength: session.session_token.length
-    })
-  } else {
-    console.log('[getClientBookings] No session token to send - will use admin mode')
   }
 
   const { data, error } = await supabase.functions.invoke('get-client-bookings', {
@@ -268,11 +252,8 @@ export async function getPodcastFitAnalysis(
     .maybeSingle()
 
   if (!cacheError && cached?.analysis) {
-    console.log('[PodcastFitCache] Using cached analysis')
     return cached.analysis
   }
-
-  console.log('[PodcastFitCache] No cache found, generating new analysis')
 
   // Generate new analysis via Edge Function
   try {
@@ -310,8 +291,6 @@ export async function getPodcastFitAnalysis(
     if (saveError) {
       console.error('Failed to cache analysis:', saveError)
       // Don't fail if cache save fails - we still have the analysis
-    } else {
-      console.log('[PodcastFitCache] Analysis cached successfully')
     }
 
     return data.analysis
@@ -333,8 +312,6 @@ export async function invalidatePodcastFitAnalysis(clientId: string, bookingId: 
 
   if (error) {
     console.error('Failed to invalidate cache:', error)
-  } else {
-    console.log('[PodcastFitCache] Cache invalidated for booking:', bookingId)
   }
 }
 

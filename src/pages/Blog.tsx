@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { Filter, Search, Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SocialProofNotifications } from '@/components/SocialProofNotifications';
 import { BlogCard } from '@/components/blog/BlogCard';
 import { getAllPosts, getAllCategories, type BlogPost, type BlogCategory } from '@/services/blog';
@@ -126,8 +127,44 @@ const Blog = () => {
           >
             {/* Loading State */}
             {isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border bg-card overflow-hidden"
+                  >
+                    {/* Image placeholder */}
+                    <Skeleton className="aspect-video w-full rounded-none" />
+
+                    {/* CardHeader area */}
+                    <div className="p-6 space-y-3">
+                      {/* Category badge */}
+                      <Skeleton className="h-5 w-20 rounded-full" />
+                      {/* Title */}
+                      <Skeleton className="h-6 w-full" />
+                      <Skeleton className="h-6 w-4/5" />
+                    </div>
+
+                    {/* CardContent - excerpt */}
+                    <div className="px-6 pb-4 space-y-2">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-3/5" />
+                    </div>
+
+                    {/* CardFooter - date & read time */}
+                    <div className="px-6 pb-6 flex items-center gap-4">
+                      <div className="flex items-center gap-1">
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                        <Skeleton className="h-4 w-20" />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Skeleton className="h-4 w-4 rounded-full" />
+                        <Skeleton className="h-4 w-16" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : posts.length === 0 ? (
               /* No Results */

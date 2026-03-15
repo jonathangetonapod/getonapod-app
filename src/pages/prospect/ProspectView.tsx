@@ -1681,26 +1681,26 @@ export default function ProspectView() {
               <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
                 <li
                   className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('2 podcasts/month, minimum')}
+                  onClick={() => setSelectedPricingFeature('2+ guaranteed podcast bookings every month')}
                 >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2 podcasts/month, minimum</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2+ guaranteed podcast bookings every month</span>
                   <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
                 <li
                   className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Podcast Command Center')}
+                  onClick={() => setSelectedPricingFeature('Podcast Command Center access')}
                 >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Podcast Command Center</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Podcast Command Center access</span>
                   <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
                 <li
                   className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Reporting & analytics')}
+                  onClick={() => setSelectedPricingFeature('Reporting & analytics dashboard')}
                 >
                   <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Reporting & analytics</span>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Reporting & analytics dashboard</span>
                   <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
                 </li>
               </ul>

@@ -315,8 +315,6 @@ export async function getClientOutreachPodcasts(
       return { success: true, podcasts: [], total: 0 }
     }
 
-    console.log('[getClientOutreachPodcasts] Fetching details for', data.podcastIds.length, 'podcasts from frontend (parallel)')
-
     // Fetch podcast details from Podscan API (from frontend where DNS works)
     // Using batched parallel processing for speed while respecting rate limits
     const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
@@ -365,7 +363,6 @@ export async function getClientOutreachPodcasts(
     const podcastIds = data.podcastIds as string[]
     for (let i = 0; i < podcastIds.length; i += BATCH_SIZE) {
       const batch = podcastIds.slice(i, i + BATCH_SIZE)
-      console.log(`[getClientOutreachPodcasts] Fetching batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(podcastIds.length / BATCH_SIZE)} (${batch.length} podcasts)`)
 
       // Fetch batch in parallel
       const batchResults = await Promise.all(batch.map(fetchPodcast))
@@ -378,8 +375,6 @@ export async function getClientOutreachPodcasts(
         await new Promise(resolve => setTimeout(resolve, 100))
       }
     }
-
-    console.log('[getClientOutreachPodcasts] Successfully fetched', podcasts.length, 'podcasts')
 
     return {
       success: true,

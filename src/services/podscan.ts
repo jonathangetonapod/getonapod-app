@@ -93,8 +93,6 @@ export async function searchPodcasts(options: SearchOptions = {}): Promise<Podca
   });
 
   const url = `${PODSCAN_API_BASE}/podcasts/search?${params}`;
-  console.log('🎙️ Podscan API Request:', url);
-  console.log('📊 Search options:', options);
 
   const response = await fetch(url, {
     headers: {
@@ -109,8 +107,6 @@ export async function searchPodcasts(options: SearchOptions = {}): Promise<Podca
   }
 
   const data = await response.json();
-  console.log('✅ Podscan API Response:', data);
-  console.log('📦 Podcasts found:', data.podcasts?.length || 0);
 
   return data;
 }
@@ -143,15 +139,11 @@ export async function searchBusinessPodcasts(limit = 20): Promise<PodcastData[]>
     has_guests: true, // Only shows that do interviews
   });
 
-  console.log(`🎯 Fetched ${response.podcasts.length} business podcasts`);
-
   // Filter out podcasts with invalid/missing image URLs
   const validPodcasts = response.podcasts.filter(podcast =>
     podcast.podcast_image_url &&
     podcast.podcast_image_url.startsWith('http')
   );
-
-  console.log(`✅ ${validPodcasts.length} podcasts have valid images, selecting ${limit} randomly`);
 
   // Shuffle and return random subset
   const shuffled = validPodcasts.sort(() => Math.random() - 0.5);
@@ -177,15 +169,11 @@ export async function searchPremiumPodcasts(limit = 12): Promise<PodcastData[]> 
     has_guests: true,
   });
 
-  console.log(`💎 Fetched ${response.podcasts.length} premium podcasts`);
-
   // Filter out podcasts with invalid/missing image URLs
   const validPodcasts = response.podcasts.filter(podcast =>
     podcast.podcast_image_url &&
     podcast.podcast_image_url.startsWith('http')
   );
-
-  console.log(`✅ ${validPodcasts.length} premium podcasts have valid images, selecting ${limit} randomly`);
 
   // Shuffle and return subset
   const shuffled = validPodcasts.sort(() => Math.random() - 0.5);
@@ -242,7 +230,6 @@ export async function searchPodcastsByCategory(
  */
 export async function getPodcastById(podcastId: string): Promise<PodcastData> {
   const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}`;
-  console.log('🎙️ Fetching podcast by ID:', podcastId);
 
   const response = await fetch(url, {
     headers: {
@@ -257,7 +244,6 @@ export async function getPodcastById(podcastId: string): Promise<PodcastData> {
   }
 
   const data = await response.json();
-  console.log('✅ Podcast fetched:', data);
 
   // API returns { podcast: { ... } }, extract the podcast object
   return data.podcast || data;
@@ -331,7 +317,6 @@ export interface PodcastDemographics {
  */
 export async function getPodcastDemographics(podcastId: string): Promise<PodcastDemographics | null> {
   const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}/demographics`
-  console.log('📊 Fetching podcast demographics:', podcastId)
 
   try {
     const response = await fetch(url, {
@@ -342,7 +327,6 @@ export async function getPodcastDemographics(podcastId: string): Promise<Podcast
     })
 
     if (!response.ok) {
-      console.log('📊 No demographics available for this podcast')
       return null
     }
 
@@ -350,11 +334,9 @@ export async function getPodcastDemographics(podcastId: string): Promise<Podcast
 
     // Check if we got an error response
     if (data.error || !data.episodes_analyzed) {
-      console.log('📊 No demographics data:', data.error || 'No episodes analyzed')
       return null
     }
 
-    console.log('✅ Demographics fetched:', data.episodes_analyzed, 'episodes analyzed')
     return data
   } catch (error) {
     console.error('❌ Error fetching demographics:', error)
@@ -411,7 +393,6 @@ export interface ChartPodcast extends PodcastData {
  */
 export async function getChartCountries(): Promise<ChartCountry[]> {
   const url = `${PODSCAN_API_BASE}/charts/countries/supported`;
-  console.log('🌍 Fetching chart countries');
 
   const response = await fetch(url, {
     headers: {
@@ -426,14 +407,12 @@ export async function getChartCountries(): Promise<ChartCountry[]> {
   }
 
   const data = await response.json();
-  console.log('✅ Chart countries fetched:', data);
 
   // Extract array from response - check various possible structures
   const countries = data.countries || data.data || data;
 
   // If it's an object with country codes as keys, convert to array
   if (countries && !Array.isArray(countries) && typeof countries === 'object') {
-    console.log('📦 Converting countries object to array');
     return Object.entries(countries).map(([code, name]) => ({
       code,
       name: typeof name === 'string' ? name : code.toUpperCase()
@@ -451,7 +430,6 @@ export async function getChartCategories(
   countryCode: string
 ): Promise<ChartCategory[]> {
   const url = `${PODSCAN_API_BASE}/charts/${platform}/${countryCode}/categories`;
-  console.log(`📂 Fetching chart categories for ${platform}/${countryCode}`);
 
   const response = await fetch(url, {
     headers: {
@@ -466,14 +444,12 @@ export async function getChartCategories(
   }
 
   const data = await response.json();
-  console.log('✅ Chart categories fetched:', data);
 
   // Extract array from response - check various possible structures
   const rawCategories = data.categories || data.data || data;
 
   // If it's already an array, map to ensure correct structure
   if (Array.isArray(rawCategories)) {
-    console.log('📦 Categories is array with', rawCategories.length, 'items');
     return rawCategories.map((cat: any) => ({
       id: String(cat.id || cat.category_id || cat.slug || ''),
       name: String(cat.name || cat.title || cat.label || cat.id || '')
@@ -482,7 +458,6 @@ export async function getChartCategories(
 
   // If it's an object with category IDs as keys (e.g., {id1: "name1", id2: "name2"})
   if (rawCategories && typeof rawCategories === 'object') {
-    console.log('📦 Converting categories object to array');
     return Object.entries(rawCategories).map(([id, value]) => ({
       id: String(id),
       name: typeof value === 'string' ? value : (typeof value === 'object' && value !== null ? (value as any).name || String(id) : String(id))
@@ -509,7 +484,6 @@ export async function getTopChartPodcasts(
   params.append('limit', String(limit));
 
   const url = `${PODSCAN_API_BASE}/charts/${platform}/${countryCode}/${category}/top?${params}`;
-  console.log(`📊 Fetching top ${limit} podcasts from ${platform}/${countryCode}/${category}`);
 
   const response = await fetch(url, {
     headers: {
@@ -524,7 +498,6 @@ export async function getTopChartPodcasts(
   }
 
   const data = await response.json();
-  console.log('✅ Chart podcasts fetched:', data);
 
   // Extract array from response - check various possible structures
   const podcasts = data.podcasts || data.data || data;
@@ -532,22 +505,6 @@ export async function getTopChartPodcasts(
   if (!Array.isArray(podcasts)) {
     console.error('❌ Unexpected response format - podcasts is not an array:', podcasts);
     return [];
-  }
-
-  // Log first podcast to see actual field structure
-  if (podcasts.length > 0) {
-    console.log('📋 Sample podcast fields:', Object.keys(podcasts[0]));
-    console.log('🖼️ Image fields check:', {
-      podcast_image_url: podcasts[0].podcast_image_url,
-      artwork: podcasts[0].artwork,
-      image: podcasts[0].image,
-      artworkUrl: podcasts[0].artworkUrl,
-      imageUrl: podcasts[0].imageUrl,
-      cover: podcasts[0].cover,
-      thumbnail: podcasts[0].thumbnail,
-      artwork_url: podcasts[0].artwork_url,
-      image_url: podcasts[0].image_url,
-    });
   }
 
   // Normalize field names and add rank

@@ -27,7 +27,7 @@ const steps = [
   {
     number: "03",
     title: "You Show Up",
-    description: "We handle prep, coordination, and content.",
+    description: "We handle prep, coordination, and scheduling.",
     details: [
       "Get your guest prep kit",
       "Show up and share your story",

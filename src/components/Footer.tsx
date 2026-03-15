@@ -28,8 +28,6 @@ const Footer = () => {
             <nav className="flex flex-col gap-2">
               <a href="/#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
               <Link to="/blog" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Blog</Link>
-              <Link to="/resources" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Resources</Link>
-              <Link to="/course" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Course</Link>
               <a href="/#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">FAQ</a>
             </nav>
           </div>

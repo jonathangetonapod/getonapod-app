@@ -34,6 +34,16 @@ export const featureDetails: Record<string, FeatureDetail> = {
       "Episode prep support included",
     ],
   },
+  "2+ guaranteed podcast bookings every month": {
+    title: "2+ Guaranteed Podcast Bookings Every Month",
+    description: "We secure at least 2 quality podcast appearances for you every month on shows that match your expertise and target audience.",
+    details: [
+      "Hand-picked shows relevant to your niche",
+      "Vetted for audience engagement and quality",
+      "Full scheduling coordination handled for you",
+      "Episode prep support included",
+    ],
+  },
   "Minimum 3 bookings/month": {
     title: "Minimum 3 Bookings Per Month",
     description: "We guarantee at least 3 podcast appearances monthly, often more depending on availability and your approval queue.",

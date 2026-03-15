@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2, ChevronDown, ChevronUp, ShoppingCart, Search, X, SlidersHorizontal } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts';
 import { useToast } from '@/hooks/use-toast';
 import { SocialProofNotifications } from '@/components/SocialProofNotifications';
@@ -476,9 +477,61 @@ const PremiumPlacements = () => {
             }`}
           >
             {isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-3 text-muted-foreground">Loading premium podcasts...</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-surface-subtle rounded-2xl border-2 border-border overflow-hidden"
+                  >
+                    {/* Image placeholder */}
+                    <Skeleton className="h-32 md:h-48 w-full rounded-none" />
+
+                    <div className="p-4 md:p-6">
+                      {/* Title */}
+                      <div className="mb-3 md:mb-4 min-h-[3rem] md:h-16 flex items-center">
+                        <Skeleton className="h-7 w-3/4" />
+                      </div>
+
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-2 gap-2 md:gap-3 mb-3 md:mb-4">
+                        {Array.from({ length: 4 }).map((_, j) => (
+                          <div key={j} className="flex items-center gap-2">
+                            <Skeleton className="h-4 w-4 rounded-full" />
+                            <div className="space-y-1">
+                              <Skeleton className="h-3 w-12" />
+                              <Skeleton className="h-4 w-16" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Why This Show placeholder */}
+                      <div className="mb-3 md:mb-4 p-2 md:p-3 rounded-lg border border-border">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Skeleton className="h-4 w-4 rounded-full" />
+                          <Skeleton className="h-3 w-24" />
+                        </div>
+                        <Skeleton className="h-4 w-full mb-1" />
+                        <Skeleton className="h-4 w-2/3" />
+                      </div>
+
+                      {/* Features toggle placeholder */}
+                      <div className="mb-4 md:mb-6">
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+
+                      {/* Price & CTA */}
+                      <div className="border-t-2 border-border pt-4 md:pt-6">
+                        <div className="mb-3 md:mb-4">
+                          <Skeleton className="h-3 w-16 mb-2" />
+                          <Skeleton className="h-10 w-28 mb-1" />
+                          <Skeleton className="h-3 w-24" />
+                        </div>
+                        <Skeleton className="h-12 w-full rounded-md" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : filteredAndSortedPodcasts.length === 0 ? (
               <div className="text-center py-20">

@@ -2,8 +2,17 @@ import { loadStripe } from '@stripe/stripe-js'
 import { supabase } from '@/lib/supabase'
 import type { CartItem } from '@/stores/cartStore'
 
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+// Lazy-initialize Stripe only when needed
+let stripePromise: ReturnType<typeof loadStripe> | null = null
+function getStripe() {
+  if (!stripePromise) {
+    const key = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+    if (key) {
+      stripePromise = loadStripe(key)
+    }
+  }
+  return stripePromise
+}
 
 /**
  * Create a Stripe Checkout Session via Supabase Edge Function
@@ -14,8 +23,6 @@ export const createCheckoutSession = async (
   customerName: string
 ): Promise<{ sessionId: string; url: string }> => {
   try {
-    console.log('🛒 Creating checkout session for', cartItems.length, 'items')
-
     // Call Supabase Edge Function
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
       body: {
@@ -34,7 +41,6 @@ export const createCheckoutSession = async (
       throw new Error('Invalid response from checkout session creation')
     }
 
-    console.log('✅ Checkout session created:', data.sessionId)
     return data
   } catch (error) {
     console.error('❌ Failed to create checkout session:', error)
@@ -47,13 +53,11 @@ export const createCheckoutSession = async (
  */
 export const redirectToCheckout = async (sessionId: string): Promise<void> => {
   try {
-    const stripe = await stripePromise
+    const stripe = await getStripe()
 
     if (!stripe) {
       throw new Error('Stripe failed to load')
     }
-
-    console.log('🔄 Redirecting to Stripe Checkout:', sessionId)
 
     const { error } = await stripe.redirectToCheckout({ sessionId })
 
@@ -92,8 +96,6 @@ export const createAddonCheckoutSession = async (
   clientId: string
 ): Promise<{ sessionId: string; url: string }> => {
   try {
-    console.log(`🛒 Creating addon checkout session for ${addons.length} addon(s)`)
-
     // Call Supabase Edge Function
     const { data, error } = await supabase.functions.invoke('create-addon-checkout', {
       body: {
@@ -111,7 +113,6 @@ export const createAddonCheckoutSession = async (
       throw new Error('Invalid response from addon checkout session creation')
     }
 
-    console.log('✅ Addon checkout session created:', data.sessionId)
     return data
   } catch (error) {
     console.error('❌ Failed to create addon checkout session:', error)

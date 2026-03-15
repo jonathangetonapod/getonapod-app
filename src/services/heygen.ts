@@ -159,15 +159,10 @@ export async function pollVideoStatus(
   intervalMs = 5000
 ): Promise<string> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    console.log(`[Poll ${attempt + 1}/${maxAttempts}] Checking video ${videoId}...`);
-
     // Backend checks HeyGen AND updates database (has service role key)
     const status = await getVideoStatus(videoId, dashboardId);
 
-    console.log(`[Poll ${attempt + 1}/${maxAttempts}] Status: ${status.status}`);
-
     if (status.status === 'completed' && status.video_url) {
-      console.log(`Video completed! URL: ${status.video_url}`);
       return status.video_url;
     }
 

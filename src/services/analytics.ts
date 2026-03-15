@@ -53,15 +53,11 @@ function formatCurrency(amount: number): string {
 
 export async function getPricingAnalytics(): Promise<PricingAnalytics> {
   try {
-    console.log('Starting analytics query...')
-
     // Fetch all active premium podcasts
     const { data: podcasts, error } = await supabase
       .from('premium_podcasts')
       .select('*')
       .eq('is_active', true)
-
-    console.log('Query result:', { data: podcasts, error })
 
     if (error) {
       console.error('Analytics query error:', error)
@@ -69,7 +65,6 @@ export async function getPricingAnalytics(): Promise<PricingAnalytics> {
     }
 
     if (!podcasts || podcasts.length === 0) {
-      console.log('No podcasts found, returning empty analytics')
       // Return empty analytics if no data
       return {
         averagePricePerListener: 0,
@@ -83,8 +78,6 @@ export async function getPricingAnalytics(): Promise<PricingAnalytics> {
         priceDistribution: [],
       }
     }
-
-    console.log(`Found ${podcasts.length} podcasts, parsing data...`)
 
     // Parse all data
     const parsedData = podcasts.map((p) => ({
