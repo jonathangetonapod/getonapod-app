@@ -65,7 +65,15 @@ import {
   Users,
   Globe,
   Clock,
+  Sparkles,
+  UserSearch,
 } from 'lucide-react'
+import { getRelatedPodcasts, getPodcastDemographics, type PodcastData, type PodcastDemographics } from '@/services/podscan'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Progress } from '@/components/ui/progress'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
 import { getClients } from '@/services/clients'
 import {
   getPodcasts,
@@ -83,7 +91,7 @@ import { getAllAnalytics, type DetailedCacheStats, type TopCachedPodcast, type R
 
 type ViewMode = 'table' | 'grid'
 type Mode = 'browse' | 'client' | 'prospect' | 'analytics'
-type SortOption = 'name' | 'host' | 'audience' | 'rating' | 'episodes' | 'dateAdded'
+type SortOption = 'name' | 'host' | 'audience' | 'rating' | 'episodes' | 'dateAdded' | 'prs'
 type TableDensity = 'compact' | 'comfortable' | 'spacious'
 
 interface ColumnVisibility {
@@ -91,6 +99,7 @@ interface ColumnVisibility {
   audience: boolean
   rating: boolean
   episodes: boolean
+  prs: boolean
 }
 
 interface ExistingProspect {
@@ -144,11 +153,13 @@ export default function PodcastDatabase() {
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
     try {
       const stored = localStorage.getItem('podcast-database-columns')
-      return stored ? JSON.parse(stored) : {
+      const parsed = stored ? JSON.parse(stored) : null
+      return parsed ? { prs: true, ...parsed } : {
         host: true,
         audience: true,
         rating: true,
         episodes: true,
+        prs: true,
       }
     } catch (error) {
       console.error('Failed to load column visibility:', error)
@@ -157,6 +168,7 @@ export default function PodcastDatabase() {
         audience: true,
         rating: true,
         episodes: true,
+        prs: true,
       }
     }
   })
@@ -230,6 +242,18 @@ export default function PodcastDatabase() {
 
   // Export State
   const [isExporting, setIsExporting] = useState(false)
+
+  // Find Similar State
+  const [findSimilarOpen, setFindSimilarOpen] = useState(false)
+  const [findSimilarPodcast, setFindSimilarPodcast] = useState<PodcastDatabaseItem | null>(null)
+  const [relatedPodcasts, setRelatedPodcasts] = useState<PodcastData[]>([])
+  const [isLoadingRelated, setIsLoadingRelated] = useState(false)
+
+  // Demographics State
+  const [demographicsOpen, setDemographicsOpen] = useState(false)
+  const [demographicsPodcast, setDemographicsPodcast] = useState<PodcastDatabaseItem | null>(null)
+  const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
+  const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
 
   // Saved Filter Presets State
   const [savedPresets, setSavedPresets] = useState<FilterPreset[]>(() => {
@@ -973,6 +997,40 @@ export default function PodcastDatabase() {
     }
   }
 
+  // Find Similar handler
+  const handleFindSimilar = async (podcast: PodcastDatabaseItem) => {
+    setFindSimilarPodcast(podcast)
+    setFindSimilarOpen(true)
+    setIsLoadingRelated(true)
+    setRelatedPodcasts([])
+    try {
+      const related = await getRelatedPodcasts(podcast.podscan_id)
+      setRelatedPodcasts(related)
+    } catch (error) {
+      console.error('Failed to fetch related podcasts:', error)
+      toast.error('Failed to load related podcasts')
+    } finally {
+      setIsLoadingRelated(false)
+    }
+  }
+
+  // Demographics handler
+  const handleViewDemographics = async (podcast: PodcastDatabaseItem) => {
+    setDemographicsPodcast(podcast)
+    setDemographicsOpen(true)
+    setIsLoadingDemographics(true)
+    setDemographics(null)
+    try {
+      const data = await getPodcastDemographics(podcast.podscan_id)
+      setDemographics(data)
+    } catch (error) {
+      console.error('Failed to fetch demographics:', error)
+      toast.error('Failed to load demographics')
+    } finally {
+      setIsLoadingDemographics(false)
+    }
+  }
+
   // Calculate average score for selected
   const calculateAverageScore = () => {
     const selectedScores = Array.from(selectedPodcasts)
@@ -1568,6 +1626,9 @@ export default function PodcastDatabase() {
                     <DropdownMenuItem onClick={() => toggleColumn('episodes')}>
                       {columnVisibility.episodes && '✓ '}Episodes
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleColumn('prs')}>
+                      {columnVisibility.prs && '✓ '}PRS Score
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -2124,6 +2185,17 @@ export default function PodcastDatabase() {
                           </div>
                         </TableHead>
                       )}
+                      {columnVisibility.prs && (
+                        <TableHead
+                          className="cursor-pointer select-none hover:bg-muted/50"
+                          onClick={() => handleSort('prs')}
+                        >
+                          <div className="flex items-center">
+                            PRS
+                            <SortIndicator column="prs" />
+                          </div>
+                        </TableHead>
+                      )}
                       {isMatchMode && <TableHead>Compatibility</TableHead>}
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
@@ -2201,6 +2273,33 @@ export default function PodcastDatabase() {
                               {podcast.episode_count || 'N/A'}
                             </TableCell>
                           )}
+                          {columnVisibility.prs && (
+                            <TableCell className={getDensityClass()}>
+                              {podcast.podcast_reach_score ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Badge
+                                        variant={
+                                          podcast.podcast_reach_score >= 70 ? 'default' :
+                                          podcast.podcast_reach_score >= 40 ? 'secondary' :
+                                          'outline'
+                                        }
+                                        className="cursor-help"
+                                      >
+                                        {podcast.podcast_reach_score}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-sm">Podcast Reach Score (0-100)</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">N/A</span>
+                              )}
+                            </TableCell>
+                          )}
                           {isMatchMode && (
                             <TableCell className={getDensityClass()}>
                               {score !== null && score !== undefined ? (
@@ -2236,11 +2335,24 @@ export default function PodcastDatabase() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleFindSimilar(podcast)}>
+                                  <Sparkles className="h-4 w-4 mr-2" />
+                                  Find Similar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleViewDemographics(podcast)}>
+                                  <UserSearch className="h-4 w-4 mr-2" />
+                                  Demographics
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem>
                                   View Details
                                 </DropdownMenuItem>
                                 {podcast.podscan_email && (
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    navigator.clipboard.writeText(podcast.podscan_email!)
+                                    toast.success('Email copied to clipboard')
+                                  }}>
+                                    <Mail className="h-4 w-4 mr-2" />
                                     Copy Email
                                   </DropdownMenuItem>
                                 )}
@@ -2346,6 +2458,248 @@ export default function PodcastDatabase() {
           </Card>
         )}
       </div>
+
+      {/* Find Similar Dialog */}
+      <Dialog open={findSimilarOpen} onOpenChange={setFindSimilarOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Similar to: {findSimilarPodcast?.podcast_name}</DialogTitle>
+            <DialogDescription>
+              Podcasts with similar audience and content
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            {isLoadingRelated ? (
+              <div className="space-y-3 p-4">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded" />
+                    <div className="flex-1 space-y-1">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : relatedPodcasts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No related podcasts found
+              </div>
+            ) : (
+              <div className="space-y-2 p-1">
+                {relatedPodcasts.map((rp, idx) => (
+                  <div
+                    key={rp.podcast_id || idx}
+                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                  >
+                    <img
+                      src={rp.podcast_image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(rp.podcast_name)}&background=random&size=40`}
+                      alt={rp.podcast_name}
+                      className="w-10 h-10 rounded object-cover"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{rp.podcast_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {rp.publisher_name || 'Unknown host'}
+                        {rp.reach?.audience_size ? ` · ${(rp.reach.audience_size / 1000).toFixed(0)}K listeners` : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {rp.podcast_reach_score && (
+                        <Badge variant="secondary" className="text-xs">
+                          PRS {rp.podcast_reach_score}
+                        </Badge>
+                      )}
+                      {rp.podcast_categories?.slice(0, 1).map(cat => (
+                        <Badge key={cat.category_id} variant="outline" className="text-xs">
+                          {cat.category_name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Demographics Sheet */}
+      <Sheet open={demographicsOpen} onOpenChange={setDemographicsOpen}>
+        <SheetContent className="w-[450px] sm:w-[540px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{demographicsPodcast?.podcast_name}</SheetTitle>
+            <SheetDescription>Audience Demographics</SheetDescription>
+          </SheetHeader>
+          <div className="mt-6 space-y-6">
+            {isLoadingDemographics ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="space-y-2">
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-8 w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : !demographics ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <UserSearch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No demographics data available for this podcast.</p>
+                <p className="text-xs mt-1">Demographics are only available for podcasts with sufficient episode data.</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-1">Primary Age</div>
+                    <div className="font-semibold">{demographics.age}</div>
+                  </div>
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-1">Gender Skew</div>
+                    <div className="font-semibold">{demographics.gender_skew}</div>
+                  </div>
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-1">Purchasing Power</div>
+                    <div className="font-semibold">{demographics.purchasing_power}</div>
+                  </div>
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-1">Education</div>
+                    <div className="font-semibold">{demographics.education_level}</div>
+                  </div>
+                </div>
+
+                {/* Episodes Analyzed */}
+                <div className="text-xs text-muted-foreground">
+                  Based on {demographics.episodes_analyzed} of {demographics.total_episodes} episodes analyzed
+                </div>
+
+                {/* Age Distribution */}
+                {demographics.age_distribution?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Age Distribution</h4>
+                    <div className="space-y-2">
+                      {demographics.age_distribution.map(item => (
+                        <div key={item.age} className="flex items-center gap-2">
+                          <span className="text-xs w-16 text-muted-foreground">{item.age}</span>
+                          <Progress value={item.percentage} className="flex-1 h-2" />
+                          <span className="text-xs w-10 text-right">{item.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Industry Breakdown */}
+                {demographics.professional_industry?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Industry Breakdown</h4>
+                    <div className="space-y-2">
+                      {demographics.professional_industry.slice(0, 6).map(item => (
+                        <div key={item.industry} className="flex items-center gap-2">
+                          <span className="text-xs w-28 text-muted-foreground truncate">{item.industry}</span>
+                          <Progress value={item.percentage} className="flex-1 h-2" />
+                          <span className="text-xs w-10 text-right">{item.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Geographic Distribution */}
+                {demographics.geographic_distribution?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Geographic Distribution</h4>
+                    <div className="space-y-2">
+                      {demographics.geographic_distribution.slice(0, 5).map(item => (
+                        <div key={item.region} className="flex items-center gap-2">
+                          <span className="text-xs w-28 text-muted-foreground truncate">{item.region}</span>
+                          <Progress value={item.percentage} className="flex-1 h-2" />
+                          <span className="text-xs w-10 text-right">{item.percentage}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Family Status */}
+                {demographics.family_status_distribution?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Family Status</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {demographics.family_status_distribution.map(item => (
+                        <Badge key={item.status} variant="outline">
+                          {item.status} ({item.percentage}%)
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Technology Adoption */}
+                {demographics.technology_adoption && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Technology Adoption</h4>
+                    <div className="p-3 rounded-lg border bg-muted/30">
+                      <div className="font-medium text-sm">{demographics.technology_adoption.profile}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{demographics.technology_adoption.reasoning}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Brand Relationship */}
+                {demographics.brand_relationship && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Brand Relationship</h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2 rounded border">
+                        <div className="text-muted-foreground">Loyalty</div>
+                        <div className="font-medium">{demographics.brand_relationship.loyalty_level}</div>
+                      </div>
+                      <div className="p-2 rounded border">
+                        <div className="text-muted-foreground">Price Sensitivity</div>
+                        <div className="font-medium">{demographics.brand_relationship.price_sensitivity}</div>
+                      </div>
+                      <div className="p-2 rounded border">
+                        <div className="text-muted-foreground">Switching</div>
+                        <div className="font-medium">{demographics.brand_relationship.brand_switching_frequency}</div>
+                      </div>
+                      <div className="p-2 rounded border">
+                        <div className="text-muted-foreground">Advocacy</div>
+                        <div className="font-medium">{demographics.brand_relationship.advocacy_potential}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Living Environment */}
+                {demographics.living_environment && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Living Environment</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs w-16 text-muted-foreground">Urban</span>
+                        <Progress value={demographics.living_environment.urban} className="flex-1 h-2" />
+                        <span className="text-xs w-10 text-right">{demographics.living_environment.urban}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs w-16 text-muted-foreground">Suburban</span>
+                        <Progress value={demographics.living_environment.suburban} className="flex-1 h-2" />
+                        <span className="text-xs w-10 text-right">{demographics.living_environment.suburban}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs w-16 text-muted-foreground">Rural</span>
+                        <Progress value={demographics.living_environment.rural} className="flex-1 h-2" />
+                        <span className="text-xs w-10 text-right">{demographics.living_environment.rural}%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </DashboardLayout>
   )
 }
