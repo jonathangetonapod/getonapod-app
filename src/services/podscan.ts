@@ -271,13 +271,30 @@ export async function searchAllPodcasts(
   onPage: (podcasts: PodcastData[], pageNum: number, totalPages: number, totalCount: number) => void | Promise<void>,
   onProgress?: (message: string) => void,
   maxPages?: number,
+  opts?: {
+    firstPageData?: PodcastData[]  // Reuse preview data to skip re-fetching page 1
+    totalCount?: number
+    totalPages?: number
+    abortSignal?: AbortSignal
+  },
 ): Promise<{ totalFound: number; totalPages: number }> {
-  // First page to get total count
-  const firstResponse = await searchPodcasts({ ...options, per_page: 50, page: 1 })
-  const totalCount = parseInt(firstResponse.pagination?.total || '0')
-  const lastPage = parseInt(firstResponse.pagination?.last_page || '1')
+  let totalCount: number
+  let lastPage: number
+  let firstPagePodcasts: PodcastData[]
+
+  // Reuse preview data if available, otherwise fetch page 1
+  if (opts?.firstPageData && opts.totalCount && opts.totalPages) {
+    totalCount = opts.totalCount
+    lastPage = opts.totalPages
+    firstPagePodcasts = opts.firstPageData
+  } else {
+    const firstResponse = await searchPodcasts({ ...options, per_page: 50, page: 1 })
+    totalCount = parseInt(firstResponse.pagination?.total || '0')
+    lastPage = parseInt(firstResponse.pagination?.last_page || '1')
+    firstPagePodcasts = firstResponse.podcasts || []
+  }
+
   const pagesToFetch = maxPages ? Math.min(lastPage, maxPages) : lastPage
-  const firstPagePodcasts = firstResponse.podcasts || []
 
   if (firstPagePodcasts.length > 0) {
     await onPage(firstPagePodcasts, 1, pagesToFetch, totalCount)
@@ -291,21 +308,44 @@ export async function searchAllPodcasts(
 
   // Fetch remaining pages up to maxPages
   for (let page = 2; page <= pagesToFetch; page++) {
+    // Check for cancellation
+    if (opts?.abortSignal?.aborted) {
+      onProgress?.(`Cancelled at page ${page - 1}/${pagesToFetch}`)
+      return { totalFound: totalCount, totalPages: page - 1 }
+    }
+
     // Rate limit: ~500ms between requests
     await new Promise(resolve => setTimeout(resolve, 500))
 
-    try {
-      const response = await searchPodcasts({ ...options, per_page: 50, page })
-      const podcasts = response.podcasts || []
+    // Retry logic for rate limits (429)
+    let retries = 0
+    const maxRetries = 2
+    while (retries <= maxRetries) {
+      if (opts?.abortSignal?.aborted) break
 
-      if (podcasts.length > 0) {
-        await onPage(podcasts, page, pagesToFetch, totalCount)
+      try {
+        const response = await searchPodcasts({ ...options, per_page: 50, page })
+        const podcasts = response.podcasts || []
+
+        if (podcasts.length > 0) {
+          await onPage(podcasts, page, pagesToFetch, totalCount)
+        }
+
+        onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
+        break // Success, exit retry loop
+      } catch (error: any) {
+        const is429 = error?.message?.includes('429') || error?.status === 429
+        if (is429 && retries < maxRetries) {
+          retries++
+          const backoffMs = 1000 * Math.pow(2, retries) // 2s, 4s
+          onProgress?.(`Rate limited on page ${page}, retrying in ${backoffMs / 1000}s...`)
+          await new Promise(resolve => setTimeout(resolve, backoffMs))
+        } else {
+          console.error(`Failed to fetch page ${page}:`, error)
+          onProgress?.(`Page ${page}/${pagesToFetch} failed, continuing...`)
+          break
+        }
       }
-
-      onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
-    } catch (error) {
-      console.error(`Failed to fetch page ${page}:`, error)
-      onProgress?.(`Page ${page}/${pagesToFetch} failed, continuing...`)
     }
   }
 

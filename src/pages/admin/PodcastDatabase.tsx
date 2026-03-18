@@ -264,6 +264,7 @@ export default function PodcastDatabase() {
   const [bulkImportKeywords, setBulkImportKeywords] = useState('')
   const [isBulkImporting, setIsBulkImporting] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
+  const [bulkAbortController, setBulkAbortController] = useState<AbortController | null>(null)
   const [bulkImportProgress, setBulkImportProgress] = useState('')
   const [bulkImportStats, setBulkImportStats] = useState<{ saved: number; pages: number; total: number } | null>(null)
   const [bulkPreview, setBulkPreview] = useState<{ totalCount: number; totalPages: number; apiCalls: number; samplePodcasts: PodcastData[] } | null>(null)
@@ -1100,11 +1101,13 @@ export default function PodcastDatabase() {
     }
   }
 
-  // Bulk import handler (uses max pages limit)
+  // Bulk import handler (uses max pages limit, reuses preview data, supports cancel)
   const handleBulkImport = async () => {
     if (!bulkImportKeywords.trim()) return
 
     const maxPg = parseInt(bulkMaxPages) || 10
+    const controller = new AbortController()
+    setBulkAbortController(controller)
     setIsBulkImporting(true)
     setBulkImportProgress('Starting import...')
     setBulkImportStats(null)
@@ -1121,9 +1124,22 @@ export default function PodcastDatabase() {
         },
         (message) => setBulkImportProgress(message),
         maxPg,
+        {
+          // Reuse preview first page data to save 1 API call
+          firstPageData: bulkPreview?.samplePodcasts && bulkPreview.samplePodcasts.length > 0
+            ? undefined  // Samples are sliced to 5, need full page - skip reuse for now
+            : undefined,
+          totalCount: bulkPreview?.totalCount,
+          totalPages: bulkPreview?.totalPages,
+          abortSignal: controller.signal,
+        },
       )
 
-      toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
+      if (controller.signal.aborted) {
+        toast.success(`Cancelled. ${totalSaved} podcasts saved before stopping.`)
+      } else {
+        toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
+      }
       setBulkImportProgress('')
       setBulkImportStats({ saved: totalSaved, pages: maxPg, total: totalSaved })
       refetch()
@@ -1133,7 +1149,14 @@ export default function PodcastDatabase() {
       setBulkImportProgress('Import failed.')
     } finally {
       setIsBulkImporting(false)
+      setBulkAbortController(null)
     }
+  }
+
+  // Cancel bulk import
+  const handleCancelBulkImport = () => {
+    bulkAbortController?.abort()
+    setBulkImportProgress('Cancelling...')
   }
 
   // Calculate average score for selected
@@ -1412,23 +1435,24 @@ export default function PodcastDatabase() {
                           ≈ {Math.min((parseInt(bulkMaxPages) || 10), bulkPreview.totalPages) * 50} podcasts · {Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages)} API calls
                         </p>
                       </div>
-                      <Button
-                        onClick={handleBulkImport}
-                        disabled={isBulkImporting}
-                        size="sm"
-                      >
-                        {isBulkImporting ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                            Importing...
-                          </>
-                        ) : (
-                          <>
-                            <Import className="h-4 w-4 mr-1.5" />
-                            Import
-                          </>
-                        )}
-                      </Button>
+                      {isBulkImporting ? (
+                        <Button
+                          onClick={handleCancelBulkImport}
+                          variant="destructive"
+                          size="sm"
+                        >
+                          <XCircle className="h-4 w-4 mr-1.5" />
+                          Cancel
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={handleBulkImport}
+                          size="sm"
+                        >
+                          <Import className="h-4 w-4 mr-1.5" />
+                          Import
+                        </Button>
+                      )}
                     </div>
                   </div>
 

@@ -350,6 +350,7 @@ export async function savePodcastsToDatabase(
     podcast_url: string
     podcast_description?: string
     podcast_image_url?: string
+    podcast_guid?: string
     podcast_reach_score?: number
     podcast_categories?: Array<{ category_id: string; category_name: string }>
     episode_count?: number
@@ -359,13 +360,22 @@ export async function savePodcastsToDatabase(
     is_active?: boolean
     rss_url?: string
     last_posted_at?: string
+    podcast_itunes_id?: string
+    podcast_spotify_id?: string
     podcast_has_guests?: boolean
     podcast_has_sponsors?: boolean
     reach?: {
-      itunes?: { itunes_rating_average?: string; itunes_rating_count?: string }
+      itunes?: { itunes_rating_average?: string; itunes_rating_count?: string; itunes_rating_count_bracket?: string }
+      spotify?: { spotify_rating_average?: string; spotify_rating_count?: string; spotify_rating_count_bracket?: string }
       audience_size?: number
+      social_links?: Array<{ platform: string; url: string }>
       email?: string
       website?: string
+    }
+    brand_safety?: {
+      framework: string
+      risk_level: string
+      recommendation: string
     }
   }>
 ): Promise<{ saved: number; errors: number }> {
@@ -377,6 +387,7 @@ export async function savePodcastsToDatabase(
     podcast_description: p.podcast_description || null,
     podcast_image_url: p.podcast_image_url || null,
     podcast_url: p.podcast_url || null,
+    podcast_guid: p.podcast_guid || null,
     publisher_name: p.publisher_name || null,
     podcast_categories: p.podcast_categories || null,
     episode_count: p.episode_count ?? null,
@@ -385,15 +396,36 @@ export async function savePodcastsToDatabase(
     is_active: p.is_active ?? true,
     rss_url: p.rss_url || null,
     last_posted_at: p.last_posted_at || null,
+    podcast_itunes_id: p.podcast_itunes_id || null,
+    podcast_spotify_id: p.podcast_spotify_id || null,
     podcast_has_guests: p.podcast_has_guests ?? null,
     podcast_has_sponsors: p.podcast_has_sponsors ?? null,
     podcast_reach_score: p.podcast_reach_score ?? null,
+    // iTunes ratings
     itunes_rating: p.reach?.itunes?.itunes_rating_average
       ? parseFloat(p.reach.itunes.itunes_rating_average)
       : null,
+    itunes_rating_count: p.reach?.itunes?.itunes_rating_count
+      ? parseInt(p.reach.itunes.itunes_rating_count)
+      : null,
+    itunes_rating_count_bracket: p.reach?.itunes?.itunes_rating_count_bracket || null,
+    // Spotify ratings
+    spotify_rating: p.reach?.spotify?.spotify_rating_average
+      ? parseFloat(p.reach.spotify.spotify_rating_average)
+      : null,
+    spotify_rating_count: p.reach?.spotify?.spotify_rating_count
+      ? parseInt(p.reach.spotify.spotify_rating_count)
+      : null,
+    spotify_rating_count_bracket: p.reach?.spotify?.spotify_rating_count_bracket || null,
+    // Audience & contact
     audience_size: p.reach?.audience_size ?? null,
     podscan_email: p.reach?.email || null,
     website: p.reach?.website || null,
+    social_links: p.reach?.social_links || null,
+    // Brand safety
+    brand_safety_framework: p.brand_safety?.framework || null,
+    brand_safety_risk_level: p.brand_safety?.risk_level || null,
+    brand_safety_recommendation: p.brand_safety?.recommendation || null,
     podscan_last_fetched_at: new Date().toISOString(),
   }))
 
