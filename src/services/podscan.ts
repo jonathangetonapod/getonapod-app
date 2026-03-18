@@ -254,29 +254,43 @@ export async function getPodcastById(podcastId: string): Promise<PodcastData> {
  * Calls onProgress for each page so the UI can show progress.
  * Returns total count of podcasts found.
  */
+/**
+ * Preview a Podscan search to see how many results exist (1 API call).
+ */
+export async function previewSearch(
+  options: SearchOptions
+): Promise<{ totalCount: number; totalPages: number; firstPage: PodcastData[] }> {
+  const response = await searchPodcasts({ ...options, per_page: 50, page: 1 })
+  const totalCount = parseInt(response.pagination?.total || '0')
+  const totalPages = parseInt(response.pagination?.last_page || '1')
+  return { totalCount, totalPages, firstPage: response.podcasts || [] }
+}
+
 export async function searchAllPodcasts(
   options: SearchOptions,
   onPage: (podcasts: PodcastData[], pageNum: number, totalPages: number, totalCount: number) => void,
   onProgress?: (message: string) => void,
+  maxPages?: number,
 ): Promise<{ totalFound: number; totalPages: number }> {
   // First page to get total count
   const firstResponse = await searchPodcasts({ ...options, per_page: 50, page: 1 })
   const totalCount = parseInt(firstResponse.pagination?.total || '0')
   const lastPage = parseInt(firstResponse.pagination?.last_page || '1')
+  const pagesToFetch = maxPages ? Math.min(lastPage, maxPages) : lastPage
   const firstPagePodcasts = firstResponse.podcasts || []
 
   if (firstPagePodcasts.length > 0) {
-    onPage(firstPagePodcasts, 1, lastPage, totalCount)
+    onPage(firstPagePodcasts, 1, pagesToFetch, totalCount)
   }
 
   if (totalCount === 0) {
     return { totalFound: 0, totalPages: 0 }
   }
 
-  onProgress?.(`Found ${totalCount} podcasts across ${lastPage} pages. Importing...`)
+  onProgress?.(`Importing ${pagesToFetch} of ${lastPage} pages (${Math.min(pagesToFetch * 50, totalCount)} of ${totalCount} podcasts)...`)
 
-  // Fetch remaining pages
-  for (let page = 2; page <= lastPage; page++) {
+  // Fetch remaining pages up to maxPages
+  for (let page = 2; page <= pagesToFetch; page++) {
     // Rate limit: ~500ms between requests
     await new Promise(resolve => setTimeout(resolve, 500))
 
@@ -285,17 +299,17 @@ export async function searchAllPodcasts(
       const podcasts = response.podcasts || []
 
       if (podcasts.length > 0) {
-        onPage(podcasts, page, lastPage, totalCount)
+        onPage(podcasts, page, pagesToFetch, totalCount)
       }
 
-      onProgress?.(`Page ${page}/${lastPage} — ${podcasts.length} podcasts`)
+      onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
     } catch (error) {
       console.error(`Failed to fetch page ${page}:`, error)
-      onProgress?.(`Page ${page}/${lastPage} failed, continuing...`)
+      onProgress?.(`Page ${page}/${pagesToFetch} failed, continuing...`)
     }
   }
 
-  return { totalFound: totalCount, totalPages: lastPage }
+  return { totalFound: totalCount, totalPages: pagesToFetch }
 }
 
 /**

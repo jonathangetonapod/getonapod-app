@@ -69,7 +69,7 @@ import {
   UserSearch,
   Import,
 } from 'lucide-react'
-import { getRelatedPodcasts, getPodcastDemographics, searchAllPodcasts, type PodcastData, type PodcastDemographics } from '@/services/podscan'
+import { getRelatedPodcasts, getPodcastDemographics, searchAllPodcasts, previewSearch, type PodcastData, type PodcastDemographics } from '@/services/podscan'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Progress } from '@/components/ui/progress'
@@ -260,8 +260,11 @@ export default function PodcastDatabase() {
   // Bulk Import State
   const [bulkImportKeywords, setBulkImportKeywords] = useState('')
   const [isBulkImporting, setIsBulkImporting] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
   const [bulkImportProgress, setBulkImportProgress] = useState('')
   const [bulkImportStats, setBulkImportStats] = useState<{ saved: number; pages: number; total: number } | null>(null)
+  const [bulkPreview, setBulkPreview] = useState<{ totalCount: number; totalPages: number; apiCalls: number } | null>(null)
+  const [bulkMaxPages, setBulkMaxPages] = useState('10')
 
   // Saved Filter Presets State
   const [savedPresets, setSavedPresets] = useState<FilterPreset[]>(() => {
@@ -1039,34 +1042,67 @@ export default function PodcastDatabase() {
     }
   }
 
-  // Bulk import handler
-  const handleBulkImport = async () => {
+  // Bulk import preview handler (1 API call)
+  const handleBulkPreview = async () => {
     if (!bulkImportKeywords.trim()) {
       toast.error('Please enter keywords to search')
       return
     }
 
+    setIsPreviewing(true)
+    setBulkPreview(null)
+    setBulkImportProgress('')
+    setBulkImportStats(null)
+
+    try {
+      const { totalCount, totalPages } = await previewSearch({
+        query: bulkImportKeywords.trim(),
+        has_guests: true,
+      })
+
+      if (totalCount === 0) {
+        toast.error('No podcasts found for those keywords')
+        setBulkPreview(null)
+      } else {
+        const maxPg = parseInt(bulkMaxPages) || 10
+        const pagesToUse = Math.min(totalPages, maxPg)
+        setBulkPreview({ totalCount, totalPages, apiCalls: pagesToUse })
+        setBulkImportProgress(`Found ${totalCount.toLocaleString()} podcasts across ${totalPages} pages`)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Preview failed')
+    } finally {
+      setIsPreviewing(false)
+    }
+  }
+
+  // Bulk import handler (uses max pages limit)
+  const handleBulkImport = async () => {
+    if (!bulkImportKeywords.trim()) return
+
+    const maxPg = parseInt(bulkMaxPages) || 10
     setIsBulkImporting(true)
-    setBulkImportProgress('Starting search...')
+    setBulkImportProgress('Starting import...')
     setBulkImportStats(null)
     let totalSaved = 0
 
     try {
-      const result = await searchAllPodcasts(
+      await searchAllPodcasts(
         { query: bulkImportKeywords.trim(), has_guests: true },
         async (podcasts, pageNum, totalPages, totalCount) => {
-          // Save each page of results to DB
           const { saved } = await savePodcastsToDatabase(podcasts)
           totalSaved += saved
-          setBulkImportProgress(`Page ${pageNum}/${totalPages} — ${totalSaved} saved so far (${totalCount} total found)`)
+          setBulkImportProgress(`Page ${pageNum}/${totalPages} — ${totalSaved} saved so far`)
           setBulkImportStats({ saved: totalSaved, pages: pageNum, total: totalCount })
         },
-        (message) => setBulkImportProgress(message)
+        (message) => setBulkImportProgress(message),
+        maxPg,
       )
 
       toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
       setBulkImportProgress(`Done! ${totalSaved} podcasts saved to database.`)
-      refetch() // Refresh the podcast list
+      setBulkPreview(null)
+      refetch()
     } catch (error) {
       console.error('Bulk import failed:', error)
       toast.error(error instanceof Error ? error.message : 'Bulk import failed')
@@ -1196,49 +1232,107 @@ export default function PodcastDatabase() {
                     Bulk Import from Podscan
                   </CardTitle>
                   <CardDescription>
-                    Enter keywords to search Podscan and import all matching podcasts to your database
+                    Search Podscan and import matching podcasts. Preview first to see API usage.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Step 1: Keywords + Preview */}
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
                   <Label htmlFor="bulk-keywords">Keywords</Label>
                   <Input
                     id="bulk-keywords"
                     value={bulkImportKeywords}
-                    onChange={(e) => setBulkImportKeywords(e.target.value)}
+                    onChange={(e) => {
+                      setBulkImportKeywords(e.target.value)
+                      setBulkPreview(null) // Reset preview when keywords change
+                    }}
                     placeholder='e.g. "business AND entrepreneurship" OR "startup founder"'
                     disabled={isBulkImporting}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !isBulkImporting) handleBulkImport()
+                      if (e.key === 'Enter' && !isBulkImporting && !isPreviewing) handleBulkPreview()
                     }}
                   />
                 </div>
                 <Button
-                  onClick={handleBulkImport}
-                  disabled={isBulkImporting || !bulkImportKeywords.trim()}
+                  onClick={handleBulkPreview}
+                  disabled={isBulkImporting || isPreviewing || !bulkImportKeywords.trim()}
+                  variant="secondary"
                 >
-                  {isBulkImporting ? (
+                  {isPreviewing ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
+                      Checking...
                     </>
                   ) : (
                     <>
-                      <Import className="h-4 w-4 mr-2" />
-                      Import All
+                      <Search className="h-4 w-4 mr-2" />
+                      Preview
                     </>
                   )}
                 </Button>
               </div>
+
+              {/* Step 2: Preview results + controls */}
+              {bulkPreview && (
+                <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{bulkPreview.totalCount.toLocaleString()} podcasts found</p>
+                      <p className="text-sm text-muted-foreground">
+                        {bulkPreview.totalPages} pages total (50 per page)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 items-end">
+                    <div className="w-32">
+                      <Label htmlFor="max-pages">Max pages</Label>
+                      <Input
+                        id="max-pages"
+                        type="number"
+                        min="1"
+                        max={bulkPreview.totalPages}
+                        value={bulkMaxPages}
+                        onChange={(e) => setBulkMaxPages(e.target.value)}
+                        disabled={isBulkImporting}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-muted-foreground">
+                        Will import up to <span className="font-semibold">{Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages) * 50}</span> podcasts
+                        using <span className="font-semibold">{Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages)}</span> API calls
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleBulkImport}
+                      disabled={isBulkImporting}
+                    >
+                      {isBulkImporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Importing...
+                        </>
+                      ) : (
+                        <>
+                          <Import className="h-4 w-4 mr-2" />
+                          Import
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Progress */}
               {bulkImportProgress && (
-                <div className="mt-3 space-y-2">
+                <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">{bulkImportProgress}</p>
-                  {bulkImportStats && bulkImportStats.total > 0 && (
+                  {bulkImportStats && bulkImportStats.pages > 0 && (
                     <Progress
-                      value={(bulkImportStats.pages / Math.ceil(bulkImportStats.total / 50)) * 100}
+                      value={(bulkImportStats.pages / (parseInt(bulkMaxPages) || 10)) * 100}
                       className="h-2"
                     />
                   )}
