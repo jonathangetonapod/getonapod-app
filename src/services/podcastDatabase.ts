@@ -32,6 +32,7 @@ export interface PodcastDatabaseItem {
   itunes_rating: number | null
   spotify_rating: number | null
   audience_size: number | null
+  podcast_reach_score: number | null
   language: string | null
   region: string | null
   podscan_email: string | null
@@ -146,6 +147,7 @@ export async function getPodcasts({
                      sortBy === 'rating' ? 'itunes_rating' :
                      sortBy === 'episodes' ? 'episode_count' :
                      sortBy === 'dateAdded' ? 'created_at' :
+                     sortBy === 'prs' ? 'podcast_reach_score' :
                      sortBy
 
   query = query.order(sortColumn, { ascending: sortOrder === 'asc', nullsFirst: false })
@@ -288,6 +290,7 @@ export async function exportPodcastsToCSV(
     'Publisher',
     'Audience',
     'Rating',
+    'PRS',
     'Episodes',
     'Categories',
     'Email',
@@ -305,6 +308,7 @@ export async function exportPodcastsToCSV(
     p.publisher_name || '',
     p.audience_size || '',
     p.itunes_rating || '',
+    p.podcast_reach_score || '',
     p.episode_count || '',
     Array.isArray(p.podcast_categories)
       ? p.podcast_categories.map((c: any) => c.category_name).join('; ')
