@@ -197,9 +197,6 @@ export default function ProspectView() {
   const [showCtaBar, setShowCtaBar] = useState(false)
   const [ctaBarDismissed, setCtaBarDismissed] = useState(false)
 
-  // Stripe ready state
-  const [stripeReady, setStripeReady] = useState(false)
-
   // Pricing feature modal state
   const [selectedPricingFeature, setSelectedPricingFeature] = useState<string | null>(null)
 
@@ -349,12 +346,6 @@ export default function ProspectView() {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [ctaBarDismissed])
-
-  // Wait for Stripe script to be ready
-  useEffect(() => {
-    const timer = setTimeout(() => setStripeReady(true), 1000)
-    return () => clearTimeout(timer)
-  }, [])
 
   // Generate personalized tagline if not already set
   useEffect(() => {

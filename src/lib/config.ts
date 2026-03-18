@@ -3,12 +3,12 @@ import { supabase } from './supabase'
 // Fallback admin email (always has access even if DB fails)
 export const FALLBACK_ADMIN_EMAIL = 'jonathan@getonapod.com'
 
-// Cache for admin emails
+// Cache for admin emails (only populated after authentication)
 let adminEmailsCache: string[] | null = null
 let cacheTimestamp = 0
 const CACHE_TTL = 60000 // 1 minute
 
-// Synchronous check (uses cache or fallback)
+// Synchronous check (uses cache or fallback only)
 export const isAdminEmail = (email: string | undefined): boolean => {
   if (!email) return false
   const normalizedEmail = email.toLowerCase()
@@ -16,7 +16,7 @@ export const isAdminEmail = (email: string | undefined): boolean => {
   // Always allow fallback admin
   if (normalizedEmail === FALLBACK_ADMIN_EMAIL) return true
 
-  // Check cache if available
+  // Check cache if available (only populated after successful auth)
   if (adminEmailsCache) {
     return adminEmailsCache.includes(normalizedEmail)
   }
@@ -25,7 +25,7 @@ export const isAdminEmail = (email: string | undefined): boolean => {
   return false
 }
 
-// Async check with database lookup
+// Async check with database lookup — only call for authenticated users
 export const isAdminEmailAsync = async (email: string | undefined): Promise<boolean> => {
   if (!email) return false
   const normalizedEmail = email.toLowerCase()
@@ -39,7 +39,7 @@ export const isAdminEmailAsync = async (email: string | undefined): Promise<bool
     return adminEmailsCache.includes(normalizedEmail)
   }
 
-  // Fetch from database
+  // Fetch from database — only runs for authenticated users
   try {
     const { data, error } = await supabase
       .from('admin_users')
@@ -57,22 +57,6 @@ export const isAdminEmailAsync = async (email: string | undefined): Promise<bool
   } catch (error) {
     console.error('Error checking admin status:', error)
     return normalizedEmail === FALLBACK_ADMIN_EMAIL
-  }
-}
-
-// Preload admin emails into cache
-export const preloadAdminEmails = async (): Promise<void> => {
-  try {
-    const { data } = await supabase
-      .from('admin_users')
-      .select('email')
-
-    if (data) {
-      adminEmailsCache = data.map(u => u.email.toLowerCase())
-      cacheTimestamp = Date.now()
-    }
-  } catch (error) {
-    console.error('Error preloading admin emails:', error)
   }
 }
 

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { isAdminEmailAsync, preloadAdminEmails } from '@/lib/config'
+import { isAdminEmailAsync } from '@/lib/config'
 import { toast } from 'sonner'
 
 interface AuthContextType {
@@ -21,9 +21,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Preload admin emails on mount
-    preloadAdminEmails()
-
     // Get initial session
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
