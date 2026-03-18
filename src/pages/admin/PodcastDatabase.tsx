@@ -68,6 +68,9 @@ import {
   Sparkles,
   UserSearch,
   Import,
+  SlidersHorizontal,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { getRelatedPodcasts, getPodcastDemographics, searchAllPodcasts, previewSearch, type PodcastData, type PodcastDemographics } from '@/services/podscan'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -263,8 +266,16 @@ export default function PodcastDatabase() {
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [bulkImportProgress, setBulkImportProgress] = useState('')
   const [bulkImportStats, setBulkImportStats] = useState<{ saved: number; pages: number; total: number } | null>(null)
-  const [bulkPreview, setBulkPreview] = useState<{ totalCount: number; totalPages: number; apiCalls: number } | null>(null)
+  const [bulkPreview, setBulkPreview] = useState<{ totalCount: number; totalPages: number; apiCalls: number; samplePodcasts: PodcastData[] } | null>(null)
   const [bulkMaxPages, setBulkMaxPages] = useState('10')
+  const [showBulkFilters, setShowBulkFilters] = useState(false)
+  const [bulkRegion, setBulkRegion] = useState('all')
+  const [bulkLanguage, setBulkLanguage] = useState('all')
+  const [bulkMinAudience, setBulkMinAudience] = useState('')
+  const [bulkMaxAudience, setBulkMaxAudience] = useState('')
+  const [bulkHasGuests, setBulkHasGuests] = useState(true)
+  const [bulkActiveOnly, setBulkActiveOnly] = useState(true)
+  const [bulkMinEpisodes, setBulkMinEpisodes] = useState('')
 
   // Saved Filter Presets State
   const [savedPresets, setSavedPresets] = useState<FilterPreset[]>(() => {
@@ -1042,6 +1053,25 @@ export default function PodcastDatabase() {
     }
   }
 
+  // Build bulk import search options from filters
+  const buildBulkSearchOptions = () => {
+    const options: Record<string, any> = {
+      query: bulkImportKeywords.trim(),
+    }
+    if (bulkHasGuests) options.has_guests = true
+    if (bulkRegion && bulkRegion !== 'all') options.region = bulkRegion
+    if (bulkLanguage && bulkLanguage !== 'all') options.language = bulkLanguage
+    if (bulkMinAudience) options.min_audience_size = parseInt(bulkMinAudience)
+    if (bulkMaxAudience) options.max_audience_size = parseInt(bulkMaxAudience)
+    if (bulkMinEpisodes) options.min_episode_count = parseInt(bulkMinEpisodes)
+    if (bulkActiveOnly) {
+      const sixMonthsAgo = new Date()
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+      options.min_last_episode_posted_at = sixMonthsAgo.toISOString().split('T')[0]
+    }
+    return options
+  }
+
   // Bulk import preview handler (1 API call)
   const handleBulkPreview = async () => {
     if (!bulkImportKeywords.trim()) {
@@ -1055,19 +1085,13 @@ export default function PodcastDatabase() {
     setBulkImportStats(null)
 
     try {
-      const { totalCount, totalPages } = await previewSearch({
-        query: bulkImportKeywords.trim(),
-        has_guests: true,
-      })
+      const { totalCount, totalPages, firstPage } = await previewSearch(buildBulkSearchOptions())
 
       if (totalCount === 0) {
-        toast.error('No podcasts found for those keywords')
+        toast.error('No podcasts found — try different keywords or loosen filters')
         setBulkPreview(null)
       } else {
-        const maxPg = parseInt(bulkMaxPages) || 10
-        const pagesToUse = Math.min(totalPages, maxPg)
-        setBulkPreview({ totalCount, totalPages, apiCalls: pagesToUse })
-        setBulkImportProgress(`Found ${totalCount.toLocaleString()} podcasts across ${totalPages} pages`)
+        setBulkPreview({ totalCount, totalPages, apiCalls: Math.min(totalPages, parseInt(bulkMaxPages) || 10), samplePodcasts: firstPage.slice(0, 5) })
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Preview failed')
@@ -1088,7 +1112,7 @@ export default function PodcastDatabase() {
 
     try {
       await searchAllPodcasts(
-        { query: bulkImportKeywords.trim(), has_guests: true },
+        buildBulkSearchOptions(),
         async (podcasts, pageNum, totalPages, totalCount) => {
           const { saved } = await savePodcastsToDatabase(podcasts)
           totalSaved += saved
@@ -1100,8 +1124,8 @@ export default function PodcastDatabase() {
       )
 
       toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
-      setBulkImportProgress(`Done! ${totalSaved} podcasts saved to database.`)
-      setBulkPreview(null)
+      setBulkImportProgress('')
+      setBulkImportStats({ saved: totalSaved, pages: maxPg, total: totalSaved })
       refetch()
     } catch (error) {
       console.error('Bulk import failed:', error)
@@ -1223,118 +1247,254 @@ export default function PodcastDatabase() {
 
         {/* Bulk Import */}
         {mode === 'browse' && (
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Import className="h-5 w-5" />
-                    Bulk Import from Podscan
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
+                      <Import className="h-4 w-4 text-primary" />
+                    </div>
+                    Bulk Import
                   </CardTitle>
-                  <CardDescription>
-                    Search Podscan and import matching podcasts. Preview first to see API usage.
+                  <CardDescription className="mt-1">
+                    Search Podscan by keywords and import matching podcasts to your database
                   </CardDescription>
                 </div>
+                {bulkImportStats && !isBulkImporting && bulkImportStats.saved > 0 && !bulkImportProgress && (
+                  <Badge variant="secondary" className="text-xs">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    {bulkImportStats.saved} imported
+                  </Badge>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Step 1: Keywords + Preview */}
-              <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                  <Label htmlFor="bulk-keywords">Keywords</Label>
+              {/* Search Bar */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="bulk-keywords"
                     value={bulkImportKeywords}
                     onChange={(e) => {
                       setBulkImportKeywords(e.target.value)
-                      setBulkPreview(null) // Reset preview when keywords change
+                      setBulkPreview(null)
                     }}
-                    placeholder='e.g. "business AND entrepreneurship" OR "startup founder"'
+                    placeholder='Try: "SaaS AND founder", marketing, health OR wellness'
                     disabled={isBulkImporting}
+                    className="pl-9"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !isBulkImporting && !isPreviewing) handleBulkPreview()
                     }}
                   />
                 </div>
                 <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowBulkFilters(!showBulkFilters)}
+                  className={showBulkFilters ? 'bg-muted' : ''}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+                <Button
                   onClick={handleBulkPreview}
                   disabled={isBulkImporting || isPreviewing || !bulkImportKeywords.trim()}
-                  variant="secondary"
                 >
                   {isPreviewing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Checking...
-                    </>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <>
-                      <Search className="h-4 w-4 mr-2" />
-                      Preview
-                    </>
+                    'Search'
                   )}
                 </Button>
               </div>
 
-              {/* Step 2: Preview results + controls */}
-              {bulkPreview && (
-                <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{bulkPreview.totalCount.toLocaleString()} podcasts found</p>
-                      <p className="text-sm text-muted-foreground">
-                        {bulkPreview.totalPages} pages total (50 per page)
-                      </p>
-                    </div>
+              {/* Collapsible Filters */}
+              {showBulkFilters && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg border bg-muted/20">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Region</Label>
+                    <Select value={bulkRegion} onValueChange={setBulkRegion}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Regions</SelectItem>
+                        {regions.map(r => (
+                          <SelectItem key={r} value={r}>{r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-
-                  <div className="flex gap-3 items-end">
-                    <div className="w-32">
-                      <Label htmlFor="max-pages">Max pages</Label>
-                      <Input
-                        id="max-pages"
-                        type="number"
-                        min="1"
-                        max={bulkPreview.totalPages}
-                        value={bulkMaxPages}
-                        onChange={(e) => setBulkMaxPages(e.target.value)}
-                        disabled={isBulkImporting}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-muted-foreground">
-                        Will import up to <span className="font-semibold">{Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages) * 50}</span> podcasts
-                        using <span className="font-semibold">{Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages)}</span> API calls
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleBulkImport}
-                      disabled={isBulkImporting}
-                    >
-                      {isBulkImporting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Importing...
-                        </>
-                      ) : (
-                        <>
-                          <Import className="h-4 w-4 mr-2" />
-                          Import
-                        </>
-                      )}
-                    </Button>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Language</Label>
+                    <Select value={bulkLanguage} onValueChange={setBulkLanguage}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Languages</SelectItem>
+                        {languages.map(l => (
+                          <SelectItem key={l} value={l}>{l}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Min Audience</Label>
+                    <Input
+                      type="number"
+                      className="h-8 text-xs"
+                      placeholder="e.g. 1000"
+                      value={bulkMinAudience}
+                      onChange={(e) => setBulkMinAudience(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Min Episodes</Label>
+                    <Input
+                      type="number"
+                      className="h-8 text-xs"
+                      placeholder="e.g. 10"
+                      value={bulkMinEpisodes}
+                      onChange={(e) => setBulkMinEpisodes(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 col-span-2">
+                    <Checkbox
+                      id="bulk-guests"
+                      checked={bulkHasGuests}
+                      onCheckedChange={(c) => setBulkHasGuests(c === true)}
+                    />
+                    <Label htmlFor="bulk-guests" className="text-xs">Has guests (interviews)</Label>
+                  </div>
+                  <div className="flex items-center gap-2 col-span-2">
+                    <Checkbox
+                      id="bulk-active"
+                      checked={bulkActiveOnly}
+                      onCheckedChange={(c) => setBulkActiveOnly(c === true)}
+                    />
+                    <Label htmlFor="bulk-active" className="text-xs">Active only (posted in last 6 months)</Label>
                   </div>
                 </div>
               )}
 
-              {/* Progress */}
-              {bulkImportProgress && (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">{bulkImportProgress}</p>
-                  {bulkImportStats && bulkImportStats.pages > 0 && (
-                    <Progress
-                      value={(bulkImportStats.pages / (parseInt(bulkMaxPages) || 10)) * 100}
-                      className="h-2"
-                    />
+              {/* Preview Results */}
+              {bulkPreview && (
+                <div className="rounded-lg border overflow-hidden">
+                  {/* Preview Header */}
+                  <div className="flex items-center justify-between p-3 bg-muted/30 border-b">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
+                        <Database className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-lg leading-tight">{bulkPreview.totalCount.toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">podcasts match your search</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="max-pages-input" className="text-xs text-muted-foreground whitespace-nowrap">Import pages:</Label>
+                          <Input
+                            id="max-pages-input"
+                            type="number"
+                            min="1"
+                            max={bulkPreview.totalPages}
+                            value={bulkMaxPages}
+                            onChange={(e) => setBulkMaxPages(e.target.value)}
+                            disabled={isBulkImporting}
+                            className="w-16 h-8 text-center text-xs"
+                          />
+                          <span className="text-xs text-muted-foreground">of {bulkPreview.totalPages}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          ≈ {Math.min((parseInt(bulkMaxPages) || 10), bulkPreview.totalPages) * 50} podcasts · {Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages)} API calls
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleBulkImport}
+                        disabled={isBulkImporting}
+                        size="sm"
+                      >
+                        {isBulkImporting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                            Importing...
+                          </>
+                        ) : (
+                          <>
+                            <Import className="h-4 w-4 mr-1.5" />
+                            Import
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Sample Podcasts */}
+                  {bulkPreview.samplePodcasts.length > 0 && !isBulkImporting && !bulkImportStats && (
+                    <div className="p-3">
+                      <p className="text-xs text-muted-foreground mb-2">Sample results:</p>
+                      <div className="space-y-1.5">
+                        {bulkPreview.samplePodcasts.map((sp, idx) => (
+                          <div key={sp.podcast_id || idx} className="flex items-center gap-2.5 py-1.5">
+                            <img
+                              src={sp.podcast_image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(sp.podcast_name)}&background=random&size=28`}
+                              alt=""
+                              className="w-7 h-7 rounded object-cover flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate leading-tight">{sp.podcast_name}</p>
+                              <p className="text-xs text-muted-foreground truncate">{sp.publisher_name || 'Unknown host'}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {sp.reach?.audience_size && (
+                                <span className="text-xs text-muted-foreground">{(sp.reach.audience_size / 1000).toFixed(0)}K</span>
+                              )}
+                              {sp.podcast_reach_score != null && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                  PRS {sp.podcast_reach_score}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-2">
+                        + {(bulkPreview.totalCount - bulkPreview.samplePodcasts.length).toLocaleString()} more
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Import Progress */}
+                  {isBulkImporting && (
+                    <div className="p-3 space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{bulkImportProgress}</span>
+                        {bulkImportStats && (
+                          <span className="font-medium">{bulkImportStats.saved} saved</span>
+                        )}
+                      </div>
+                      {bulkImportStats && bulkImportStats.pages > 0 && (
+                        <Progress
+                          value={(bulkImportStats.pages / Math.min(parseInt(bulkMaxPages) || 10, bulkPreview.totalPages)) * 100}
+                          className="h-1.5"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Completion */}
+                  {!isBulkImporting && bulkImportStats && bulkImportStats.saved > 0 && !bulkImportProgress && (
+                    <div className="p-3 bg-green-50 dark:bg-green-950/20 border-t border-green-100 dark:border-green-900/30">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                          {bulkImportStats.saved} podcasts imported successfully
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
