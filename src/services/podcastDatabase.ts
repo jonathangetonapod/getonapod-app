@@ -379,7 +379,7 @@ export async function savePodcastsToDatabase(
     podcast_url: p.podcast_url || null,
     publisher_name: p.publisher_name || null,
     podcast_categories: p.podcast_categories || null,
-    episode_count: p.episode_count || null,
+    episode_count: p.episode_count ?? null,
     language: p.language || null,
     region: p.region || null,
     is_active: p.is_active ?? true,
@@ -387,11 +387,11 @@ export async function savePodcastsToDatabase(
     last_posted_at: p.last_posted_at || null,
     podcast_has_guests: p.podcast_has_guests ?? null,
     podcast_has_sponsors: p.podcast_has_sponsors ?? null,
-    podcast_reach_score: p.podcast_reach_score || null,
+    podcast_reach_score: p.podcast_reach_score ?? null,
     itunes_rating: p.reach?.itunes?.itunes_rating_average
       ? parseFloat(p.reach.itunes.itunes_rating_average)
       : null,
-    audience_size: p.reach?.audience_size || null,
+    audience_size: p.reach?.audience_size ?? null,
     podscan_email: p.reach?.email || null,
     website: p.reach?.website || null,
     podscan_last_fetched_at: new Date().toISOString(),

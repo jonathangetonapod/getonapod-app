@@ -253,7 +253,7 @@ export async function getPodcastById(podcastId: string): Promise<PodcastData> {
  * Get related podcasts for a given podcast ID
  */
 export async function getRelatedPodcasts(podcastId: string): Promise<PodcastData[]> {
-  const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}/related_podcasts`;
+  const url = `${PODSCAN_API_BASE}/podcasts/${encodeURIComponent(podcastId)}/related_podcasts`;
   const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${API_KEY}`,

@@ -2275,7 +2275,7 @@ export default function PodcastDatabase() {
                           )}
                           {columnVisibility.prs && (
                             <TableCell className={getDensityClass()}>
-                              {podcast.podcast_reach_score ? (
+                              {podcast.podcast_reach_score != null ? (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger>
@@ -2505,7 +2505,7 @@ export default function PodcastDatabase() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {rp.podcast_reach_score && (
+                      {rp.podcast_reach_score != null && (
                         <Badge variant="secondary" className="text-xs">
                           PRS {rp.podcast_reach_score}
                         </Badge>
