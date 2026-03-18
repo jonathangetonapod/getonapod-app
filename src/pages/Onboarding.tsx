@@ -147,12 +147,6 @@ const testimonials = [
   }
 ]
 
-const stats = [
-  { label: 'Clients Booked', value: '500+' },
-  { label: 'Podcast Placements', value: '2,500+' },
-  { label: 'Success Rate', value: '94%' }
-]
-
 const STORAGE_KEY = 'onboarding_draft'
 const STORAGE_STEP_KEY = 'onboarding_step'
 const STORAGE_HEADSHOT_KEY = 'onboarding_headshot'
@@ -928,22 +922,6 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
           </p>
         </div>
 
-        {/* Social Proof Stats */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-10 animate-fade-in delay-100">
-          {stats.map((stat, index) => (
-            <div
-              key={index}
-              className="text-center p-3 sm:p-4 rounded-xl bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm border border-white/50 dark:border-gray-700/50 hover:scale-105 transition-transform duration-300 shadow-sm"
-            >
-              <div className="text-xl sm:text-2xl md:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                {stat.value}
-              </div>
-              <div className="text-[10px] sm:text-xs md:text-sm text-muted-foreground font-medium mt-1">
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </div>
 
         {/* Progress with enhanced visual design */}
         <div className="mb-8 animate-fade-in delay-200">
