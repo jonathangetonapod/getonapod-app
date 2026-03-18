@@ -268,7 +268,7 @@ export async function previewSearch(
 
 export async function searchAllPodcasts(
   options: SearchOptions,
-  onPage: (podcasts: PodcastData[], pageNum: number, totalPages: number, totalCount: number) => void,
+  onPage: (podcasts: PodcastData[], pageNum: number, totalPages: number, totalCount: number) => void | Promise<void>,
   onProgress?: (message: string) => void,
   maxPages?: number,
 ): Promise<{ totalFound: number; totalPages: number }> {
@@ -280,7 +280,7 @@ export async function searchAllPodcasts(
   const firstPagePodcasts = firstResponse.podcasts || []
 
   if (firstPagePodcasts.length > 0) {
-    onPage(firstPagePodcasts, 1, pagesToFetch, totalCount)
+    await onPage(firstPagePodcasts, 1, pagesToFetch, totalCount)
   }
 
   if (totalCount === 0) {
@@ -299,7 +299,7 @@ export async function searchAllPodcasts(
       const podcasts = response.podcasts || []
 
       if (podcasts.length > 0) {
-        onPage(podcasts, page, pagesToFetch, totalCount)
+        await onPage(podcasts, page, pagesToFetch, totalCount)
       }
 
       onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
