@@ -6,7 +6,7 @@ import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
 
 const plan = {
   name: "Get On A Pod",
-  price: "$499",
+  price: "$749",
   period: "/month",
   features: [
     "2+ guaranteed podcast bookings every month",
@@ -47,7 +47,7 @@ const PricingSection = () => {
                   </span>
                 </div>
                 <p className="mt-1.5 text-xs sm:text-sm text-muted-foreground/80">
-                  That's ~$250 per podcast booking
+                  Month-to-month, cancel anytime
                 </p>
               </div>
 
@@ -111,7 +111,7 @@ const PricingSection = () => {
               </div>
               <div className="text-center p-3 sm:p-4 rounded-xl bg-primary/5 border-2 border-primary/30">
                 <p className="text-xs sm:text-sm font-semibold text-primary mb-1">Get On A Pod</p>
-                <p className="text-sm sm:text-base font-bold text-foreground">$499</p>
+                <p className="text-sm sm:text-base font-bold text-foreground">$749</p>
                 <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">per month</p>
               </div>
             </div>
