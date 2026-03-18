@@ -1173,97 +1173,96 @@ export default function PodcastDatabase() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Podcast Database</h1>
-          <p className="text-muted-foreground">
-            Browse, search, and manage your centralized podcast inventory
-          </p>
+        {/* Header + Mode Selector */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Podcast Database</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {stats?.total_podcasts?.toLocaleString() || 0} podcasts · {stats?.total_podcasts ? (stats.avg_audience_size * stats.total_podcasts / 1000000).toFixed(1) : 0}M total reach
+            </p>
+          </div>
+          <div className="inline-flex items-center rounded-lg border bg-muted/30 p-1 gap-1">
+            {([
+              { key: 'browse', icon: Database, label: 'Browse' },
+              { key: 'client', icon: UsersIcon, label: 'Client Match' },
+              { key: 'prospect', icon: Target, label: 'Prospect Match' },
+              { key: 'analytics', icon: BarChart3, label: 'Analytics' },
+            ] as const).map(({ key, icon: Icon, label }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key as Mode)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-150 ${
+                  mode === key
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Mode Selector */}
-        <div className="flex gap-2">
-          <Button
-            variant={mode === 'browse' ? 'default' : 'outline'}
-            onClick={() => setMode('browse')}
-            className="flex items-center gap-2"
-          >
-            <Database className="h-4 w-4" />
-            Browse
-          </Button>
-          <Button
-            variant={mode === 'client' ? 'default' : 'outline'}
-            onClick={() => setMode('client')}
-            className="flex items-center gap-2"
-          >
-            <UsersIcon className="h-4 w-4" />
-            Match for Client
-          </Button>
-          <Button
-            variant={mode === 'prospect' ? 'default' : 'outline'}
-            onClick={() => setMode('prospect')}
-            className="flex items-center gap-2"
-          >
-            <Target className="h-4 w-4" />
-            Match for Prospect
-          </Button>
-          <Button
-            variant={mode === 'analytics' ? 'default' : 'outline'}
-            onClick={() => setMode('analytics')}
-            className="flex items-center gap-2"
-          >
-            <BarChart3 className="h-4 w-4" />
-            Analytics
-          </Button>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Podcasts</CardTitle>
-              <Database className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.total_podcasts?.toLocaleString() || 0}</div>
-              <p className="text-xs text-muted-foreground">In your database</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Reach</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats?.total_podcasts ? (stats.avg_audience_size * stats.total_podcasts / 1000000).toFixed(1) : 0}M
+        {/* Stats Cards — Bento Grid with semantic color accents */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Card className="group hover:shadow-md transition-shadow duration-200">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/15 transition-colors">
+                  <Database className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tracking-tight leading-none">{stats?.total_podcasts?.toLocaleString() || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Total Podcasts</p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Combined audience</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cache Hits</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.total_cache_hits?.toLocaleString() || 0}</div>
-              <p className="text-xs text-muted-foreground">API calls saved</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cost Savings</CardTitle>
-              <Star className="h-4 w-4 text-yellow-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                ${((stats?.estimated_api_calls_saved || 0) * 0.01).toFixed(2)}
+          <Card className="group hover:shadow-md transition-shadow duration-200">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/15 transition-colors">
+                  <TrendingUp className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tracking-tight leading-none">
+                    {stats?.total_podcasts ? (stats.avg_audience_size * stats.total_podcasts / 1000000).toFixed(1) : 0}M
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Total Reach</p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">Total saved</p>
+            </CardContent>
+          </Card>
+
+          <Card className="group hover:shadow-md transition-shadow duration-200">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/15 transition-colors">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tracking-tight leading-none">{stats?.total_cache_hits?.toLocaleString() || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Cache Hits</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="group hover:shadow-md transition-shadow duration-200">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/15 transition-colors">
+                  <DollarSign className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold tracking-tight leading-none text-emerald-600">
+                    ${((stats?.estimated_api_calls_saved || 0) * 0.01).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Cost Savings</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -2596,7 +2595,7 @@ export default function PodcastDatabase() {
                         : []
 
                       return (
-                        <TableRow key={podcast.id}>
+                        <TableRow key={podcast.id} className="group/row hover:bg-muted/40 transition-colors duration-150">
                           {isMatchMode && (
                             <TableCell className={getDensityClass()}>
                               <Checkbox
@@ -2620,12 +2619,12 @@ export default function PodcastDatabase() {
                               <img
                                 src={podcast.podcast_image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(podcast.podcast_name)}&background=random&size=40`}
                                 alt={podcast.podcast_name}
-                                className="w-10 h-10 rounded object-cover"
+                                className="w-10 h-10 rounded-lg object-cover ring-1 ring-border/50 group-hover/row:ring-border transition-all"
                               />
-                              <div>
-                                <div className="font-medium">{podcast.podcast_name}</div>
+                              <div className="min-w-0">
+                                <div className="font-medium truncate max-w-[280px]">{podcast.podcast_name}</div>
                                 {categories.length > 0 && (
-                                  <div className="text-xs text-muted-foreground">
+                                  <div className="text-xs text-muted-foreground truncate max-w-[280px]">
                                     {categories.join(', ')}
                                   </div>
                                 )}
@@ -2639,9 +2638,15 @@ export default function PodcastDatabase() {
                           )}
                           {columnVisibility.audience && (
                             <TableCell className={getDensityClass()}>
-                              {podcast.audience_size
-                                ? `${(podcast.audience_size / 1000).toFixed(0)}K`
-                                : 'N/A'}
+                              {podcast.audience_size ? (
+                                <span className="tabular-nums font-medium">
+                                  {podcast.audience_size >= 1000000
+                                    ? `${(podcast.audience_size / 1000000).toFixed(1)}M`
+                                    : `${(podcast.audience_size / 1000).toFixed(0)}K`}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">--</span>
+                              )}
                             </TableCell>
                           )}
                           {columnVisibility.rating && (
@@ -2649,14 +2654,20 @@ export default function PodcastDatabase() {
                               {podcast.itunes_rating ? (
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                  {podcast.itunes_rating.toFixed(1)}
+                                  <span className="tabular-nums font-medium">{podcast.itunes_rating.toFixed(1)}</span>
                                 </div>
-                              ) : 'N/A'}
+                              ) : (
+                                <span className="text-muted-foreground text-xs">--</span>
+                              )}
                             </TableCell>
                           )}
                           {columnVisibility.episodes && (
                             <TableCell className={getDensityClass()}>
-                              {podcast.episode_count || 'N/A'}
+                              {podcast.episode_count ? (
+                                <span className="tabular-nums">{podcast.episode_count.toLocaleString()}</span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">--</span>
+                              )}
                             </TableCell>
                           )}
                           {columnVisibility.prs && (
