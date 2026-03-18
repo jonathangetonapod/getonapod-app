@@ -337,3 +337,88 @@ export async function exportPodcastsToCSV(
 
   return true
 }
+
+/**
+ * Auto-save podcasts from Podscan API responses to the local database.
+ * Uses upsert on podscan_id so duplicates are safely handled.
+ * Runs as fire-and-forget to not block the UI.
+ */
+export async function savePodcastsToDatabase(
+  podcasts: Array<{
+    podcast_id: string
+    podcast_name: string
+    podcast_url: string
+    podcast_description?: string
+    podcast_image_url?: string
+    podcast_reach_score?: number
+    podcast_categories?: Array<{ category_id: string; category_name: string }>
+    episode_count?: number
+    language?: string
+    region?: string
+    publisher_name?: string
+    is_active?: boolean
+    rss_url?: string
+    last_posted_at?: string
+    podcast_has_guests?: boolean
+    podcast_has_sponsors?: boolean
+    reach?: {
+      itunes?: { itunes_rating_average?: string; itunes_rating_count?: string }
+      audience_size?: number
+      email?: string
+      website?: string
+    }
+  }>
+): Promise<{ saved: number; errors: number }> {
+  if (podcasts.length === 0) return { saved: 0, errors: 0 }
+
+  const rows = podcasts.map(p => ({
+    podscan_id: p.podcast_id,
+    podcast_name: p.podcast_name,
+    podcast_description: p.podcast_description || null,
+    podcast_image_url: p.podcast_image_url || null,
+    podcast_url: p.podcast_url || null,
+    publisher_name: p.publisher_name || null,
+    podcast_categories: p.podcast_categories || null,
+    episode_count: p.episode_count || null,
+    language: p.language || null,
+    region: p.region || null,
+    is_active: p.is_active ?? true,
+    rss_url: p.rss_url || null,
+    last_posted_at: p.last_posted_at || null,
+    podcast_has_guests: p.podcast_has_guests ?? null,
+    podcast_has_sponsors: p.podcast_has_sponsors ?? null,
+    podcast_reach_score: p.podcast_reach_score || null,
+    itunes_rating: p.reach?.itunes?.itunes_rating_average
+      ? parseFloat(p.reach.itunes.itunes_rating_average)
+      : null,
+    audience_size: p.reach?.audience_size || null,
+    podscan_email: p.reach?.email || null,
+    website: p.reach?.website || null,
+    podscan_last_fetched_at: new Date().toISOString(),
+  }))
+
+  // Batch upsert in chunks of 50
+  let saved = 0
+  let errors = 0
+  const chunkSize = 50
+
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize)
+    const { error } = await supabase
+      .from('podcasts')
+      .upsert(chunk, { onConflict: 'podscan_id', ignoreDuplicates: false })
+
+    if (error) {
+      console.error('[Auto-save] Batch upsert error:', error)
+      errors += chunk.length
+    } else {
+      saved += chunk.length
+    }
+  }
+
+  if (saved > 0) {
+    console.log(`[Auto-save] Saved ${saved} podcasts to database`)
+  }
+
+  return { saved, errors }
+}

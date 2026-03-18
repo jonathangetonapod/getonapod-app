@@ -44,6 +44,7 @@ import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { searchPodcasts, getPodcastById, getPodcastDemographics, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type PodcastDemographics, type ChartCountry, type ChartCategory } from '@/services/podscan'
 import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
 import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
+import { savePodcastsToDatabase } from '@/services/podcastDatabase'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 
@@ -330,6 +331,14 @@ export default function PodcastFinder() {
     try {
       const podcasts = await getTopChartPodcasts(chartPlatform, chartCountry, chartCategory, chartLimit)
       setChartResults(podcasts)
+
+      // Auto-save chart results to database (fire-and-forget)
+      if (podcasts.length > 0) {
+        savePodcastsToDatabase(podcasts).catch(err =>
+          console.error('[PodcastFinder] Auto-save chart results failed:', err)
+        )
+      }
+
       toast.success(`Found ${podcasts.length} top podcasts`)
     } catch (error) {
       console.error('Failed to fetch chart podcasts:', error)
@@ -601,6 +610,13 @@ export default function PodcastFinder() {
 
       const response = await searchPodcasts(filters)
       const results = response.podcasts || []
+
+      // Auto-save to database (fire-and-forget)
+      if (results.length > 0) {
+        savePodcastsToDatabase(results).catch(err =>
+          console.error('[PodcastFinder] Auto-save failed:', err)
+        )
+      }
 
       // Re-check ref for current attempts (in case of concurrent calls)
       const attemptsNow = regenerateAttemptsRef.current[queryId] || 0
