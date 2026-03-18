@@ -67,8 +67,9 @@ import {
   Clock,
   Sparkles,
   UserSearch,
+  Import,
 } from 'lucide-react'
-import { getRelatedPodcasts, getPodcastDemographics, type PodcastData, type PodcastDemographics } from '@/services/podscan'
+import { getRelatedPodcasts, getPodcastDemographics, searchAllPodcasts, type PodcastData, type PodcastDemographics } from '@/services/podscan'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Progress } from '@/components/ui/progress'
@@ -81,7 +82,8 @@ import {
   getPodcastCategories,
   exportPodcastsToCSV,
   type PodcastFilters,
-  type PodcastDatabaseItem
+  type PodcastDatabaseItem,
+  savePodcastsToDatabase
 } from '@/services/podcastDatabase'
 import { scoreCompatibilityBatch, type PodcastForScoring } from '@/services/compatibilityScoring'
 import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
@@ -254,6 +256,12 @@ export default function PodcastDatabase() {
   const [demographicsPodcast, setDemographicsPodcast] = useState<PodcastDatabaseItem | null>(null)
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
   const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
+
+  // Bulk Import State
+  const [bulkImportKeywords, setBulkImportKeywords] = useState('')
+  const [isBulkImporting, setIsBulkImporting] = useState(false)
+  const [bulkImportProgress, setBulkImportProgress] = useState('')
+  const [bulkImportStats, setBulkImportStats] = useState<{ saved: number; pages: number; total: number } | null>(null)
 
   // Saved Filter Presets State
   const [savedPresets, setSavedPresets] = useState<FilterPreset[]>(() => {
@@ -1031,6 +1039,43 @@ export default function PodcastDatabase() {
     }
   }
 
+  // Bulk import handler
+  const handleBulkImport = async () => {
+    if (!bulkImportKeywords.trim()) {
+      toast.error('Please enter keywords to search')
+      return
+    }
+
+    setIsBulkImporting(true)
+    setBulkImportProgress('Starting search...')
+    setBulkImportStats(null)
+    let totalSaved = 0
+
+    try {
+      const result = await searchAllPodcasts(
+        { query: bulkImportKeywords.trim(), has_guests: true },
+        async (podcasts, pageNum, totalPages, totalCount) => {
+          // Save each page of results to DB
+          const { saved } = await savePodcastsToDatabase(podcasts)
+          totalSaved += saved
+          setBulkImportProgress(`Page ${pageNum}/${totalPages} — ${totalSaved} saved so far (${totalCount} total found)`)
+          setBulkImportStats({ saved: totalSaved, pages: pageNum, total: totalCount })
+        },
+        (message) => setBulkImportProgress(message)
+      )
+
+      toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
+      setBulkImportProgress(`Done! ${totalSaved} podcasts saved to database.`)
+      refetch() // Refresh the podcast list
+    } catch (error) {
+      console.error('Bulk import failed:', error)
+      toast.error(error instanceof Error ? error.message : 'Bulk import failed')
+      setBulkImportProgress('Import failed.')
+    } finally {
+      setIsBulkImporting(false)
+    }
+  }
+
   // Calculate average score for selected
   const calculateAverageScore = () => {
     const selectedScores = Array.from(selectedPodcasts)
@@ -1139,6 +1184,69 @@ export default function PodcastDatabase() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Bulk Import */}
+        {mode === 'browse' && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Import className="h-5 w-5" />
+                    Bulk Import from Podscan
+                  </CardTitle>
+                  <CardDescription>
+                    Enter keywords to search Podscan and import all matching podcasts to your database
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <Label htmlFor="bulk-keywords">Keywords</Label>
+                  <Input
+                    id="bulk-keywords"
+                    value={bulkImportKeywords}
+                    onChange={(e) => setBulkImportKeywords(e.target.value)}
+                    placeholder='e.g. "business AND entrepreneurship" OR "startup founder"'
+                    disabled={isBulkImporting}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isBulkImporting) handleBulkImport()
+                    }}
+                  />
+                </div>
+                <Button
+                  onClick={handleBulkImport}
+                  disabled={isBulkImporting || !bulkImportKeywords.trim()}
+                >
+                  {isBulkImporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Import className="h-4 w-4 mr-2" />
+                      Import All
+                    </>
+                  )}
+                </Button>
+              </div>
+              {bulkImportProgress && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm text-muted-foreground">{bulkImportProgress}</p>
+                  {bulkImportStats && bulkImportStats.total > 0 && (
+                    <Progress
+                      value={(bulkImportStats.pages / Math.ceil(bulkImportStats.total / 50)) * 100}
+                      className="h-2"
+                    />
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Analytics Dashboard */}
         {mode === 'analytics' && (
