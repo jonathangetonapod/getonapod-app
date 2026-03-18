@@ -167,7 +167,6 @@ export default function Onboarding() {
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
   const [isAnimating, setIsAnimating] = useState(false)
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
-  const [checkingEmail, setCheckingEmail] = useState(false)
   const [headshotBase64, setHeadshotBase64] = useState<string | null>(null)
   const [headshotMeta, setHeadshotMeta] = useState<{ name: string; type: string } | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -301,28 +300,8 @@ export default function Onboarding() {
     }
   }
 
-  // Check if email already exists in the system
-  const checkEmailExists = async (email: string): Promise<boolean> => {
-    try {
-      const response = await fetch(
-        `https://ysjwveqnwjysldpfqzov.supabase.co/rest/v1/clients?email=ilike.${encodeURIComponent(email)}&select=id`,
-        {
-          headers: {
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlzandmZXFud2p5c2xkcGZxem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY0NTI1NTUsImV4cCI6MjA1MjAyODU1NX0.aIvJCOOUGiPY2EI7lazlRgVB3I6Ry4wPwHHJUUdJYYs',
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-      if (response.ok) {
-        const existing = await response.json()
-        return existing.length > 0
-      }
-      return false
-    } catch (error) {
-      console.error('Error checking email:', error)
-      return false // Don't block on network errors, will be caught on submit
-    }
-  }
+  // Check if email already exists via the create-client-account edge function (returns 409 for duplicates)
+  // This is handled at submission time - no separate client-side check needed
 
   const validateStep = () => {
     switch (step) {
@@ -368,24 +347,6 @@ export default function Onboarding() {
 
   const nextStep = async () => {
     if (!validateStep()) return
-
-    // Check for duplicate email when leaving Step 1
-    if (step === 1) {
-      setCheckingEmail(true)
-      try {
-        const emailExists = await checkEmailExists(data.email)
-        if (emailExists) {
-          toast.error('An account with this email already exists. Please use a different email or contact support.')
-          setCheckingEmail(false)
-          return
-        }
-      } catch (error) {
-        console.error('Email check error:', error)
-        // Continue anyway - will be caught on final submit
-      } finally {
-        setCheckingEmail(false)
-      }
-    }
 
     // Mark current step as completed
     setCompletedSteps(prev => new Set([...prev, step]))
@@ -568,6 +529,9 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
 
       if (!response.ok) {
         const error = await response.json()
+        if (response.status === 409) {
+          throw new Error('An account with this email already exists. Please use a different email or contact support.')
+        }
         throw new Error(error.error || 'Failed to create account')
       }
 
@@ -1426,20 +1390,11 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
               {step < totalSteps ? (
                 <Button
                   onClick={nextStep}
-                  disabled={loading || checkingEmail}
+                  disabled={loading}
                   className="w-full sm:w-auto px-8 py-5 sm:py-6 text-sm sm:text-base font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 hover:scale-105 transition-all shadow-lg order-1 sm:order-2"
                 >
-                  {checkingEmail ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
-                      Checking...
-                    </>
-                  ) : (
-                    <>
-                      Next
-                      <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-                    </>
-                  )}
+                  Next
+                  <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
               ) : (
                 <Button
