@@ -25,7 +25,8 @@ import {
   Star,
   TrendingUp,
   Check,
-  Quote
+  Quote,
+  Mic
 } from 'lucide-react'
 import { toast } from 'sonner'
 import confetti from 'canvas-confetti'
@@ -491,12 +492,13 @@ export default function Onboarding() {
         }
       )
 
+      let generatedBio = data.bio
       if (!bioResponse.ok) {
         console.error('Bio generation failed, using original bio')
+      } else {
+        const bioData = await bioResponse.json()
+        generatedBio = bioData.bio || data.bio
       }
-
-      const bioData = await bioResponse.json()
-      const generatedBio = bioData.bio || data.bio
 
       // Store additional context in notes
       const detailedNotes = `=== ONBOARDING INFORMATION ===
