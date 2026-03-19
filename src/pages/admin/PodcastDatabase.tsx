@@ -975,7 +975,7 @@ export default function PodcastDatabase() {
         toast.success(`✅ Created sheet for ${selectedProspect?.prospect_name}!`)
 
       } else if (isNewProspectMode) {
-        // Create new prospect
+        // Create new prospect + sheet + publish dashboard in one flow
         const result = await createProspectSheet(
           prospectName.trim(),
           prospectBio.trim(),
@@ -983,8 +983,57 @@ export default function PodcastDatabase() {
           prospectImageUrl.trim() || undefined
         )
 
-        toast.success(`✅ Created dashboard for ${prospectName}!`)
-        toast.success(`🔗 ${result.dashboardUrl}`)
+        // Auto-publish the dashboard so it's immediately live
+        if (result.dashboardSlug) {
+          const { data: dashboardRecord } = await supabase
+            .from('prospect_dashboards')
+            .select('id')
+            .eq('slug', result.dashboardSlug)
+            .single()
+
+          if (dashboardRecord) {
+            await supabase
+              .from('prospect_dashboards')
+              .update({ content_ready: true })
+              .eq('id', dashboardRecord.id)
+
+            // Cache podcast data in prospect_dashboard_podcasts for fast loading
+            const podcastCacheRows = podcastsToExport.map(p => ({
+              prospect_dashboard_id: dashboardRecord.id,
+              podcast_id: p.podcast_id || p.podscan_podcast_id,
+              podscan_podcast_id: p.podscan_podcast_id || p.podcast_id,
+              podcast_name: p.podcast_name,
+              podcast_description: p.podcast_description,
+              podcast_image_url: p.podcast_image_url,
+              podcast_url: p.podcast_url,
+              publisher_name: p.publisher_name,
+              episode_count: p.episode_count,
+              itunes_rating: p.itunes_rating,
+              audience_size: p.audience_size,
+              language: p.language,
+              region: p.region,
+              podcast_email: p.podcast_email,
+              rss_feed: p.rss_feed,
+              podcast_categories: p.podcast_categories,
+              compatibility_score: p.compatibility_score,
+              compatibility_reasoning: p.compatibility_reasoning,
+            }))
+
+            await supabase
+              .from('prospect_dashboard_podcasts')
+              .upsert(podcastCacheRows, { onConflict: 'prospect_dashboard_id,podcast_id' })
+              .then(({ error }) => {
+                if (error) console.error('Failed to cache podcasts for prospect:', error)
+              })
+          }
+        }
+
+        const dashboardUrl = result.dashboardUrl || `https://getonapod.com/prospect/${result.dashboardSlug}`
+        toast.success(`Dashboard live for ${prospectName}!`)
+        toast.success(dashboardUrl, { duration: 10000 })
+
+        // Copy URL to clipboard
+        navigator.clipboard.writeText(dashboardUrl).catch(() => {})
       }
 
       setSelectedPodcasts(new Set())
@@ -2842,10 +2891,13 @@ export default function PodcastDatabase() {
                       {isExporting ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Exporting...
+                          {isNewProspectMode ? 'Creating Dashboard...' : 'Exporting...'}
                         </>
                       ) : (
-                        'Export to Prospect Sheet'
+                        <>
+                          <Target className="h-4 w-4 mr-2" />
+                          {isNewProspectMode ? `Create Dashboard (${selectedPodcasts.size})` : `Export to Sheet (${selectedPodcasts.size})`}
+                        </>
                       )}
                     </Button>
                   )}
