@@ -1721,12 +1721,10 @@ export default function ProspectView() {
             </Button>
           </div>
 
-          {/* Testimonials Section */}
-          {dashboard.show_testimonials && dashboard.testimonial_ids && dashboard.testimonial_ids.length > 0 && (
-            <div className="my-12 sm:my-16">
-              <SocialProofSection testimonialIds={dashboard.testimonial_ids} />
-            </div>
-          )}
+          {/* Testimonials Section — always shown */}
+          <div className="my-12 sm:my-16">
+            <SocialProofSection />
+          </div>
 
           {/* FAQ Section */}
           <div className="mt-12 sm:mt-16">
