@@ -950,13 +950,40 @@ export default function PodcastDatabase() {
         }
       })
 
+      // Helper: build cache rows matching prospect_dashboard_podcasts schema
+      const buildCacheRows = (dashboardId: string) => podcastsToExport.map(p => ({
+        prospect_dashboard_id: dashboardId,
+        podcast_id: p.podcast_id || p.podscan_podcast_id,
+        podcast_name: p.podcast_name,
+        podcast_description: p.podcast_description,
+        podcast_image_url: p.podcast_image_url,
+        podcast_url: p.podcast_url,
+        publisher_name: p.publisher_name,
+        episode_count: p.episode_count,
+        itunes_rating: p.itunes_rating,
+        audience_size: p.audience_size,
+        podcast_categories: p.podcast_categories,
+      }))
+
+      // Helper: upsert podcast cache for a dashboard
+      const cachePodcastsForDashboard = async (dashboardId: string) => {
+        const { error } = await supabase
+          .from('prospect_dashboard_podcasts')
+          .upsert(buildCacheRows(dashboardId), { onConflict: 'prospect_dashboard_id,podcast_id' })
+        if (error) {
+          console.error('Failed to cache podcasts for prospect:', error)
+          toast.error('Warning: podcasts saved to sheet but dashboard cache failed')
+        }
+      }
+
       if (isExistingProspectMode && selectedProspectId && existingProspectHasSheet) {
-        // Append to existing
+        // Append to existing sheet + update dashboard cache
         const result = await appendToProspectSheet(selectedProspectId, podcastsToExport)
-        toast.success(`✅ Added ${result.rowsAdded} podcasts to ${selectedProspect?.prospect_name}'s sheet!`)
+        await cachePodcastsForDashboard(selectedProspectId)
+        toast.success(`Added ${result.rowsAdded} podcasts to ${selectedProspect?.prospect_name}'s sheet!`)
 
       } else if (isExistingProspectMode && selectedProspectId && !existingProspectHasSheet) {
-        // Create sheet for existing prospect — use createProspectSheet but clean up the duplicate record it creates
+        // Create sheet for existing prospect — clean up the duplicate record the edge function creates
         const result = await createProspectSheet(
           selectedProspect!.prospect_name,
           selectedProspect!.prospect_bio || '',
@@ -964,16 +991,16 @@ export default function PodcastDatabase() {
           selectedProspect!.prospect_image_url || undefined
         )
 
-        // The edge function creates a duplicate prospect_dashboards record — delete it
+        // Delete the duplicate prospect_dashboards record created by the edge function
         if (result.dashboardSlug) {
-          await supabase
+          const { error: deleteError } = await supabase
             .from('prospect_dashboards')
             .delete()
             .eq('slug', result.dashboardSlug)
-            .neq('id', selectedProspectId)
+          if (deleteError) console.error('Failed to delete duplicate prospect record:', deleteError)
         }
 
-        // Update the EXISTING prospect with the sheet info
+        // Update the EXISTING prospect with the sheet info + publish
         await supabase
           .from('prospect_dashboards')
           .update({
@@ -983,31 +1010,7 @@ export default function PodcastDatabase() {
           })
           .eq('id', selectedProspectId)
 
-        // Cache podcasts for the existing prospect dashboard
-        const podcastCacheRows = podcastsToExport.map(p => ({
-          prospect_dashboard_id: selectedProspectId,
-          podcast_id: p.podcast_id || p.podscan_podcast_id,
-          podscan_podcast_id: p.podscan_podcast_id || p.podcast_id,
-          podcast_name: p.podcast_name,
-          podcast_description: p.podcast_description,
-          podcast_image_url: p.podcast_image_url,
-          podcast_url: p.podcast_url,
-          publisher_name: p.publisher_name,
-          episode_count: p.episode_count,
-          itunes_rating: p.itunes_rating,
-          audience_size: p.audience_size,
-          language: p.language,
-          region: p.region,
-          podcast_email: p.podcast_email,
-          rss_feed: p.rss_feed,
-          podcast_categories: p.podcast_categories,
-          compatibility_score: p.compatibility_score,
-          compatibility_reasoning: p.compatibility_reasoning,
-        }))
-
-        await supabase
-          .from('prospect_dashboard_podcasts')
-          .upsert(podcastCacheRows, { onConflict: 'prospect_dashboard_id,podcast_id' })
+        await cachePodcastsForDashboard(selectedProspectId)
 
         const dashboardUrl = `https://getonapod.com/prospect/${selectedProspect!.slug}`
         toast.success(`Created sheet for ${selectedProspect?.prospect_name}!`)
@@ -1023,8 +1026,13 @@ export default function PodcastDatabase() {
           prospectImageUrl.trim() || undefined
         )
 
-        // Auto-publish the dashboard so it's immediately live
+        // Auto-publish and cache podcasts
         if (result.dashboardSlug) {
+          await supabase
+            .from('prospect_dashboards')
+            .update({ content_ready: true })
+            .eq('slug', result.dashboardSlug)
+
           const { data: dashboardRecord } = await supabase
             .from('prospect_dashboards')
             .select('id')
@@ -1032,47 +1040,13 @@ export default function PodcastDatabase() {
             .single()
 
           if (dashboardRecord) {
-            await supabase
-              .from('prospect_dashboards')
-              .update({ content_ready: true })
-              .eq('id', dashboardRecord.id)
-
-            // Cache podcast data in prospect_dashboard_podcasts for fast loading
-            const podcastCacheRows = podcastsToExport.map(p => ({
-              prospect_dashboard_id: dashboardRecord.id,
-              podcast_id: p.podcast_id || p.podscan_podcast_id,
-              podscan_podcast_id: p.podscan_podcast_id || p.podcast_id,
-              podcast_name: p.podcast_name,
-              podcast_description: p.podcast_description,
-              podcast_image_url: p.podcast_image_url,
-              podcast_url: p.podcast_url,
-              publisher_name: p.publisher_name,
-              episode_count: p.episode_count,
-              itunes_rating: p.itunes_rating,
-              audience_size: p.audience_size,
-              language: p.language,
-              region: p.region,
-              podcast_email: p.podcast_email,
-              rss_feed: p.rss_feed,
-              podcast_categories: p.podcast_categories,
-              compatibility_score: p.compatibility_score,
-              compatibility_reasoning: p.compatibility_reasoning,
-            }))
-
-            await supabase
-              .from('prospect_dashboard_podcasts')
-              .upsert(podcastCacheRows, { onConflict: 'prospect_dashboard_id,podcast_id' })
-              .then(({ error }) => {
-                if (error) console.error('Failed to cache podcasts for prospect:', error)
-              })
+            await cachePodcastsForDashboard(dashboardRecord.id)
           }
         }
 
-        const dashboardUrl = result.dashboardUrl || `https://getonapod.com/prospect/${result.dashboardSlug}`
+        const dashboardUrl = `https://getonapod.com/prospect/${result.dashboardSlug}`
         toast.success(`Dashboard live for ${prospectName}!`)
         toast.success(dashboardUrl, { duration: 10000 })
-
-        // Copy URL to clipboard
         navigator.clipboard.writeText(dashboardUrl).catch(() => {})
       }
 
