@@ -89,6 +89,8 @@ import {
   savePodcastsToDatabase
 } from '@/services/podcastDatabase'
 import { scoreCompatibilityBatch, type PodcastForScoring } from '@/services/compatibilityScoring'
+import { QAReviewSheet } from '@/components/admin/QAReviewSheet'
+import type { QAPodcastInput } from '@/services/qaReview'
 import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
@@ -259,6 +261,9 @@ export default function PodcastDatabase() {
   const [demographicsPodcast, setDemographicsPodcast] = useState<PodcastDatabaseItem | null>(null)
   const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
   const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
+
+  // QA Review State
+  const [qaReviewOpen, setQaReviewOpen] = useState(false)
 
   // Bulk Import State
   const [bulkImportKeywords, setBulkImportKeywords] = useState('')
@@ -588,6 +593,43 @@ export default function PodcastDatabase() {
   const bioToUse = isProspectMode
     ? (isNewProspectMode ? prospectBio : selectedProspect?.prospect_bio || '')
     : selectedClientData?.bio || ''
+
+  // Build QA input from selected podcasts + ID mapping (podscan_id → database row id)
+  const { qaSelectedPodcasts, qaIdMap } = useMemo(() => {
+    if (!qaReviewOpen) return { qaSelectedPodcasts: [] as QAPodcastInput[], qaIdMap: new Map<string, string>() }
+    const idMap = new Map<string, string>()
+    const selected = podcasts
+      .filter(p => selectedPodcasts.has(p.id))
+      .map(p => {
+        idMap.set(p.podscan_id, p.id) // podscan_id → database row id
+        return {
+          podcast_id: p.podscan_id,
+          podcast_name: p.podcast_name,
+          podcast_description: p.podcast_description || null,
+          publisher_name: p.publisher_name || null,
+          podcast_categories: Array.isArray(p.podcast_categories)
+            ? p.podcast_categories.map((c: any) => ({ category_name: c.category_name || c }))
+            : null,
+          audience_size: p.audience_size || null,
+          episode_count: p.episode_count || null,
+        }
+      })
+    return { qaSelectedPodcasts: selected, qaIdMap: idMap }
+  }, [qaReviewOpen, podcasts, selectedPodcasts])
+
+  // Prospect name for QA sheet title
+  const qaProspectName = useMemo(() => {
+    if (isNewProspectMode) return prospectName
+    if (isExistingProspectMode && selectedProspect) return selectedProspect.prospect_name
+    return ''
+  }, [isNewProspectMode, isExistingProspectMode, prospectName, selectedProspect])
+
+  // Get the bio to use for QA (prospect bio from either mode)
+  const qaBio = useMemo(() => {
+    if (isNewProspectMode) return prospectBio
+    if (isExistingProspectMode && selectedProspect) return selectedProspect.prospect_bio || ''
+    return ''
+  }, [isNewProspectMode, isExistingProspectMode, prospectBio, selectedProspect])
 
   // Selection state calculations
   const visiblePodcastIds = podcasts.map(p => p.id)
@@ -1056,6 +1098,14 @@ export default function PodcastDatabase() {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  const handleQAConfirm = (approvedDatabaseIds: Set<string>) => {
+    // Update selection to only the QA-approved podcasts (using database row IDs)
+    setSelectedPodcasts(approvedDatabaseIds)
+    setQaReviewOpen(false)
+    // Trigger the export flow directly
+    setTimeout(() => handleExportToProspectSheet(), 100)
   }
 
   // Handle CSV export
@@ -2901,6 +2951,16 @@ export default function PodcastDatabase() {
                     </Button>
                   )}
                   {isProspectMode && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => setQaReviewOpen(true)}
+                      disabled={isExporting || selectedPodcasts.size === 0 || selectedPodcasts.size > 50 || !bioToUse?.trim()}
+                    >
+                      <Search className="h-4 w-4 mr-2" />
+                      QA Review ({selectedPodcasts.size})
+                    </Button>
+                  )}
+                  {isProspectMode && (
                     <Button onClick={handleExportToProspectSheet} disabled={isExporting}>
                       {isExporting ? (
                         <>
@@ -3163,6 +3223,16 @@ export default function PodcastDatabase() {
           </div>
         </SheetContent>
       </Sheet>
+      {/* QA Review Sheet */}
+      <QAReviewSheet
+        open={qaReviewOpen}
+        onOpenChange={setQaReviewOpen}
+        podcasts={qaSelectedPodcasts}
+        prospectBio={qaBio}
+        prospectName={qaProspectName}
+        idMap={qaIdMap}
+        onConfirm={handleQAConfirm}
+      />
     </DashboardLayout>
   )
 }
