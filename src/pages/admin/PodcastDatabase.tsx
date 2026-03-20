@@ -2951,14 +2951,33 @@ export default function PodcastDatabase() {
                     </Button>
                   )}
                   {isProspectMode && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => setQaReviewOpen(true)}
-                      disabled={isExporting || selectedPodcasts.size === 0 || selectedPodcasts.size > 50 || !bioToUse?.trim()}
-                    >
-                      <Search className="h-4 w-4 mr-2" />
-                      QA Review ({selectedPodcasts.size})
-                    </Button>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button
+                              variant="secondary"
+                              onClick={() => setQaReviewOpen(true)}
+                              disabled={isExporting || selectedPodcasts.size === 0 || selectedPodcasts.size > 50 || !bioToUse?.trim()}
+                            >
+                              <Search className="h-4 w-4 mr-2" />
+                              {!bioToUse?.trim()
+                                ? 'QA Review (bio required)'
+                                : selectedPodcasts.size > 50
+                                  ? 'QA Review (max 50)'
+                                  : `QA Review (${selectedPodcasts.size})`}
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {(!bioToUse?.trim() || selectedPodcasts.size > 50) && (
+                          <TooltipContent>
+                            {!bioToUse?.trim()
+                              ? 'Enter a prospect bio to enable QA review'
+                              : `Select 50 or fewer podcasts (${selectedPodcasts.size} selected)`}
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                   {isProspectMode && (
                     <Button onClick={handleExportToProspectSheet} disabled={isExporting}>
