@@ -919,6 +919,8 @@ export default function ProspectDashboards() {
           prospectExpertise: selectedDashboard.prospect_expertise,
           prospectTopics: selectedDashboard.prospect_topics,
           prospectTargetAudience: selectedDashboard.prospect_target_audience,
+          prospectImageUrl: selectedDashboard.prospect_image_url,
+          dashboardSlug: selectedDashboard.slug,
         }),
       })
 
