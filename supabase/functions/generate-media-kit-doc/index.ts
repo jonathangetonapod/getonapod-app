@@ -481,11 +481,11 @@ async function createMediaKitDoc(
   idx = insertSectionHeading(requests, idx, 'How It Works')
 
   const steps = [
-    { label: 'Step 1 — Discovery Call', desc: 'We align on your goals, niche, and ideal podcast audience in a quick 15-minute call.' },
-    { label: 'Step 2 — We Curate Your Podcast List', desc: 'Our team hand-picks 50+ relevant shows tailored to your expertise. You review and approve every podcast before we pitch.' },
-    { label: 'Step 3 — Personalized Outreach', desc: 'We craft custom pitches for each host, highlighting why you\'re the perfect guest. We handle all follow-ups.' },
-    { label: 'Step 4 — You Show Up & Shine', desc: 'We coordinate scheduling, send you a guest prep kit, and handle all logistics. You just deliver value.' },
-    { label: 'Step 5 — Your Authority Compounds', desc: 'Every appearance builds your credibility, attracts qualified leads, and positions you as the go-to expert — month after month.' },
+    { label: 'Step 1 — Discovery Call', desc: 'A quick 15-minute call to understand your goals, niche, and the type of audiences you want to reach.' },
+    { label: 'Step 2 — Your Personalized Podcast Dashboard', desc: 'We build you a custom Podcast Command Center — a live dashboard with 50+ hand-picked shows tailored to your expertise. Each podcast includes AI-powered fit analysis explaining exactly why it\'s a match, audience demographics, listener ratings, and episode data. You review everything and approve each show before we ever reach out.' },
+    { label: 'Step 3 — Personalized Outreach', desc: 'We craft custom pitches for each host, highlighting why you\'re the perfect guest. Every message is reviewed by you before it\'s sent. We handle all follow-ups until they commit.' },
+    { label: 'Step 4 — You Show Up & Shine', desc: 'We coordinate scheduling, send you a guest prep kit with host research and talking points, and handle all logistics. You just show up and deliver value.' },
+    { label: 'Step 5 — Your Authority Compounds', desc: 'Every appearance builds your credibility, attracts qualified leads, and positions you as the go-to expert in your space — month after month.' },
   ]
 
   for (const step of steps) {
@@ -522,11 +522,11 @@ async function createMediaKitDoc(
   idx = insertSectionHeading(requests, idx, 'What Sets Us Apart')
 
   const differentiators = [
-    'Full Transparency — Most agencies send monthly PDFs. We give you a live dashboard where you see everything in real-time.',
-    'You Approve Everything — Every podcast and every message is reviewed by you before we pitch. Your brand, your call.',
-    'Results Guaranteed — 2+ podcast placements per month, guaranteed. If we fall short, we keep working at no additional cost.',
-    'Quality Over Quantity — We target niche, engaged audiences that match your expertise — not vanity metrics.',
-    'Done-For-You — Research, pitching, follow-ups, scheduling, guest prep. We handle it all.',
+    'Your Podcast Command Center — Most agencies send a monthly PDF. We give you a live, interactive dashboard where you see every podcast we\'ve curated, AI-generated fit analysis for each show, audience demographics, listener ratings, and real-time campaign progress.',
+    'AI-Powered Matching — Our AI analyzes each podcast against your expertise, speaking topics, and target audience to explain exactly why it\'s a fit. No guesswork — data-driven recommendations.',
+    'Full Approval Control — You review and approve every podcast and every outreach message before we send it. Your brand, your call. Nothing goes out without your sign-off.',
+    'Results Guaranteed — 2+ podcast placements per month, guaranteed. If we fall short, we keep working at no additional cost until every placement is delivered.',
+    'Completely Done-For-You — Research, curation, pitching, follow-ups, scheduling, guest prep kits. We handle everything. You just show up and share your expertise.',
   ]
 
   idx = insertBullets(requests, idx, differentiators)
