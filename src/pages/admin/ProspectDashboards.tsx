@@ -171,6 +171,7 @@ export default function ProspectDashboards() {
   // Edit media kit URL
   const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
   const [savingMediaKit, setSavingMediaKit] = useState(false)
+  const [generatingMediaKit, setGeneratingMediaKit] = useState(false)
 
   // Edit Loom video URL
   const [editLoomVideoUrl, setEditLoomVideoUrl] = useState('')
@@ -887,6 +888,69 @@ export default function ProspectDashboards() {
       toast.error('Failed to save media kit URL')
     } finally {
       setSavingMediaKit(false)
+    }
+  }
+
+  const generateMediaKit = async () => {
+    if (!selectedDashboard) return
+
+    if (!selectedDashboard.prospect_bio) {
+      toast.error('Please add a prospect bio first to generate a media kit')
+      return
+    }
+
+    setGeneratingMediaKit(true)
+    try {
+      const { data: { session: mkSession } } = await supabase.auth.getSession()
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-media-kit-doc`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          ...(mkSession && { 'Authorization': `Bearer ${mkSession.access_token}` }),
+        },
+        body: JSON.stringify({
+          dashboardId: selectedDashboard.id,
+          prospectName: selectedDashboard.prospect_name,
+          prospectBio: selectedDashboard.prospect_bio,
+          prospectTitle: selectedDashboard.prospect_title,
+          prospectCompany: selectedDashboard.prospect_company,
+          prospectIndustry: selectedDashboard.prospect_industry,
+          prospectExpertise: selectedDashboard.prospect_expertise,
+          prospectTopics: selectedDashboard.prospect_topics,
+          prospectTargetAudience: selectedDashboard.prospect_target_audience,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate media kit')
+      }
+
+      const data = await response.json()
+      if (data.docUrl) {
+        setEditMediaKitUrl(data.docUrl)
+
+        // Update local state
+        setDashboards(prev =>
+          prev.map(d =>
+            d.id === selectedDashboard.id
+              ? { ...d, media_kit_url: data.docUrl }
+              : d
+          )
+        )
+        setSelectedDashboard(prev =>
+          prev ? { ...prev, media_kit_url: data.docUrl } : null
+        )
+
+        toast.success('Media kit generated! Opening Google Doc...')
+        window.open(data.docUrl, '_blank')
+      }
+    } catch (error) {
+      console.error('Error generating media kit:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to generate media kit')
+    } finally {
+      setGeneratingMediaKit(false)
     }
   }
 
@@ -2342,6 +2406,28 @@ export default function ProspectDashboards() {
                       <FileText className="h-4 w-4" />
                       Media Kit / One Pager
                     </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={generateMediaKit}
+                      disabled={generatingMediaKit || !selectedDashboard.prospect_bio}
+                    >
+                      {generatingMediaKit ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating Google Doc...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          {editMediaKitUrl ? 'Regenerate Media Kit' : 'Generate Media Kit'}
+                        </>
+                      )}
+                    </Button>
+                    {!selectedDashboard.prospect_bio && (
+                      <p className="text-xs text-amber-600">Add a bio first to generate a media kit</p>
+                    )}
                     <div className="flex gap-2">
                       <Input
                         placeholder="Paste media kit URL..."
@@ -2373,7 +2459,7 @@ export default function ProspectDashboards() {
                       </Button>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Link to the prospect's media kit or one-pager document (Google Doc, PDF, etc.)
+                      Or paste a URL to an existing media kit document
                     </p>
                   </div>
 
