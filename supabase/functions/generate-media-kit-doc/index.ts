@@ -350,50 +350,13 @@ async function createMediaKitDoc(
   const requests: any[] = []
   let idx = 1
 
-  // ── GOAP Logo ──
-  requests.push({
-    insertInlineImage: {
-      location: { index: idx },
-      uri: GOAP_LOGO_URL,
-      objectSize: {
-        height: { magnitude: 40, unit: 'PT' },
-        width: { magnitude: 120, unit: 'PT' },
-      }
-    }
-  })
-  idx += 1 // inline image takes 1 index
-  // Add newline after logo
-  requests.push({
-    insertText: { location: { index: idx }, text: '\n' }
-  })
-  idx += 1
-
   // ── Title ──
   idx = insertStyledText(requests, idx, 'PODCAST GUEST MEDIA KIT', {
     fontSize: 24, bold: true, color: COLOR_DARK, font: 'Arial', alignment: 'START',
   })
 
-  // ── Horizontal rule (thin line) ──
+  // ── Spacer ──
   idx = insertSpacer(requests, idx)
-
-  // ── Prospect Photo ──
-  if (prospect.imageUrl) {
-    requests.push({
-      insertInlineImage: {
-        location: { index: idx },
-        uri: prospect.imageUrl,
-        objectSize: {
-          height: { magnitude: 100, unit: 'PT' },
-          width: { magnitude: 100, unit: 'PT' },
-        }
-      }
-    })
-    idx += 1
-    requests.push({
-      insertText: { location: { index: idx }, text: '\n' }
-    })
-    idx += 1
-  }
 
   // ── Prospect Name ──
   idx = insertStyledText(requests, idx, prospect.name, {
@@ -645,6 +608,73 @@ async function createMediaKitDoc(
     console.error('[Generate Media Kit] Batch update error:', errorText)
   } else {
     console.log('[Generate Media Kit] Content inserted and formatted successfully')
+  }
+
+  // ── Insert images in a separate batch (so text content is preserved if images fail) ──
+  const imageRequests: any[] = []
+
+  // Insert GOAP logo at the very beginning (index 1)
+  imageRequests.push({
+    insertInlineImage: {
+      location: { index: 1 },
+      uri: GOAP_LOGO_URL,
+      objectSize: {
+        height: { magnitude: 40, unit: 'PT' },
+        width: { magnitude: 120, unit: 'PT' },
+      }
+    }
+  })
+  // Newline after logo
+  imageRequests.push({
+    insertText: { location: { index: 2 }, text: '\n' }
+  })
+
+  // Insert prospect photo after logo + newline + title line (need to find the right index)
+  // Logo takes index 1, newline at 2, so content shifts by 2
+  // The title "PODCAST GUEST MEDIA KIT\n" starts at index 3 now
+  // After title + spacer, prospect name starts — insert photo before name
+  if (prospect.imageUrl) {
+    // Calculate where to insert: after logo(1) + newline(1) + title text + spacer
+    const titleLen = 'PODCAST GUEST MEDIA KIT\n'.length
+    const spacerLen = 1 // spacer '\n'
+    const photoInsertIdx = 1 + 1 + 1 + titleLen + spacerLen // logo + newline + offset + title + spacer
+    imageRequests.push({
+      insertInlineImage: {
+        location: { index: photoInsertIdx },
+        uri: prospect.imageUrl,
+        objectSize: {
+          height: { magnitude: 100, unit: 'PT' },
+          width: { magnitude: 100, unit: 'PT' },
+        }
+      }
+    })
+    imageRequests.push({
+      insertText: { location: { index: photoInsertIdx + 1 }, text: '\n' }
+    })
+  }
+
+  if (imageRequests.length > 0) {
+    try {
+      const imgResponse = await fetch(
+        `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ requests: imageRequests }),
+        }
+      )
+      if (!imgResponse.ok) {
+        const imgError = await imgResponse.text()
+        console.error('[Generate Media Kit] Image insertion failed (non-blocking):', imgError)
+      } else {
+        console.log('[Generate Media Kit] Images inserted successfully')
+      }
+    } catch (imgErr) {
+      console.error('[Generate Media Kit] Image insertion error (non-blocking):', imgErr)
+    }
   }
 
   return { docId, docUrl }
