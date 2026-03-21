@@ -461,9 +461,11 @@ serve(async (req) => {
     const sheetData = await sheetResponse.json()
     const rows = sheetData.values || []
     const dataRows = rows.slice(1)
-    const podcastIds: string[] = dataRows
-      .map((row: string[]) => row[0])
-      .filter((id: string) => id && id.trim() !== '')
+    const podcastIds: string[] = [...new Set<string>(
+      dataRows
+        .map((row: string[]) => row[0]?.trim())
+        .filter((id: string): id is string => !!id && id !== '')
+    )]
     const sheetScores = new Map<string, { score: number | null; reasoning: string | null }>()
     for (const row of dataRows) {
       const id = row[0]?.trim()
