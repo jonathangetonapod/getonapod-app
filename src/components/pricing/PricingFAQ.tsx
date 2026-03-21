@@ -49,7 +49,7 @@ export const faqCategories = [
     faqs: [
       {
         question: "How much does it cost?",
-        answer: "$499/month for 2 podcast bookings minimum, full Podcast Command Center access, and reporting & analytics.",
+        answer: "$749/month for 2 podcast bookings minimum, full Podcast Command Center access, and reporting & analytics.",
       },
       {
         question: "Is there a long-term commitment?",
