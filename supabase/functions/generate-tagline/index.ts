@@ -52,27 +52,29 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
-    const prompt = `Write a one-sentence tagline for a curated podcast list built for ${prospectName}.
+    const prompt = `Write a short expertise tagline for ${prospectName} that describes their area of expertise.
 
 Bio: ${prospectBio}
 
-FORMAT: Start with "We put together podcasts about" followed by 2-4 specific topics from their bio.
-
 RULES:
-- Always start with exactly: "We put together podcasts about"
-- List the 2-4 most specific, concrete topics from their background
-- Keep it under 15 words total
+- MUST be under 60 characters total
+- Describe their expertise/niche, not what we did
 - No period at the end
-- Be specific, not generic — use their actual domain/niche
+- Be specific and punchy — use their actual domain/niche
+- Do NOT start with "We" or "Podcasts"
+- Use title case or sentence case naturally
 
 EXAMPLES:
-- "We put together podcasts about SaaS growth, product-led sales, and B2B marketing"
-- "We put together podcasts about clean energy, climate policy, and sustainable investing"
-- "We put together podcasts about e-commerce, DTC brands, and consumer retail"
-- "We put together podcasts about real estate investing, wealth building, and financial freedom"
-- "We put together podcasts about leadership, organizational culture, and executive coaching"
+- "Real Estate Investing & House Flipping"
+- "SaaS Growth & Product-Led Sales"
+- "Clean Energy & Climate Policy"
+- "E-commerce & DTC Brand Strategy"
+- "Healthcare Technology Innovation"
+- "Leadership & Executive Coaching"
+- "AI-Powered Sales & Revenue Operations"
+- "Franchise Scaling & Business Ownership"
 
-Return ONLY the tagline, nothing else.`
+Return ONLY the tagline, nothing else. It MUST be under 60 characters.`
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
