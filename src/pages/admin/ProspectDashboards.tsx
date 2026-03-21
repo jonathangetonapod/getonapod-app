@@ -891,6 +891,51 @@ export default function ProspectDashboards() {
     }
   }
 
+  // Re-host an external image (e.g. LinkedIn) to Supabase Storage
+  const rehostImageToSupabase = async (imageUrl: string, dashboardId: string): Promise<string | null> => {
+    try {
+      const response = await fetch(imageUrl)
+      if (!response.ok) return null
+
+      const blob = await response.blob()
+      const ext = blob.type.split('/')[1] || 'jpg'
+      const fileName = `${dashboardId}-rehosted-${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('prospect-images')
+        .upload(fileName, blob, { cacheControl: '3600', upsert: true })
+
+      if (uploadError) {
+        console.error('Failed to rehost image:', uploadError)
+        return null
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('prospect-images')
+        .getPublicUrl(fileName)
+
+      // Update the prospect record with the new URL
+      await supabase
+        .from('prospect_dashboards')
+        .update({ prospect_image_url: publicUrl })
+        .eq('id', dashboardId)
+
+      // Update local state
+      setEditImageUrl(publicUrl)
+      setDashboards(prev =>
+        prev.map(d => d.id === dashboardId ? { ...d, prospect_image_url: publicUrl } : d)
+      )
+      setSelectedDashboard(prev =>
+        prev ? { ...prev, prospect_image_url: publicUrl } : null
+      )
+
+      return publicUrl
+    } catch (err) {
+      console.error('Error rehosting image:', err)
+      return null
+    }
+  }
+
   const generateMediaKit = async () => {
     if (!selectedDashboard) return
 
@@ -901,6 +946,16 @@ export default function ProspectDashboards() {
 
     setGeneratingMediaKit(true)
     try {
+      // Auto-rehost LinkedIn images so Google Docs can access them
+      let imageUrl = selectedDashboard.prospect_image_url
+      if (imageUrl && imageUrl.includes('licdn.com')) {
+        toast.info('Re-hosting LinkedIn photo for Google Docs...')
+        const rehostedUrl = await rehostImageToSupabase(imageUrl, selectedDashboard.id)
+        if (rehostedUrl) {
+          imageUrl = rehostedUrl
+        }
+      }
+
       const { data: { session: mkSession } } = await supabase.auth.getSession()
       const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-media-kit-doc`, {
         method: 'POST',
@@ -919,7 +974,7 @@ export default function ProspectDashboards() {
           prospectExpertise: selectedDashboard.prospect_expertise,
           prospectTopics: selectedDashboard.prospect_topics,
           prospectTargetAudience: selectedDashboard.prospect_target_audience,
-          prospectImageUrl: selectedDashboard.prospect_image_url,
+          prospectImageUrl: imageUrl,
           dashboardSlug: selectedDashboard.slug,
         }),
       })

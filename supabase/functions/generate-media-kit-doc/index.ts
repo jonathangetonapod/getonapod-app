@@ -610,50 +610,8 @@ async function createMediaKitDoc(
     console.log('[Generate Media Kit] Content inserted and formatted successfully')
   }
 
-  // ── Insert images in a separate batch (so text content is preserved if images fail) ──
-  const imageRequests: any[] = []
-
-  // Insert GOAP logo at the very beginning (index 1)
-  imageRequests.push({
-    insertInlineImage: {
-      location: { index: 1 },
-      uri: GOAP_LOGO_URL,
-      objectSize: {
-        height: { magnitude: 40, unit: 'PT' },
-        width: { magnitude: 120, unit: 'PT' },
-      }
-    }
-  })
-  // Newline after logo
-  imageRequests.push({
-    insertText: { location: { index: 2 }, text: '\n' }
-  })
-
-  // Insert prospect photo after logo + newline + title line (need to find the right index)
-  // Logo takes index 1, newline at 2, so content shifts by 2
-  // The title "PODCAST GUEST MEDIA KIT\n" starts at index 3 now
-  // After title + spacer, prospect name starts — insert photo before name
-  if (prospect.imageUrl) {
-    // Calculate where to insert: after logo(1) + newline(1) + title text + spacer
-    const titleLen = 'PODCAST GUEST MEDIA KIT\n'.length
-    const spacerLen = 1 // spacer '\n'
-    const photoInsertIdx = 1 + 1 + 1 + titleLen + spacerLen // logo + newline + offset + title + spacer
-    imageRequests.push({
-      insertInlineImage: {
-        location: { index: photoInsertIdx },
-        uri: prospect.imageUrl,
-        objectSize: {
-          height: { magnitude: 100, unit: 'PT' },
-          width: { magnitude: 100, unit: 'PT' },
-        }
-      }
-    })
-    imageRequests.push({
-      insertText: { location: { index: photoInsertIdx + 1 }, text: '\n' }
-    })
-  }
-
-  if (imageRequests.length > 0) {
+  // ── Insert images independently (each in its own batch so failures don't cascade) ──
+  const insertImage = async (index: number, uri: string, width: number, height: number, label: string) => {
     try {
       const imgResponse = await fetch(
         `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
@@ -663,18 +621,49 @@ async function createMediaKitDoc(
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ requests: imageRequests }),
+          body: JSON.stringify({
+            requests: [
+              {
+                insertInlineImage: {
+                  location: { index },
+                  uri,
+                  objectSize: {
+                    height: { magnitude: height, unit: 'PT' },
+                    width: { magnitude: width, unit: 'PT' },
+                  }
+                }
+              },
+              {
+                insertText: { location: { index: index + 1 }, text: '\n' }
+              }
+            ]
+          }),
         }
       )
       if (!imgResponse.ok) {
         const imgError = await imgResponse.text()
-        console.error('[Generate Media Kit] Image insertion failed (non-blocking):', imgError)
-      } else {
-        console.log('[Generate Media Kit] Images inserted successfully')
+        console.error(`[Generate Media Kit] ${label} insertion failed:`, imgError)
+        return false
       }
-    } catch (imgErr) {
-      console.error('[Generate Media Kit] Image insertion error (non-blocking):', imgErr)
+      console.log(`[Generate Media Kit] ${label} inserted successfully`)
+      return true
+    } catch (err) {
+      console.error(`[Generate Media Kit] ${label} error:`, err)
+      return false
     }
+  }
+
+  // Insert GOAP logo at the top (index 1)
+  const logoInserted = await insertImage(1, GOAP_LOGO_URL, 120, 40, 'Logo')
+
+  // Insert prospect photo after logo + title
+  if (prospect.imageUrl) {
+    // If logo was inserted, content shifted by 2 (image + newline)
+    const offset = logoInserted ? 2 : 0
+    const titleLen = 'PODCAST GUEST MEDIA KIT\n'.length
+    const spacerLen = 1
+    const photoIdx = 1 + offset + titleLen + spacerLen
+    await insertImage(photoIdx, prospect.imageUrl, 100, 100, 'Prospect photo')
   }
 
   return { docId, docUrl }
