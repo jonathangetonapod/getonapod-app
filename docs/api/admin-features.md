@@ -15,8 +15,16 @@ The GOAP (Get On A Podcast) Admin Panel is a comprehensive internal management s
 7. [Analytics & Reporting](#analytics--reporting)
 8. [Add-on Services & Orders](#add-on-services--orders)
 9. [AI-Powered Tools](#ai-powered-tools)
-10. [Settings & Configuration](#settings--configuration)
-11. [API Endpoints](#api-endpoints)
+10. [Prospect Dashboard Management](#prospect-dashboard-management)
+11. [Outreach Platform](#outreach-platform)
+12. [Customer Management](#customer-management)
+13. [Premium Placements Management](#premium-placements-management)
+14. [Podcast Database](#podcast-database)
+15. [Client Onboarding](#client-onboarding)
+16. [Upcoming Recordings](#upcoming-recordings)
+17. [Upcoming Going Live](#upcoming-going-live)
+18. [Settings & Configuration](#settings--configuration)
+19. [API Endpoints](#api-endpoints)
 
 ---
 
@@ -366,6 +374,372 @@ The central command center displaying real-time business metrics and requiring i
 - Automated compatibility analysis
 - Intelligent filtering and curation
 - Prospect dashboard generation
+
+---
+
+## Prospect Dashboard Management
+
+### Prospect Dashboards (`/admin/prospect-dashboards`)
+
+A comprehensive management interface for prospect-facing dashboards used in sales outreach. Each dashboard is a shareable landing page showcasing podcast opportunities tailored to a specific prospect.
+
+#### Dashboard List & Overview
+- **Search & Filter**: Search prospects by name with real-time filtering
+- **Bulk Selection**: Checkbox-based multi-select for bulk operations (e.g., bulk delete)
+- **Stats Overview**: Total dashboards, view counts, active vs inactive counts
+- **Create New Prospect**: Dialog-based prospect creation with fields for name, bio, image, spreadsheet URL, industry, expertise, topics, target audience, company, and title
+
+#### Detail Panel (Side Sheet)
+Each prospect dashboard opens a detail sheet with:
+
+**Profile Management:**
+- **Prospect Name**: Inline editable name
+- **Profile Image**: Upload or paste URL for prospect headshot
+- **Bio Display**: Expandable bio section
+- **Spreadsheet Link**: Link/edit associated Google Sheet URL
+
+**Content Controls:**
+- **Tagline**: Edit or AI-generate a personalized tagline
+- **Media Kit URL**: Link to prospect's media kit document
+- **Loom Video**: Configure embedded Loom video with custom thumbnail and title
+- **Testimonials**: Select and toggle video testimonials to display on dashboard
+- **Show Pricing Section**: Toggle visibility of pricing information
+- **Visibility Toggle**: Publish/unpublish the dashboard (active/inactive)
+
+**AI Video Generation:**
+- **HeyGen Video**: Generate personalized AI avatar videos for prospects
+- **Background Video**: Generate animated background videos
+- **Video Status Tracking**: Monitor processing/completed/failed states
+
+**Prospect Feedback:**
+- **Podcast Feedback**: View approved/rejected/notes feedback from prospects on matched podcasts
+- **Feedback Sections**: Expandable sections for approved, rejected, and notes-only feedback
+- **Bulk Actions**: Delete individual rejected podcasts or clear all rejected at once
+
+**Cache & Data Management:**
+- **Check Sheet Status**: Audit linked Google Sheet for cached vs uncached podcast data
+- **Fetch Podcasts**: Trigger background fetching of uncached podcast data from Podscan
+
+**Quick Actions:**
+- **Copy Dashboard URL**: One-click copy of public prospect URL
+- **Open Dashboard**: External link to view the live dashboard
+- **Share Link**: Quick sharing functionality
+- **Delete Dashboard**: Confirmation-protected deletion
+
+**Key Files:**
+- `/src/pages/admin/ProspectDashboards.tsx`
+
+---
+
+## Outreach Platform
+
+### Outreach Dashboard (`/admin/outreach-platform`)
+
+Email outreach management system for reviewing, editing, and sending personalized podcast outreach emails. Integrates with Email Bison for campaign delivery.
+
+#### Message Review Workflow
+- **Pending Review Tab**: Messages from Clay awaiting admin review and approval
+- **Sent Tab**: History of all sent outreach messages
+- **Auto-Refresh**: Messages refresh every 30 seconds
+
+#### Stats Bar
+- **Pending/Sent Count**: Total messages in current view
+- **Clients**: Number of unique clients with messages
+- **Active Campaigns**: Count of distinct Bison campaign IDs
+- **Sent Today**: Real-time count of messages sent today
+
+#### Client-Grouped Messages
+Messages are grouped by client with collapsible sections:
+- **Client Header**: Photo, name, campaign ID, message count
+- **Expand/Collapse**: Click to view all messages for a client
+- **Batch Send**: "Create All Leads In Bison" button to approve and send all messages for a client at once
+
+#### Message Cards
+Each message displays:
+- **Podcast Name**: Target podcast for outreach
+- **Host Info**: Host name and email
+- **Subject Line**: Email subject preview
+- **Status Badge**: Current message status
+- **Quick Actions**: Review Email and Delete buttons
+
+#### Email Review Modal
+Full email preview and action center:
+- **Email Preview**: Formatted view of To, Subject, and body
+- **Client Info**: Client photo, name, email, and campaign ID
+- **Client Bio Modal**: View full client bio for context
+- **Podcast Section**: Podcast ID with links to Podscan, and email fetch button
+- **Podscan Email Lookup**: Fetch host email from Podscan database (with cache support)
+- **Edit Email**: Open edit modal to modify host name, host email, subject line, and email body
+- **Create & Send Lead In Bison**: One-click approve that creates a lead in Bison and marks message as sent
+
+#### Email Editing
+- **Full Edit Modal**: Modify all email fields (host name, email, subject, body)
+- **Save & Return**: Saves edits then reopens the review modal with updated content
+- **Edit Info Banner**: Explains that edits are persisted and used when sending
+
+**Key Files:**
+- `/src/pages/admin/OutreachPlatform.tsx`
+- `/src/services/outreachMessages.ts`
+
+---
+
+## Customer Management
+
+### Customers (`/admin/customers`)
+
+Management interface for customers who have purchased add-on services (premium podcast placements). Distinct from the Clients page, which manages podcast booking clients.
+
+#### Overview Statistics
+- **Total Customers**: All-time customer count
+- **Total Revenue**: Aggregate revenue from all orders
+- **Average Order Value**: Revenue per customer
+- **Total Orders**: Completed order count
+
+#### Customer List
+- **Search**: Filter by name or email
+- **Table View**: Name, email, order count, total spent, join date
+- **View Detail**: Click to open customer detail modal
+
+#### Customer Detail Modal
+- **Customer Information**: Name, email, total orders, total spent, customer since date, Stripe customer ID
+- **Order History**: Complete list of all orders with:
+  - Order ID, date, status badge (paid/pending/failed)
+  - Total amount per order
+  - Line items with podcast artwork, name, quantity, and unit price
+
+**Key Files:**
+- `/src/pages/admin/CustomersManagement.tsx`
+- `/src/services/customers.ts`
+
+---
+
+## Premium Placements Management
+
+### Premium Placements (`/admin/premium-placements`)
+
+Inventory management for curated premium podcast placement opportunities that clients can purchase.
+
+#### Overview Statistics
+- **Total Podcasts**: Number of podcasts in inventory
+- **Active**: Podcasts visible on the website
+- **Featured**: Highlighted placements
+
+#### Podcast Inventory Grid
+Each podcast card displays:
+- **Podcast Artwork**: Image with hover zoom effect
+- **Featured/Inactive Badges**: Visual indicators for status
+- **Stats Grid**: Audience size, episode count, rating, reach score
+- **Why This Show**: AI-generated explanation of podcast value
+- **Investment**: Public-facing price
+- **What's Included**: List of included services (up to 3 shown with "more" indicator)
+
+#### Action Buttons Per Podcast
+- **Feature/Unfeature**: Toggle featured status (star icon)
+- **Show/Hide**: Toggle active/inactive visibility
+- **Edit**: Open edit dialog with all fields
+- **Delete**: Confirmation-protected deletion
+
+#### Add/Edit Dialog
+AI-enhanced podcast creation workflow:
+- **Podscan ID Fetch**: Paste a Podscan podcast ID and auto-fetch all details (audience, episodes, rating, reach score)
+- **AI Summary Generation**: Auto-generates "Why This Show" copy using Claude
+- **AI Auto-Categorization**: Claude suggests the best category from predefined list
+- **AI Feature Generation**: Auto-generates "What's Included" items based on audience size
+- **Manual Fields**: Podcast name, image URL, category, price, internal cost, notes, featured status, display order
+- **Suggested Pricing**: Auto-suggests price tier based on audience size ($1,500-$5,000)
+
+**Key Files:**
+- `/src/pages/admin/PremiumPlacementsManagement.tsx`
+- `/src/services/premiumPodcasts.ts`
+- `/src/services/ai.ts`
+- `/src/services/categorization.ts`
+
+---
+
+## Podcast Database
+
+### Podcast Database (`/admin/podcast-database`)
+
+A comprehensive podcast research and management tool for browsing, filtering, scoring, and exporting podcasts from the internal database. Supports multiple operational modes.
+
+#### View Modes
+- **Table View**: Dense, sortable table with configurable column visibility and density (compact/comfortable/spacious)
+- **Grid View**: Visual card-based layout
+
+#### Operational Modes
+
+**1. Browse Mode**
+- General purpose browsing and filtering of the podcast database
+- No client or prospect context required
+
+**2. Client Mode**
+- Select an existing client from dropdown
+- Score podcast compatibility against client's bio
+- Export selected podcasts to client's Google Sheet
+
+**3. Prospect Mode**
+- Create a new prospect or select existing
+- Generate prospect-specific Google Sheets
+- Score compatibility against prospect profile
+
+**4. Analytics Mode**
+- View database-wide statistics and insights
+- Cache performance metrics
+- Category distributions and audience breakdowns
+
+#### Search & Filtering
+- **Full-text Search**: Search by podcast name, host, or description
+- **Category Filter**: Multi-select category filtering
+- **Audience Range**: Min/max audience size filters
+- **Rating Range**: Min/max rating filters
+- **Episode Range**: Min/max episode count filters
+- **Has Email Filter**: Only show podcasts with contact emails
+- **Language Filter**: Filter by podcast language
+- **Region Filter**: Filter by geographic region
+- **Has Guests Filter**: Only interview-format podcasts
+- **Has Sponsors Filter**: Podcasts with sponsor deals
+- **Active Filter**: Only actively publishing podcasts
+- **URL Parameter Persistence**: All filters are persisted in URL parameters for shareability
+- **Saved Filter Presets**: Save and load custom filter combinations from localStorage
+
+#### Sorting
+Sortable by: Name, Host, Audience, Rating, Episodes, Date Added, Podcast Reach Score (PRS)
+
+#### AI Compatibility Scoring
+- **Batch Scoring**: Select multiple podcasts and score compatibility against a client or prospect bio
+- **Score Display**: 0-10 compatibility score with reasoning
+- **Minimum Score Filter**: Filter results by minimum compatibility score
+
+#### Export Capabilities
+- **CSV Export**: Download filtered podcast list as CSV
+- **Google Sheets Export**: Export to a new or existing Google Sheet
+- **Prospect Sheet Creation**: Create a dedicated prospect dashboard sheet
+
+#### Additional Features
+- **Find Similar**: Discover related podcasts based on a selected podcast
+- **Demographics**: View PodScan audience demographics for any podcast
+- **QA Review Sheet**: Built-in quality assurance review workflow
+- **Bulk Import**: Import podcasts by keyword search from Podscan with configurable filters, page limits, and preview
+
+**Key Files:**
+- `/src/pages/admin/PodcastDatabase.tsx`
+- `/src/services/podcastDatabase.ts`
+- `/src/services/podcastAnalytics.ts`
+- `/src/services/compatibilityScoring.ts`
+- `/src/services/googleSheets.ts`
+
+---
+
+## Client Onboarding
+
+### Onboarding Submissions (`/admin/onboarding`)
+
+View and manage client onboarding questionnaire responses. Displays data from clients who have completed the multi-step onboarding flow.
+
+#### Overview Statistics
+- **Total Submissions**: All-time onboarding completions
+- **This Month**: Submissions in the current month
+- **This Week**: Submissions in the last 7 days
+
+#### Submission List
+- **Search**: Filter by name, email, or company
+- **Card Layout**: Each submission shows name, email, website, submission date, goals badges, and expertise badges
+- **Delete**: Remove onboarding submissions with confirmation dialog
+- **Refresh**: Manual data refresh button
+
+#### Detail Sheet (Side Panel)
+Opens a comprehensive view of the client's onboarding data:
+
+**Profile Section:**
+- Client photo, name, email, website link, submission date
+
+**Parsed Onboarding Data:**
+- **Professional Bio**: Full bio text
+- **Goals**: Tagged badges (e.g., Brand Awareness, Lead Generation)
+- **Ideal Audience**: Target audience description
+- **Areas of Expertise**: Tagged badges
+- **Topics Confident Speaking About**: Tagged badges
+- **Compelling Story**: Free-text narrative
+- **What Makes Them Unique**: Unique journey description
+- **Passions & Hobbies**: Personal interests
+- **Value to Audiences**: What they offer listeners
+- **Personal Stories**: Anecdotes for interviews
+- **Social Media Following**: Follower counts
+- **Previous Podcast Appearances**: Past experience
+- **Specific Podcasts Interested In**: Target shows
+- **Recording Availability**: Schedule preferences
+- **Calendar Link**: Direct link to booking calendar
+- **Future Vision & Specific Angles**: Content direction
+- **Additional Information**: Any extra context
+
+**Key Files:**
+- `/src/pages/admin/Onboarding.tsx`
+- `/src/services/clients.ts`
+
+---
+
+## Upcoming Recordings
+
+### Upcoming Recordings (`/admin/upcoming`)
+
+Dedicated view for tracking all scheduled podcast recordings with prep material status tracking.
+
+#### Time Range Selector
+- **1 Month** (default), **2 Months**, **3 Months**, **6 Months**
+- Shows count of recordings in selected range
+
+#### Overview Statistics
+- **Total Upcoming**: Recordings in the time range
+- **Prep Not Sent**: Recordings needing attention (highlighted in amber)
+- **Prep Sent**: Recordings ready to go (highlighted in green)
+
+#### Recording List
+Each recording entry displays:
+- **Date & Time**: Recording date with "Today"/"Tomorrow" smart labels
+- **Client Name**: Linked to client detail page
+- **Podcast Name**: Target podcast
+- **Host Name**: If available
+- **Podcast Link**: External link if available
+- **Prep Status**: Visual indicator (sent/not sent)
+- **Booking Status Badge**: Conversation Started, Booked, or In Progress
+- **Attention Alert**: Amber highlight and icon for recordings without prep sent
+- **Click Navigation**: Click any row to navigate to client details
+
+**Key Files:**
+- `/src/pages/admin/UpcomingRecordings.tsx`
+- `/src/services/bookings.ts`
+
+---
+
+## Upcoming Going Live
+
+### Upcoming Going Live (`/admin/going-live`)
+
+Track when podcast episodes are scheduled to publish, monitoring the publication pipeline.
+
+#### Time Range Selector
+- **7 Days**, **14 Days**, **30 Days** (default), **2 Months**, **3 Months**, **6 Months**
+- Shows count of publications in selected range
+
+#### Overview Statistics
+- **Total Going Live**: Publications in the time range
+- **Awaiting Publish**: Recorded episodes ready to go (blue)
+- **Already Published**: Live episodes (purple)
+
+#### Publication List
+Each publication entry displays:
+- **Date & Time**: Publish date with "Today"/"Tomorrow" smart labels
+- **Client Name**: Linked to client detail page
+- **Podcast Name**: Target podcast
+- **Host Name**: If available
+- **Recorded Date**: When the episode was recorded
+- **Episode Link**: Direct link to published episode
+- **Booking Status Badge**: Color-coded status indicator
+- **Click Navigation**: Click any row to navigate to client details
+
+**Key Files:**
+- `/src/pages/admin/UpcomingGoingLive.tsx`
+- `/src/services/bookings.ts`
 
 ---
 

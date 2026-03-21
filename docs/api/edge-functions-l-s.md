@@ -11,6 +11,7 @@ This document provides comprehensive API documentation for all Supabase Edge Fun
 2. [Admin Management](#admin-management)
    - [manage-admin-users](#manage-admin-users)
 3. [Podcast & Outreach](#podcast--outreach)
+   - [qa-review-podcasts](#qa-review-podcasts)
    - [read-outreach-list](#read-outreach-list)
    - [score-podcast-compatibility](#score-podcast-compatibility)
    - [send-outreach-webhook](#send-outreach-webhook)
@@ -301,6 +302,126 @@ Manages admin users (CRUD operations). Only accessible by existing admin users.
 ---
 
 ## Podcast & Outreach
+
+### qa-review-podcasts
+
+**Endpoint:** `/functions/v1/qa-review-podcasts`
+**HTTP Method:** `POST`
+**Auth Required:** Service role required
+
+QA scores podcasts against a prospect's bio and an optional target topic using Claude Sonnet. Evaluates bio fit, topic relevance, and generates pitch angles for qualifying podcasts. Maximum 10 podcasts per request.
+
+#### Request Body
+```json
+{
+  "prospect_bio": "string",           // Required: Prospect biography/background
+  "target_topic": "string",           // Optional: Specific topic to score relevance against
+  "podcasts": [                       // Required: Array of podcasts (max 10)
+    {
+      "podcast_id": "string",         // Required: Podcast ID
+      "podcast_name": "string",       // Required: Podcast name
+      "podcast_description": "string", // Optional: Podcast description
+      "publisher_name": "string",     // Optional: Host/publisher name
+      "podcast_categories": [         // Optional: Category array
+        { "category_name": "string" }
+      ],
+      "audience_size": 50000,         // Optional: Estimated audience size
+      "episode_count": 150            // Optional: Total episodes
+    }
+  ]
+}
+```
+
+#### Success Response (200)
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "podcast_id": "podcast_123",
+      "bio_fit_score": 8,               // 1-10 score for bio alignment
+      "topic_relevance_score": 7,       // 1-10 score for topic match (null if no target_topic)
+      "bio_fit_reasoning": "Strong alignment between prospect's SaaS expertise and podcast's tech-focused business audience",
+      "topic_reasoning": "Podcast regularly covers B2B growth strategies and SaaS metrics",
+      "pitch_angles": [                  // Only provided if topic_relevance_score >= 5
+        {
+          "title": "Scaling SaaS Beyond First Million",
+          "description": "Share proven strategies for breaking through the $1M ARR ceiling and building sustainable growth engines in competitive markets."
+        }
+      ],
+      "topic_signals": [                 // Evidence from podcast metadata
+        "Description mentions 'B2B SaaS growth'",
+        "Categories include Business and Technology"
+      ]
+    }
+  ]
+}
+```
+
+#### Error Responses
+```json
+// 400 Bad Request
+{
+  "error": "prospect_bio is required"
+}
+
+// 400 Bad Request
+{
+  "error": "podcasts must be a non-empty array"
+}
+
+// 400 Bad Request
+{
+  "error": "Maximum 10 podcasts per request (frontend batches larger sets)"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "ANTHROPIC_API_KEY not configured"
+}
+```
+
+#### Features
+- **Dual Scoring**: Separate scores for bio fit (always) and topic relevance (when target_topic provided)
+- **Concurrent Processing**: All podcasts scored in parallel (one API call per podcast)
+- **Scoring Rubric**:
+  - 9-10: Perfect/dedicated match
+  - 7-8: Strong match with regular focus
+  - 5-6: Moderate match, occasional coverage
+  - 3-4: Weak/tangential match
+  - 1-2: Poor match, not relevant
+- **Pitch Angles**: Only generated when topic_relevance_score >= 5, with 5-8 word titles and 2-3 sentence descriptions
+- **Topic Signals**: Evidence-based references to specific phrases from podcast metadata (never fabricates episode titles)
+- **Graceful Failure**: Individual podcast scoring errors return null scores rather than failing the entire request
+- **JSON Parsing Fallback**: Handles markdown-wrapped responses and extracts JSON from various formats
+
+#### Required Environment Variables
+- `ANTHROPIC_API_KEY` - Required for Claude Sonnet scoring
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/qa-review-podcasts \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prospect_bio": "Serial entrepreneur with 15 years in B2B SaaS, scaled two companies to $10M ARR",
+    "target_topic": "SaaS growth strategies",
+    "podcasts": [
+      {
+        "podcast_id": "tech-talk-1",
+        "podcast_name": "SaaS Growth Podcast",
+        "podcast_description": "Weekly insights on scaling SaaS businesses",
+        "publisher_name": "Mike Chen",
+        "podcast_categories": [{"category_name": "Business"}, {"category_name": "Technology"}],
+        "audience_size": 25000,
+        "episode_count": 200
+      }
+    ]
+  }'
+```
+
+---
 
 ### read-outreach-list
 

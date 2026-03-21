@@ -1,7 +1,10 @@
 # Database Schema Documentation
 
 ## Overview
-This document describes the complete database schema for the authority-built podcast placement platform. The database is built on Supabase (PostgreSQL) and includes tables for client management, podcast discovery, booking systems, e-commerce, blog content, and analytics.
+This document describes the complete database schema for the authority-built podcast placement platform. The database is built on Supabase (PostgreSQL) with the **pgvector** extension enabled for vector similarity search. It includes 34 tables spanning client management, podcast discovery, booking systems, e-commerce, blog content, outreach automation, AI-powered podcast analysis, and analytics.
+
+### Extensions
+- **pgvector** (`vector`) — Enables vector similarity search for semantic podcast matching using OpenAI embeddings
 
 ## Core Business Entities
 
@@ -26,22 +29,37 @@ public.clients (
   portal_last_login_at TIMESTAMPTZ,
   portal_invitation_sent_at TIMESTAMPTZ,
   
-  -- Client media assets  
+  -- Client media assets
   bio TEXT,
   photo_url TEXT,
   media_kit_url TEXT,
   google_sheet_url TEXT,
   prospect_dashboard_url TEXT,
-  
+
+  -- Client approval dashboard
+  dashboard_slug TEXT UNIQUE,
+  dashboard_tagline TEXT,
+  dashboard_view_count INTEGER DEFAULT 0,
+  dashboard_last_viewed_at TIMESTAMPTZ,
+  show_pricing_section BOOLEAN DEFAULT true,
+
+  -- Outreach integration
+  outreach_webhook_url TEXT,
+
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 )
 ```
 
-**Relationships**: 
+**Relationships**:
 - One-to-many with `bookings`
 - One-to-many with `client_portal_*` tables
 - One-to-many with `booking_addons`
+- One-to-many with `client_dashboard_podcasts`
+- One-to-many with `client_podcast_feedback`
+- One-to-many with `client_podcast_analyses`
+- One-to-many with `outreach_messages`
+- One-to-many with `podcast_outreach_actions`
 
 ### 2. Bookings Table
 **Purpose**: Tracks podcast bookings and their status throughout the lifecycle
@@ -141,25 +159,31 @@ public.podcasts (
   podcast_reach_score INTEGER,
   
   -- Contact information
-  email TEXT,
+  podscan_email TEXT, -- Contact email extracted from Podscan API (reach.email field)
   website TEXT,
   social_links JSONB, -- [{platform: string, url: string}]
-  
+
   -- Demographics (full JSONB from Podscan)
   demographics JSONB,
   demographics_episodes_analyzed INTEGER,
   demographics_fetched_at TIMESTAMPTZ,
-  
+
   -- Brand safety
   brand_safety_framework TEXT,
   brand_safety_risk_level TEXT,
   brand_safety_recommendation TEXT,
-  
+
+  -- Vector embedding for semantic search (pgvector)
+  embedding vector(1536), -- OpenAI text-embedding-3-small
+  embedding_generated_at TIMESTAMPTZ,
+  embedding_model TEXT DEFAULT 'text-embedding-3-small',
+  embedding_text_length INTEGER,
+
   -- Cache management
   podscan_last_fetched_at TIMESTAMPTZ DEFAULT NOW(),
   podscan_fetch_count INTEGER DEFAULT 1,
   cache_hit_count INTEGER DEFAULT 0,
-  
+
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 )
@@ -169,6 +193,7 @@ public.podcasts (
 - Deduplicates podcast data across the platform (60-80% API call savings)
 - Tracks cache hit statistics
 - Full demographics and brand safety data from Podscan
+- Vector embeddings enable semantic similarity search via pgvector (ivfflat index with cosine distance)
 
 ## E-commerce Tables
 
@@ -456,12 +481,32 @@ public.prospect_dashboards (
   prospect_bio TEXT,
   first_name TEXT,
   prospect_image_url TEXT,
+
+  -- Structured prospect fields (for richer embedding generation)
+  prospect_industry TEXT,
+  prospect_expertise TEXT[],
+  prospect_topics TEXT[],
+  prospect_target_audience TEXT,
+  prospect_company TEXT,
+  prospect_title TEXT,
+
+  -- Spreadsheet integration
   spreadsheet_id TEXT,
   spreadsheet_url TEXT,
+
+  -- Video & media
   loom_video_url TEXT,
   heygen_video_url TEXT,
   background_video_url TEXT,
+
+  -- Social proof
   testimonials JSONB DEFAULT '[]',
+
+  -- Display controls
+  content_ready BOOLEAN DEFAULT false,
+  show_pricing_section BOOLEAN DEFAULT true,
+  personalized_tagline TEXT,
+
   created_at TIMESTAMPTZ DEFAULT NOW(),
   created_by UUID REFERENCES auth.users(id),
   is_active BOOLEAN DEFAULT true,
@@ -612,24 +657,69 @@ public.podcast_emails (
 ## Outreach & Messaging
 
 ### 24. Outreach Messages Table
-**Purpose**: Template messages for podcast outreach
+**Purpose**: Queue for outreach emails from Clay automation to be reviewed and sent via approval workflow
 
 ```sql
 public.outreach_messages (
   id UUID PRIMARY KEY,
-  title TEXT NOT NULL,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+
+  -- Podcast/Host Information
+  podcast_id TEXT,
+  podcast_name TEXT NOT NULL,
+  podcast_url TEXT,
+  host_name TEXT NOT NULL,
+  host_email TEXT NOT NULL,
+
+  -- Email Content
   subject_line TEXT NOT NULL,
-  message_template TEXT NOT NULL,
-  message_type TEXT DEFAULT 'initial' CHECK (message_type IN ('initial', 'follow_up', 'thank_you')),
-  is_active BOOLEAN DEFAULT true,
-  usage_count INTEGER DEFAULT 0,
+  email_body TEXT NOT NULL,
+
+  -- Campaign Tracking
+  bison_campaign_id TEXT,
+  personalization_data JSONB,
+
+  -- Status Management
+  status TEXT NOT NULL DEFAULT 'pending_review'
+    CHECK (status IN ('pending_review', 'approved', 'sent', 'failed', 'archived')),
+  priority TEXT CHECK (priority IN ('high', 'medium', 'low')),
+
+  -- Sending
+  scheduled_send_at TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  email_platform_response JSONB,
+  error_message TEXT,
+
+  -- Metadata
+  created_by TEXT DEFAULT 'clay',
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  created_by UUID REFERENCES auth.users(id)
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 )
 ```
 
-### 25. Sales Calls Table
+**Status Flow**: `pending_review` -> `approved` -> `sent` (or `failed` / `archived`)
+
+### 25. Podcast Outreach Actions Table
+**Purpose**: Tracks outreach sent/skipped per podcast per client
+
+```sql
+public.podcast_outreach_actions (
+  id UUID PRIMARY KEY,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  podcast_id TEXT NOT NULL,
+  podcast_name TEXT,
+  action TEXT NOT NULL CHECK (action IN ('sent', 'skipped')),
+  webhook_sent_at TIMESTAMPTZ,
+  webhook_response_status INTEGER,
+  webhook_response_body TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  CONSTRAINT unique_client_podcast_outreach UNIQUE (client_id, podcast_id)
+)
+```
+
+### 26. Sales Calls Table
 **Purpose**: Track sales calls and their outcomes
 
 ```sql
@@ -655,7 +745,7 @@ public.sales_calls (
 
 ## Administrative Tables
 
-### 26. Admin Users Table
+### 27. Admin Users Table
 **Purpose**: Manage admin access to the platform
 
 ```sql
@@ -669,7 +759,7 @@ public.admin_users (
 )
 ```
 
-### 27. Sync History Table
+### 28. Sync History Table
 **Purpose**: Track data synchronization operations
 
 ```sql
@@ -686,19 +776,173 @@ public.sync_history (
 )
 ```
 
+## Guest Resources
+
+### 29. Guest Resources Table
+**Purpose**: Educational content, guides, and resources for podcast guests
+
+```sql
+public.guest_resources (
+  id UUID PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  content TEXT, -- Markdown content for articles
+  category resource_category NOT NULL,
+  type resource_type NOT NULL,
+
+  -- Type-specific fields
+  url TEXT, -- For videos (YouTube/Vimeo) or external links
+  file_url TEXT, -- For downloadable PDFs/files
+
+  -- Metadata
+  featured BOOLEAN DEFAULT false,
+  display_order INTEGER DEFAULT 0,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+**Custom Types**:
+- `resource_type`: `'article'`, `'video'`, `'download'`, `'link'`
+- `resource_category`: `'preparation'`, `'technical_setup'`, `'best_practices'`, `'promotion'`, `'examples'`, `'templates'`
+
+### 30. Guest Resource Views Table
+**Purpose**: Tracks client views of guest resources
+
+```sql
+public.guest_resource_views (
+  id UUID PRIMARY KEY,
+  resource_id UUID REFERENCES guest_resources(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  viewed_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+## Client Podcast Approval Dashboard
+
+### 31. Client Dashboard Podcasts Table
+**Purpose**: Cache of podcasts from a client's Google Sheet for the approval dashboard
+
+```sql
+public.client_dashboard_podcasts (
+  id UUID PRIMARY KEY,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  podcast_id TEXT NOT NULL,
+  podcast_name TEXT,
+  podcast_description TEXT,
+  podcast_image_url TEXT,
+  podcast_url TEXT,
+  publisher_name TEXT,
+  itunes_rating DECIMAL(3,2),
+  episode_count INTEGER,
+  audience_size INTEGER,
+  last_posted_at TIMESTAMPTZ,
+
+  -- Cached AI analysis
+  ai_clean_description TEXT,
+  ai_fit_reasons TEXT[],
+  ai_pitch_angles JSONB,
+  ai_analyzed_at TIMESTAMPTZ,
+
+  -- Cached demographics
+  demographics JSONB,
+  demographics_fetched_at TIMESTAMPTZ,
+
+  -- Categories
+  podcast_categories JSONB,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  CONSTRAINT unique_client_podcast UNIQUE (client_id, podcast_id)
+)
+```
+
+### 32. Client Podcast Feedback Table
+**Purpose**: Client approval/rejection of individual podcasts before outreach
+
+```sql
+public.client_podcast_feedback (
+  id UUID PRIMARY KEY,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  podcast_id TEXT NOT NULL,
+  podcast_name TEXT,
+  status TEXT CHECK (status IN ('approved', 'rejected')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  CONSTRAINT unique_client_podcast_feedback UNIQUE (client_id, podcast_id)
+)
+```
+
+## AI Podcast Analysis
+
+### 33. Client Podcast Analyses Table
+**Purpose**: Client-specific AI analysis of podcasts (based on client bio), separated from universal podcast metadata
+
+```sql
+public.client_podcast_analyses (
+  id UUID PRIMARY KEY,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  podcast_id UUID NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+
+  -- AI Analysis (Client-Specific)
+  ai_clean_description TEXT,
+  ai_fit_reasons TEXT[],
+  ai_pitch_angles JSONB,
+  ai_analyzed_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  CONSTRAINT unique_client_podcast_analysis UNIQUE (client_id, podcast_id)
+)
+```
+
+### 34. Prospect Podcast Analyses Table
+**Purpose**: Prospect-specific AI analysis of podcasts (based on prospect bio)
+
+```sql
+public.prospect_podcast_analyses (
+  id UUID PRIMARY KEY,
+  prospect_dashboard_id UUID NOT NULL REFERENCES prospect_dashboards(id) ON DELETE CASCADE,
+  podcast_id UUID NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+
+  -- AI Analysis (Prospect-Specific)
+  ai_clean_description TEXT,
+  ai_fit_reasons JSONB,
+  ai_pitch_angles JSONB,
+  ai_analyzed_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  CONSTRAINT unique_prospect_podcast_analysis UNIQUE (prospect_dashboard_id, podcast_id)
+)
+```
+
 ## Entity Relationship Summary
 
 ### Core Business Flow
-1. **Clients** book podcast placements → **Bookings**
+1. **Clients** book podcast placements -> **Bookings**
 2. **Bookings** can have **Booking Addons** (additional services)
-3. **Podcasts** table serves as central cache for podcast data
+3. **Podcasts** table serves as central cache for podcast data with vector embeddings
 4. **Premium Podcasts** are available for e-commerce purchase by **Customers**
 5. **Prospect Dashboards** showcase potential placements to prospects
+
+### Podcast Approval & Outreach
+1. **Client Dashboard Podcasts** cache podcast data from the client's Google Sheet
+2. **Client Podcast Feedback** records client approval/rejection of individual podcasts
+3. **Podcast Outreach Actions** tracks whether outreach was sent or skipped per podcast
+4. **Outreach Messages** queues emails for approval before sending
+5. **Client Podcast Analyses** and **Prospect Podcast Analyses** store AI-generated fit analyses
 
 ### Content & Communication
 1. **Blog Posts** are categorized by **Blog Categories**
 2. **Email Logs** track all outbound communication
-3. **Outreach Messages** provide templated communication
+3. **Guest Resources** provide educational content for podcast guests
 4. **Sales Calls** track business development activities
 
 ### Authentication & Security
@@ -710,19 +954,41 @@ public.sync_history (
 
 ### Helper Functions
 
-1. **`is_podcast_stale()`** - Check if podcast cache is stale
-2. **`upsert_podcast()`** - Insert or update podcast data
-3. **`increment_podcast_cache_hit()`** - Track cache usage
-4. **`cleanup_expired_portal_data()`** - Clean expired tokens/sessions
-5. **`get_client_portal_stats()`** - Portal usage statistics
-6. **`update_updated_at_column()`** - Auto-update timestamp trigger
+1. **`is_podcast_stale()`** - Check if podcast cache is stale (configurable stale_days parameter, default 7)
+2. **`upsert_podcast()`** - Insert or update podcast data (accepts JSONB, handles ON CONFLICT)
+3. **`increment_podcast_cache_hit()`** - Track single podcast cache usage
+4. **`batch_increment_podcast_cache_hits()`** - Batch increment cache hit counts for multiple podcasts in a single UPDATE
+5. **`cleanup_expired_portal_data()`** - Clean expired tokens/sessions
+6. **`get_client_portal_stats()`** - Portal usage statistics
+7. **`search_similar_podcasts()`** - Vector similarity search using pgvector cosine distance; pre-filters for guest acceptance, activity recency, and exclusion lists; returns top N matches above a similarity threshold
+8. **`generate_client_dashboard_slug()`** - Trigger function that auto-generates URL slugs from client names (handles duplicates with random suffix)
+9. **`auto_increment_fetch_count()`** - Trigger function that auto-increments `podscan_fetch_count` when `podscan_last_fetched_at` is updated
+
+### Trigger Functions (updated_at)
+
+These trigger functions auto-update the `updated_at` column on row changes:
+
+1. **`update_updated_at_column()`** - Generic updated_at trigger
+2. **`update_podcasts_updated_at()`** - For `podcasts` table
+3. **`update_outreach_messages_updated_at()`** - For `outreach_messages` table
+4. **`update_client_podcast_analyses_updated_at()`** - For `client_podcast_analyses` table
+5. **`update_prospect_podcast_analyses_updated_at()`** - For `prospect_podcast_analyses` table
 
 ### Views
 
 1. **`client_overview`** - Client summary with booking counts
 2. **`calendar_view`** - Monthly booking breakdown
 3. **`daily_bookings`** - Daily booking schedule
-4. **`podcast_cache_statistics`** - Cache performance metrics
+4. **`podcast_cache_statistics`** - Cache performance metrics (total podcasts, email/demographics coverage, cache hits, API calls saved)
+5. **`client_podcasts_with_analyses`** - Joins `podcasts` with `client_podcast_analyses` for easy access to client-specific AI analysis alongside podcast data
+6. **`prospect_podcasts_with_analyses`** - Joins `podcasts` with `prospect_podcast_analyses` for easy access to prospect-specific AI analysis alongside podcast data
+7. **`podcast_cache_statistics_detailed`** - Extended cache stats with coverage percentages, efficiency metrics, and estimated cost savings
+8. **`podcast_growth_stats`** - Tracks podcast additions over time (daily, weekly, monthly)
+9. **`top_cached_podcasts`** - Top 20 most frequently reused podcasts from cache
+10. **`recently_added_podcasts`** - Last 20 podcasts added to the database
+11. **`podcast_category_stats`** - Category distribution and average audience metrics
+12. **`podcast_audience_distribution`** - Distribution of podcasts by audience size brackets
+13. **`podcast_rating_distribution`** - Distribution of podcasts by iTunes rating
 
 ## Row Level Security (RLS) Policies
 
@@ -753,14 +1019,16 @@ public.sync_history (
 
 ### Indexing Strategy
 - Unique indexes on all external IDs (Stripe, Podscan)
-- Composite indexes on common query patterns (client_id + date)
-- JSONB GIN indexes for metadata searches
-- Partial indexes on filtered queries (active records only)
+- Composite indexes on common query patterns (client_id + date, client_id + podcast_id)
+- JSONB GIN indexes for metadata searches (categories, demographics)
+- Partial indexes on filtered queries (active records only, guest-accepting podcasts)
+- **IVFFlat vector index** on `podcasts.embedding` for fast cosine similarity search (lists = 100)
 
 ### Caching Strategy
 - Central `podcasts` table reduces API calls by 60-80%
-- Cache hit tracking for analytics
+- Cache hit tracking for analytics (single and batch increment functions)
 - Stale data detection and refresh mechanisms
+- `client_dashboard_podcasts` caches per-client podcast data including AI analyses and demographics
 
 ## Migration History
-The database evolved through 60+ migration files from 2025-01-07 to 2026-01-29, indicating active development and iterative improvements to the schema.
+The database evolved through 75+ migration files from 2025-01-07 to 2026-03-18, indicating active development and iterative improvements to the schema.

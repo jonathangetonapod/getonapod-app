@@ -224,6 +224,216 @@ export async function searchPodcasts(options: SearchOptions): Promise<PodcastSea
 }
 ```
 
+#### HeyGen Video Service (`/src/services/heygen.ts`)
+**Purpose:** AI avatar video generation for prospect dashboards
+
+**Environment Variables:**
+- `VITE_HEYGEN_API_KEY` - HeyGen API key
+- `VITE_VIDEO_SERVICE_URL` - Video generator service URL (default: `http://localhost:3001`)
+
+**Interfaces:**
+```typescript
+export interface HeyGenTemplateVariable {
+  name: string
+  type: 'text' | 'image' | 'video' | 'audio' | 'avatar'
+  properties: Record<string, any>
+}
+
+export interface HeyGenGenerateRequest {
+  title: string
+  caption?: boolean
+  variables: Record<string, HeyGenTemplateVariable>
+}
+
+export interface HeyGenVideoStatus {
+  id: string
+  status: 'pending' | 'waiting' | 'processing' | 'completed' | 'failed'
+  video_url?: string | null
+  thumbnail_url?: string | null
+  gif_url?: string | null
+  duration?: number | null
+  error?: { code: number; message: string; detail: string } | null
+}
+```
+
+**Key Functions:**
+```typescript
+export async function listTemplates(): Promise<any>
+export async function getTemplateDetails(templateId?: string): Promise<any>
+export async function generateVideoFromTemplate(
+  request: HeyGenGenerateRequest,
+  templateId?: string
+): Promise<{ video_id: string }>
+export async function getVideoStatus(videoId: string, dashboardId: string): Promise<HeyGenVideoStatus>
+export async function generateProspectVideo(
+  dashboardId: string,
+  backgroundVideoUrl: string,
+  firstName: string
+): Promise<string>
+export async function pollVideoStatus(
+  videoId: string,
+  dashboardId: string,
+  maxAttempts?: number,
+  intervalMs?: number
+): Promise<string>
+```
+
+**Architecture Notes:**
+- `generateProspectVideo` and `getVideoStatus` route through a separate video-generator service to keep API keys secure server-side
+- `pollVideoStatus` polls until completion (default 120 attempts at 5s intervals = 10 min timeout)
+
+#### Anthropic Claude AI (`/src/services/ai.ts`)
+**Purpose:** AI-powered podcast summaries and feature suggestions
+
+**Environment Variable:** `VITE_ANTHROPIC_API_KEY`
+
+**Model:** `claude-sonnet-4-5-20250929` (via `@anthropic-ai/sdk`, `dangerouslyAllowBrowser: true`)
+
+**Key Functions:**
+```typescript
+export async function generatePodcastSummary(input: PodcastSummaryInput): Promise<string>
+export async function generatePodcastFeatures(audienceSize: number): Promise<string[]>
+```
+
+**`PodcastSummaryInput` Interface:**
+```typescript
+interface PodcastSummaryInput {
+  podcast_name: string
+  audience_size: string
+  episode_count: string
+  rating: string
+  reach_score: string
+  description?: string
+  categories?: string[]
+  publisher_name?: string
+}
+```
+
+**Fallback:** Returns a template-based summary if the API call fails.
+
+#### Stripe Payment (`/src/services/stripe.ts`)
+**Purpose:** Payment processing for premium podcast placements and addon services
+
+**Environment Variable:** `VITE_STRIPE_PUBLISHABLE_KEY`
+
+**Key Functions:**
+```typescript
+export const createCheckoutSession = async (
+  cartItems: CartItem[],
+  customerEmail: string,
+  customerName: string
+): Promise<{ sessionId: string; url: string }>
+
+export const redirectToCheckout = async (sessionId: string): Promise<void>
+
+export const getCheckoutSession = async (sessionId: string): Promise<{ sessionId: string }>
+
+export const createAddonCheckoutSession = async (
+  addons: Array<{ bookingId: string; serviceId: string }>,
+  clientId: string
+): Promise<{ sessionId: string; url: string }>
+```
+
+**Architecture Notes:**
+- Stripe is lazy-loaded via `loadStripe()` only when needed
+- Checkout sessions are created via Supabase Edge Functions (`create-checkout-session`, `create-addon-checkout`)
+- Webhooks handle order creation server-side
+
+#### Google Calendar (`/src/lib/googleCalendar.ts`)
+**Purpose:** Generate Google Calendar "Add Event" URLs for podcast bookings
+
+**Key Functions:**
+```typescript
+export function generateGoogleCalendarUrl(event: CalendarEventDetails): string
+export function openGoogleCalendar(event: CalendarEventDetails): void
+export function createCalendarEventFromBooking(booking: {
+  podcast_name: string
+  recording_date?: string | null
+  scheduled_date?: string | null
+  episode_url?: string | null
+  podcast_url?: string | null
+  host_name?: string | null
+  notes?: string | null
+}): CalendarEventDetails | null
+```
+
+**`CalendarEventDetails` Interface:**
+```typescript
+interface CalendarEventDetails {
+  title: string
+  startTime: Date
+  endTime: Date
+  description?: string
+  location?: string
+}
+```
+
+#### Google Indexing (`/src/services/indexing.ts`)
+**Purpose:** Submit blog posts to Google Indexing API and check indexing status via Search Console API
+
+**Key Interfaces:**
+```typescript
+export interface IndexingLog {
+  id: string
+  post_id: string
+  url: string
+  service: 'google'
+  action: 'submit' | 'update' | 'check_status'
+  status: 'success' | 'failed' | 'pending'
+  response_data?: any
+  error_message?: string
+  created_at: string
+}
+
+export interface IndexingStats {
+  total_posts: number
+  submitted: number
+  indexed: number
+  failed: number
+  pending: number
+  indexation_rate: number
+}
+
+export interface IndexingStatusCheck {
+  isIndexed: boolean
+  coverageState: string
+  lastCrawlTime?: string
+  indexingState?: string
+  verdict?: string
+  canonicalUrl?: string
+}
+```
+
+**Key Functions:**
+```typescript
+// Submission
+export const submitToGoogleIndexing = async (url: string, postId: string): Promise<{ success: boolean; message: string }>
+export const submitBatchToGoogleIndexing = async (posts: Array<{ url: string; postId: string }>): Promise<Array<...>>
+
+// Status checking
+export const checkGoogleIndexingStatus = async (url: string, postId: string): Promise<CheckIndexingResponse>
+export const checkBatchGoogleIndexingStatus = async (posts: Array<{ url: string; postId: string }>): Promise<Array<...>>
+
+// Logs & statistics
+export const getIndexingLogsByPost = async (postId: string): Promise<IndexingLog[]>
+export const getRecentIndexingLogs = async (limit?: number): Promise<any[]>
+export const getFailedIndexingAttempts = async (): Promise<any[]>
+export const getIndexingStats = async (): Promise<IndexingStats>
+export const getPostsNeedingIndexing = async (): Promise<any[]>
+export const getPostsNeedingResubmission = async (): Promise<any[]>
+
+// Helpers
+export const buildPostUrl = (slug: string): string
+export const hasBeenSubmitted = (post: { submitted_to_google_at?: string | null }): boolean
+export const hasBeenIndexed = (post: { indexed_by_google_at?: string | null }): boolean
+export const getDaysSinceSubmission = (submittedAt?: string | null): number | null
+export const getIndexingStatusBadge = (post: { ... }): { label: string; color: string }
+```
+
+**Architecture Notes:**
+- Submission and status-check calls go through Supabase Edge Functions (`submit-to-indexing`, `check-indexing-status`)
+- Batch operations include rate limiting (350ms for Indexing API, 500ms for Search Console API)
+
 ### 7. Data Models and Interfaces
 
 #### Core Entities
@@ -387,7 +597,636 @@ export interface PricingAnalytics {
 }
 ```
 
-### 11. Protected Routes and Authorization
+### 11. Database Services
+
+#### AI Categorization (`/src/services/categorization.ts`)
+**Purpose:** Auto-categorize podcasts using Claude AI
+
+**Model:** `claude-haiku-4-5-20251001` (via direct REST API with `VITE_ANTHROPIC_API_KEY`)
+
+```typescript
+export interface AutoCategorizeInput {
+  podcastName: string
+  description?: string
+  whyThisShow?: string
+}
+
+export async function autoCategorizePodcast(input: AutoCategorizeInput): Promise<string>
+```
+Falls back to `'Business'` if the API is unavailable or the response is unrecognized.
+
+#### Query Generation (`/src/services/queryGeneration.ts`)
+**Purpose:** AI-powered podcast search query generation via Edge Function
+
+```typescript
+export interface GenerateQueriesInput {
+  clientName?: string
+  clientBio?: string
+  clientEmail?: string
+  prospectName?: string
+  prospectBio?: string
+  additionalContext?: Record<string, any>
+}
+
+export async function generatePodcastQueries(input: GenerateQueriesInput): Promise<string[]>
+export async function regenerateQuery(input: GenerateQueriesInput, oldQuery: string): Promise<string>
+```
+Uses Edge Function `generate-podcast-queries` with authenticated JWT.
+
+#### Compatibility Scoring (`/src/services/compatibilityScoring.ts`)
+**Purpose:** AI-scored podcast-to-client compatibility via Edge Function
+
+```typescript
+export interface PodcastForScoring {
+  podcast_id: string
+  podcast_name: string
+  podcast_description?: string | null
+  publisher_name?: string | null
+  podcast_categories?: Array<{ category_name: string }> | null
+  audience_size?: number | null
+  episode_count?: number | null
+}
+
+export interface CompatibilityScore {
+  podcast_id: string
+  score: number | null
+  reasoning?: string
+}
+
+export async function scoreCompatibilityBatch(
+  bio: string,
+  podcasts: PodcastForScoring[],
+  batchSize?: number,
+  onProgress?: (completed: number, total: number) => void,
+  isProspectMode?: boolean
+): Promise<CompatibilityScore[]>
+
+export async function scoreAndRankPodcasts(
+  bio: string,
+  podcasts: PodcastForScoring[],
+  minScore?: number,
+  onProgress?: (completed: number, total: number) => void,
+  isProspectMode?: boolean
+): Promise<Array<PodcastForScoring & { compatibility_score: number }>>
+```
+Processes in batches of 10 with 500ms delays. Uses Edge Function `score-podcast-compatibility`.
+
+#### Addon Services (`/src/services/addonServices.ts`)
+**Purpose:** Manage purchasable addon services for podcast bookings
+**Table:** `addon_services`, `booking_addons`
+
+```typescript
+export interface AddonService {
+  id: string
+  name: string
+  description: string
+  short_description: string | null
+  price_cents: number
+  stripe_product_id: string | null
+  stripe_price_id: string | null
+  active: boolean
+  features: string[]
+  delivery_days: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BookingAddon {
+  id: string
+  booking_id: string
+  service_id: string
+  client_id: string
+  status: 'pending' | 'in_progress' | 'delivered' | 'cancelled'
+  // ... plus joined service/booking/client data
+}
+```
+
+**Key Functions:**
+```typescript
+export async function getActiveAddonServices(): Promise<AddonService[]>
+export async function getAddonServiceById(serviceId: string): Promise<AddonService>
+export async function getBookingAddons(bookingId: string): Promise<BookingAddon[]>
+export async function getClientAddons(clientId: string): Promise<BookingAddon[]>
+export async function hasBookingAddon(bookingId: string, serviceId: string): Promise<boolean>
+export async function createBookingAddon(input: { ... }): Promise<BookingAddon>
+export async function updateBookingAddonStatus(addonId: string, status: BookingAddon['status'], ...): Promise<BookingAddon>
+export async function deleteBookingAddon(addonId: string): Promise<void>
+export async function getAllBookingAddons(): Promise<BookingAddon[]>
+export function formatPrice(cents: number): string
+export function getAddonStatusColor(status: BookingAddon['status']): string
+export function getAddonStatusText(status: BookingAddon['status']): string
+```
+
+#### Admin Users (`/src/services/adminUsers.ts`)
+**Purpose:** Admin user management with in-memory caching
+**Table:** `admin_users`
+
+```typescript
+export interface AdminUser {
+  id: string
+  email: string
+  name: string | null
+  added_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function getAdminUsers(): Promise<AdminUser[]>
+export async function getAdminEmails(): Promise<string[]>   // 1-min TTL cache
+export async function isAdminEmailAsync(email: string | undefined): Promise<boolean>
+export async function addAdminUser(email: string, name?: string, addedBy?: string): Promise<AdminUser>
+export async function removeAdminUser(id: string): Promise<void>
+export function clearAdminCache(): void
+```
+
+#### Blog Management (`/src/services/blog.ts`)
+**Purpose:** Full CRUD for blog posts and categories with SEO helpers
+**Tables:** `blog_posts`, `blog_categories`
+
+```typescript
+export interface BlogPost {
+  id: string
+  slug: string
+  title: string
+  meta_description: string
+  content: string
+  status: 'draft' | 'published'
+  view_count: number
+  read_time_minutes: number
+  // ... plus SEO, indexing, and category fields
+}
+
+export interface BlogCategory {
+  id: string
+  name: string
+  slug: string
+  description?: string
+  display_order: number
+  is_active: boolean
+}
+```
+
+**Key Functions:**
+```typescript
+// CRUD
+export const getAllPosts = async (filters?: BlogFilters): Promise<BlogPost[]>
+export const getPostBySlug = async (slug: string): Promise<BlogPost>
+export const getPostById = async (id: string): Promise<BlogPost>
+export const createPost = async (post: CreateBlogPostInput): Promise<BlogPost>
+export const updatePost = async (input: UpdateBlogPostInput): Promise<BlogPost>
+export const deletePost = async (id: string): Promise<void>
+export const publishPost = async (id: string): Promise<BlogPost>
+export const unpublishPost = async (id: string): Promise<BlogPost>
+export const incrementViewCount = async (id: string): Promise<void>
+
+// Categories
+export const getAllCategories = async (): Promise<BlogCategory[]>
+export const getCategoryBySlug = async (slug: string): Promise<BlogCategory>
+
+// Helpers
+export const generateSlug = (title: string): string
+export const isSlugUnique = async (slug: string, excludeId?: string): Promise<boolean>
+export const calculateReadTime = (content: string): number
+export const generateExcerpt = (content: string, maxLength?: number): string
+export const generateSchemaMarkup = (post: BlogPost): object
+export const getRelatedPosts = async (post: BlogPost, limit?: number): Promise<BlogPost[]>
+```
+
+#### Customers (`/src/services/customers.ts`)
+**Purpose:** Customer and order management for the marketplace
+**Tables:** `customers`, `orders`, `order_items`
+
+```typescript
+export interface Customer {
+  id: string
+  email: string
+  full_name: string
+  stripe_customer_id: string | null
+  total_orders: number
+  total_spent: number
+  created_at: string
+}
+
+export async function getCustomers(options?: { search?: string; limit?: number; offset?: number; ... }): Promise<{ customers: Customer[]; total: number }>
+export async function getCustomerById(customerId: string): Promise<CustomerWithOrders>
+export async function getCustomerStats(): Promise<{ totalCustomers: number; totalRevenue: number; avgOrderValue: number; totalOrders: number }>
+export async function searchCustomers(searchTerm: string): Promise<Customer[]>
+```
+
+#### Orders (`/src/services/orders.ts`)
+**Purpose:** Order operations with pagination and statistics
+**Tables:** `orders`, `order_items`
+
+```typescript
+export interface OrderWithItems extends Order {
+  order_items: OrderItem[]
+}
+
+export async function getOrders(options?: { customerId?: string; status?: Order['status']; limit?: number; offset?: number; ... }): Promise<{ orders: OrderWithItems[]; total: number }>
+export async function getOrderById(orderId: string): Promise<OrderWithItems>
+export async function getRecentOrders(limit?: number): Promise<OrderWithItems[]>
+export async function getOrderStats(): Promise<{ totalOrders: number; paidOrders: number; pendingOrders: number; failedOrders: number }>
+export async function getOrderItems(orderId: string): Promise<OrderItem[]>
+```
+
+#### Guest Resources (`/src/services/guestResources.ts`)
+**Purpose:** Manage educational resources for podcast guests
+**Tables:** `guest_resources`, `guest_resource_views`
+
+```typescript
+export type ResourceType = 'article' | 'video' | 'download' | 'link'
+export type ResourceCategory = 'preparation' | 'technical_setup' | 'best_practices' | 'promotion' | 'examples' | 'templates'
+
+export interface GuestResource {
+  id: string
+  title: string
+  description: string
+  content: string | null
+  category: ResourceCategory
+  type: ResourceType
+  url: string | null
+  file_url: string | null
+  featured: boolean
+  display_order: number
+}
+
+export async function getGuestResources(options?: { category?: ResourceCategory; featured?: boolean }): Promise<GuestResource[]>
+export async function getGuestResourceById(resourceId: string): Promise<GuestResource>
+export async function createGuestResource(input: { ... }): Promise<GuestResource>
+export async function updateGuestResource(resourceId: string, updates: { ... }): Promise<GuestResource>
+export async function deleteGuestResource(resourceId: string): Promise<void>
+export async function trackResourceView(resourceId: string, clientId: string): Promise<ResourceView | null>
+export async function getClientResourceViews(clientId: string): Promise<any[]>
+export async function getResourceViewCount(resourceId: string): Promise<number>
+```
+
+#### Outreach Messages (`/src/services/outreachMessages.ts`)
+**Purpose:** Manage podcast outreach emails
+**Table:** `outreach_messages`
+
+```typescript
+export interface OutreachMessage {
+  id: string
+  client_id: string
+  podcast_name: string
+  host_name: string
+  host_email: string
+  subject_line: string
+  email_body: string
+  status: 'pending_review' | 'approved' | 'sent' | 'failed' | 'archived'
+  priority: 'high' | 'medium' | 'low' | null
+  // ... plus scheduling, response tracking, and enriched podcast metadata
+}
+
+export async function getOutreachMessages(options?: { clientId?: string; campaignId?: string; status?: string; limit?: number }): Promise<OutreachMessageWithClient[]>
+export async function updateOutreachMessage(id: string, updates: Partial<OutreachMessage>): Promise<OutreachMessage>
+export async function deleteOutreachMessage(id: string): Promise<void>
+export async function getOutreachStats(clientId?: string): Promise<{ total: number; pending_review: number; approved: number; sent: number; failed: number }>
+```
+
+#### Podcast Analytics (`/src/services/podcastAnalytics.ts`)
+**Purpose:** Podcast database analytics via pre-calculated Supabase views
+**Views:** `podcast_growth_stats`, `top_cached_podcasts`, `recently_added_podcasts`, `podcast_category_stats`, `podcast_cache_statistics_detailed`, `podcast_audience_distribution`, `podcast_rating_distribution`
+
+```typescript
+export async function getPodcastGrowthStats(): Promise<PodcastGrowthStats | null>
+export async function getTopCachedPodcasts(): Promise<TopCachedPodcast[]>
+export async function getRecentlyAddedPodcasts(): Promise<RecentlyAddedPodcast[]>
+export async function getCategoryStats(): Promise<CategoryStats[]>
+export async function getDetailedCacheStats(): Promise<DetailedCacheStats | null>
+export async function getAudienceDistribution(): Promise<AudienceDistribution | null>
+export async function getRatingDistribution(): Promise<RatingDistribution | null>
+export async function getAllAnalytics(): Promise<{ growthStats, detailedStats, topCached, recentlyAdded, categoryStats, audienceDistribution, ratingDistribution }>
+```
+
+#### Podcast Database (`/src/services/podcastDatabase.ts`)
+**Purpose:** Centralized podcast database with filtering, sorting, pagination, and auto-save from Podscan
+**Table:** `podcasts`
+
+```typescript
+export interface PodcastFilters {
+  search?: string
+  categories?: string[]
+  minAudience?: number
+  maxAudience?: number
+  minRating?: number
+  hasEmail?: boolean
+  isActive?: boolean
+  language?: string
+  region?: string
+  hasGuests?: boolean
+  hasSponsors?: boolean
+  // ... more fields
+}
+
+export async function getPodcasts(params: GetPodcastsParams): Promise<GetPodcastsResult>
+export async function getPodcastStatistics(): Promise<any>
+export async function getPodcastById(id: string): Promise<{ data: PodcastDatabaseItem; error: any }>
+export async function getPodcastCategories(): Promise<{ categories: string[]; error: any }>
+export async function getPodcastLanguages(): Promise<{ languages: string[]; error: any }>
+export async function getPodcastRegions(): Promise<{ regions: string[]; error: any }>
+export function isPodcastStale(lastFetchedAt: string | null): boolean
+export async function exportPodcastsToCSV(podcasts: PodcastDatabaseItem[], filename?: string): Promise<boolean>
+export async function savePodcastsToDatabase(podcasts: Array<...>): Promise<{ saved: number; errors: number }>
+```
+
+**Architecture Notes:**
+- Multi-select category filtering with OR logic
+- Auto-saves Podscan API results via upsert on `podscan_id`
+- CSV export generates a client-side download
+
+#### Podcast Search Utilities (`/src/services/podcastSearchUtils.ts`)
+**Purpose:** Multi-query search, deduplication, filtering, and sorting utilities for Podscan results
+
+```typescript
+export function deduplicatePodcasts(podcasts: PodcastData[]): PodcastData[]
+
+export async function searchMultipleQueries(
+  queries: string[],
+  baseFilters?: Omit<SearchOptions, 'query'>,
+  onQueryComplete?: (queryIndex: number, results: PodcastData[]) => void
+): Promise<PodcastData[]>
+
+export async function searchWithProgressiveResults(
+  queries: string[],
+  baseFilters?: Omit<SearchOptions, 'query'>,
+  onResults: (results: PodcastData[], queryIndex: number, isComplete: boolean) => void
+): Promise<PodcastData[]>
+
+export function calculateSearchStatistics(podcasts: PodcastData[]): SearchStatistics
+export function filterPodcasts(podcasts: PodcastData[], criteria: FilterCriteria): PodcastData[]
+export function sortPodcasts(podcasts: PodcastData[], sortBy: SortBy, sortOrder?: 'asc' | 'desc'): PodcastData[]
+```
+
+#### Premium Podcasts (`/src/services/premiumPodcasts.ts`)
+**Purpose:** CRUD for premium podcast marketplace listings
+**Table:** `premium_podcasts`
+
+```typescript
+export interface PremiumPodcast {
+  id: string
+  podscan_id: string
+  podcast_name: string
+  price: string
+  my_cost?: string
+  category?: string
+  is_featured: boolean
+  is_active: boolean
+  display_order: number
+  whats_included: string[]
+  // ... plus podcast metadata fields
+}
+
+export const getAllPremiumPodcasts = async (): Promise<PremiumPodcast[]>
+export const getActivePremiumPodcasts = async (): Promise<PremiumPodcast[]>
+export const getFeaturedPremiumPodcasts = async (): Promise<PremiumPodcast[]>
+export const getPremiumPodcastsByCategory = async (category: string): Promise<PremiumPodcast[]>
+export const getPremiumPodcastById = async (id: string): Promise<PremiumPodcast | null>
+export const createPremiumPodcast = async (input: CreatePremiumPodcastInput): Promise<PremiumPodcast>
+export const updatePremiumPodcast = async (input: UpdatePremiumPodcastInput): Promise<PremiumPodcast>
+export const deletePremiumPodcast = async (id: string): Promise<void>
+export const togglePodcastFeatured = async (id: string, isFeatured: boolean): Promise<PremiumPodcast>
+export const togglePodcastActive = async (id: string, isActive: boolean): Promise<PremiumPodcast>
+export const formatAudienceSize = (size: number): string
+export const getPricingTierColor = (price: string): string
+```
+
+#### Sales Calls (`/src/services/salesCalls.ts`)
+**Purpose:** Fathom call syncing, AI analysis, and sales performance analytics
+**Tables:** `sales_calls`, `sales_call_analysis`
+
+```typescript
+export type CallType = 'sales' | 'non-sales' | 'unclassified'
+
+export interface SalesCall {
+  id: string
+  recording_id: number
+  title: string | null
+  duration_minutes: number | null
+  transcript: any
+  summary: string | null
+  hidden: boolean
+  call_type: CallType
+  // ... plus scheduling and URL fields
+}
+
+export interface SalesCallAnalysis {
+  overall_score: number
+  framework_adherence_score?: number
+  // Corey Jackson Framework scores
+  frame_control_score?: number
+  discovery_current_state_score?: number
+  // ... 8 more framework scores
+  talk_listen_ratio_talk: number
+  talk_listen_ratio_listen: number
+  questions_asked_count: number
+  recommendations: any[]
+  strengths: string[]
+  weaknesses: string[]
+  key_moments: any[]
+}
+```
+
+**Key Functions:**
+```typescript
+export const syncFathomCalls = async (daysBack?: number): Promise<any>
+export const getSalesCallsWithAnalysis = async (): Promise<SalesCallWithAnalysis[]>
+export const getSalesPerformanceStats = async (): Promise<{ overall_score, discovery_score, ... }>
+export const getTopRecommendations = async (): Promise<any[]>
+export const getRecentSalesCalls = async (page?, pageSize?, showHidden?, callTypeFilter?): Promise<{ calls, totalCount, totalPages, currentPage }>
+export const analyzeSalesCall = async (callId: string, recordingId: number): Promise<any>
+export const hideSalesCall = async (callId: string): Promise<void>
+export const unhideSalesCall = async (callId: string): Promise<void>
+export const deleteSalesCall = async (callId: string): Promise<void>
+export const classifySalesCall = async (callId: string): Promise<any>
+export const getUnclassifiedCallsCount = async (): Promise<number>
+export const getUnclassifiedCalls = async (limit?: number): Promise<any[]>
+export const getSalesAnalytics = async (daysBack?: number): Promise<{ timeSeriesData, frameworkBreakdown, improvementAreas, ... }>
+```
+
+**Edge Functions Used:** `sync-fathom-calls`, `analyze-sales-call`, `classify-sales-call`
+
+#### Testimonials (`/src/services/testimonials.ts`)
+**Purpose:** Video testimonial management with YouTube/Vimeo support
+**Table:** `testimonials`
+
+```typescript
+export interface Testimonial {
+  id: string
+  video_url: string
+  client_name: string
+  client_title?: string
+  client_company?: string
+  client_photo_url?: string
+  quote?: string
+  is_featured: boolean
+  display_order: number
+  is_active: boolean
+}
+
+export const getAllTestimonials = async (): Promise<Testimonial[]>
+export const getActiveTestimonials = async (): Promise<Testimonial[]>
+export const getFeaturedTestimonials = async (): Promise<Testimonial[]>
+export const getTestimonialById = async (id: string): Promise<Testimonial | null>
+export const createTestimonial = async (input: CreateTestimonialInput): Promise<Testimonial>
+export const updateTestimonial = async (input: UpdateTestimonialInput): Promise<Testimonial>
+export const deleteTestimonial = async (id: string): Promise<void>
+export const toggleFeatured = async (id: string, isFeatured: boolean): Promise<Testimonial>
+export const toggleActive = async (id: string, isActive: boolean): Promise<Testimonial>
+export const extractVideoId = (url: string): { platform: 'youtube' | 'vimeo' | 'unknown'; id: string }
+export const getEmbedUrl = (url: string): string
+export const getThumbnailUrl = (url: string): string
+```
+
+#### QA Review (`/src/services/qaReview.ts`)
+**Purpose:** AI-powered quality assurance review of podcast-prospect fit
+**Edge Function:** `qa-review-podcasts`
+
+```typescript
+export interface QAPodcastInput {
+  podcast_id: string
+  podcast_name: string
+  podcast_description?: string | null
+  publisher_name?: string | null
+  podcast_categories?: Array<{ category_name: string }> | null
+  audience_size?: number | null
+  episode_count?: number | null
+}
+
+export interface QAResult {
+  podcast_id: string
+  bio_fit_score: number | null
+  topic_relevance_score: number | null
+  bio_fit_reasoning: string | null
+  topic_reasoning: string | null
+  pitch_angles: Array<{ title: string; description: string }>
+  topic_signals: string[]
+}
+
+export type ScoreTier = 'green' | 'yellow' | 'red' | 'unavailable'
+
+export function getScoreTier(score: number | null): ScoreTier
+
+export async function runQAReview(
+  prospectBio: string,
+  targetTopic: string,
+  podcasts: QAPodcastInput[],
+  onProgress?: (completed: number, total: number) => void
+): Promise<QAResult[]>
+```
+
+**Architecture Notes:**
+- Max 50 podcasts per QA review
+- Processes in batches of 5 with 500ms delays
+- Requires authenticated session
+
+### 12. State Management
+
+#### Cart Store (`/src/stores/cartStore.ts`)
+**Purpose:** Zustand-based shopping cart with localStorage persistence
+
+```typescript
+export interface CartItem {
+  id: string
+  type: 'premium_podcast' | 'addon_service'
+  // Premium podcast fields
+  podcastId?: string
+  podcastName?: string
+  podcastImage?: string
+  // Addon service fields
+  bookingId?: string
+  serviceId?: string
+  serviceName?: string
+  episodeName?: string
+  clientId?: string
+  // Common fields
+  price: number
+  priceDisplay: string
+  quantity: number
+}
+
+interface CartStore {
+  items: CartItem[]
+  isOpen: boolean
+  addItem: (podcast: PremiumPodcast) => void
+  addAddonItem: (booking: Booking, service: AddonService, clientId: string) => void
+  removeItem: (id: string) => void
+  clearCart: () => void
+  toggleCart: () => void
+  openCart: () => void
+  closeCart: () => void
+  getTotalItems: () => number
+  getTotalPrice: () => number
+  getTotalPriceDisplay: () => string
+  isInCart: (podcastId: string) => boolean
+  isAddonInCart: (bookingId: string, serviceId: string) => boolean
+}
+
+export const parsePrice = (priceStr: string): number
+export const formatPrice = (price: number): string
+export const useCartStore = create<CartStore>()(persist(...))
+```
+
+**Persistence:** localStorage key `"podcast-cart"`, only persists `items` (not `isOpen` state).
+
+### 13. Custom Hooks
+
+#### `useToast` (`/src/hooks/use-toast.ts`)
+**Purpose:** Global toast notification system with reducer-based state management
+
+```typescript
+function toast(props: Toast): { id: string; dismiss: () => void; update: (props: ToasterToast) => void }
+function useToast(): { toasts: ToasterToast[]; toast: typeof toast; dismiss: (toastId?: string) => void }
+```
+
+- Limit: 1 toast visible at a time
+- Uses external store pattern (listeners array) for cross-component updates
+
+#### `useScrollAnimation` (`/src/hooks/useScrollAnimation.ts`)
+**Purpose:** Intersection Observer hook for scroll-triggered animations
+
+```typescript
+export function useScrollAnimation<T extends HTMLElement>(threshold?: number): {
+  ref: React.RefObject<T>
+  isVisible: boolean
+}
+```
+
+- Unobserves after first intersection (fires once)
+- Default threshold: `0.1`
+
+#### `useIsMobile` (`/src/hooks/use-mobile.tsx`)
+**Purpose:** Responsive breakpoint detection
+
+```typescript
+export function useIsMobile(): boolean
+```
+
+- Breakpoint: `768px`
+- Uses `window.matchMedia` with change listener
+
+### 14. Sentry Integration (`/src/lib/sentry.ts`)
+**Purpose:** Error tracking, performance monitoring, and session replay
+
+**Environment Variables:**
+- `VITE_SENTRY_DSN` - Sentry DSN (error tracking disabled if not set)
+- `VITE_APP_VERSION` - Release version tag
+
+**Configuration:**
+- **Performance:** 100% trace sample rate
+- **Session Replay:** 10% of normal sessions, 100% of sessions with errors
+- **Privacy:** `maskAllText: true`, `blockAllMedia: true`
+- **Filtering:** Ignores Stripe internal errors, network errors from ad blockers
+
+**Exported Helpers:**
+```typescript
+export function initSentry(): void
+export function captureException(error: Error, context?: Record<string, any>): void
+export function captureMessage(message: string, level?: 'info' | 'warning' | 'error'): void
+export function setUser(user: { id: string; email?: string; name?: string } | null): void
+```
+
+### 15. Protected Routes and Authorization
 
 #### Route Protection Patterns
 ```typescript
@@ -400,9 +1239,9 @@ export const useAuth = () => {
 // Client Portal Protection
 export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) => {
   const { client, loading, isImpersonating } = useClientPortal()
-  
+
   if (loading) return <LoadingSpinner />
-  
+
   if (!client) {
     return <Navigate to="/portal/login" state={{ from: location }} replace />
   }
@@ -411,7 +1250,7 @@ export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) =>
 }
 ```
 
-### 12. Error Handling Patterns
+### 16. Error Handling Patterns
 
 #### Service Layer Error Handling
 ```typescript
@@ -453,6 +1292,16 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 
 # External APIs
 VITE_PODSCAN_API_KEY=your-podscan-key
+VITE_HEYGEN_API_KEY=your-heygen-key
+VITE_ANTHROPIC_API_KEY=your-anthropic-key
+VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
+
+# Video Service
+VITE_VIDEO_SERVICE_URL=https://your-video-service.com
+
+# Monitoring
+VITE_SENTRY_DSN=https://...@sentry.io/...
+VITE_APP_VERSION=1.0.0
 
 # Application
 VITE_APP_URL=https://your-domain.com
@@ -527,9 +1376,14 @@ if (!data.success) {
 
 ## Monitoring and Observability
 
-### 1. Error Tracking
-- Sentry integration for error reporting
-- User context setting in authentication flows
+### 1. Error Tracking (Sentry)
+- `@sentry/react` integration initialized in `/src/lib/sentry.ts`
+- Browser tracing for performance monitoring (100% sample rate)
+- Session replay for debugging (10% normal sessions, 100% error sessions)
+- User context set on login via `setUser()`
+- `captureException()` helper for contextual error reporting
+- Filters out known noisy errors (Stripe race conditions, ad-blocker network errors)
+- Environment and release tracking via `VITE_SENTRY_DSN` and `VITE_APP_VERSION`
 
 ### 2. Performance Monitoring
 - React Query for data fetching optimization
@@ -553,6 +1407,10 @@ The Authority Built frontend API layer provides a robust, type-safe interface to
 - **React Query integration** for efficient data fetching
 - **TypeScript interfaces** for type safety
 - **Consistent error handling** throughout the application
-- **External API integrations** with proper authentication
+- **External API integrations** -- Podscan, HeyGen, Anthropic Claude, Stripe, Google Calendar, Google Indexing
+- **AI-powered features** -- podcast categorization, query generation, compatibility scoring, QA review, podcast summaries
+- **E-commerce layer** -- Stripe checkout, cart store (Zustand), customer/order management, addon services
+- **Sentry observability** -- error tracking, session replay, performance monitoring
+- **20+ service modules** covering blog, testimonials, sales calls, guest resources, outreach, and more
 
 The architecture supports both direct database operations and server-side functions, providing flexibility for different use cases while maintaining security and performance.

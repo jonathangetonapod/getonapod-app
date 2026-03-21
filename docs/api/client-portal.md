@@ -57,7 +57,7 @@ Administrators can impersonate clients to:
 - **Responsive**: Mobile-friendly design with collapsible elements
 
 #### Navigation Items
-1. **Dashboard** - Main overview and management interface
+1. **Dashboard** - Main overview and management interface (with tabbed sub-navigation)
 2. **Resources** - Educational content and best practices
 
 ### User Profile Management
@@ -67,7 +67,16 @@ Administrators can impersonate clients to:
 
 ## Dashboard Features
 
-The Dashboard is the main interface where clients manage their podcast activities. It's organized into multiple sections and views:
+The Dashboard is the main interface where clients manage their podcast activities. It uses a tabbed layout with seven sections:
+
+**Dashboard Tabs:**
+1. **Overview** - Statistics, booking management, and action items
+2. **Analytics** - Charts, performance metrics, and data export
+3. **Calendar** - Monthly calendar view of all events
+4. **Activity** - Timeline of all client activities (including outreach messages)
+5. **Outreach List** - Podcast outreach campaign management (Google Sheets integration)
+6. **Premium** - Browse and purchase premium podcast placements
+7. **My Orders** - Track addon service orders and delivery status
 
 ### Core Dashboard Sections
 
@@ -113,33 +122,36 @@ conversation_started → in_progress → booked → recorded → published
 - **Price Ranges**: Under $1K, $1K-$2.5K, $2.5K-$5K, $5K-$10K, $10K+
 - **Search**: By podcast name, description, or category
 
-#### 4. Outreach Campaign Management
+#### 4. Outreach Campaign Management (Outreach List Tab)
 
 **Google Sheets Integration:**
 - Connects to client's custom Google Sheet
-- Displays targeted podcasts from outreach campaigns
+- Displays targeted podcasts from outreach campaigns in grid or list view
 - Shows podcast fit analysis and recommendations
-- Tracks outreach messages sent to the GOAP team
+- Paginated view (12 podcasts per page)
 
 **Outreach Features:**
-- **AI-powered fit analysis**: Analyzes how well client matches each podcast
+- **AI-powered fit analysis**: Analyzes how well client matches each podcast (cached in localStorage for 24 hours)
+- **Bulk preload**: Auto-analyze all podcasts in the list for fit analysis
 - **Demographic insights**: Audience data via PodScan integration
-- **Campaign tracking**: Monitors outreach message status and responses
-- **Podcast management**: Add/remove podcasts from outreach lists
+- **Outreach message tracking**: View sent outreach emails for each podcast
+- **Podcast management**: Delete podcasts from outreach lists with confirmation
+- **Sort & search**: Sort by date, audience, rating, or name; search by keyword
 
 #### 5. Activity Timeline
 
 **Tracks all client activities:**
 - Booking confirmations and status changes
 - Episode publications and recordings
-- Outreach message submissions
+- Outreach email sends (with full email preview modal)
 - Addon service purchases
 - Important milestones and achievements
 
 **Timeline Features:**
-- Real-time activity feed
+- Real-time activity feed with pagination (10 items per page)
 - Chronological ordering with timestamps
 - Contextual details for each activity
+- Outreach activity drill-down: view the full outreach email and target podcast details
 - Integration with booking and outreach data
 
 #### 6. Calendar View
@@ -193,6 +205,18 @@ conversation_started → in_progress → booked → recorded → published
 - **CSV Export**: Download booking data for external analysis
 - **Custom date ranges**: Export specific time periods
 - **Comprehensive data**: All booking details and metrics
+
+### Promotional Banners
+
+**Upgrade Hero Banner:**
+- Displayed contextually to encourage plan upgrades
+- Dynamic content based on client's current plan
+
+**Addon Upsell Banner:**
+- Promotes available addon services within the booking workflow
+- Contextual placement near relevant bookings
+
+---
 
 ## Addon Services
 

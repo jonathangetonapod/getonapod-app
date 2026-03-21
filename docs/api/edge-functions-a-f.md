@@ -7,16 +7,18 @@ This document provides comprehensive API documentation for all Supabase Edge Fun
 1. [analyze-podcast-fit](#analyze-podcast-fit)
 2. [analyze-sales-call](#analyze-sales-call)
 3. [append-prospect-sheet](#append-prospect-sheet)
-4. [campaign-reply-webhook](#campaign-reply-webhook)
-5. [check-indexing-status](#check-indexing-status)
-6. [classify-sales-call](#classify-sales-call)
-7. [create-addon-checkout](#create-addon-checkout)
-8. [create-bison-lead](#create-bison-lead)
-9. [create-checkout-session](#create-checkout-session)
-10. [create-client-account](#create-client-account)
-11. [create-client-google-sheet](#create-client-google-sheet)
-12. [create-outreach-message](#create-outreach-message)
-13. [create-prospect-sheet](#create-prospect-sheet)
+4. [backfill-prospect-podcasts](#backfill-prospect-podcasts)
+5. [campaign-reply-webhook](#campaign-reply-webhook)
+6. [check-indexing-status](#check-indexing-status)
+7. [classify-reply](#classify-reply)
+8. [classify-sales-call](#classify-sales-call)
+9. [create-addon-checkout](#create-addon-checkout)
+10. [create-bison-lead](#create-bison-lead)
+11. [create-checkout-session](#create-checkout-session)
+12. [create-client-account](#create-client-account)
+13. [create-client-google-sheet](#create-client-google-sheet)
+14. [create-outreach-message](#create-outreach-message)
+15. [create-prospect-sheet](#create-prospect-sheet)
 
 ---
 
@@ -273,6 +275,102 @@ The function automatically saves all podcasts to a central `podcasts` table, mak
 
 ---
 
+## backfill-prospect-podcasts
+
+Backfills podcast matches for an existing prospect dashboard using vector search and AI filtering.
+
+### Endpoint
+- **Path**: `/functions/v1/backfill-prospect-podcasts`
+- **Method**: `POST`
+- **Auth**: Service role required
+
+### Request Body
+```json
+{
+  "prospectId": "string"              // Required: Prospect dashboard ID
+}
+```
+
+### Response
+```json
+{
+  "success": true,
+  "prospect_name": "John Smith",
+  "total_matched": 15,
+  "new_added": 12,
+  "duplicates_skipped": 3,
+  "ai_filter_applied": true,
+  "matches": [
+    {
+      "podcast_name": "Tech Talk Weekly",
+      "podscan_id": "podcast_123",
+      "relevance_score": 9,            // AI relevance score (5-10)
+      "relevance_reason": "Strong alignment between guest's SaaS expertise and podcast focus on B2B technology"
+    }
+  ],
+  "duration_seconds": 12.5
+}
+```
+
+### Error Responses
+```json
+// 400 Bad Request
+{
+  "error": "prospectId is required"
+}
+
+// 400 Bad Request
+{
+  "error": "Request body must be valid JSON"
+}
+
+// 404 Not Found
+{
+  "error": "Prospect not found"
+}
+
+// 500 Internal Server Error
+{
+  "error": "Failed to generate embedding"
+}
+```
+
+### Features
+- **Auto-Enrichment**: Extracts industry, expertise, and topics from prospect bio using Claude Haiku when structured fields are missing
+- **Vector Search**: Generates OpenAI embeddings from prospect profile and searches for semantically similar podcasts (threshold 0.30, up to 50 candidates)
+- **AI Scoring**: Uses Claude Sonnet to score and filter candidates on a 0-10 rubric; only podcasts scoring 5+ are included
+- **Feedback-Aware**: Excludes previously rejected podcasts and boosts scoring for podcasts similar to approved ones
+- **Deduplication**: Reads existing podcast IDs from the Google Sheet before appending to prevent duplicates
+- **Sheet Export**: Automatically appends new matches to the prospect's Google Sheet via `append-prospect-sheet`
+- **Timeout Safety**: 45-second safety margin with AI filter time-boxing to avoid Supabase 60-second edge function limit
+
+### Processing Pipeline
+1. Fetch prospect from `prospect_dashboards` table
+2. Auto-enrich missing structured fields (industry, expertise, topics) from bio via Claude Haiku
+3. Query rejected/approved podcast feedback for context
+4. Build rich text profile from structured fields and bio
+5. Generate embedding via OpenAI `text-embedding-3-small` (1536 dimensions)
+6. Vector search via `search_similar_podcasts` RPC (excludes rejected podcasts)
+7. Score candidates with Claude Sonnet (5+ threshold, top 20)
+8. Deduplicate against existing sheet podcasts
+9. Append new matches to Google Sheet
+
+### Required Environment Variables
+- `OPENAI_API_KEY` - Required for embedding generation
+- `ANTHROPIC_API_KEY` - Optional but recommended for AI filtering and enrichment
+
+### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/backfill-prospect-podcasts \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prospectId": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
+
+---
+
 ## campaign-reply-webhook
 
 Webhook endpoint for processing Email Bison campaign replies and interested leads.
@@ -417,6 +515,89 @@ Checks Google Search Console indexing status for blog posts.
 
 ### URL Requirements
 URLs must match the format: `https://getonapod.com/blog/*`
+
+---
+
+## classify-reply
+
+Classifies email campaign replies as SALES, FULFILLMENT, or OTHER using Claude Haiku AI.
+
+### Endpoint
+- **Path**: `/functions/v1/classify-reply`
+- **Method**: `POST`
+- **Auth**: Service role required
+
+### Request Body
+```json
+{
+  "reply_id": "string"                // Required: Campaign reply UUID from database
+}
+```
+
+### Response
+```json
+{
+  "success": true,
+  "data": {
+    "reply_id": "uuid-string",
+    "classification": "sales",         // "sales", "fulfillment", or "other"
+    "confidence": "high",              // "high", "medium", or "low"
+    "reason": "Prospect is asking about GOAP pricing and services"
+  }
+}
+```
+
+### Error Responses
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "reply_id is required"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Reply not found: uuid-string"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "ANTHROPIC_API_KEY not configured"
+}
+```
+
+### Features
+- **Thread Context**: Fetches the full email conversation thread from Bison API for better classification accuracy
+- **AI Classification**: Uses Claude Haiku 4.5 for fast, cost-efficient classification
+- **Three Categories**:
+  - **SALES**: Prospect responding to GOAP's sales outreach (pricing, services, hiring)
+  - **FULFILLMENT**: Podcast host/producer responding to a guest pitch (scheduling, booking, guest info)
+  - **OTHER**: Auto-replies, unsubscribes, bounces, spam, irrelevant
+- **Confidence Scoring**: Returns high/medium/low confidence level
+- **Fallback Parsing**: If JSON parsing fails, falls back to keyword extraction with low confidence
+- **Database Updates**: Saves classification, confidence, reason, and timestamp to `campaign_replies` table
+
+### Classification Fields Updated
+- `lead_type` - Classification result (sales/fulfillment/other)
+- `ai_confidence` - Confidence level (high/medium/low)
+- `ai_classified_at` - ISO timestamp of classification
+- `ai_reason` - Brief explanation of classification
+
+### Required Environment Variables
+- `ANTHROPIC_API_KEY` - Required for Claude Haiku classification
+- `EMAIL_BISON_API_TOKEN` - Optional, used for fetching full thread context
+
+### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/classify-reply \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reply_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
 
 ---
 

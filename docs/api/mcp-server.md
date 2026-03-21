@@ -32,7 +32,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 # Application Configuration  
 APP_URL=https://authoritybuilt.com
 
-# AI Service Keys (Required for match_podcasts_for_prospect)
+# AI Service Keys (Required for match_podcasts)
 OPENAI_API_KEY=your-openai-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 ```
@@ -92,6 +92,12 @@ Use when user says things like "create a new prospect called NAME" or "add prosp
 | `bio` | `string` | ❌ | Bio/background information (optional) |
 | `profile_picture_url` | `string` | ❌ | Profile picture URL (optional) |
 | `google_sheet_url` | `string` | ❌ | Google Sheet URL to link (optional) |
+| `industry` | `string` | ❌ | Industry vertical e.g. SaaS, Healthcare, Finance (optional) |
+| `expertise` | `string[]` | ❌ | Areas of expertise for better podcast matching (optional) |
+| `topics` | `string[]` | ❌ | Topics the prospect can speak on (optional) |
+| `target_audience` | `string` | ❌ | Description of the prospect's target audience (optional) |
+| `company` | `string` | ❌ | Company name (optional) |
+| `title` | `string` | ❌ | Job title (optional) |
 
 #### Input Schema
 ```json
@@ -103,7 +109,7 @@ Use when user says things like "create a new prospect called NAME" or "add prosp
       "description": "Prospect full name"
     },
     "bio": {
-      "type": "string", 
+      "type": "string",
       "description": "Bio/background (optional)"
     },
     "profile_picture_url": {
@@ -113,6 +119,32 @@ Use when user says things like "create a new prospect called NAME" or "add prosp
     "google_sheet_url": {
       "type": "string",
       "description": "Google Sheet URL to link (optional)"
+    },
+    "industry": {
+      "type": "string",
+      "description": "Industry vertical e.g. SaaS, Healthcare, Finance (optional)"
+    },
+    "expertise": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Areas of expertise for better podcast matching (optional)"
+    },
+    "topics": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Topics the prospect can speak on (optional)"
+    },
+    "target_audience": {
+      "type": "string",
+      "description": "Description of the prospect target audience (optional)"
+    },
+    "company": {
+      "type": "string",
+      "description": "Company name (optional)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Job title (optional)"
     }
   },
   "required": ["prospect_name"]
@@ -143,13 +175,15 @@ Use when user says things like "create a new prospect called NAME" or "add prosp
 
 #### Implementation Details
 - Generates unique 8-character alphanumeric slug for dashboard URL
-- Creates record in `prospect_dashboards` table with `content_ready=false`
+- Creates record in `prospect_dashboards` table with `content_ready=true` (dashboard is published immediately)
 - Extracts spreadsheet ID from Google Sheets URLs automatically
-- Sets dashboard as unpublished by default (use `enable_prospect_dashboard` to publish)
+- Stores structured profile fields (`industry`, `expertise`, `topics`, `target_audience`, `company`, `title`) for richer podcast matching
 
 ---
 
-### 2. `enable_prospect_dashboard`
+### 2. `enable_prospect_dashboard` (NOT REGISTERED)
+
+> **Note:** This tool exists as implementation code in `src/tools/enable-dashboard.ts` but is **not registered** in `index.ts` and therefore **not available** via MCP. The `create_prospect` tool now sets `content_ready=true` by default, making this tool unnecessary for most workflows. It is documented here for reference only.
 
 Enables/publishes a prospect dashboard so the prospect can view it. Sets `content_ready=true` and optionally adds a personalized tagline.
 
@@ -173,7 +207,7 @@ Enable/publish a prospect dashboard so the prospect can view it. Sets content_re
       "description": "Prospect UUID from create_prospect"
     },
     "tagline": {
-      "type": "string", 
+      "type": "string",
       "description": "Optional personalized tagline for the dashboard"
     }
   },
@@ -206,12 +240,12 @@ Enable/publish a prospect dashboard so the prospect can view it. Sets content_re
 
 ---
 
-### 3. `match_podcasts_for_prospect` 
+### 3. `match_podcasts`
 
-Advanced AI-powered podcast matching using semantic search across 7,884 podcasts. Analyzes prospect profiles and returns ranked podcast recommendations with AI-quality filtering.
+Advanced AI-powered podcast matching using semantic search. Analyzes prospect profiles and returns ranked podcast recommendations with AI-quality filtering.
 
 #### Description
-Find matching podcasts for a prospect using AI-powered semantic search. Analyzes prospect name and bio, generates an embedding, and searches 7,884 podcasts across 67 categories for best matches. Returns podcasts ranked by similarity score with AI quality filtering. Guarantees at least 15 results.
+Match a prospect to relevant podcasts using AI-powered semantic search. Finds podcasts that align with the prospect's expertise, topics, and audience. When `prospect_id` is provided, structured profile fields (industry, expertise, topics, etc.) are fetched from the database for richer embeddings, and previously rejected podcasts are excluded from results. Guarantees at least 15 results.
 
 #### Parameters
 
@@ -219,11 +253,11 @@ Find matching podcasts for a prospect using AI-powered semantic search. Analyzes
 |-----------|------|----------|---------|-------------|
 | `prospect_name` | `string` | ✅ | - | Prospect's full name |
 | `prospect_bio` | `string` | ❌ | - | Prospect bio/background - more detailed = better matches |
-| `match_threshold` | `number` | ❌ | `0.2` | Minimum similarity score (0.0-1.0) |
+| `prospect_id` | `string` | ❌ | - | Prospect dashboard UUID - enables feedback exclusion and structured field lookup |
+| `match_threshold` | `number` | ❌ | `0.30` | Minimum similarity score (0.0-1.0) |
 | `match_count` | `number` | ❌ | `50` | Maximum results to return (1-100) |
-| `prospect_id` | `string` | ❌ | - | UUID from create_prospect (required for export) |
-| `export_to_sheet` | `boolean` | ❌ | `false` | Export results to linked Google Sheet |
 | `use_ai_filter` | `boolean` | ❌ | `true` | Use AI quality filtering (recommended) |
+| `export_to_sheet` | `boolean` | ❌ | `false` | Export results to linked Google Sheet |
 
 #### Input Schema
 ```json
@@ -232,31 +266,31 @@ Find matching podcasts for a prospect using AI-powered semantic search. Analyzes
   "properties": {
     "prospect_name": {
       "type": "string",
-      "description": "Prospect full name (required)"
+      "description": "Prospect full name"
     },
     "prospect_bio": {
       "type": "string",
-      "description": "Prospect bio/background - more detailed = better matches (optional)"
-    },
-    "match_threshold": {
-      "type": "number",
-      "description": "Minimum similarity (0.0-1.0). Default: 0.2"
-    },
-    "match_count": {
-      "type": "number", 
-      "description": "Max results. Default: 50, Max: 100"
+      "description": "Bio/background for matching (optional)"
     },
     "prospect_id": {
       "type": "string",
-      "description": "UUID from create_prospect (for export)"
+      "description": "Prospect dashboard UUID - enables feedback exclusion and structured field lookup (optional)"
     },
-    "export_to_sheet": {
-      "type": "boolean",
-      "description": "Export to Google Sheets. Default: false"
+    "match_threshold": {
+      "type": "number",
+      "description": "Minimum similarity threshold 0-1 (default: 0.30)"
+    },
+    "match_count": {
+      "type": "number",
+      "description": "Maximum number of matches to return (default: 50)"
     },
     "use_ai_filter": {
       "type": "boolean",
-      "description": "Use AI to filter for quality/relevance. Default: true (recommended)"
+      "description": "Use AI to filter and rank results (default: true)"
+    },
+    "export_to_sheet": {
+      "type": "boolean",
+      "description": "Export matches to the prospect Google Sheet (default: false)"
     }
   },
   "required": ["prospect_name"]
@@ -286,7 +320,7 @@ Find matching podcasts for a prospect using AI-powered semantic search. Analyzes
       }
     ],
     "total_matches": 42,
-    "threshold_used": 0.2,
+    "threshold_used": 0.30,
     "exported_to_sheet": true,
     "sheet_url": "https://docs.google.com/spreadsheets/d/xyz123"
   }
@@ -309,16 +343,21 @@ Find matching podcasts for a prospect using AI-powered semantic search. Analyzes
 - Optimizes text representation for semantic search accuracy
 
 **AI Quality Filtering:**
-- Uses Anthropic Claude Sonnet for podcast relevance evaluation
+- Uses Anthropic Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) for podcast relevance evaluation
 - Scores podcasts 0-10 based on topical alignment, audience match, format fit
 - Only returns podcasts scoring 5+ for quality assurance
 - Provides specific relevance explanations for each match
 
+**Feedback Exclusion:**
+- When `prospect_id` is provided, queries `prospect_podcast_feedback` table
+- Excludes podcasts previously rejected by the prospect
+- Fetches structured profile fields for richer embeddings
+
 **Semantic Search:**
-- Searches database of 7,884 podcasts across 67 categories  
-- Uses PostgreSQL pgvector for cosine similarity search
-- Guarantees minimum 15 results through fallback search strategies
-- Combines similarity scores with AI relevance ratings
+- Searches the full podcast database using PostgreSQL pgvector for cosine similarity
+- Guarantees minimum 15 results through fallback search strategies (lowers threshold to -1.0 if needed)
+- When AI filtering is enabled, fetches up to 100 candidates for evaluation
+- Combines similarity scores with AI relevance ratings for final ranking
 
 #### Google Sheets Export
 
@@ -350,6 +389,12 @@ CREATE TABLE prospect_dashboards (
   spreadsheet_url TEXT,
   personalized_tagline TEXT,
   content_ready BOOLEAN DEFAULT FALSE,
+  prospect_industry TEXT,
+  prospect_expertise TEXT[],
+  prospect_topics TEXT[],
+  prospect_target_audience TEXT,
+  prospect_company TEXT,
+  prospect_title TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -367,8 +412,22 @@ CREATE TABLE prospect_podcast_links (
 );
 ```
 
+#### `prospect_podcast_feedback`
+```sql
+CREATE TABLE prospect_podcast_feedback (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prospect_dashboard_id UUID REFERENCES prospect_dashboards(id),
+  podcast_id UUID REFERENCES podcasts(id),
+  podcast_name TEXT,
+  status TEXT, -- 'approved' | 'rejected'
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
 #### `podcasts`
-Existing table with 7,884 podcast records including:
+Existing table with podcast records including:
 - `id`, `podscan_id`, `podcast_name`, `podcast_description`
 - `podcast_categories` (JSONB)
 - `audience_size`, `embedding` (vector)
@@ -492,11 +551,11 @@ Add to Claude Code settings:
 
 ### Response Times
 - `create_prospect`: ~200-500ms
-- `enable_prospect_dashboard`: ~100-300ms
-- `match_podcasts_for_prospect`: ~2-15s (depends on AI filtering)
+- `enable_prospect_dashboard`: ~100-300ms (not registered; call via Supabase directly)
+- `match_podcasts`: ~2-15s (depends on AI filtering)
 
 ### Data Limits
-- **Podcast Database**: 7,884 podcasts across 67 categories
+- **Podcast Database**: Growing database of podcasts across many categories (check `podcasts` table for current count)
 - **Search Results**: Maximum 100 matches per request
 - **Guaranteed Minimum**: 15 results (with fallback strategies)
 - **Bio Length**: Truncated at 500 characters for embedding
@@ -571,6 +630,6 @@ src/
 
 ---
 
-**Last Updated**: February 2026  
+**Last Updated**: March 2026  
 **Version**: 1.0.0  
 **License**: Proprietary - Authority Built

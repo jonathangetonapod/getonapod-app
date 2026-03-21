@@ -51,11 +51,12 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | `/create-client-account` | POST | Full onboarding | `{name, email, bio, ...}` |
 | `/create-client-google-sheet` | POST | Create spreadsheet | `{clientId, clientName}` |
 
-### 🎯 Prospect Management  
+### 🎯 Prospect Management
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
 | `/create-prospect-sheet` | POST | Create dashboard | `{prospectName, podcasts[]}` |
 | `/append-prospect-sheet` | POST | Add podcasts | `{dashboardId, podcasts[]}` |
+| `/backfill-prospect-podcasts` | POST | Vector search + AI match | `{prospect_id}` |
 
 ### 🤖 AI Analysis
 | Endpoint | Method | Purpose | Body |
@@ -63,6 +64,8 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | `/analyze-podcast-fit` | POST | Fit analysis | `{podcastName, clientBio, ...}` |
 | `/analyze-sales-call` | POST | Call analysis | `{sales_call_id}` |
 | `/score-podcast-compatibility` | POST | Compatibility score | `{clientBio, podcasts[]}` |
+| `/qa-review-podcasts` | POST | QA score podcasts (max 10) | `{prospect_bio, podcasts[]}` |
+| `/classify-reply` | POST | Classify reply type | `{reply_id}` |
 
 ### 🛒 E-commerce
 | Endpoint | Method | Purpose | Body |
@@ -79,6 +82,20 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | `/create-outreach-message` | POST | Store messages | `{client_id, email_1, ...}` |
 | `/create-bison-lead` | POST | Create CRM lead | `{message_id}` |
 | `/send-reply` | POST | Send email reply | `{bisonReplyId, message}` |
+| `/generate-reply` | POST | AI-generate reply | `{bisonReplyId, leadType?, customPrompt?}` |
+| `/delete-reply` | POST | Delete reply (Bison + DB) | `{reply_id}` |
+| `/fetch-and-classify-replies` | POST | Bulk fetch + classify | `{}` |
+
+### 📄 Content Generation
+| Endpoint | Method | Purpose | Body |
+|----------|--------|---------|------|
+| `/generate-blog-content` | POST | AI blog content | `{topic, ...}` (Bearer auth) |
+| `/generate-client-bio` | POST | AI client bio | `{clientName, ...}` |
+| `/generate-media-kit-doc` | POST | Google Doc media kit | `{prospect_id}` |
+| `/generate-podcast-queries` | POST | Search queries | `{clientBio, ...}` |
+| `/generate-podcast-summary` | POST | Podcast summary | `{podcastName, ...}` |
+| `/generate-tagline` | POST | AI tagline | `{prospect_name, bio}` |
+| `/generate-guest-resource` | POST | Guest resource | `{type, topic, ...}` |
 
 ### 🔄 Data Sync
 | Endpoint | Method | Purpose | Body |
@@ -100,16 +117,16 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 
 ## 🗄️ Database Quick Access
 
-### Core Tables
+### Core Tables (34 total)
 ```sql
 -- Clients & Authentication
-clients                     -- Client accounts
-client_portal_sessions      -- Portal sessions  
+clients                     -- Client accounts + dashboard settings
+client_portal_sessions      -- Portal sessions
 client_portal_tokens        -- Magic link tokens
 
 -- Bookings & Podcasts
 bookings                    -- Podcast placements
-podcasts                    -- Central cache (7,884)
+podcasts                    -- Central cache with vector embeddings
 premium_podcasts            -- E-commerce inventory
 
 -- E-commerce
@@ -117,14 +134,29 @@ customers, orders           -- Purchase tracking
 order_items                 -- Order line items
 booking_addons              -- Addon services
 
--- Communication
+-- Communication & Outreach
 email_logs                  -- Email delivery
 campaign_replies            -- Outreach responses
-outreach_messages           -- Message templates
+outreach_messages           -- Approval queue for outreach emails
+podcast_outreach_actions    -- Outreach sent/skipped tracking
 
--- Content & Analytics
+-- AI Analysis
+client_podcast_analyses     -- Client-specific AI analysis
+prospect_podcast_analyses   -- Prospect-specific AI analysis
+podcast_fit_analyses        -- General AI analysis cache
+
+-- Prospect System
+prospect_dashboards         -- Prospect profiles + structured fields
+prospect_dashboard_podcasts -- Matched podcasts per prospect
+
+-- Client Dashboard
+client_dashboard_podcasts   -- Cached podcasts from Google Sheets
+client_podcast_feedback     -- Client approval/rejection
+
+-- Content & Resources
 blog_posts                  -- SEO content
-podcast_fit_analyses        -- AI analysis cache
+guest_resources             -- Educational content for guests
+guest_resource_views        -- Resource engagement tracking
 ```
 
 ### Common Queries
@@ -147,24 +179,31 @@ WHERE customer_email = 'email@example.com';
 
 ## 🤖 MCP Server (AI Assistant)
 
-### Tools
+### Registered Tools
 | Tool | Purpose | Required Params |
 |------|---------|-----------------|
 | `create_prospect` | Create prospect dashboard | `prospect_name` |
-| `enable_prospect_dashboard` | Publish dashboard | `prospect_id` |
-| `match_podcasts_for_prospect` | AI podcast matching | `prospect_name` |
+| `match_podcasts` | AI podcast matching (0.30 threshold) | `prospect_name` |
+
+> **Note**: `enable_prospect_dashboard` exists in code but is not registered in the MCP server.
 
 ### Usage
 ```javascript
-// Create prospect
+// Create prospect (with optional structured fields)
 await mcp.createProspect({
   prospect_name: "Sarah Johnson",
-  bio: "Marketing expert..."
+  bio: "Marketing expert...",
+  industry: "Marketing",
+  expertise: ["content marketing", "SEO"],
+  topics: ["digital marketing", "brand building"],
+  target_audience: "CMOs and marketing directors",
+  company: "Growth Co",
+  title: "VP of Marketing"
 })
 
 // Match podcasts with AI
-await mcp.matchPodcastsForProspect({
-  prospect_name: "Sarah Johnson", 
+await mcp.matchPodcasts({
+  prospect_name: "Sarah Johnson",
   prospect_bio: "15 years marketing experience...",
   match_count: 50,
   export_to_sheet: true
@@ -262,13 +301,24 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```bash
 STRIPE_SECRET_KEY=sk_live_...
 RESEND_API_KEY=re_...
-BISON_API_TOKEN=...
+EMAIL_BISON_API_TOKEN=...
 ```
 
 ### External APIs
 ```bash
 PODSCAN_API_KEY=...
 FATHOM_API_KEY=...
+HEYGEN_API_KEY=...
+```
+
+### Frontend (VITE_ prefix)
+```bash
+VITE_STRIPE_PUBLISHABLE_KEY=pk_...
+VITE_HEYGEN_API_KEY=...
+VITE_ANTHROPIC_API_KEY=sk-ant-...
+VITE_VIDEO_SERVICE_URL=...
+VITE_SENTRY_DSN=...
+VITE_APP_VERSION=...
 ```
 
 ## 🚨 Error Handling
@@ -367,3 +417,4 @@ SELECT * FROM email_logs WHERE created_at > NOW() - INTERVAL '1 hour';
 
 **📚 Full Documentation**: See individual files for complete details
 **🔗 Base URL**: `https://your-project.supabase.co/functions/v1/`
+**📅 Last Updated**: March 2026 | **50 Edge Functions** | **34 Database Tables** | **2 MCP Tools**

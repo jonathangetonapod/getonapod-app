@@ -7,17 +7,21 @@ This document provides comprehensive documentation for all Supabase Edge Functio
 - [Delete Functions](#delete-functions)
   - [delete-outreach-podcast](#delete-outreach-podcast)
   - [delete-podcast-from-sheet](#delete-podcast-from-sheet)
+  - [delete-reply](#delete-reply)
 - [Export Functions](#export-functions)
   - [export-to-google-sheets](#export-to-google-sheets)
 - [Fetch Functions](#fetch-functions)
+  - [fetch-and-classify-replies](#fetch-and-classify-replies)
   - [fetch-email-thread](#fetch-email-thread)
   - [fetch-podscan-email](#fetch-podscan-email)
 - [Generate Functions](#generate-functions)
   - [generate-blog-content](#generate-blog-content)
   - [generate-client-bio](#generate-client-bio)
   - [generate-guest-resource](#generate-guest-resource)
+  - [generate-media-kit-doc](#generate-media-kit-doc)
   - [generate-podcast-queries](#generate-podcast-queries)
   - [generate-podcast-summary](#generate-podcast-summary)
+  - [generate-reply](#generate-reply)
   - [generate-tagline](#generate-tagline)
 - [Get Functions](#get-functions)
   - [get-client-bookings](#get-client-bookings)
@@ -138,6 +142,82 @@ curl -X POST https://your-project.supabase.co/functions/v1/delete-podcast-from-s
 
 ---
 
+### delete-reply
+
+Deletes a campaign reply from the Email Bison API and the local database.
+
+**Endpoint:** `/functions/v1/delete-reply`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "reply_id": "string"
+}
+```
+
+**Parameters:**
+- `reply_id` (string, required): The campaign reply UUID from the local database
+
+#### Response Format
+```json
+{
+  "success": true,
+  "data": {
+    "reply_id": "uuid-string",
+    "bison_deleted": true              // Whether the reply was also deleted from Bison
+  }
+}
+```
+
+**Error Responses:**
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "reply_id is required"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Reply not found: uuid-string"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Database delete failed: error message"
+}
+```
+
+#### Description
+1. Fetches the reply record from the `campaign_replies` table to get the `bison_reply_id`
+2. If a `bison_reply_id` exists and `EMAIL_BISON_API_TOKEN` is configured, sends a DELETE request to the Bison API
+3. Deletes the reply from the local `campaign_replies` table
+4. Returns success with a flag indicating whether Bison deletion also succeeded
+
+#### Features
+- **Dual Deletion**: Removes from both Bison API and local database
+- **Graceful Bison Failure**: If Bison delete fails, still proceeds with local database deletion
+- **Audit Logging**: Logs deletion details for each step
+
+#### Required Environment Variables
+- `EMAIL_BISON_API_TOKEN` - Optional, for Bison API deletion
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/delete-reply \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reply_id": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
+
+---
+
 ## Export Functions
 
 ### export-to-google-sheets
@@ -236,6 +316,82 @@ curl -X POST https://your-project.supabase.co/functions/v1/export-to-google-shee
 ---
 
 ## Fetch Functions
+
+### fetch-and-classify-replies
+
+Bulk fetches interested replies from the Bison API, inserts new ones into the database, classifies all unclassified replies with AI, and updates thread status for already-classified replies.
+
+**Endpoint:** `/functions/v1/fetch-and-classify-replies`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+No request body required. The function fetches all interested replies from the Bison API automatically.
+
+#### Response Format
+```json
+{
+  "success": true,
+  "data": {
+    "total_interested": 25,            // Total interested replies from Bison
+    "new_replies": 8,                  // New replies inserted into database
+    "classified": 12,                  // Replies classified with AI this run
+    "skipped": 5,                      // Already-classified replies (thread status updated only)
+    "results": [
+      {
+        "id": "uuid-string",
+        "email": "host@podcast.com",
+        "classification": "fulfillment",
+        "confidence": "high",
+        "awaiting_reply": true,
+        "reason": "Podcast host is asking about scheduling the guest interview"
+      }
+    ]
+  }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": "EMAIL_BISON_API_TOKEN not configured"
+}
+```
+
+#### Description
+1. Fetches all interested replies from Bison API (`status=interested&folder=inbox`)
+2. For each reply, checks if it already exists in the local `campaign_replies` table
+3. **Already classified**: Fetches thread from Bison, updates `awaiting_reply` status and thread metadata only
+4. **Exists but unclassified**: Fetches thread, classifies with Claude Haiku, updates classification and thread status
+5. **Brand new**: Inserts into database with status `new`, then fetches thread, classifies, and updates
+
+#### Features
+- **Full Pipeline**: Combines fetch, insert, and classify into a single operation
+- **Thread Status Tracking**: Determines who sent the last message (awaiting reply from us or from them)
+- **AI Classification**: Uses Claude Haiku 4.5 with three categories (SALES/FULFILLMENT/OTHER)
+- **Idempotent**: Safe to call repeatedly; already-classified replies are skipped with only thread status updated
+- **Thread Context**: Fetches full conversation threads from Bison for accurate classification
+- **Fallback Parsing**: Handles malformed AI responses with keyword-based extraction
+
+#### Thread Status Fields Updated
+- `awaiting_reply` - Boolean: true if the lead replied last (we owe them a reply)
+- `last_reply_from` - Name of the person who sent the last message
+- `thread_checked_at` - ISO timestamp of last thread status check
+- `thread_message_count` - Total messages in the thread
+
+#### Required Environment Variables
+- `ANTHROPIC_API_KEY` - Required for AI classification
+- `EMAIL_BISON_API_TOKEN` - Required for fetching replies from Bison
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/fetch-and-classify-replies \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json"
+```
+
+---
 
 ### fetch-email-thread
 
@@ -355,9 +511,9 @@ curl -X POST https://your-project.supabase.co/functions/v1/fetch-podscan-email \
 
 Generates SEO-optimized blog content using Claude AI for the Get On A Pod website.
 
-**Endpoint:** `/functions/v1/generate-blog-content`  
-**Method:** `POST`  
-**Authentication:** Anthropic API key required via environment variables
+**Endpoint:** `/functions/v1/generate-blog-content`
+**Method:** `POST`
+**Authentication:** Bearer token required (`Authorization: Bearer {token}`). The function verifies the user via Supabase Auth (`auth.getUser`). Returns 401 if missing or invalid.
 
 #### Request Body
 ```json
@@ -404,10 +560,31 @@ Generates SEO-optimized blog content using Claude AI for the Get On A Pod websit
 - Professional, encouraging tone
 - Call-to-action linking to Premium Podcast Placements
 
+#### Error Responses
+```json
+// 401 Unauthorized
+{
+  "success": false,
+  "error": "Missing authorization header"
+}
+
+// 401 Unauthorized
+{
+  "success": false,
+  "error": "Unauthorized"
+}
+
+// 400 Bad Request
+{
+  "success": false,
+  "error": "Topic is required"
+}
+```
+
 #### Example Request
 ```bash
 curl -X POST https://your-project.supabase.co/functions/v1/generate-blog-content \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Authorization: Bearer YOUR_USER_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "5 Mistakes to Avoid in Podcast Interviews",
@@ -557,6 +734,115 @@ curl -X POST https://your-project.supabase.co/functions/v1/generate-guest-resour
     "topic": "Podcast Interview Follow-up Best Practices",
     "category": "promotion",
     "resourceType": "checklist"
+  }'
+```
+
+---
+
+### generate-media-kit-doc
+
+Generates a professionally formatted Google Doc media kit for a prospect using AI-generated content and Google Docs API.
+
+**Endpoint:** `/functions/v1/generate-media-kit-doc`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "dashboardId": "string",            // Required: Prospect dashboard ID
+  "prospectName": "string",           // Required: Prospect name
+  "prospectBio": "string",            // Required: Prospect biography
+  "prospectTitle": "string",          // Optional: Job title
+  "prospectCompany": "string",        // Optional: Company name
+  "prospectIndustry": "string",       // Optional: Industry
+  "prospectExpertise": ["string"],    // Optional: Areas of expertise
+  "prospectTopics": ["string"],       // Optional: Speaking topics
+  "prospectTargetAudience": "string", // Optional: Target audience
+  "prospectImageUrl": "string",       // Optional: Prospect photo URL
+  "dashboardSlug": "string"           // Optional: Dashboard slug for linking
+}
+```
+
+#### Response Format
+```json
+{
+  "success": true,
+  "docUrl": "https://docs.google.com/document/d/abc123/edit",
+  "docId": "abc123"
+}
+```
+
+**Error Responses:**
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "dashboardId, prospectName, and prospectBio are required"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "ANTHROPIC_API_KEY not configured"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Failed to create Google Doc: error details"
+}
+```
+
+#### Description
+1. Generates media kit content (about bio, credentials, speaking topics) using Claude Haiku 4.5
+2. Authenticates with Google using service account with domain-wide delegation
+3. Creates a blank Google Doc with a branded title
+4. Inserts structured, formatted content using Google Docs batch update API:
+   - GOAP logo and prospect photo (with graceful failure if images don't load)
+   - Title, name, and subtitle
+   - About section with multi-paragraph bio
+   - Key Credentials as bullet points
+   - Speaking Topics with titles and descriptions
+   - Podcast Opportunities section with dashboard link
+   - About Get On A Pod section
+   - How It Works (5-step process)
+   - What Sets Us Apart differentiators
+   - Call-to-action with dashboard link
+   - Professional footer
+5. Sets the document to public read access (anyone with link)
+6. Saves the document URL to the `prospect_dashboards` table
+
+#### Document Sections
+- **Header**: GOAP logo, title "PODCAST GUEST MEDIA KIT"
+- **Prospect Profile**: Name, title, company, photo
+- **About**: AI-generated 2-3 paragraph professional bio
+- **Key Credentials**: 5-7 bullet points of achievements
+- **Speaking Topics**: 4-6 topics with titles and descriptions
+- **Podcast Opportunities**: Link to personalized dashboard
+- **About GOAP**: Agency description
+- **How It Works**: 5-step process breakdown
+- **What Sets Us Apart**: 5 differentiators as bullets
+- **CTA**: Dashboard link and contact info
+- **Footer**: Branding and tagline
+
+#### Required Environment Variables
+- `ANTHROPIC_API_KEY` - Required for content generation
+- `GOOGLE_SERVICE_ACCOUNT_JSON` - Required for Google API access
+- `GOOGLE_WORKSPACE_USER_EMAIL` - Required for domain-wide delegation
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/generate-media-kit-doc \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dashboardId": "123e4567-e89b-12d3-a456-426614174000",
+    "prospectName": "Sarah Martinez",
+    "prospectBio": "Digital marketing consultant with 15 years of experience...",
+    "prospectTitle": "CEO",
+    "prospectCompany": "GrowthLab",
+    "dashboardSlug": "abc12345"
   }'
 ```
 
@@ -714,6 +1000,97 @@ curl -X POST https://your-project.supabase.co/functions/v1/generate-podcast-summ
     "rating": 4.6,
     "categories": ["Marketing", "Business"],
     "publisher_name": "Neil Patel & Eric Siu"
+  }'
+```
+
+---
+
+### generate-reply
+
+Uses Claude Sonnet to generate contextual email reply drafts based on the full email thread and lead classification.
+
+**Endpoint:** `/functions/v1/generate-reply`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "bisonReplyId": "number",           // Required: Bison reply ID for thread fetching
+  "name": "string",                   // Optional: Contact name
+  "email": "string",                  // Optional: Contact email
+  "company": "string",               // Optional: Contact company
+  "leadType": "string",              // Optional: "sales", "fulfillment", or "other"
+  "aiReason": "string",              // Optional: AI classification note for context
+  "customPrompt": "string"           // Optional: Override the default prompt entirely
+}
+```
+
+#### Response Format
+```json
+{
+  "success": true,
+  "data": {
+    "reply": "Thanks for your interest! We'd love to set up a quick 15-minute call to discuss how we can help you get booked on top podcasts...",
+    "defaultPrompt": "You are writing an email reply on behalf of GOAP..."
+  }
+}
+```
+
+**Error Responses:**
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "bisonReplyId is required"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Failed to fetch thread: 404"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "ANTHROPIC_API_KEY not configured"
+}
+```
+
+#### Description
+1. Fetches the full conversation thread from the Bison API using the reply ID
+2. Builds a context-aware prompt based on the lead type:
+   - **Sales**: Focus on moving prospect toward booking a call or learning about GOAP services
+   - **Fulfillment**: Focus on coordinating scheduling and providing guest info to podcast host
+   - **Other**: Generic contextual response
+3. Calls Claude Sonnet to generate a natural, concise reply
+4. Returns the generated reply text along with the default prompt used (for customization)
+
+#### Features
+- **Thread-Aware**: Reads full email conversation for context-appropriate replies
+- **Lead-Type Routing**: Different reply strategies based on classification (sales vs fulfillment)
+- **Custom Prompts**: Supports overriding the default prompt with a custom one
+- **Tone Matching**: AI matches the formality level of the conversation
+- **Clean Output**: Generates plain text only, no HTML/markdown, no signatures, no generic filler phrases
+- **Prompt Transparency**: Returns the default prompt so users can customize and regenerate
+
+#### Required Environment Variables
+- `ANTHROPIC_API_KEY` - Required for Claude Sonnet generation
+- `EMAIL_BISON_API_TOKEN` - Required for fetching thread context
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/generate-reply \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bisonReplyId": 12345,
+    "name": "Jane Doe",
+    "email": "jane@podcast.com",
+    "company": "Tech Podcast Network",
+    "leadType": "fulfillment",
+    "aiReason": "Host is asking about guest scheduling"
   }'
 ```
 
