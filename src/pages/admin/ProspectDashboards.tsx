@@ -392,16 +392,21 @@ export default function ProspectDashboards() {
       const ids = Array.from(selectedIds)
       // Delete each prospect via edge function (cascade deletes related data)
       const accessToken = (await supabase.auth.getSession()).data.session?.access_token
-      await Promise.all(ids.map(id =>
-        fetch(`${SUPABASE_URL}/functions/v1/delete-prospect`, {
+      const results = await Promise.all(ids.map(async (id) => {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-prospect`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ prospect_id: id })
+          body: JSON.stringify({ prospect_id: id }),
         })
-      ))
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}))
+          throw new Error(err.error || `Failed to delete ${id}`)
+        }
+        return response.json()
+      }))
       setDashboards(prev => prev.filter(d => !selectedIds.has(d.id)))
       if (selectedDashboard && selectedIds.has(selectedDashboard.id)) {
         setSelectedDashboard(null)

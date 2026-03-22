@@ -1,6 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+/** Escape special Supabase/PostgREST filter characters in user input */
+function sanitizeSearch(input: string): string {
+  return input.replace(/[%_\\]/g, '\\$&')
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -97,7 +102,8 @@ serve(async (req) => {
     }
 
     if (search) {
-      query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%,excerpt.ilike.%${search}%`)
+      const safe = sanitizeSearch(search)
+      query = query.or(`title.ilike.%${safe}%,content.ilike.%${safe}%,excerpt.ilike.%${safe}%`)
     }
 
     query = query

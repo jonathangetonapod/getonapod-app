@@ -241,6 +241,7 @@ export default function ProspectView() {
         headers: {
           'Content-Type': 'application/json',
           'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
           spreadsheetId: dashboard.spreadsheet_id,
@@ -347,6 +348,7 @@ export default function ProspectView() {
           headers: {
             'Content-Type': 'application/json',
             'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             prospectName: dashboard.prospect_name,
@@ -477,6 +479,7 @@ export default function ProspectView() {
           headers: {
             'Content-Type': 'application/json',
             'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             podcastId: selectedPodcast.podcast_id,

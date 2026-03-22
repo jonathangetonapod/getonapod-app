@@ -1,6 +1,20 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+/** Escape special Supabase/PostgREST filter characters in user input */
+function sanitizeSearch(input: string): string {
+  return input.replace(/[%_\\]/g, '\\$&')
+}
+
+const VALID_SORT_COLUMNS = [
+  'podcast_name',
+  'audience_size',
+  'itunes_rating',
+  'episode_count',
+  'last_posted_at',
+  'publisher_name',
+] as const
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -49,8 +63,9 @@ serve(async (req) => {
 
     // Full-text search across name, description, publisher
     if (search) {
+      const safe = sanitizeSearch(search)
       query = query.or(
-        `podcast_name.ilike.%${search}%,podcast_description.ilike.%${search}%,publisher_name.ilike.%${search}%`
+        `podcast_name.ilike.%${safe}%,podcast_description.ilike.%${safe}%,publisher_name.ilike.%${safe}%`
       )
     }
 
@@ -83,13 +98,18 @@ serve(async (req) => {
     }
 
     // --- Sorting ---
-    const sortColumn =
+    const sortColumnRaw =
       sort_by === 'name' ? 'podcast_name' :
       sort_by === 'audience' ? 'audience_size' :
       sort_by === 'rating' ? 'itunes_rating' :
       sort_by === 'episodes' ? 'episode_count' :
       sort_by === 'last_posted' ? 'last_posted_at' :
-      sort_by  // allow raw column names too
+      sort_by
+
+    // Validate sort column against allowlist
+    const sortColumn = (VALID_SORT_COLUMNS as readonly string[]).includes(sortColumnRaw)
+      ? sortColumnRaw
+      : 'podcast_name'
 
     query = query.order(sortColumn, {
       ascending: sort_order === 'asc',
