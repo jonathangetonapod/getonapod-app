@@ -24,11 +24,19 @@ This document provides comprehensive documentation for all Supabase Edge Functio
   - [generate-reply](#generate-reply)
   - [generate-tagline](#generate-tagline)
 - [Get Functions](#get-functions)
+  - [get-blog-posts](#get-blog-posts)
   - [get-client-bookings](#get-client-bookings)
   - [get-client-outreach-podcasts](#get-client-outreach-podcasts)
   - [get-client-podcasts](#get-client-podcasts)
+  - [get-customer-analytics](#get-customer-analytics)
+  - [get-guest-resources](#get-guest-resources)
   - [get-outreach-podcasts](#get-outreach-podcasts)
+  - [get-pipeline-analytics](#get-pipeline-analytics)
+  - [get-podcast-demographics](#get-podcast-demographics)
+  - [get-prospect-dashboard](#get-prospect-dashboard)
   - [get-prospect-podcasts](#get-prospect-podcasts)
+  - [get-testimonials](#get-testimonials)
+  - [get-upcoming-bookings](#get-upcoming-bookings)
 
 ## Delete Functions
 
@@ -1158,6 +1166,134 @@ curl -X POST https://your-project.supabase.co/functions/v1/generate-tagline \
 
 ## Get Functions
 
+### get-blog-posts
+
+Retrieves blog posts with support for paginated listing, single post lookup by slug, search, category filtering, and admin/public access modes.
+
+**Endpoint:** `/functions/v1/get-blog-posts`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables (no caller auth required)
+
+#### Request Body (Paginated List)
+```json
+{
+  "status": "published",              // Optional (admin only): Filter by status ("published", "draft")
+  "category": "uuid-category-id",     // Optional: Filter by blog_categories UUID
+  "search": "podcast tips",           // Optional: Search in title, content, and excerpt
+  "page": 1,                          // Optional: Page number (default: 1)
+  "page_size": 10,                    // Optional: Items per page (default: 10)
+  "admin": false                      // Optional: If true, includes draft posts
+}
+```
+
+#### Request Body (Single Post by Slug)
+```json
+{
+  "slug": "how-to-prepare-for-podcast",  // Returns single post
+  "admin": false                          // Optional: If true, allows viewing drafts
+}
+```
+
+#### Response Format (Paginated List)
+```json
+{
+  "success": true,
+  "posts": [
+    {
+      "id": "uuid",
+      "title": "How to Prepare for Your First Podcast",
+      "slug": "how-to-prepare-for-podcast",
+      "content": "<h2>Introduction</h2>...",
+      "meta_description": "Learn how to prepare...",
+      "excerpt": "A comprehensive guide...",
+      "category_id": "uuid",
+      "tags": ["podcast", "preparation"],
+      "featured_image_url": "https://example.com/image.jpg",
+      "featured_image_alt": "Podcast preparation guide",
+      "author_name": "Authority Built Team",
+      "published_at": "2024-01-15T10:30:00Z",
+      "view_count": 150,
+      "read_time_minutes": 8,
+      "blog_categories": {
+        "id": "uuid",
+        "name": "Preparation",
+        "slug": "preparation"
+      }
+    }
+  ],
+  "total": 25,
+  "page": 1,
+  "page_size": 10
+}
+```
+
+#### Response Format (Single Post)
+```json
+{
+  "success": true,
+  "post": {
+    "id": "uuid",
+    "title": "How to Prepare for Your First Podcast",
+    "slug": "how-to-prepare-for-podcast",
+    "content": "<h2>Introduction</h2>...",
+    "meta_description": "Learn how to prepare...",
+    "excerpt": "A comprehensive guide...",
+    "category_id": "uuid",
+    "tags": ["podcast", "preparation"],
+    "featured_image_url": "https://example.com/image.jpg",
+    "featured_image_alt": "Podcast preparation guide",
+    "author_name": "Authority Built Team",
+    "status": "published",
+    "published_at": "2024-01-15T10:30:00Z",
+    "view_count": 151,
+    "read_time_minutes": 8,
+    "schema_markup": {},
+    "blog_categories": {
+      "id": "uuid",
+      "name": "Preparation",
+      "slug": "preparation"
+    }
+  }
+}
+```
+
+#### Error Responses
+```json
+// 404 Not Found
+{
+  "success": false,
+  "error": "Post not found"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Internal server error"
+}
+```
+
+#### Features
+- **Dual Mode**: Supports both paginated listing and single post retrieval by slug
+- **Public/Admin Access**: Public access only shows published posts; admin flag unlocks drafts
+- **Search**: Case-insensitive search across title, content, and excerpt
+- **Category Filtering**: Filter by blog category UUID
+- **View Count Tracking**: Automatically increments view count on single post access via RPC with manual fallback
+- **Pagination**: Standard page/page_size with total count
+- **Sorting**: Posts ordered by published_at (newest first), then created_at
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-blog-posts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "search": "podcast interview",
+    "page": 1,
+    "page_size": 5
+  }'
+```
+
+---
+
 ### get-client-bookings
 
 Retrieves bookings and outreach messages for a specific client, with session validation for client portal access.
@@ -1501,6 +1637,145 @@ curl -X POST https://your-project.supabase.co/functions/v1/get-client-podcasts \
 
 ---
 
+### get-customer-analytics
+
+Returns revenue and customer statistics aggregated from orders and customers tables, with optional date range filtering.
+
+**Endpoint:** `/functions/v1/get-customer-analytics`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "date_from": "2024-01-01T00:00:00Z",   // Optional: Start date filter (ISO timestamp)
+  "date_to": "2024-12-31T23:59:59Z"      // Optional: End date filter (ISO timestamp)
+}
+```
+
+All parameters are optional. If no body is provided, returns all-time statistics.
+
+#### Response Format
+```json
+{
+  "success": true,
+  "analytics": {
+    "total_customers": 150,
+    "total_revenue": 45750.00,           // Sum of paid order amounts (rounded to 2 decimals)
+    "avg_order_value": 305.00,           // Average paid order value (rounded to 2 decimals)
+    "total_orders": 175,                 // All orders regardless of status
+    "orders_by_status": {
+      "paid": 150,
+      "pending": 10,
+      "refunded": 5,
+      "failed": 10
+    }
+  }
+}
+```
+
+#### Error Responses
+```json
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Failed to fetch customer count: error message"
+}
+```
+
+#### Features
+- **Date Range Filtering**: Optional `date_from` and `date_to` filters applied to both customers and orders
+- **Revenue Calculation**: Only includes orders with `status = 'paid'` in revenue totals
+- **Order Breakdown**: Groups orders by status for pipeline visibility
+- **Precise Rounding**: All monetary values rounded to 2 decimal places
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-customer-analytics \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date_from": "2024-01-01T00:00:00Z",
+    "date_to": "2024-03-31T23:59:59Z"
+  }'
+```
+
+---
+
+### get-guest-resources
+
+Retrieves guest resources with filtering by category, type, and featured status, with pagination support.
+
+**Endpoint:** `/functions/v1/get-guest-resources`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables (no caller auth required)
+
+#### Request Body
+```json
+{
+  "category": "preparation",           // Optional: Filter by resource category
+  "type": "guide",                     // Optional: Filter by resource type
+  "featured_only": false,              // Optional: Only return featured resources (default: false)
+  "limit": 50,                         // Optional: Max results (default: 50)
+  "offset": 0                          // Optional: Offset for pagination (default: 0)
+}
+```
+
+All parameters are optional. If no body is provided, returns all resources.
+
+#### Response Format
+```json
+{
+  "success": true,
+  "resources": [
+    {
+      "id": "uuid",
+      "title": "How to Sound Professional on Remote Podcast Interviews",
+      "description": "A comprehensive guide to audio setup and presentation",
+      "content": "<h2>Pre-Interview Setup</h2>...",
+      "category": "technical_setup",
+      "type": "guide",
+      "url": "https://example.com/resource",
+      "file_url": "https://storage.example.com/file.pdf",
+      "featured": true,
+      "display_order": 1,
+      "created_at": "2024-01-10T10:00:00Z",
+      "updated_at": "2024-01-15T12:00:00Z"
+    }
+  ],
+  "total": 12
+}
+```
+
+#### Error Responses
+```json
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Internal server error"
+}
+```
+
+#### Features
+- **Category Filtering**: Filter by resource category (preparation, technical_setup, best_practices, promotion, examples, templates)
+- **Type Filtering**: Filter by resource type (guide, checklist, template, etc.)
+- **Featured Filter**: Optionally return only featured resources
+- **Pagination**: Supports limit/offset pagination with total count
+- **Sorting**: Ordered by `display_order` ascending, then `created_at` descending
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-guest-resources \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "preparation",
+    "featured_only": true,
+    "limit": 10
+  }'
+```
+
+---
+
 ### get-outreach-podcasts
 
 Enhanced version of outreach podcast fetching with improved caching and error handling.
@@ -1562,6 +1837,263 @@ curl -X POST https://your-project.supabase.co/functions/v1/get-outreach-podcasts
   -H "Content-Type: application/json" \
   -d '{
     "clientId": "123e4567-e89b-12d3-a456-426614174000"
+  }'
+```
+
+---
+
+### get-pipeline-analytics
+
+Returns monthly pipeline metrics including booking status breakdown, completion rate, and active client count.
+
+**Endpoint:** `/functions/v1/get-pipeline-analytics`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "month": 3,                           // Optional: Month number 1-12 (default: current month)
+  "year": 2026                          // Optional: Year (default: current year)
+}
+```
+
+All parameters are optional. If no body is provided, returns current month's metrics.
+
+#### Response Format
+```json
+{
+  "success": true,
+  "pipeline": {
+    "total": 25,                        // Total bookings for the month
+    "by_status": {
+      "conversation_started": 5,
+      "booked": 8,
+      "in_progress": 4,
+      "published": 6,
+      "cancelled": 2
+    },
+    "completion_rate": 24.00,           // Percentage of bookings with "published" status
+    "active_clients": 18,              // Total clients with status "active"
+    "month": 3,
+    "year": 2026
+  }
+}
+```
+
+#### Error Responses
+```json
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Failed to fetch bookings: error message"
+}
+```
+
+#### Features
+- **Monthly Filtering**: Filters bookings by `scheduled_date` matching the requested month/year
+- **Status Breakdown**: Groups bookings by status for pipeline visibility
+- **Completion Rate**: Calculates percentage of bookings reaching "published" status
+- **Active Clients**: Returns count of clients with `status = 'active'`
+- **Default to Current Month**: Automatically uses current month/year if not specified
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-pipeline-analytics \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "month": 3,
+    "year": 2026
+  }'
+```
+
+---
+
+### get-podcast-demographics
+
+Fetches podcast demographic data from the Podscan API with a 30-day cache layer in the local database. Looks up podcasts by either `podscan_id` or internal UUID.
+
+**Endpoint:** `/functions/v1/get-podcast-demographics`
+**Method:** `POST`
+**Authentication:** Podscan API key required via environment variables
+
+#### Request Body
+```json
+{
+  "podcast_id": "string"               // Required: Podscan podcast ID or internal UUID
+}
+```
+
+#### Response Format (Cached)
+```json
+{
+  "success": true,
+  "demographics": {
+    "episodes_analyzed": 50,
+    "age_groups": {"25-34": 35, "35-44": 40, "45-54": 15, "18-24": 10},
+    "gender": {"male": 60, "female": 38, "other": 2},
+    "topics": ["technology", "business", "startups"],
+    "locations": {"US": 55, "UK": 15, "CA": 10}
+  },
+  "cached": true
+}
+```
+
+#### Response Format (Fresh from API)
+```json
+{
+  "success": true,
+  "demographics": {
+    "episodes_analyzed": 50,
+    "age_groups": {"25-34": 35, "35-44": 40},
+    "gender": {"male": 60, "female": 40},
+    "topics": ["technology", "business"]
+  },
+  "cached": false
+}
+```
+
+#### Error Responses
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "podcast_id is required"
+}
+
+// 404 Not Found
+{
+  "success": false,
+  "error": "Podcast not found: podcast123"
+}
+
+// 404 Not Found
+{
+  "success": false,
+  "error": "Demographics not available for this podcast"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "PODSCAN_API_KEY not configured"
+}
+```
+
+#### Features
+- **30-Day Cache**: Returns cached demographics if fetched within the last 30 days
+- **Dual Lookup**: Tries `podscan_id` first, falls back to internal UUID
+- **Auto-Cache**: Fresh API results are automatically cached in the `podcasts` table
+- **Non-Fatal Cache Errors**: If caching fails, the fresh data is still returned
+- **Validation**: Checks for valid demographics data (requires `episodes_analyzed` field)
+
+#### Required Environment Variables
+- `PODSCAN_API_KEY` - Required for Podscan demographics API calls
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-podcast-demographics \
+  -H "Content-Type: application/json" \
+  -d '{
+    "podcast_id": "the-tim-ferriss-show"
+  }'
+```
+
+---
+
+### get-prospect-dashboard
+
+Securely retrieves public prospect dashboard data by slug, including feedback entries. Increments view count on each access.
+
+**Endpoint:** `/functions/v1/get-prospect-dashboard`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables (no caller auth required — public endpoint)
+
+#### Request Body
+```json
+{
+  "slug": "string"                      // Required: Dashboard URL slug
+}
+```
+
+#### Response Format
+```json
+{
+  "success": true,
+  "dashboard": {
+    "id": "uuid",
+    "slug": "abc12345",
+    "prospect_name": "Sarah Martinez",
+    "prospect_bio": "Digital marketing consultant...",
+    "prospect_image_url": "https://example.com/photo.jpg",
+    "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+    "is_active": true,
+    "show_pricing_section": true,
+    "personalized_tagline": "We've curated 12 podcasts perfect for...",
+    "media_kit_url": "https://docs.google.com/document/d/abc123/edit",
+    "loom_video_url": "https://www.loom.com/share/abc123",
+    "loom_thumbnail_url": "https://cdn.loom.com/sessions/thumbnails/abc123.jpg",
+    "loom_video_title": "Your Personalized Podcast Strategy",
+    "show_loom_video": true,
+    "testimonial_ids": ["uuid1", "uuid2"],
+    "show_testimonials": true,
+    "view_count": 5
+  },
+  "feedback": [
+    {
+      "id": "uuid",
+      "prospect_dashboard_id": "uuid",
+      "podcast_id": "podcast123",
+      "status": "approved",
+      "notes": "Great fit!",
+      "created_at": "2024-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+#### Error Responses
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "slug is required"
+}
+
+// 404 Not Found
+{
+  "success": false,
+  "error": "Dashboard not found"
+}
+
+// 404 Not Found (inactive)
+{
+  "success": false,
+  "error": "This dashboard link is no longer active"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Internal server error"
+}
+```
+
+#### Features
+- **Public Access**: No authentication required — designed for prospect-facing dashboard pages
+- **Slug-Based Lookup**: Finds dashboard by URL-friendly slug
+- **Active Check**: Returns 404 for inactive dashboards
+- **View Count Tracking**: Atomically increments `view_count` and updates `last_viewed_at` on each access
+- **Feedback Included**: Returns all `prospect_podcast_feedback` entries for the dashboard
+- **Parallel Operations**: Fetches feedback and increments view count concurrently
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-prospect-dashboard \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "abc12345"
   }'
 ```
 
@@ -1724,6 +2256,165 @@ curl -X POST https://your-project.supabase.co/functions/v1/get-prospect-podcasts
     "cacheOnly": true
   }'
 ```
+
+---
+
+### get-testimonials
+
+Retrieves testimonials with filtering by active status and featured status, ordered by display order.
+
+**Endpoint:** `/functions/v1/get-testimonials`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables (no caller auth required)
+
+#### Request Body
+```json
+{
+  "featured_only": false,              // Optional: Only return featured testimonials (default: false)
+  "active_only": true,                 // Optional: Only return active testimonials (default: true)
+  "limit": 20                          // Optional: Max results (default: 20)
+}
+```
+
+All parameters are optional. If no body is provided, returns all active testimonials.
+
+#### Response Format
+```json
+{
+  "success": true,
+  "testimonials": [
+    {
+      "id": "uuid",
+      "video_url": "https://www.youtube.com/watch?v=abc123",
+      "client_name": "Sarah Johnson",
+      "client_title": "CEO",
+      "client_company": "GrowthLab Inc",
+      "client_photo_url": "https://example.com/photo.jpg",
+      "quote": "Get On A Pod transformed our thought leadership strategy...",
+      "is_featured": true,
+      "display_order": 1,
+      "is_active": true,
+      "created_at": "2024-01-10T10:00:00Z"
+    }
+  ],
+  "total": 8
+}
+```
+
+#### Error Responses
+```json
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Internal server error"
+}
+```
+
+#### Features
+- **Active Filtering**: Default behavior only returns active testimonials (suitable for public pages)
+- **Featured Filter**: Optionally return only featured/highlighted testimonials
+- **Limit Control**: Configurable result count
+- **Sorting**: Ordered by `display_order` ascending, then `created_at` descending
+- **Video Support**: Includes `video_url` for video testimonials
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-testimonials \
+  -H "Content-Type: application/json" \
+  -d '{
+    "featured_only": true,
+    "limit": 5
+  }'
+```
+
+---
+
+### get-upcoming-bookings
+
+Retrieves upcoming podcast recordings and publications within a configurable time window, with optional filtering by type.
+
+**Endpoint:** `/functions/v1/get-upcoming-bookings`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "days_ahead": 30,                    // Optional: Days to look ahead (default: 30, must be >= 1)
+  "type": "all"                        // Optional: "recordings", "publications", or "all" (default: "all")
+}
+```
+
+All parameters are optional. If no body is provided, returns all upcoming bookings within 30 days.
+
+#### Response Format
+```json
+{
+  "success": true,
+  "bookings": [
+    {
+      "id": "uuid",
+      "podcast_name": "Tech Innovation Weekly",
+      "podcast_url": "https://techweekly.com",
+      "host_name": "Sarah Tech",
+      "client_id": "uuid",
+      "client_name": "John Smith",
+      "recording_date": "2026-04-01T14:00:00Z",
+      "publish_date": "2026-04-15T10:00:00Z",
+      "status": "booked",
+      "prep_sent": true,
+      "episode_url": null,
+      "notes": "Discussing AI trends in marketing",
+      "type": "recording"
+    }
+  ],
+  "total": 12
+}
+```
+
+#### Error Responses
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "days_ahead must be a positive number"
+}
+
+// 400 Bad Request
+{
+  "success": false,
+  "error": "Invalid type 'invalid'. Must be one of: recordings, publications, all"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Failed to fetch upcoming recordings: error message"
+}
+```
+
+#### Features
+- **Dual Query**: Separately fetches upcoming recordings and publications with appropriate date/status filters
+- **Recording Filters**: Only includes bookings with status `conversation_started`, `booked`, or `in_progress` for recordings
+- **Publication Filters**: Includes all bookings with upcoming `publish_date` regardless of status
+- **Client Join**: Includes client name and email via join on `clients` table
+- **Deduplication**: When type is `all`, deduplicates bookings that appear in both recording and publication queries
+- **Type Annotation**: Each booking includes a `type` field ("recording" or "publication")
+- **Configurable Window**: `days_ahead` controls how far into the future to look
+- **Sorted**: Recordings sorted by `recording_date`, publications by `publish_date`
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/get-upcoming-bookings \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "days_ahead": 14,
+    "type": "recordings"
+  }'
+```
+
+---
 
 ## Error Handling
 

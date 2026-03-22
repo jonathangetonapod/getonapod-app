@@ -50,8 +50,8 @@ Authority Built supports multiple authentication systems:
 - 📋 **Outreach**: Outreach actions, approval workflows, guest resources
 
 ### [Edge Functions (A-F)](edge-functions-a-f.md)
-**15 Functions - Analysis, authentication, and automation**
-- 🤖 **AI Analysis**: `analyze-podcast-fit`, `analyze-sales-call`, `classify-reply`
+**16 Functions - Analysis, authentication, automation, and categorization**
+- 🤖 **AI Analysis**: `analyze-podcast-fit`, `analyze-sales-call`, `auto-categorize-podcast`, `classify-reply`
 - 🔐 **Account Creation**: `create-client-account`, `create-outreach-message`
 - 💳 **Checkout**: `create-addon-checkout`, `create-checkout-session`
 - 📊 **Data Operations**: `append-prospect-sheet`, `backfill-prospect-podcasts`, `create-prospect-sheet`
@@ -59,25 +59,26 @@ Authority Built supports multiple authentication systems:
 - 🔍 **SEO**: `check-indexing-status`
 
 ### [Edge Functions (D-G)](edge-functions-d-g.md)
-**New - Data operations, generation, and Google integrations**
+**Data operations, generation, analytics, and Google integrations**
 - 🗑️ **Data Operations**: `delete-outreach-podcast`, `delete-podcast-from-sheet`, `delete-reply`
 - 📥 **Reply Management**: `fetch-and-classify-replies`, `fetch-email-thread`
 - 📄 **Content Generation**: `generate-blog-content`, `generate-client-bio`, `generate-guest-resource`, `generate-media-kit-doc`, `generate-podcast-queries`, `generate-podcast-summary`, `generate-reply`, `generate-tagline`
-- 📊 **Data Retrieval**: `get-client-bookings`, `get-client-outreach-podcasts`, `get-client-podcasts`, `get-outreach-podcasts`, `get-prospect-podcasts`
+- 📊 **Data Retrieval**: `get-blog-posts`, `get-client-bookings`, `get-client-outreach-podcasts`, `get-client-podcasts`, `get-customer-analytics`, `get-guest-resources`, `get-outreach-podcasts`, `get-pipeline-analytics`, `get-podcast-demographics`, `get-prospect-dashboard`, `get-prospect-podcasts`, `get-testimonials`, `get-upcoming-bookings`
 
 ### [Edge Functions (L-S)](edge-functions-l-s.md)
-**Login, management, QA, and synchronization**
+**Login, management, QA, search, and synchronization**
 - 🔐 **Authentication**: `login-with-password`, `logout-portal-session`, `send-portal-magic-link`
 - 👨‍💼 **Admin Management**: `manage-admin-users`
-- 📞 **Outreach**: `read-outreach-list`, `score-podcast-compatibility`, `send-outreach-webhook`
+- 📞 **Outreach**: `read-outreach-list`, `score-podcast-compatibility`, `search-podcasts`, `send-outreach-webhook`
 - ✉️ **Email**: `send-reply`, `resend-webhook`
 - 🔍 **QA**: `qa-review-podcasts`
 - 📈 **SEO**: `submit-to-indexing`
 - 🔄 **Sync**: `sync-fathom-calls`, `sync-replies`
 - 💳 **Payments**: `stripe-webhook`
 
-### [Edge Functions (V + Shared)](edge-functions-v-shared.md)
-**Validation functions and shared utilities**
+### [Edge Functions (U-V + Shared)](edge-functions-v-shared.md)
+**Order management, validation functions, and shared utilities**
+- 📦 **Order Management**: `update-order-status`
 - ✅ **Validation**: `validate-portal-session`, `verify-portal-token`
 - 📧 **Email Templates**: Professional invitation and magic link emails
 - 🗄️ **Podcast Cache**: Central caching system (60-80% API savings)
@@ -166,6 +167,7 @@ Monitoring:   Sentry (error tracking + session replay)
 |----------|--------|---------|------|
 | `analyze-podcast-fit` | POST | AI podcast analysis | Service |
 | `analyze-sales-call` | POST | Sales call analysis | Service |
+| `auto-categorize-podcast` | POST | AI podcast categorization | None |
 | `score-podcast-compatibility` | POST | Compatibility scoring | None |
 | `qa-review-podcasts` | POST | QA score podcasts vs prospect bio | Service |
 | `classify-reply` | POST | Classify email reply type | Service |
@@ -175,6 +177,7 @@ Monitoring:   Sentry (error tracking + session replay)
 |----------|--------|---------|------|
 | `create-checkout-session` | POST | Podcast placement orders | None |
 | `create-addon-checkout` | POST | Addon service orders | Service |
+| `update-order-status` | POST | Order status transitions | Service |
 | `stripe-webhook` | POST | Payment confirmations | Webhook |
 
 ### Outreach & Communication
@@ -199,6 +202,27 @@ Monitoring:   Sentry (error tracking + session replay)
 | `generate-podcast-summary` | POST | AI podcast summary | Service |
 | `generate-tagline` | POST | AI tagline generation | Service |
 | `generate-guest-resource` | POST | Generate guest resource content | Service |
+
+### Analytics
+| Function | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `get-pipeline-analytics` | POST | Monthly pipeline metrics | Service |
+| `get-customer-analytics` | POST | Revenue/customer stats | Service |
+
+### Public Content
+| Function | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `get-blog-posts` | POST | Blog listing + single post | None |
+| `get-testimonials` | POST | Testimonial feed | None |
+| `get-guest-resources` | POST | Guest resource listing | None |
+| `get-prospect-dashboard` | POST | Secure public prospect page data | None |
+
+### Podcast Data
+| Function | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `search-podcasts` | POST | Full search/filter/pagination | Service |
+| `get-podcast-demographics` | POST | Podscan demographics with cache | None |
+| `get-upcoming-bookings` | POST | Upcoming recordings/publications | Service |
 
 ### Data Synchronization
 | Function | Method | Purpose | Auth |
@@ -430,6 +454,6 @@ Each documentation section provides:
 
 **Last Updated**: March 2026
 **Platform Version**: 2.1
-**Total Endpoints**: 50 Edge Functions + Direct Database Access + 2 MCP Tools
+**Total Endpoints**: 61 Edge Functions + Direct Database Access + 2 MCP Tools
 **Database Tables**: 37 tables with comprehensive relationships
 **Frontend Services**: 20+ domain-specific service modules

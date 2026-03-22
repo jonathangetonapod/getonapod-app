@@ -10,7 +10,8 @@ This document provides comprehensive API documentation for all Supabase Edge Fun
 1. [Shared Utilities](#shared-utilities)
    - [Email Templates](#email-templates)
    - [Podcast Cache](#podcast-cache)
-2. [V Functions](#v-functions)
+2. [U-V Functions](#u-v-functions)
+   - [update-order-status](#update-order-status)
    - [validate-portal-session](#validate-portal-session)
    - [verify-portal-token](#verify-portal-token)
 
@@ -196,7 +197,96 @@ Maintenance function to remove old cache entries.
 
 ---
 
-## V Functions
+## U-V Functions
+
+### update-order-status
+
+Updates the status of an order with validation against allowed status values, with optional admin notes.
+
+**Endpoint:** `/functions/v1/update-order-status`
+**Method:** `POST`
+**Authentication:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "order_id": "uuid",                  // Required: Order UUID
+  "status": "completed",              // Required: New status value
+  "admin_notes": "Fulfilled on 3/21"  // Optional: Admin notes to attach to order
+}
+```
+
+#### Valid Status Values
+- `pending`
+- `processing`
+- `completed`
+- `cancelled`
+- `refunded`
+
+#### Response Format
+```json
+{
+  "success": true,
+  "order": {
+    "id": "uuid",
+    "status": "completed",
+    "updated_at": "2026-03-21T10:30:00Z"
+  }
+}
+```
+
+#### Error Responses
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "order_id is required"
+}
+
+// 400 Bad Request
+{
+  "success": false,
+  "error": "status is required"
+}
+
+// 400 Bad Request
+{
+  "success": false,
+  "error": "Invalid status 'invalid'. Must be one of: pending, processing, completed, cancelled, refunded"
+}
+
+// 404 Not Found
+{
+  "success": false,
+  "error": "Order not found: uuid"
+}
+
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Internal server error"
+}
+```
+
+#### Features
+- **Status Validation**: Strictly validates against 5 allowed status values
+- **Optional Notes**: Supports attaching admin notes during status transitions
+- **Not Found Detection**: Returns 404 when order ID does not exist (PGRST116 error code handling)
+- **Minimal Response**: Returns only the updated order ID, status, and timestamp
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/update-order-status \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "completed",
+    "admin_notes": "All recordings delivered to client"
+  }'
+```
+
+---
 
 ### validate-portal-session
 

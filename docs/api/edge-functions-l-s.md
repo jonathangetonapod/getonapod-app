@@ -14,6 +14,7 @@ This document provides comprehensive API documentation for all Supabase Edge Fun
    - [qa-review-podcasts](#qa-review-podcasts)
    - [read-outreach-list](#read-outreach-list)
    - [score-podcast-compatibility](#score-podcast-compatibility)
+   - [search-podcasts](#search-podcasts)
    - [send-outreach-webhook](#send-outreach-webhook)
 4. [Email & Communication](#email--communication)
    - [send-reply](#send-reply)
@@ -545,6 +546,109 @@ Uses Claude AI to score podcast compatibility with client or prospect bios.
 - 1-10 scoring scale with reasoning
 - Batch statistics and progress tracking
 - Fallback score extraction for parsing errors
+
+---
+
+### search-podcasts
+
+Full-featured search endpoint for the central podcast database with text search, multi-filter support, sorting, and pagination.
+
+**Endpoint:** `/functions/v1/search-podcasts`
+**HTTP Method:** `POST`
+**Auth Required:** Service Role Key required via environment variables
+
+#### Request Body
+```json
+{
+  "search": "marketing",               // Optional: Text search across name, description, publisher
+  "categories": ["Business", "Marketing"], // Optional: Multi-select category filter (OR logic)
+  "min_audience": 10000,               // Optional: Minimum audience size
+  "max_audience": 500000,              // Optional: Maximum audience size
+  "min_rating": 4.0,                   // Optional: Minimum iTunes rating
+  "min_episodes": 50,                  // Optional: Minimum episode count
+  "has_email": true,                   // Optional: Only podcasts with email on file
+  "sort_by": "audience",              // Optional: Sort field (default: "podcast_name")
+  "sort_order": "desc",               // Optional: "asc" or "desc" (default: "asc")
+  "page": 1,                          // Optional: Page number (default: 1)
+  "page_size": 25                     // Optional: Items per page (default: 25, max: 100)
+}
+```
+
+#### Sort Options
+| `sort_by` Value | Column |
+|-----------------|--------|
+| `name` | `podcast_name` |
+| `audience` | `audience_size` |
+| `rating` | `itunes_rating` |
+| `episodes` | `episode_count` |
+| `last_posted` | `last_posted_at` |
+| Raw column name | Any valid column |
+
+#### Response Format
+```json
+{
+  "success": true,
+  "podcasts": [
+    {
+      "id": "uuid",
+      "podscan_id": "the-marketing-show",
+      "podcast_name": "The Marketing Show",
+      "podcast_description": "Weekly deep dives into digital marketing...",
+      "podcast_url": "https://themarketingshow.com",
+      "publisher_name": "Jane Marketer",
+      "itunes_rating": 4.7,
+      "episode_count": 200,
+      "audience_size": 75000,
+      "podcast_categories": [
+        {"category_id": "cat1", "category_name": "Marketing"},
+        {"category_id": "cat2", "category_name": "Business"}
+      ],
+      "podscan_email": "contact@themarketingshow.com",
+      "last_posted_at": "2024-01-10T10:00:00Z"
+    }
+  ],
+  "total": 350,
+  "page": 1,
+  "page_size": 25
+}
+```
+
+#### Error Responses
+```json
+// 500 Internal Server Error
+{
+  "success": false,
+  "error": "Internal server error"
+}
+```
+
+#### Features
+- **Text Search**: Case-insensitive search across podcast name, description, and publisher name
+- **Category Filter**: Multi-select with OR logic — matches podcasts in any of the specified categories using JSONB containment
+- **Audience Range**: Filter by minimum and/or maximum audience size
+- **Quality Filters**: Filter by minimum iTunes rating and minimum episode count
+- **Email Filter**: Find only podcasts with email contacts on file
+- **Flexible Sorting**: Sort by name, audience, rating, episodes, or last posted date in ascending or descending order
+- **Page Size Clamping**: Automatically clamps `page_size` between 1 and 100
+- **Exact Count**: Returns exact total count for accurate pagination UI
+- **Null Handling**: Nulls sorted last regardless of sort direction
+
+#### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/search-podcasts \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "search": "entrepreneurship",
+    "min_audience": 10000,
+    "min_rating": 4.0,
+    "has_email": true,
+    "sort_by": "audience",
+    "sort_order": "desc",
+    "page": 1,
+    "page_size": 20
+  }'
+```
 
 ---
 

@@ -4,21 +4,106 @@ This document provides comprehensive API documentation for all Supabase Edge Fun
 
 ## Table of Contents
 
-1. [analyze-podcast-fit](#analyze-podcast-fit)
-2. [analyze-sales-call](#analyze-sales-call)
-3. [append-prospect-sheet](#append-prospect-sheet)
-4. [backfill-prospect-podcasts](#backfill-prospect-podcasts)
-5. [campaign-reply-webhook](#campaign-reply-webhook)
-6. [check-indexing-status](#check-indexing-status)
-7. [classify-reply](#classify-reply)
-8. [classify-sales-call](#classify-sales-call)
-9. [create-addon-checkout](#create-addon-checkout)
-10. [create-bison-lead](#create-bison-lead)
-11. [create-checkout-session](#create-checkout-session)
-12. [create-client-account](#create-client-account)
-13. [create-client-google-sheet](#create-client-google-sheet)
-14. [create-outreach-message](#create-outreach-message)
-15. [create-prospect-sheet](#create-prospect-sheet)
+1. [auto-categorize-podcast](#auto-categorize-podcast)
+2. [analyze-podcast-fit](#analyze-podcast-fit)
+3. [analyze-sales-call](#analyze-sales-call)
+4. [append-prospect-sheet](#append-prospect-sheet)
+5. [backfill-prospect-podcasts](#backfill-prospect-podcasts)
+6. [campaign-reply-webhook](#campaign-reply-webhook)
+7. [check-indexing-status](#check-indexing-status)
+8. [classify-reply](#classify-reply)
+9. [classify-sales-call](#classify-sales-call)
+10. [create-addon-checkout](#create-addon-checkout)
+11. [create-bison-lead](#create-bison-lead)
+12. [create-checkout-session](#create-checkout-session)
+13. [create-client-account](#create-client-account)
+14. [create-client-google-sheet](#create-client-google-sheet)
+15. [create-outreach-message](#create-outreach-message)
+16. [create-prospect-sheet](#create-prospect-sheet)
+
+---
+
+## auto-categorize-podcast
+
+Uses AI to categorize a podcast into one of 18 predefined categories based on its name, description, and content signals.
+
+### Endpoint
+- **Path**: `/functions/v1/auto-categorize-podcast`
+- **Method**: `POST`
+- **Auth**: No (uses server-side `ANTHROPIC_API_KEY`)
+
+### Request Body
+```json
+{
+  "podcastName": "string",            // Required: Name of the podcast
+  "description": "string",            // Optional: Podcast description
+  "whyThisShow": "string"             // Optional: Context about the show's focus
+}
+```
+
+### Response
+```json
+{
+  "success": true,
+  "category": "string"                // One of the 18 predefined categories
+}
+```
+
+### Error Responses
+```json
+// 400 Bad Request
+{
+  "success": false,
+  "error": "podcastName is required"
+}
+
+// 500 Internal Server Error (still includes fallback category)
+{
+  "success": false,
+  "error": "ANTHROPIC_API_KEY not configured",
+  "category": "Business"
+}
+```
+
+### Available Categories
+- Business
+- Entrepreneurship
+- Marketing
+- Technology
+- SaaS & Tech
+- Finance
+- Leadership
+- Sales
+- Productivity
+- Health & Fitness
+- Education
+- Self-Improvement
+- Entertainment
+- News & Politics
+- True Crime
+- Sports
+- Science
+- Society & Culture
+
+### Features
+- **AI-Powered**: Uses Claude Haiku 4.5 for fast, accurate categorization
+- **Fuzzy Matching**: If the AI returns a category not exactly in the list, performs case-insensitive and substring matching
+- **Graceful Fallback**: Always returns "Business" as the default category, even on errors
+- **Lightweight**: Single API call with max 50 tokens for minimal latency
+
+### Required Environment Variables
+- `ANTHROPIC_API_KEY` - Required for Claude Haiku categorization
+
+### Example Request
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/auto-categorize-podcast \
+  -H "Content-Type: application/json" \
+  -d '{
+    "podcastName": "The Growth Show",
+    "description": "Weekly conversations with startup founders about scaling their businesses",
+    "whyThisShow": "Focuses on SaaS growth and marketing strategies"
+  }'
+```
 
 ---
 

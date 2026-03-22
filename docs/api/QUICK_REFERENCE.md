@@ -63,6 +63,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 |----------|--------|---------|------|
 | `/analyze-podcast-fit` | POST | Fit analysis | `{podcastName, clientBio, ...}` |
 | `/analyze-sales-call` | POST | Call analysis | `{sales_call_id}` |
+| `/auto-categorize-podcast` | POST | AI podcast categorization | `{podcastName, description?, whyThisShow?}` |
 | `/score-podcast-compatibility` | POST | Compatibility score | `{clientBio, podcasts[]}` |
 | `/qa-review-podcasts` | POST | QA score podcasts (max 10) | `{prospect_bio, podcasts[]}` |
 | `/classify-reply` | POST | Classify reply type | `{reply_id}` |
@@ -72,6 +73,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 |----------|--------|---------|------|
 | `/create-checkout-session` | POST | Podcast orders | `{cartItems[], customerEmail}` |
 | `/create-addon-checkout` | POST | Addon orders | `{addons[], clientId}` |
+| `/update-order-status` | POST | Order status transition | `{order_id, status, admin_notes?}` |
 | `/stripe-webhook` | POST | Payment events | Stripe payload |
 
 ### 📞 Outreach & Communication
@@ -96,6 +98,27 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | `/generate-podcast-summary` | POST | Podcast summary | `{podcastName, ...}` |
 | `/generate-tagline` | POST | AI tagline | `{prospect_name, bio}` |
 | `/generate-guest-resource` | POST | Guest resource | `{type, topic, ...}` |
+
+### 📊 Analytics
+| Endpoint | Method | Purpose | Body |
+|----------|--------|---------|------|
+| `/get-pipeline-analytics` | POST | Monthly pipeline metrics | `{month?, year?}` |
+| `/get-customer-analytics` | POST | Revenue/customer stats | `{date_from?, date_to?}` |
+
+### 🌐 Public Content
+| Endpoint | Method | Purpose | Body |
+|----------|--------|---------|------|
+| `/get-blog-posts` | POST | Blog listing + single post | `{slug?} or {search?, page?, page_size?}` |
+| `/get-testimonials` | POST | Testimonial feed | `{featured_only?, active_only?, limit?}` |
+| `/get-guest-resources` | POST | Guest resource listing | `{category?, type?, featured_only?, limit?}` |
+| `/get-prospect-dashboard` | POST | Public prospect page data | `{slug}` |
+
+### 🎙️ Podcast Data
+| Endpoint | Method | Purpose | Body |
+|----------|--------|---------|------|
+| `/search-podcasts` | POST | Full search/filter/pagination | `{search?, categories?[], min_audience?, ...}` |
+| `/get-podcast-demographics` | POST | Demographics with 30-day cache | `{podcast_id}` |
+| `/get-upcoming-bookings` | POST | Upcoming recordings/publications | `{days_ahead?, type?}` |
 
 ### 🔄 Data Sync
 | Endpoint | Method | Purpose | Body |
@@ -417,4 +440,4 @@ SELECT * FROM email_logs WHERE created_at > NOW() - INTERVAL '1 hour';
 
 **📚 Full Documentation**: See individual files for complete details
 **🔗 Base URL**: `https://your-project.supabase.co/functions/v1/`
-**📅 Last Updated**: March 2026 | **50 Edge Functions** | **37 Database Tables** | **2 MCP Tools**
+**📅 Last Updated**: March 2026 | **61 Edge Functions** | **37 Database Tables** | **2 MCP Tools**
