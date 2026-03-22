@@ -211,6 +211,7 @@ export default function ProspectView() {
         headers: {
           'Content-Type': 'application/json',
           'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ slug }),
       })
@@ -584,7 +585,7 @@ export default function ProspectView() {
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/save-prospect-feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({
           prospect_dashboard_id: dashboard.id,
           podcast_id: podcastId,
