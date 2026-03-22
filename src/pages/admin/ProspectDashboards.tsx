@@ -324,12 +324,18 @@ export default function ProspectDashboards() {
 
   const toggleActive = async (dashboard: ProspectDashboard) => {
     try {
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ is_active: !dashboard.is_active })
-        .eq('id', dashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: dashboard.id, updates: { is_active: !dashboard.is_active } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update dashboard')
+      }
 
       setDashboards(prev =>
         prev.map(d =>
@@ -352,12 +358,18 @@ export default function ProspectDashboards() {
     if (!dashboardToDelete) return
 
     try {
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .delete()
-        .eq('id', dashboardToDelete.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/delete-prospect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: dashboardToDelete.id })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete dashboard')
+      }
 
       setDashboards(prev => prev.filter(d => d.id !== dashboardToDelete.id))
       if (selectedDashboard?.id === dashboardToDelete.id) {
@@ -378,11 +390,18 @@ export default function ProspectDashboards() {
     setDeletingBulk(true)
     try {
       const ids = Array.from(selectedIds)
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .delete()
-        .in('id', ids)
-      if (error) throw error
+      // Delete each prospect via edge function (cascade deletes related data)
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+      await Promise.all(ids.map(id =>
+        fetch(`${SUPABASE_URL}/functions/v1/delete-prospect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ prospect_id: id })
+        })
+      ))
       setDashboards(prev => prev.filter(d => !selectedIds.has(d.id)))
       if (selectedDashboard && selectedIds.has(selectedDashboard.id)) {
         setSelectedDashboard(null)
@@ -456,26 +475,22 @@ export default function ProspectDashboards() {
         }
       }
 
-      // Delete from the cached podcasts table
-      const { error: cacheError } = await supabase
-        .from('prospect_dashboard_podcasts')
-        .delete()
-        .eq('prospect_dashboard_id', selectedDashboard.id)
-        .eq('podcast_id', podcastId)
+      // Delete podcast and feedback via edge function
+      const deleteResponse = await fetch(`${SUPABASE_URL}/functions/v1/batch-delete-prospect-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({
+          prospect_dashboard_id: selectedDashboard.id,
+          podcast_ids: [podcastId]
+        })
+      })
 
-      if (cacheError) {
-        console.error('Error deleting from cache:', cacheError)
-      }
-
-      // Delete the feedback record
-      const { error: feedbackError } = await supabase
-        .from('prospect_podcast_feedback')
-        .delete()
-        .eq('prospect_dashboard_id', selectedDashboard.id)
-        .eq('podcast_id', podcastId)
-
-      if (feedbackError) {
-        console.error('Error deleting feedback:', feedbackError)
+      if (!deleteResponse.ok) {
+        const errorData = await deleteResponse.json()
+        console.error('Error deleting podcast:', errorData.error)
       }
 
       // Remove from local feedback state
@@ -534,26 +549,22 @@ export default function ProspectDashboards() {
         console.log(`Deleted ${sheetDeleteCount}/${podcastIds.length} from Google Sheet`)
       }
 
-      // Delete all rejected from cached podcasts table
-      const { error: cacheError } = await supabase
-        .from('prospect_dashboard_podcasts')
-        .delete()
-        .eq('prospect_dashboard_id', selectedDashboard.id)
-        .in('podcast_id', podcastIds)
+      // Delete all rejected podcasts and feedback via edge function
+      const batchResponse = await fetch(`${SUPABASE_URL}/functions/v1/batch-delete-prospect-podcasts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({
+          prospect_dashboard_id: selectedDashboard.id,
+          podcast_ids: podcastIds
+        })
+      })
 
-      if (cacheError) {
-        console.error('Error deleting from cache:', cacheError)
-      }
-
-      // Delete all rejected feedback records
-      const { error: feedbackError } = await supabase
-        .from('prospect_podcast_feedback')
-        .delete()
-        .eq('prospect_dashboard_id', selectedDashboard.id)
-        .in('podcast_id', podcastIds)
-
-      if (feedbackError) {
-        console.error('Error deleting feedback:', feedbackError)
+      if (!batchResponse.ok) {
+        const errorData = await batchResponse.json()
+        console.error('Error batch deleting podcasts:', errorData.error)
       }
 
       // Remove from local feedback state
@@ -595,12 +606,18 @@ export default function ProspectDashboards() {
 
     setSavingImage(true)
     try {
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ prospect_image_url: editImageUrl.trim() || null })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_image_url: editImageUrl.trim() || null } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save profile picture')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -663,13 +680,19 @@ export default function ProspectDashboards() {
       // Update the image URL
       setEditImageUrl(publicUrl)
 
-      // Save to database
-      const { error: dbError } = await supabase
-        .from('prospect_dashboards')
-        .update({ prospect_image_url: publicUrl })
-        .eq('id', selectedDashboard.id)
-
-      if (dbError) throw dbError
+      // Save to database via edge function
+      const dbResponse = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_image_url: publicUrl } })
+      })
+      if (!dbResponse.ok) {
+        const errorData = await dbResponse.json()
+        throw new Error(errorData.error || 'Failed to save profile picture')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -1054,16 +1077,25 @@ export default function ProspectDashboards() {
 
     setSavingLoomVideo(true)
     try {
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({
-          loom_video_url: editLoomVideoUrl.trim() || null,
-          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
-          loom_video_title: editLoomVideoTitle.trim() || null
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({
+          prospect_id: selectedDashboard.id,
+          updates: {
+            loom_video_url: editLoomVideoUrl.trim() || null,
+            loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+            loom_video_title: editLoomVideoTitle.trim() || null
+          }
         })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save Loom video')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -1101,12 +1133,18 @@ export default function ProspectDashboards() {
 
     setSavingProspectName(true)
     try {
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ prospect_name: editProspectName.trim() })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_name: editProspectName.trim() } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save prospect name')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -1326,12 +1364,18 @@ export default function ProspectDashboards() {
     setTogglingPricing(true)
     try {
       const newValue = !selectedDashboard.show_pricing_section
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ show_pricing_section: newValue })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { show_pricing_section: newValue } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update pricing section visibility')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -1358,12 +1402,18 @@ export default function ProspectDashboards() {
     setTogglingLoomVideo(true)
     try {
       const newValue = !selectedDashboard.show_loom_video
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ show_loom_video: newValue })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { show_loom_video: newValue } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update Loom video visibility')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -1389,12 +1439,18 @@ export default function ProspectDashboards() {
 
     setSavingTestimonials(true)
     try {
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ testimonial_ids: selectedTestimonials })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { testimonial_ids: selectedTestimonials } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save testimonials')
+      }
 
       // Update local state
       setDashboards(prev =>
@@ -1423,12 +1479,18 @@ export default function ProspectDashboards() {
     setTogglingTestimonials(true)
     try {
       const newValue = !selectedDashboard.show_testimonials
-      const { error } = await supabase
-        .from('prospect_dashboards')
-        .update({ show_testimonials: newValue })
-        .eq('id', selectedDashboard.id)
-
-      if (error) throw error
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { show_testimonials: newValue } })
+      })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update testimonials visibility')
+      }
 
       // Update local state
       setDashboards(prev =>

@@ -582,23 +582,22 @@ export default function ProspectView() {
 
     setIsSavingFeedback(true)
     try {
-      const feedbackData = {
-        prospect_dashboard_id: dashboard.id,
-        podcast_id: podcastId,
-        podcast_name: podcastName || selectedPodcast?.podcast_name || null,
-        status,
-        notes: notes !== undefined ? notes : (currentNotes || null),
-      }
-
-      const { data, error } = await supabase
-        .from('prospect_podcast_feedback')
-        .upsert(feedbackData, {
-          onConflict: 'prospect_dashboard_id,podcast_id',
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/save-prospect-feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({
+          prospect_dashboard_id: dashboard.id,
+          podcast_id: podcastId,
+          status,
+          notes: notes !== undefined ? notes : (currentNotes || null),
+          podcast_name: podcastName || selectedPodcast?.podcast_name || null
         })
-        .select()
-        .single()
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save feedback')
+      }
 
       // Invalidate dashboard cache to refresh the feedback data
       queryClient.invalidateQueries({ queryKey: ['prospect-dashboard', slug] })
