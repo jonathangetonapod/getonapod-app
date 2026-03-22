@@ -84,6 +84,7 @@ serve(async (req) => {
       query_embedding: embedding,
       match_threshold: similarity_threshold,
       match_count: match_count,
+      p_exclude_podcast_ids: null,
     })
 
     if (searchError) {
