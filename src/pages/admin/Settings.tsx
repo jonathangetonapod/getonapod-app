@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label'
 import { useAuth } from '@/contexts/AuthContext'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Save, Shield, Bell, Globe, Code, Copy, ExternalLink, Check, Plus, Trash2, Loader2, Key, Eye, EyeOff, UserPlus } from 'lucide-react'
+import { Save, Shield, Bell, Globe, Code, Copy, ExternalLink, Check, Plus, Trash2, Loader2, Key, Eye, EyeOff, UserPlus, BookOpen } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { getAllEndpoints } from '@/lib/api-docs'
 import { supabase } from '@/lib/supabase'
 
 interface AdminUser {
@@ -778,6 +779,37 @@ const data = await response.json()`
                   </div>
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Edge Function API Reference */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              Edge Function API Reference
+            </CardTitle>
+            <CardDescription>
+              Complete reference for all Edge Function endpoints
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+              <div>
+                <p className="font-medium">
+                  {getAllEndpoints().length} documented endpoints
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Browse all available Edge Functions with parameters, auth requirements, and examples
+                </p>
+              </div>
+              <Button
+                onClick={() => window.open('/docs', '_blank')}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                View API Docs
+              </Button>
             </div>
           </CardContent>
         </Card>
