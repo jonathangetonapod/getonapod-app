@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -144,7 +144,7 @@ export default function ProspectView() {
   const [searchParams] = useSearchParams()
   const forceTour = searchParams.get('tour') === '1'
   const queryClient = useQueryClient()
-  const viewCountUpdated = useRef(false)
+
 
   // UI state
   const [searchQuery, setSearchQuery] = useState('')
@@ -200,26 +200,34 @@ export default function ProspectView() {
   // Pricing feature modal state
   const [selectedPricingFeature, setSelectedPricingFeature] = useState<string | null>(null)
 
-  // React Query: Fetch dashboard (cached for 5 minutes)
-  const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
+  // React Query: Fetch dashboard + feedback via edge function (cached for 5 minutes)
+  const { data: dashboardResponse, isLoading: dashboardLoading, error: dashboardError } = useQuery({
     queryKey: ['prospect-dashboard', slug],
     queryFn: async () => {
       if (!slug) throw new Error('Invalid dashboard link')
 
-      const { data, error } = await supabase
-        .from('prospect_dashboards')
-        .select('*')
-        .eq('slug', slug)
-        .single()
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-dashboard`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ slug }),
+      })
 
-      if (error || !data) throw new Error('Dashboard not found')
-      if (!data.is_active) throw new Error('This dashboard link is no longer active')
+      const result = await response.json()
 
-      return data as ProspectDashboard
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Dashboard not found')
+      }
+
+      return result as { success: true; dashboard: ProspectDashboard; feedback: PodcastFeedback[] }
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     enabled: !!slug,
   })
+
+  const dashboard = dashboardResponse?.dashboard ?? null
 
   // React Query: Fetch podcasts (enabled when dashboard is ready)
   const { data: podcasts = [], isLoading: podcastsLoading } = useQuery({
@@ -265,22 +273,8 @@ export default function ProspectView() {
     enabled: !!dashboard?.spreadsheet_id,
   })
 
-  // React Query: Fetch feedback (refreshes more often)
-  const { data: feedbackData = [] } = useQuery({
-    queryKey: ['prospect-feedback', dashboard?.id],
-    queryFn: async () => {
-      if (!dashboard?.id) return []
-
-      const { data } = await supabase
-        .from('prospect_podcast_feedback')
-        .select('*')
-        .eq('prospect_dashboard_id', dashboard.id)
-
-      return data || []
-    },
-    staleTime: 30 * 1000, // 30 seconds - feedback changes more often
-    enabled: !!dashboard?.id,
-  })
+  // Feedback data comes from the dashboard edge function response
+  const feedbackData = dashboardResponse?.feedback ?? []
 
   // Build feedback map from query data
   const feedbackMap = new Map<string, PodcastFeedback>(
@@ -304,19 +298,7 @@ export default function ProspectView() {
     return url
   }
 
-  // Update view count once (fire and forget)
-  useEffect(() => {
-    if (dashboard && !viewCountUpdated.current) {
-      viewCountUpdated.current = true
-      supabase
-        .from('prospect_dashboards')
-        .update({
-          view_count: (dashboard.view_count || 0) + 1,
-          last_viewed_at: new Date().toISOString()
-        })
-        .eq('id', dashboard.id)
-    }
-  }, [dashboard])
+  // View count is now incremented server-side by the get-prospect-dashboard edge function
 
   // Debounce search query for better performance
   useEffect(() => {
@@ -618,8 +600,8 @@ export default function ProspectView() {
 
       if (error) throw error
 
-      // Invalidate feedback cache to refresh the data
-      queryClient.invalidateQueries({ queryKey: ['prospect-feedback', dashboard.id] })
+      // Invalidate dashboard cache to refresh the feedback data
+      queryClient.invalidateQueries({ queryKey: ['prospect-dashboard', slug] })
 
       // Trigger confetti for new approvals
       if (isNewApproval) {

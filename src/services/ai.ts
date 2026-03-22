@@ -1,9 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({
-  apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
-  dangerouslyAllowBrowser: true, // Required for client-side usage
-});
+import { supabase } from '@/lib/supabase'
 
 interface PodcastSummaryInput {
   podcast_name: string;
@@ -17,49 +12,35 @@ interface PodcastSummaryInput {
 }
 
 /**
- * Generate an AI-powered "Why This Show" summary using Claude
+ * Generate an AI-powered "Why This Show" summary using Claude via Edge Function
+ * (server-side — no API key exposed in the browser)
  */
 export async function generatePodcastSummary(input: PodcastSummaryInput): Promise<string> {
   try {
-    const prompt = `You are a podcast booking agency expert. Write a compelling 2-3 sentence description explaining why guests should appear on this podcast and who it's ideal for.
+    const { data, error } = await supabase.functions.invoke('generate-podcast-summary', {
+      body: {
+        podcast_name: input.podcast_name,
+        audience_size: input.audience_size,
+        episode_count: input.episode_count,
+        rating: input.rating,
+        reach_score: input.reach_score,
+        description: input.description,
+        categories: input.categories,
+        publisher_name: input.publisher_name,
+      },
+    })
 
-Podcast Details:
-- Name: ${input.podcast_name}
-- Audience Size: ${input.audience_size}
-- Episodes: ${input.episode_count}
-- Rating: ${input.rating}
-- Reach Score: ${input.reach_score}
-${input.publisher_name ? `- Host: ${input.publisher_name}` : ''}
-${input.categories?.length ? `- Categories: ${input.categories.join(', ')}` : ''}
-${input.description ? `- Description: ${input.description}` : ''}
+    if (error) {
+      throw new Error(error.message || 'Edge function invocation failed')
+    }
 
-Guidelines:
-- Focus on the quality and type of audience (who listens and why they matter)
-- Explain the credibility and authority of the host/show
-- Describe who this opportunity is ideal for (thought leaders, entrepreneurs, etc)
-- DO NOT include specific numbers or metrics in your response
-- DO NOT use em dashes (—)
-- DO NOT include any title, heading, or hashtag (like "# Prebuilt Shopify Store Podcast")
-- Start directly with the description text
-- Write in a professional, persuasive tone about the strategic value
-- Keep it 2-3 sentences maximum`;
+    if (!data?.success || !data?.summary) {
+      throw new Error(data?.error || 'No summary returned from edge function')
+    }
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 200,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
-
-    const summary = message.content[0].type === 'text' ? message.content[0].text : '';
-
-    return summary.trim();
+    return data.summary.trim();
   } catch (error) {
-    console.error('❌ Failed to generate AI summary:', error);
+    console.error('Failed to generate AI summary:', error);
     // Fallback to template-based summary
     return `Ideal positioning for thought leaders. ${input.audience_size} audience with strong conversion rates. High engagement with ${input.rating} rating. Great opportunity for brand visibility and inbound lead generation.`;
   }

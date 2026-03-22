@@ -27,7 +27,7 @@ serve(async (req) => {
       throw new Error('ANTHROPIC_API_KEY not configured')
     }
 
-    const prompt = `You are a podcast booking agency expert. Write a compelling 2-3 sentence "Why This Show" description for the following podcast. Focus on the value proposition for potential guests - why they should appear on this show, what kind of audience reach they'll get, and the potential business impact.
+    const prompt = `You are a podcast booking agency expert. Write a compelling 2-3 sentence description explaining why guests should appear on this podcast and who it's ideal for.
 
 Podcast Details:
 - Name: ${podcast_name}
@@ -39,7 +39,16 @@ ${publisher_name ? `- Host: ${publisher_name}` : ''}
 ${categories?.length ? `- Categories: ${categories.join(', ')}` : ''}
 ${description ? `- Description: ${description}` : ''}
 
-Write the description in a professional, persuasive tone. Emphasize the quality of the audience, engagement potential, and business outcomes for guests. Keep it concise and impactful.`
+Guidelines:
+- Focus on the quality and type of audience (who listens and why they matter)
+- Explain the credibility and authority of the host/show
+- Describe who this opportunity is ideal for (thought leaders, entrepreneurs, etc)
+- DO NOT include specific numbers or metrics in your response
+- DO NOT use em dashes (—)
+- DO NOT include any title, heading, or hashtag (like "# Prebuilt Shopify Store Podcast")
+- Start directly with the description text
+- Write in a professional, persuasive tone about the strategic value
+- Keep it 2-3 sentences maximum`
 
     console.log('🤖 Calling Claude API...')
 
@@ -73,7 +82,7 @@ Write the description in a professional, persuasive tone. Emphasize the quality 
 
     console.log('✅ Summary generated:', summary)
 
-    return new Response(JSON.stringify({ summary }), {
+    return new Response(JSON.stringify({ success: true, summary }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
