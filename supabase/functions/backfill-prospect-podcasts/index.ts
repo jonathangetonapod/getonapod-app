@@ -366,9 +366,10 @@ Be selective — better to have 10 highly relevant matches than 50 mediocre ones
 
         const scored = JSON.parse(jsonContent)
         if (Array.isArray(scored) && scored.length > 0) {
-          // Filter to score >= 5 and sort by score descending
+          // Filter to score >= 8 and sort by score descending (only highly relevant matches)
+          const minScore = 8
           const qualified = scored
-            .filter((s: any) => s.score >= 5 && s.index >= 0 && s.index < matches.length)
+            .filter((s: any) => s.score >= minScore && s.index >= 0 && s.index < matches.length)
             .sort((a: any, b: any) => b.score - a.score)
 
           if (qualified.length > 0) {
