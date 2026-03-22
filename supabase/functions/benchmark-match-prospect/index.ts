@@ -6,13 +6,37 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+/**
+ * Populate a prospect's dashboard with ~50 diverse podcasts for human review.
+ *
+ * Uses vector search with a LOW threshold (0.15) and HIGH match_count (50)
+ * to get a diverse mix of good and bad podcasts. Saves ALL results to
+ * prospect_dashboard_podcasts without any AI scoring — the point is to get
+ * raw results for Jonathan to approve/reject, building training data.
+ *
+ * POST { prospect_id, target_count, similarity_threshold }
+ */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { prospect_id, match_count = 50, similarity_threshold = 0.30 } = await req.json()
+    let body: any
+    try {
+      body = await req.json()
+    } catch {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Request body must be valid JSON' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const {
+      prospect_id,
+      target_count = 50,
+      similarity_threshold = 0.15,
+    } = body
 
     if (!prospect_id) {
       return new Response(
@@ -28,7 +52,10 @@ serve(async (req) => {
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     if (!openaiApiKey) {
-      throw new Error('OPENAI_API_KEY not configured')
+      return new Response(
+        JSON.stringify({ success: false, error: 'OPENAI_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // 1. Get prospect
@@ -45,7 +72,9 @@ serve(async (req) => {
       )
     }
 
-    console.log(`[Benchmark] Matching for: ${prospect.prospect_name}`)
+    console.log(`[BenchmarkMatchProspect] Populating diverse podcasts for: ${prospect.prospect_name}`)
+    console.log(`  target_count: ${target_count}`)
+    console.log(`  similarity_threshold: ${similarity_threshold}`)
 
     // 2. Build embedding text from bio + structured fields
     const parts = [prospect.prospect_bio || '']
@@ -57,7 +86,7 @@ serve(async (req) => {
     if (prospect.prospect_title) parts.push(`Title: ${prospect.prospect_title}`)
 
     const embeddingText = parts.join('\n')
-    console.log(`[Benchmark] Embedding text length: ${embeddingText.length}`)
+    console.log(`[BenchmarkMatchProspect] Embedding text length: ${embeddingText.length}`)
 
     // 3. Generate embedding
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
@@ -69,6 +98,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: 'text-embedding-3-small',
         input: embeddingText,
+        dimensions: 1536,
       }),
     })
 
@@ -79,11 +109,11 @@ serve(async (req) => {
     const embeddingData = await embeddingResponse.json()
     const embedding = embeddingData.data[0].embedding
 
-    // 4. Vector search
+    // 4. Vector search with LOW threshold and HIGH count for diverse results
     const { data: matches, error: searchError } = await supabase.rpc('search_similar_podcasts', {
       query_embedding: embedding,
       match_threshold: similarity_threshold,
-      match_count: match_count,
+      match_count: target_count,
       p_exclude_podcast_ids: null,
     })
 
@@ -91,10 +121,12 @@ serve(async (req) => {
       throw new Error(`Vector search failed: ${searchError.message}`)
     }
 
-    console.log(`[Benchmark] Found ${matches?.length || 0} matches`)
+    console.log(`[BenchmarkMatchProspect] Found ${matches?.length || 0} matches (threshold: ${similarity_threshold})`)
 
-    // 5. Save matches to prospect_dashboard_podcasts (so they show up in admin UI for review)
+    // 5. Save ALL matches to prospect_dashboard_podcasts — no filtering
     const savedPodcasts = []
+    let skipCount = 0
+
     for (const match of (matches || [])) {
       const { error: insertError } = await supabase
         .from('prospect_dashboard_podcasts')
@@ -120,10 +152,12 @@ serve(async (req) => {
           similarity: match.similarity,
           audience_size: match.audience_size,
         })
+      } else {
+        skipCount++
       }
     }
 
-    console.log(`[Benchmark] Saved ${savedPodcasts.length} podcasts for review`)
+    console.log(`[BenchmarkMatchProspect] Saved ${savedPodcasts.length} podcasts for review (${skipCount} skipped/errors)`)
 
     return new Response(
       JSON.stringify({
@@ -131,12 +165,15 @@ serve(async (req) => {
         prospect_name: prospect.prospect_name,
         total_matches: matches?.length || 0,
         saved_for_review: savedPodcasts.length,
+        similarity_threshold,
+        target_count,
+        note: 'No AI scoring applied. All podcasts saved for human review to build training data.',
         podcasts: savedPodcasts,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('[Benchmark] Error:', error)
+    console.error('[BenchmarkMatchProspect] Error:', error)
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
