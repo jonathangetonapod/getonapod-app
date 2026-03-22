@@ -1239,25 +1239,14 @@ export default function PodcastFinder() {
         })
         toast.success(`Added ${result.rowsAdded} podcasts to ${selectedExistingProspect?.prospect_name}'s sheet!`)
       } else if (isExistingProspectMode && selectedProspectId && !existingProspectHasSheet) {
-        // Existing prospect but no sheet - create a new sheet and update the prospect record
+        // Existing prospect but no sheet - create a new sheet and update the existing prospect record
         const result = await createProspectSheet(
           prospectName.trim(),
           prospectBio.trim(),
           podcastsToExport,
-          prospectImageUrl.trim() || undefined
+          prospectImageUrl.trim() || undefined,
+          selectedProspectId
         )
-        // Update the existing prospect with the new sheet info
-        const { error: updateError } = await supabase
-          .from('prospect_dashboards')
-          .update({
-            spreadsheet_id: result.spreadsheetId,
-            spreadsheet_url: result.spreadsheetUrl
-          })
-          .eq('id', selectedProspectId)
-
-        if (updateError) {
-          console.error('Failed to update prospect with sheet info:', updateError)
-        }
 
         // Update local state
         setExistingProspects(prev =>

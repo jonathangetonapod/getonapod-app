@@ -137,11 +137,12 @@ serve(async (req) => {
   }
 
   try {
-    const { prospectName, prospectBio, prospectImageUrl, podcasts } = await req.json() as {
+    const { prospectName, prospectBio, prospectImageUrl, podcasts, existingProspectId } = await req.json() as {
       prospectName: string
       prospectBio?: string
       prospectImageUrl?: string
       podcasts: PodcastExportData[]
+      existingProspectId?: string
     }
 
     // Type validation
@@ -312,32 +313,58 @@ serve(async (req) => {
     const appendResult = await appendResponse.json()
     console.log('[Prospect Sheet] Data exported successfully')
 
-    // Create a record in the prospect_dashboards table
+    // Create or update a record in the prospect_dashboards table
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    const slug = generateSlug()
-    console.log('[Prospect Sheet] Generated slug:', slug)
+    let dashboardRecord: { id: string; slug: string } | null = null
+    let slug: string
 
-    const { data: dashboardRecord, error: dbError } = await supabase
-      .from('prospect_dashboards')
-      .insert({
-        slug,
-        prospect_name: prospectName,
-        prospect_bio: prospectBio || null,
-        prospect_image_url: prospectImageUrl || null,
-        spreadsheet_id: spreadsheetId,
-        spreadsheet_url: spreadsheetUrl,
-      })
-      .select()
-      .single()
+    if (existingProspectId) {
+      // Update existing prospect with sheet info instead of creating a duplicate
+      console.log('[Prospect Sheet] Updating existing prospect:', existingProspectId)
+      const { data: updated, error: updateError } = await supabase
+        .from('prospect_dashboards')
+        .update({
+          spreadsheet_id: spreadsheetId,
+          spreadsheet_url: spreadsheetUrl,
+        })
+        .eq('id', existingProspectId)
+        .select('id, slug')
+        .single()
 
-    if (dbError) {
-      console.error('[Prospect Sheet] Failed to create dashboard record:', dbError)
-      // Don't fail the whole request - sheet was created successfully
+      if (updateError) {
+        console.error('[Prospect Sheet] Failed to update existing prospect:', updateError)
+      } else {
+        dashboardRecord = updated
+        console.log('[Prospect Sheet] Existing prospect updated:', updated.id)
+      }
+      slug = dashboardRecord?.slug || generateSlug()
     } else {
-      console.log('[Prospect Sheet] Dashboard record created:', dashboardRecord.id)
+      // Create a new prospect dashboard record
+      slug = generateSlug()
+      console.log('[Prospect Sheet] Generated slug:', slug)
+
+      const { data: inserted, error: dbError } = await supabase
+        .from('prospect_dashboards')
+        .insert({
+          slug,
+          prospect_name: prospectName,
+          prospect_bio: prospectBio || null,
+          prospect_image_url: prospectImageUrl || null,
+          spreadsheet_id: spreadsheetId,
+          spreadsheet_url: spreadsheetUrl,
+        })
+        .select('id, slug')
+        .single()
+
+      if (dbError) {
+        console.error('[Prospect Sheet] Failed to create dashboard record:', dbError)
+      } else {
+        dashboardRecord = inserted
+        console.log('[Prospect Sheet] Dashboard record created:', inserted.id)
+      }
     }
 
     // Build the dashboard URL

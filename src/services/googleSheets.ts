@@ -179,7 +179,8 @@ export async function createProspectSheet(
   prospectName: string,
   prospectBio: string | undefined,
   podcasts: PodcastExportData[],
-  prospectImageUrl?: string
+  prospectImageUrl?: string,
+  existingProspectId?: string
 ): Promise<CreateProspectSheetResult> {
   if (!prospectName) {
     throw new Error('Prospect name is required')
@@ -207,6 +208,7 @@ export async function createProspectSheet(
         prospectBio,
         prospectImageUrl,
         podcasts,
+        existingProspectId,
       }),
     })
 
