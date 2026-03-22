@@ -1011,7 +1011,7 @@ Uses Claude Sonnet to generate contextual email reply drafts based on the full e
 
 **Endpoint:** `/functions/v1/generate-reply`
 **Method:** `POST`
-**Authentication:** Service Role Key required via environment variables
+**Authentication:** None (uses server-side environment variables `ANTHROPIC_API_KEY` and `EMAIL_BISON_API_TOKEN`; no caller authentication is performed)
 
 #### Request Body
 ```json
@@ -1082,7 +1082,6 @@ Uses Claude Sonnet to generate contextual email reply drafts based on the full e
 #### Example Request
 ```bash
 curl -X POST https://your-project.supabase.co/functions/v1/generate-reply \
-  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "bisonReplyId": 12345,

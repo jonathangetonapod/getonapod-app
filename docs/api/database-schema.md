@@ -1,7 +1,7 @@
 # Database Schema Documentation
 
 ## Overview
-This document describes the complete database schema for the authority-built podcast placement platform. The database is built on Supabase (PostgreSQL) with the **pgvector** extension enabled for vector similarity search. It includes 34 tables spanning client management, podcast discovery, booking systems, e-commerce, blog content, outreach automation, AI-powered podcast analysis, and analytics.
+This document describes the complete database schema for the authority-built podcast placement platform. The database is built on Supabase (PostgreSQL) with the **pgvector** extension enabled for vector similarity search. It includes 37 tables spanning client management, podcast discovery, booking systems, e-commerce, blog content, outreach automation, AI-powered podcast analysis, and analytics.
 
 ### Extensions
 - **pgvector** (`vector`) — Enables vector similarity search for semantic podcast matching using OpenAI embeddings
@@ -45,6 +45,7 @@ public.clients (
 
   -- Outreach integration
   outreach_webhook_url TEXT,
+  bison_campaign_id TEXT, -- Bison Campaign ID for tracking outreach campaigns
 
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -87,7 +88,7 @@ public.bookings (
   status TEXT DEFAULT 'booked' CHECK (status IN ('booked', 'in_progress', 'recorded', 'published', 'cancelled')),
   
   -- Podcast metadata
-  itunes_rating DECIMAL,
+  itunes_rating DECIMAL(2,1),
   itunes_rating_count INTEGER,
   episode_count INTEGER,
   audience_size INTEGER,
@@ -337,9 +338,40 @@ public.booking_addons (
 )
 ```
 
+### 10. Client Podcast Bookings Table
+**Purpose**: Calendar/booking relationship table linking clients to podcasts with scheduling information
+
+```sql
+public.client_podcast_bookings (
+  id UUID PRIMARY KEY,
+  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  podcast_id UUID NOT NULL REFERENCES podcasts(id) ON DELETE RESTRICT,
+
+  -- Scheduling information
+  scheduled_date DATE,
+  recording_date DATE,
+  publish_date DATE,
+
+  -- Status tracking
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'recorded', 'published', 'cancelled')),
+
+  -- Additional details
+  episode_url TEXT,
+  notes TEXT,
+  prep_sent BOOLEAN NOT NULL DEFAULT false,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+**Relationships**:
+- Many-to-one with `clients`
+- Many-to-one with `podcasts`
+
 ## Blog & Content System
 
-### 10. Blog Categories Table
+### 11. Blog Categories Table
 **Purpose**: Categories for organizing blog posts
 
 ```sql
@@ -354,7 +386,7 @@ public.blog_categories (
 )
 ```
 
-### 11. Blog Posts Table
+### 12. Blog Posts Table
 **Purpose**: Blog content with SEO features
 
 ```sql
@@ -397,7 +429,7 @@ public.blog_posts (
 )
 ```
 
-### 12. Blog Indexing Log Table
+### 13. Blog Indexing Log Table
 **Purpose**: Track Google Indexing API submissions
 
 ```sql
@@ -416,7 +448,7 @@ public.blog_indexing_log (
 
 ## Client Portal System
 
-### 13. Client Portal Tokens Table
+### 14. Client Portal Tokens Table
 **Purpose**: One-time magic link tokens for passwordless authentication
 
 ```sql
@@ -434,7 +466,7 @@ public.client_portal_tokens (
 )
 ```
 
-### 14. Client Portal Sessions Table
+### 15. Client Portal Sessions Table
 **Purpose**: Active client sessions after successful authentication
 
 ```sql
@@ -452,7 +484,7 @@ public.client_portal_sessions (
 )
 ```
 
-### 15. Client Portal Activity Log Table
+### 16. Client Portal Activity Log Table
 **Purpose**: Comprehensive audit log of client portal activity
 
 ```sql
@@ -470,7 +502,7 @@ public.client_portal_activity_log (
 
 ## Prospect & Lead Management
 
-### 16. Prospect Dashboards Table
+### 17. Prospect Dashboards Table
 **Purpose**: Shareable dashboard links for prospects
 
 ```sql
@@ -515,7 +547,7 @@ public.prospect_dashboards (
 )
 ```
 
-### 17. Prospect Dashboard Podcasts Cache Table
+### 18. Prospect Dashboard Podcasts Cache Table
 **Purpose**: Cache podcast data for prospect dashboards
 
 ```sql
@@ -539,9 +571,29 @@ public.prospect_dashboard_podcasts (
 )
 ```
 
+### 19. Prospect Podcast Feedback Table
+**Purpose**: Prospect approval/rejection of individual podcasts with optional notes
+
+```sql
+public.prospect_podcast_feedback (
+  id UUID PRIMARY KEY,
+  prospect_dashboard_id UUID NOT NULL REFERENCES prospect_dashboards(id) ON DELETE CASCADE,
+  podcast_id TEXT NOT NULL, -- Podscan podcast ID
+  status TEXT CHECK (status IN ('approved', 'rejected')), -- null means not reviewed
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(prospect_dashboard_id, podcast_id)
+)
+```
+
+**Relationships**:
+- Many-to-one with `prospect_dashboards`
+
 ## Analytics & Tracking
 
-### 18. Podcast Fit Analyses Table
+### 20. Podcast Fit Analyses Table
 **Purpose**: Cache AI-generated podcast fit analyses
 
 ```sql
@@ -559,7 +611,7 @@ public.podcast_fit_analyses (
 )
 ```
 
-### 19. Podcast Fit Analysis Cache Table
+### 21. Podcast Fit Analysis Cache Table
 **Purpose**: General-purpose cache for podcast fitness analyses
 
 ```sql
@@ -572,7 +624,7 @@ public.podcast_fit_analysis_cache (
 )
 ```
 
-### 20. Campaign Replies Table
+### 22. Campaign Replies Table
 **Purpose**: Track email campaign responses
 
 ```sql
@@ -591,7 +643,7 @@ public.campaign_replies (
 
 ## Email & Communication
 
-### 21. Email Logs Table
+### 23. Email Logs Table
 **Purpose**: Track all email delivery via Resend
 
 ```sql
@@ -618,7 +670,7 @@ public.email_logs (
 )
 ```
 
-### 22. Email Bounces Table
+### 24. Email Bounces Table
 **Purpose**: Email suppression list for bounced addresses
 
 ```sql
@@ -637,7 +689,7 @@ public.email_bounces (
 )
 ```
 
-### 23. Podcast Emails Table
+### 25. Podcast Emails Table
 **Purpose**: Store podcast contact emails
 
 ```sql
@@ -656,7 +708,7 @@ public.podcast_emails (
 
 ## Outreach & Messaging
 
-### 24. Outreach Messages Table
+### 26. Outreach Messages Table
 **Purpose**: Queue for outreach emails from Clay automation to be reviewed and sent via approval workflow
 
 ```sql
@@ -699,7 +751,7 @@ public.outreach_messages (
 
 **Status Flow**: `pending_review` -> `approved` -> `sent` (or `failed` / `archived`)
 
-### 25. Podcast Outreach Actions Table
+### 27. Podcast Outreach Actions Table
 **Purpose**: Tracks outreach sent/skipped per podcast per client
 
 ```sql
@@ -719,7 +771,7 @@ public.podcast_outreach_actions (
 )
 ```
 
-### 26. Sales Calls Table
+### 28. Sales Calls Table
 **Purpose**: Track sales calls and their outcomes
 
 ```sql
@@ -743,9 +795,37 @@ public.sales_calls (
 )
 ```
 
+### 29. Sales Call Analysis Table
+**Purpose**: AI-generated analysis scores and insights for sales calls
+
+```sql
+public.sales_call_analysis (
+  id UUID PRIMARY KEY,
+  sales_call_id UUID REFERENCES sales_calls(id) ON DELETE CASCADE,
+  overall_score DECIMAL(3,1) CHECK (overall_score >= 0 AND overall_score <= 10),
+  discovery_score DECIMAL(3,1) CHECK (discovery_score >= 0 AND discovery_score <= 10),
+  objection_handling_score DECIMAL(3,1) CHECK (objection_handling_score >= 0 AND objection_handling_score <= 10),
+  closing_score DECIMAL(3,1) CHECK (closing_score >= 0 AND closing_score <= 10),
+  engagement_score DECIMAL(3,1) CHECK (engagement_score >= 0 AND engagement_score <= 10),
+  talk_listen_ratio_talk INTEGER,
+  talk_listen_ratio_listen INTEGER,
+  questions_asked_count INTEGER,
+  recommendations JSONB,
+  strengths JSONB,
+  weaknesses JSONB,
+  key_moments JSONB,
+  sentiment_analysis JSONB,
+  analyzed_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+**Relationships**:
+- Many-to-one with `sales_calls`
+
 ## Administrative Tables
 
-### 27. Admin Users Table
+### 30. Admin Users Table
 **Purpose**: Manage admin access to the platform
 
 ```sql
@@ -759,7 +839,7 @@ public.admin_users (
 )
 ```
 
-### 28. Sync History Table
+### 31. Sync History Table
 **Purpose**: Track data synchronization operations
 
 ```sql
@@ -778,7 +858,7 @@ public.sync_history (
 
 ## Guest Resources
 
-### 29. Guest Resources Table
+### 32. Guest Resources Table
 **Purpose**: Educational content, guides, and resources for podcast guests
 
 ```sql
@@ -807,7 +887,7 @@ public.guest_resources (
 - `resource_type`: `'article'`, `'video'`, `'download'`, `'link'`
 - `resource_category`: `'preparation'`, `'technical_setup'`, `'best_practices'`, `'promotion'`, `'examples'`, `'templates'`
 
-### 30. Guest Resource Views Table
+### 33. Guest Resource Views Table
 **Purpose**: Tracks client views of guest resources
 
 ```sql
@@ -821,7 +901,7 @@ public.guest_resource_views (
 
 ## Client Podcast Approval Dashboard
 
-### 31. Client Dashboard Podcasts Table
+### 34. Client Dashboard Podcasts Table
 **Purpose**: Cache of podcasts from a client's Google Sheet for the approval dashboard
 
 ```sql
@@ -859,7 +939,7 @@ public.client_dashboard_podcasts (
 )
 ```
 
-### 32. Client Podcast Feedback Table
+### 35. Client Podcast Feedback Table
 **Purpose**: Client approval/rejection of individual podcasts before outreach
 
 ```sql
@@ -879,7 +959,7 @@ public.client_podcast_feedback (
 
 ## AI Podcast Analysis
 
-### 33. Client Podcast Analyses Table
+### 36. Client Podcast Analyses Table
 **Purpose**: Client-specific AI analysis of podcasts (based on client bio), separated from universal podcast metadata
 
 ```sql
@@ -901,7 +981,7 @@ public.client_podcast_analyses (
 )
 ```
 
-### 34. Prospect Podcast Analyses Table
+### 37. Prospect Podcast Analyses Table
 **Purpose**: Prospect-specific AI analysis of podcasts (based on prospect bio)
 
 ```sql

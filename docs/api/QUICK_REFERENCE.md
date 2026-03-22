@@ -117,7 +117,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 
 ## 🗄️ Database Quick Access
 
-### Core Tables (34 total)
+### Core Tables (37 total)
 ```sql
 -- Clients & Authentication
 clients                     -- Client accounts + dashboard settings
@@ -417,4 +417,4 @@ SELECT * FROM email_logs WHERE created_at > NOW() - INTERVAL '1 hour';
 
 **📚 Full Documentation**: See individual files for complete details
 **🔗 Base URL**: `https://your-project.supabase.co/functions/v1/`
-**📅 Last Updated**: March 2026 | **50 Edge Functions** | **34 Database Tables** | **2 MCP Tools**
+**📅 Last Updated**: March 2026 | **50 Edge Functions** | **37 Database Tables** | **2 MCP Tools**

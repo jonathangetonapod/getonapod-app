@@ -40,7 +40,7 @@ Authority Built supports multiple authentication systems:
 - 📚 **Resources**: Educational content and best practices
 
 ### [Database Schema](database-schema.md)
-**34 tables powering the entire platform**
+**37 tables powering the entire platform**
 - 👥 **Core Entities**: Clients, bookings, podcasts, orders
 - 💳 **E-commerce**: Customers, orders, premium podcasts, addons
 - ✉️ **Communication**: Email logs, outreach messages, campaign replies
@@ -431,5 +431,5 @@ Each documentation section provides:
 **Last Updated**: March 2026
 **Platform Version**: 2.1
 **Total Endpoints**: 50 Edge Functions + Direct Database Access + 2 MCP Tools
-**Database Tables**: 34 tables with comprehensive relationships
+**Database Tables**: 37 tables with comprehensive relationships
 **Frontend Services**: 20+ domain-specific service modules

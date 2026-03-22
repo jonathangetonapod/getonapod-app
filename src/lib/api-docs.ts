@@ -356,9 +356,9 @@ export const API_CATEGORIES: ApiCategory[] = [
         method: "POST",
         path: `${BASE_PATH}/generate-blog-content`,
         description: "Generates a full SEO-optimized blog post using two Claude Sonnet API calls: one for the main HTML content (8000 tokens) and a second for the meta description (200 tokens). Includes a CTA linking to Premium Podcast Placements.",
-        auth: "API Key",
+        auth: "Session Token",
         aiModel: "claude-sonnet-4-5-20250929 (Call 1: max_tokens 8000 | Call 2: max_tokens 200, both temp 0.7)",
-        notes: "Makes TWO separate Claude API calls (content + meta description). Requires 90s+ timeout — the content generation alone can take 60s at 8000 max_tokens. Structure: intro (150-200w), body (3-5 sections, 300-400w each with H2/H3), conclusion (150-200w). Always includes 'Get On A Pod' mention and CTA to Premium Placements. Meta description is 150-160 chars generated from first 500 chars of content.",
+        notes: "Requires Bearer token auth — the function calls supabase.auth.getUser() to validate the JWT from the Authorization header. Makes TWO separate Claude API calls (content + meta description). Requires 90s+ timeout — the content generation alone can take 60s at 8000 max_tokens. Structure: intro (150-200w), body (3-5 sections, 300-400w each with H2/H3), conclusion (150-200w). Always includes 'Get On A Pod' mention and CTA to Premium Placements. Meta description is 150-160 chars generated from first 500 chars of content.",
         performance: {
           avgLatency: "~60-90s (two sequential Claude API calls)",
           maxConcurrency: "5-10 concurrent",
@@ -379,6 +379,40 @@ export const API_CATEGORIES: ApiCategory[] = [
             wordCount: 1650,
             readTimeMinutes: 9
           }
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-media-kit-doc",
+        name: "Generate Media Kit Doc",
+        method: "POST",
+        path: `${BASE_PATH}/generate-media-kit-doc`,
+        description: "Generates a fully-formatted Google Doc media kit for a prospect using Claude Haiku for AI content generation and the Google Docs API for document creation. Includes professional sections: About bio, Key Credentials, Speaking Topics, Podcast Opportunities link, About GOAP, How It Works, What Sets Us Apart, and a CTA. Inserts GOAP logo and optional prospect photo. Makes the doc publicly viewable and saves the URL to the prospect_dashboards table.",
+        auth: "API Key",
+        aiModel: "claude-haiku-4-5-20251001 (max_tokens: 2500)",
+        notes: "Multi-step pipeline: (1) Generate structured content with Claude Haiku (aboutBio, credentials, speakingTopics), (2) Authenticate with Google via service account + domain-wide delegation (GOOGLE_SERVICE_ACCOUNT_JSON + GOOGLE_WORKSPACE_USER_EMAIL env vars), (3) Create blank Google Doc, (4) Batch-insert styled text, headings, bullet lists, and paragraph formatting, (5) Insert images (GOAP logo + optional prospect photo) in separate batch calls to avoid cascade failures, (6) Set doc to public read-only via Drive permissions API, (7) Save media_kit_url to prospect_dashboards table. Content is generated from prospect bio — does not fabricate facts not in the bio.",
+        performance: {
+          avgLatency: "~8-15s (Claude content generation + Google Doc creation + image insertion)",
+          maxConcurrency: "5-10 concurrent (Google API rate limits)",
+          bottleneck: "Sequential Google Docs API calls: doc creation, batch update, image insertion, permissions"
+        },
+        params: [
+          { name: "dashboardId", type: "string", required: true, description: "UUID from prospect_dashboards table. Media kit URL is saved here after creation." },
+          { name: "prospectName", type: "string", required: true, description: "Prospect's full name (used in doc title, headings, and AI content generation)" },
+          { name: "prospectBio", type: "string", required: true, description: "Prospect's bio text — the primary input for AI content generation. More detail produces better credentials and speaking topics." },
+          { name: "prospectTitle", type: "string", required: false, description: "Job title (displayed in doc subtitle)" },
+          { name: "prospectCompany", type: "string", required: false, description: "Company name (displayed in doc subtitle)" },
+          { name: "prospectIndustry", type: "string", required: false, description: "Industry context for AI content generation" },
+          { name: "prospectExpertise", type: "string[]", required: false, description: "Areas of expertise (fed to Claude for topic generation)" },
+          { name: "prospectTopics", type: "string[]", required: false, description: "Speaking topics (fed to Claude for content generation)" },
+          { name: "prospectTargetAudience", type: "string", required: false, description: "Target audience description for AI content context" },
+          { name: "prospectImageUrl", type: "string", required: false, description: "URL for prospect's photo (inserted into doc after title)" },
+          { name: "dashboardSlug", type: "string", required: false, description: "Dashboard slug for generating 'View Your Podcast Dashboard' links in the doc" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          docUrl: "https://docs.google.com/document/d/1abc.../edit",
+          docId: "1abc..."
         }, null, 2),
         category: "ai-content",
       },
@@ -584,6 +618,45 @@ export const API_CATEGORIES: ApiCategory[] = [
         }, null, 2),
         category: "podcast-discovery",
       },
+      {
+        id: "qa-review-podcasts",
+        name: "QA Review Podcasts",
+        method: "POST",
+        path: `${BASE_PATH}/qa-review-podcasts`,
+        description: "QA scoring of podcasts against a prospect's bio using Claude Sonnet. Evaluates bio fit (1-10), topic relevance (1-10), generates pitch angles, and extracts topic signals from podcast metadata. Processes up to 10 podcasts per request concurrently via Promise.all(). Returns null scores on individual podcast failures without failing the batch.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-5-20250929 (max_tokens: 1000, temperature: 0)",
+        notes: "Maximum 10 podcasts per request — frontend is expected to batch larger sets. Each podcast is scored independently in parallel (one Claude API call per podcast). Scoring rubric: bio_fit_score 9-10 = perfect match, 7-8 = strong, 5-6 = moderate, 3-4 = weak, 1-2 = poor. topic_relevance_score uses same scale for topic-specific alignment. pitch_angles only generated when topic_relevance_score >= 5. topic_signals must reference actual metadata (description phrases, category names) — never fabricated episode titles. If target_topic is not provided, topic_relevance_score is set to null. Multi-stage JSON parsing with markdown code block fallback and regex extraction.",
+        performance: {
+          avgLatency: "~3-6s for 10 podcasts (concurrent Claude calls)",
+          maxConcurrency: "10+ concurrent requests",
+          rateLimit: "Anthropic API rate limits apply",
+          bottleneck: "Parallel Claude Sonnet calls (one per podcast, ~1-2s each)"
+        },
+        bestPractices: "For best scoring accuracy: (1) Provide a detailed prospect_bio with specific expertise and credentials. (2) Include target_topic for topic relevance scoring — without it, only bio_fit_score is computed. (3) Include podcast_description and podcast_categories in each podcast object for richer AI context. (4) Batch requests in groups of 10 from the frontend for larger podcast sets.",
+        params: [
+          { name: "prospect_bio", type: "string", required: true, description: "Prospect's bio text — the primary input for evaluating fit. More detail produces more accurate scores and reasoning." },
+          { name: "target_topic", type: "string", required: false, description: "Specific topic to score relevance against. If omitted, topic_relevance_score is null." },
+          { name: "podcasts", type: "PodcastInput[]", required: true, description: "Array of 1-10 podcast objects. Each requires: podcast_id, podcast_name. Optional: podcast_description, publisher_name, podcast_categories (array of {category_name}), audience_size, episode_count." },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          results: [
+            {
+              podcast_id: "pod_abc123",
+              bio_fit_score: 8,
+              topic_relevance_score: 9,
+              bio_fit_reasoning: "Strong alignment with B2B SaaS expertise and the podcast's focus on growth strategies for founders.",
+              topic_reasoning: "Podcast is dedicated to SaaS scaling topics, directly matching the target topic.",
+              pitch_angles: [
+                { title: "Scaling SaaS Past $10M ARR", description: "Share your proven framework for breaking through revenue plateaus, including organizational changes that unlocked growth." }
+              ],
+              topic_signals: ["Description mentions 'SaaS growth strategies'", "Category: Business/Entrepreneurship"]
+            }
+          ]
+        }, null, 2),
+        category: "podcast-discovery",
+      },
     ],
   },
   {
@@ -754,7 +827,7 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "outreach-email",
     name: "Outreach & Email",
-    description: "Create outreach messages, trigger email campaigns, manage Bison leads, and fetch email threads.",
+    description: "Create outreach messages, trigger email campaigns, manage Bison leads, fetch email threads, and handle reply classification, generation, and management.",
     endpoints: [
       {
         id: "create-outreach-message",
@@ -834,6 +907,124 @@ export const API_CATEGORIES: ApiCategory[] = [
           { name: "replyId", type: "string", required: true, description: "Bison reply ID" },
         ],
         responseExample: JSON.stringify({ success: true, data: { messages: [{ from: "you@company.com", to: "host@podcast.com", subject: "Guest Pitch", body: "Hi..." }] } }, null, 2),
+        category: "outreach-email",
+      },
+      {
+        id: "classify-reply",
+        name: "Classify Reply",
+        method: "POST",
+        path: `${BASE_PATH}/classify-reply`,
+        description: "Classifies a single campaign reply as SALES, FULFILLMENT, or OTHER using Claude Haiku. Fetches the full email thread from Bison for context (if available), builds a classification prompt with campaign context, and updates the campaign_replies table with the classification, confidence level, and reasoning.",
+        auth: "API Key",
+        aiModel: "claude-haiku-4-5-20251001 (max_tokens: 150)",
+        notes: "Fetches the reply from campaign_replies table by reply_id, then attempts to retrieve the full conversation thread from Bison API (/api/replies/{bison_reply_id}/conversation-thread). Falls back to reply_content if thread fetch fails. Classification categories: 'sales' (prospect responding to GOAP sales outreach), 'fulfillment' (podcast host responding to guest pitch), 'other' (OOO, unsubscribes, bounces, spam). Confidence levels: high, medium, low. Updates campaign_replies with lead_type, ai_confidence, ai_classified_at, and ai_reason. Has fallback regex parsing if Claude returns non-JSON response (confidence set to 'low').",
+        performance: {
+          avgLatency: "~2-4s (Bison thread fetch + Claude Haiku call)",
+          maxConcurrency: "20+ concurrent",
+          bottleneck: "Sequential Bison thread fetch (~1s) + Claude Haiku classification (~1s)"
+        },
+        params: [
+          { name: "reply_id", type: "string", required: true, description: "UUID from campaign_replies table" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          data: {
+            reply_id: "uuid-of-reply",
+            classification: "sales",
+            confidence: "high",
+            reason: "Prospect is asking about GOAP's podcast booking services and pricing."
+          }
+        }, null, 2),
+        category: "outreach-email",
+      },
+      {
+        id: "delete-reply",
+        name: "Delete Reply",
+        method: "POST",
+        path: `${BASE_PATH}/delete-reply`,
+        description: "Deletes a campaign reply from both the Bison email system and the local campaign_replies database table. Attempts Bison deletion first (if bison_reply_id exists), then removes from the local database regardless of Bison result.",
+        auth: "API Key",
+        notes: "Two-phase deletion: (1) Delete from Bison via DELETE /api/replies/{bison_reply_id} — soft failure if Bison delete fails (logged as warning, does not block local deletion). (2) Delete from campaign_replies table by reply_id — hard failure if this step fails. Returns bison_deleted: true/false to indicate whether the Bison-side deletion succeeded. If the reply has no bison_reply_id or EMAIL_BISON_API_TOKEN is not set, Bison deletion is skipped.",
+        params: [
+          { name: "reply_id", type: "string", required: true, description: "UUID from campaign_replies table" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          data: {
+            reply_id: "uuid-of-reply",
+            bison_deleted: true
+          }
+        }, null, 2),
+        category: "outreach-email",
+      },
+      {
+        id: "fetch-and-classify-replies",
+        name: "Fetch and Classify Replies",
+        method: "POST",
+        path: `${BASE_PATH}/fetch-and-classify-replies`,
+        description: "Bulk fetches all interested replies from Bison and classifies each with Claude Haiku. For each reply: inserts new replies into campaign_replies, classifies unclassified replies, and updates thread status (awaiting_reply, last_reply_from, thread_message_count) for all replies including already-classified ones. No request body required — processes all interested inbox replies from Bison.",
+        auth: "API Key",
+        aiModel: "claude-haiku-4-5-20251001 (max_tokens: 150)",
+        notes: "Fetches from Bison GET /api/replies?status=interested&folder=inbox. Three processing paths per reply: (1) Already classified — only updates thread status (awaiting_reply, last_reply_from, thread_message_count, thread_checked_at). (2) Exists but unclassified — classifies with Haiku and updates thread status. (3) Brand new — inserts into campaign_replies with status='new', read=false, then classifies and updates thread status. Thread status check: determines who sent the last message — if the lead replied last, awaiting_reply=true (we owe a response). Uses the same classification prompt as classify-reply (SALES/FULFILLMENT/OTHER with confidence and reason).",
+        performance: {
+          avgLatency: "~10-30s depending on number of replies (sequential processing)",
+          maxConcurrency: "1-2 concurrent (sequential per-reply processing)",
+          rateLimit: "Bison API + Anthropic API rate limits apply",
+          bottleneck: "Sequential processing: each reply requires Bison thread fetch + Claude Haiku call"
+        },
+        bestPractices: "Run periodically (e.g. cron or manual trigger) to keep campaign_replies table in sync with Bison. Safe to run multiple times — already-classified replies are skipped for classification but still get thread status updates.",
+        params: [],
+        responseExample: JSON.stringify({
+          success: true,
+          data: {
+            total_interested: 25,
+            new_replies: 3,
+            classified: 5,
+            skipped: 17,
+            results: [
+              {
+                id: "uuid-of-reply",
+                email: "prospect@company.com",
+                classification: "sales",
+                confidence: "high",
+                awaiting_reply: true,
+                reason: "Prospect is asking about podcast booking services and pricing."
+              }
+            ]
+          }
+        }, null, 2),
+        category: "outreach-email",
+      },
+      {
+        id: "generate-reply",
+        name: "Generate Reply",
+        method: "POST",
+        path: `${BASE_PATH}/generate-reply`,
+        description: "Generates a contextual email reply using Claude Sonnet based on the full Bison conversation thread. Supports sales and fulfillment lead types with role-specific prompting. Optionally accepts a custom prompt to override the default. Returns both the generated reply text and the default prompt used (for UI display/editing).",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-6 (max_tokens: 500)",
+        notes: "Fetches the full conversation thread from Bison API (/api/replies/{bisonReplyId}/conversation-thread) and builds a chronological thread context. Role-specific prompting: 'sales' leads get consultative/professional tone aimed at booking a call; 'fulfillment' leads get friendly/accommodating tone aimed at confirming a podcast booking. If customPrompt is provided, it replaces the entire system prompt. Generated reply rules: plain text only (no HTML/markdown), no subject line, no sign-off name, matches conversation tone, short and actionable. Returns defaultPrompt alongside the reply so the UI can show/edit the prompt.",
+        performance: {
+          avgLatency: "~3-5s (Bison thread fetch + Claude Sonnet generation)",
+          maxConcurrency: "10+ concurrent",
+          bottleneck: "Bison thread fetch (~1s) + Claude Sonnet generation (~2-3s)"
+        },
+        params: [
+          { name: "bisonReplyId", type: "number", required: true, description: "Bison reply ID (used to fetch the conversation thread)" },
+          { name: "name", type: "string", required: false, description: "Contact's name (included in prompt context)" },
+          { name: "email", type: "string", required: false, description: "Contact's email (included in prompt context)" },
+          { name: "company", type: "string", required: false, description: "Contact's company (included in prompt context)" },
+          { name: "leadType", type: "string", required: false, description: "Lead classification: 'sales', 'fulfillment', or other. Determines the reply tone and goal." },
+          { name: "aiReason", type: "string", required: false, description: "AI classification note (included in prompt for additional context)" },
+          { name: "customPrompt", type: "string", required: false, description: "Custom prompt that replaces the entire default prompt. Use for manual prompt editing in the UI." },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          data: {
+            reply: "Thanks for your interest! We typically book clients on 2-4 podcasts per month. Would you be open to a quick 15-minute call this week to discuss which shows would be the best fit?",
+            defaultPrompt: "You are writing an email reply on behalf of GOAP (Get On A Pod)..."
+          }
+        }, null, 2),
         category: "outreach-email",
       },
     ],

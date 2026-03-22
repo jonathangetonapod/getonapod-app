@@ -204,25 +204,46 @@ export interface PodcastData {
 }
 ```
 
-**Usage:**
+**Key Functions:**
 ```typescript
-export async function searchPodcasts(options: SearchOptions): Promise<PodcastSearchResponse> {
-  const params = new URLSearchParams()
-  Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined) {
-      params.append(key, String(value))
-    }
-  })
+// Core search
+export async function searchPodcasts(options: SearchOptions): Promise<PodcastSearchResponse>
 
-  const response = await fetch(`${PODSCAN_API_BASE}/podcasts/search?${params}`, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-    },
-  })
+// Pre-built searches with randomized ordering and quality filters
+export async function searchBusinessPodcasts(limit?: number): Promise<PodcastData[]>
+export async function searchPremiumPodcasts(limit?: number): Promise<PodcastData[]>
+export async function searchFinancePodcasts(limit?: number): Promise<PodcastData[]>
+export async function searchTechPodcasts(limit?: number): Promise<PodcastData[]>
+export async function searchPodcastsByCategory(categories: string[], limit?: number): Promise<PodcastData[]>
 
-  return response.json()
-}
+// Single podcast lookup
+export async function getPodcastById(podcastId: string): Promise<PodcastData>
+export async function getRelatedPodcasts(podcastId: string): Promise<PodcastData[]>
+export async function getPodcastDemographics(podcastId: string): Promise<PodcastDemographics | null>
+
+// Paginated search with progress callbacks
+export async function previewSearch(options: SearchOptions): Promise<{ totalCount: number; totalPages: number; firstPage: PodcastData[] }>
+export async function searchAllPodcasts(
+  options: SearchOptions,
+  onPage: (podcasts: PodcastData[], pageNum: number, totalPages: number, totalCount: number) => void | Promise<void>,
+  onProgress?: (message: string) => void,
+  maxPages?: number,
+  opts?: { firstPageData?: PodcastData[]; totalCount?: number; totalPages?: number; abortSignal?: AbortSignal }
+): Promise<{ totalFound: number; totalPages: number }>
+
+// Analytics helper
+export function getPodcastAnalytics(podcast: PodcastData): PodcastAnalytics
+
+// Charts API
+export async function getChartCountries(): Promise<ChartCountry[]>
+export async function getChartCategories(platform: 'apple' | 'spotify', countryCode: string): Promise<ChartCategory[]>
+export async function getTopChartPodcasts(platform: 'apple' | 'spotify', countryCode: string, category: string, limit?: number): Promise<ChartPodcast[]>
 ```
+
+**Architecture Notes:**
+- `searchBusinessPodcasts` randomizes `order_by` across rating/episode_count/audience_size/last_posted_at for variety, filters to US podcasts with guests, audience 1K-30K
+- `searchAllPodcasts` paginates through all results (50 per page) with 500ms rate-limit delays, retry logic for 429 errors, and abort signal support
+- Chart API normalizes field names across Apple and Spotify response formats
 
 #### HeyGen Video Service (`/src/services/heygen.ts`)
 **Purpose:** AI avatar video generation for prospect dashboards
@@ -510,11 +531,27 @@ export interface UniversalPodcastCache {
 }
 ```
 
-**Cache Lookup Function:**
+**Key Functions:**
 ```typescript
-export async function findCachedPodcastMetadata(
-  podcastId: string
-): Promise<UniversalPodcastCache | null>
+// Single podcast lookup (checks client_dashboard -> prospect_dashboard -> bookings in priority order)
+export async function findCachedPodcastMetadata(podcastId: string): Promise<UniversalPodcastCache | null>
+
+// Batch lookup - queries all sources in parallel, returns Map<podcast_id, cache>
+export async function findCachedPodcastsMetadata(podcastIds: string[]): Promise<Map<string, UniversalPodcastCache>>
+
+// Global statistics across all cache sources with embedding coverage
+export async function getCacheStatistics(): Promise<CacheStatistics>
+
+// Per-client cache breakdown showing how many podcasts need fresh API fetches
+export async function getClientCacheStatus(clientId: string, podcastIds: string[]): Promise<{
+  total: number
+  cached_in_client: number
+  cached_in_other_clients: number
+  cached_in_prospects: number
+  cached_in_bookings: number
+  needs_fetch: number
+  cache_map: Map<string, UniversalPodcastCache>
+}>
 ```
 
 ### 9. File Upload and Storage
@@ -598,6 +635,194 @@ export interface PricingAnalytics {
 ```
 
 ### 11. Database Services
+
+#### Bookings (`/src/services/bookings.ts`)
+**Purpose:** Full CRUD for podcast booking records with client joins, date filtering, and statistics
+**Table:** `bookings`
+
+```typescript
+export interface Booking {
+  id: string
+  client_id: string
+  podcast_name: string
+  podcast_url: string | null
+  host_name: string | null
+  scheduled_date: string | null
+  recording_date: string | null
+  publish_date: string | null
+  status: 'conversation_started' | 'in_progress' | 'booked' | 'recorded' | 'published' | 'cancelled'
+  episode_url: string | null
+  notes: string | null
+  prep_sent: boolean
+  // Podcast metadata from Podscan
+  podcast_id: string | null
+  audience_size: number | null
+  podcast_description: string | null
+  itunes_rating: number | null
+  itunes_rating_count: number | null
+  episode_count: number | null
+  podcast_image_url: string | null
+  rss_url: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BookingWithClient extends Booking {
+  client: Client
+}
+```
+
+**Key Functions:**
+```typescript
+export async function getBookings(options?: {
+  client_id?: string
+  status?: 'booked' | 'in_progress' | 'recorded' | 'published' | 'cancelled'
+  date_from?: string
+  date_to?: string
+  search?: string
+  limit?: number
+  offset?: number
+}): Promise<{ bookings: BookingWithClient[]; total: number }>
+
+export async function getBookingById(bookingId: string): Promise<BookingWithClient>
+export async function getBookingsByDate(date: string): Promise<BookingWithClient[]>
+export async function getBookingsByMonth(year: number, month: number): Promise<BookingWithClient[]>
+export async function createBooking(input: { client_id: string; podcast_name: string; ... }): Promise<BookingWithClient>
+export async function updateBooking(bookingId: string, updates: Partial<Booking>): Promise<BookingWithClient>
+export async function deleteBooking(bookingId: string): Promise<void>
+export async function getBookingStats(): Promise<{ totalBookings: number; booked: number; inProgress: number; recorded: number; published: number }>
+export async function getClientBookingStats(clientId: string): Promise<{ total: number; booked: number; inProgress: number; recorded: number; published: number }>
+```
+
+**Architecture Notes:**
+- All queries join with `clients(*)` to return `BookingWithClient`
+- `getBookings` supports pagination via `limit`/`offset` and returns total count
+- Ordered by `scheduled_date` descending (newest first, nulls last)
+
+#### Clients (`/src/services/clients.ts`)
+**Purpose:** Full CRUD for client records with portal password management, photo upload, and statistics
+**Table:** `clients`
+
+```typescript
+export interface Client {
+  id: string
+  name: string
+  email: string | null
+  linkedin_url: string | null
+  website: string | null
+  calendar_link: string | null
+  contact_person: string | null
+  first_invoice_paid_date: string | null
+  status: 'active' | 'paused' | 'churned'
+  notes: string | null
+  bio: string | null
+  photo_url: string | null
+  google_sheet_url: string | null
+  media_kit_url: string | null
+  prospect_dashboard_slug: string | null
+  outreach_webhook_url: string | null
+  bison_campaign_id: string | null
+  created_at: string
+  updated_at: string
+  // Portal access fields
+  portal_access_enabled?: boolean
+  portal_last_login_at?: string | null
+  portal_invitation_sent_at?: string | null
+  portal_password?: string | null
+  password_set_at?: string | null
+  password_set_by?: string | null
+}
+```
+
+**Key Functions:**
+```typescript
+// CRUD
+export async function getClients(options?: { search?: string; status?: 'active' | 'paused' | 'churned'; limit?: number; offset?: number }): Promise<{ clients: Client[]; total: number }>
+export async function getClientById(clientId: string): Promise<Client>
+export async function createClient(input: { name: string; email?: string; ... }): Promise<Client>
+export async function updateClient(clientId: string, updates: Partial<Client>): Promise<Client>
+export async function deleteClient(clientId: string): Promise<void>
+
+// Portal password management
+export async function setClientPassword(clientId: string, password: string, setBy?: string): Promise<void>
+export async function clearClientPassword(clientId: string): Promise<void>
+export function generatePassword(length?: number): string
+
+// Statistics
+export async function getClientStats(): Promise<{ totalClients: number; activeClients: number; totalBookings: number }>
+
+// Photo management
+export async function uploadClientPhoto(clientId: string, file: File): Promise<Client>
+export async function removeClientPhoto(clientId: string, photoUrl: string): Promise<Client>
+```
+
+**Architecture Notes:**
+- `getClients` supports search across `name` and `email` fields via `or` filter
+- Ordered alphabetically by name
+- `uploadClientPhoto` stores files in Supabase Storage bucket `client-assets` under `client-photos/`
+- `generatePassword` uses `crypto.getRandomValues` for secure random generation
+
+#### Google Sheets (`/src/services/googleSheets.ts`)
+**Purpose:** Google Sheets integration for client podcast outreach lists, prospect dashboards, and AI-powered podcast fit analysis
+**Edge Functions:** `create-client-google-sheet`, `export-to-google-sheets`, `create-prospect-sheet`, `append-prospect-sheet`, `get-client-outreach-podcasts`, `delete-outreach-podcast`, `analyze-podcast-fit`
+
+```typescript
+export interface CreateSheetResult {
+  success: boolean
+  spreadsheetUrl: string
+  spreadsheetId: string
+  message: string
+}
+
+export interface ExportToSheetsResult {
+  success: boolean
+  rowsAdded: number
+  updatedRange: string
+  cacheSaved?: number
+  cacheSkipped?: number
+  cacheErrors?: number
+}
+
+export interface CreateProspectSheetResult {
+  success: boolean
+  spreadsheetUrl: string
+  spreadsheetId: string
+  sheetTitle: string
+  rowsAdded: number
+  message: string
+  dashboardUrl: string
+  dashboardSlug: string
+}
+
+export interface AnalyzePodcastFitResult {
+  success: boolean
+  cached: boolean
+  analysis: PodcastFitAnalysis
+}
+```
+
+**Key Functions:**
+```typescript
+// Client sheet operations (require authenticated JWT)
+export async function createClientGoogleSheet(clientId: string, clientName: string): Promise<CreateSheetResult>
+export async function exportPodcastsToGoogleSheets(clientId: string, podcasts: PodcastExportData[]): Promise<ExportToSheetsResult>
+
+// Prospect sheet operations (require authenticated JWT)
+export async function createProspectSheet(prospectName: string, prospectBio: string | undefined, podcasts: PodcastExportData[], prospectImageUrl?: string): Promise<CreateProspectSheetResult>
+export async function appendToProspectSheet(dashboardId: string, podcasts: PodcastExportData[]): Promise<AppendToProspectSheetResult>
+
+// Outreach management (use anon key)
+export async function getClientOutreachPodcasts(clientId: string): Promise<GetOutreachPodcastsResult>
+export async function deleteOutreachPodcast(clientId: string, podcastId: string): Promise<DeleteOutreachPodcastResult>
+
+// AI analysis (uses anon key)
+export async function analyzePodcastFit(podcast: PodcastDataForAnalysis, clientId: string, clientName: string, clientBio: string): Promise<AnalyzePodcastFitResult>
+```
+
+**Architecture Notes:**
+- Client/prospect sheet creation and export functions require an authenticated user session (JWT from `supabase.auth.getSession()`)
+- `getClientOutreachPodcasts` fetches podcast IDs from the Edge Function, then fetches full metadata from Podscan API client-side in batches of 10 with 100ms delays
+- `analyzePodcastFit` returns cached results when available to save API credits
 
 #### AI Categorization (`/src/services/categorization.ts`)
 **Purpose:** Auto-categorize podcasts using Claude AI
