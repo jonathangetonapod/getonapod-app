@@ -36,7 +36,7 @@ const Footer = () => {
             <h4 className="text-sm font-semibold text-foreground mb-3">Get Started</h4>
             <nav className="flex flex-col gap-2">
               <a
-                href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00"
+                href="https://calendly.com/getonapodjg/30min"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"

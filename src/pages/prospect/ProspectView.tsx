@@ -1683,7 +1683,7 @@ export default function ProspectView() {
               <Button
                 size="sm"
                 className="w-full sm:h-10"
-                onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
+                onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
               >
                 Book a Call
               </Button>
@@ -1730,7 +1730,7 @@ export default function ProspectView() {
               size="default"
               variant="outline"
               className="gap-2 text-sm sm:text-base"
-              onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
+              onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
             >
               <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
               Book a Call
@@ -1808,7 +1808,7 @@ export default function ProspectView() {
                 <Button
                   size="sm"
                   className="gap-1.5 sm:gap-2 whitespace-nowrap bg-white text-violet-700 hover:bg-yellow-300 hover:text-violet-900 text-xs sm:text-sm font-bold h-9 sm:h-11 px-3 sm:px-5 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
-                  onClick={() => window.open('https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00', '_blank')}
+                  onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
                 >
                   <Calendar className="h-4 w-4 sm:h-5 sm:w-5 group-hover:animate-bounce-gentle" />
                   <span className="hidden sm:inline">Book Your Free Call</span>

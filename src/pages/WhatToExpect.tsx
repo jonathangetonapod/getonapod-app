@@ -342,7 +342,7 @@ const WhatToExpect = () => {
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
             <Button size="lg" className="gap-2 min-h-[48px] text-sm sm:text-base" asChild>
-              <a href="https://calendly.com/getonapodjg/30min/2026-01-12T13:00:00-05:00" target="_blank" rel="noopener noreferrer">
+              <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
                 Book a Free Call
                 <ArrowRight className="h-4 w-4" />
               </a>
