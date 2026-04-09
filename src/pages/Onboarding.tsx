@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -423,42 +424,34 @@ export default function Onboarding() {
       // Generate AI bio from all the onboarding information
       toast.info('Generating your professional bio...')
 
-      const bioResponse = await fetch(
-        'https://ysjwveqnwjysldpfqzov.supabase.co/functions/v1/generate-client-bio',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: data.name,
-            title: data.title,
-            company: data.company,
-            bio: data.bio,
-            expertise: data.expertise,
-            compellingStory: data.compellingStory,
-            uniqueJourney: data.uniqueJourney,
-            topicsConfident: data.topicsConfident,
-            passions: data.passions,
-            audienceValue: data.audienceValue,
-            personalStories: data.personalStories,
-            hobbies: data.hobbies,
-            futureVision: data.futureVision,
-            specificAngles: data.specificAngles,
-            idealAudience: data.idealAudience,
-            goals: data.goals,
-            socialFollowers: data.socialFollowers,
-            previousPodcasts: data.previousPodcasts,
-          }),
-        }
-      )
+      const { data: bioData, error: bioError } = await supabase.functions.invoke('generate-client-bio', {
+        body: {
+          name: data.name,
+          title: data.title,
+          company: data.company,
+          bio: data.bio,
+          expertise: data.expertise,
+          compellingStory: data.compellingStory,
+          uniqueJourney: data.uniqueJourney,
+          topicsConfident: data.topicsConfident,
+          passions: data.passions,
+          audienceValue: data.audienceValue,
+          personalStories: data.personalStories,
+          hobbies: data.hobbies,
+          futureVision: data.futureVision,
+          specificAngles: data.specificAngles,
+          idealAudience: data.idealAudience,
+          goals: data.goals,
+          socialFollowers: data.socialFollowers,
+          previousPodcasts: data.previousPodcasts,
+        },
+      })
 
       let generatedBio = data.bio
-      if (!bioResponse.ok) {
+      if (bioError) {
         console.error('Bio generation failed, using original bio')
       } else {
-        const bioData = await bioResponse.json()
-        generatedBio = bioData.bio || data.bio
+        generatedBio = bioData?.bio || data.bio
       }
 
       // Store additional context in notes
@@ -499,43 +492,38 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
       // Create client account via API
       toast.info('Creating your account...')
 
-      const response = await fetch(
-        'https://ysjwveqnwjysldpfqzov.supabase.co/functions/v1/create-client-account',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: data.name,
-            email: data.email,
-            bio: generatedBio,
-            linkedin_url: data.linkedin_url || undefined,
-            website: data.website,
-            calendar_link: data.calendarLink || undefined,
-            contact_person: data.name,
-            notes: detailedNotes,
-            status: 'active',
-            enable_portal_access: true,
-            password: generatedPassword,
-            send_invitation_email: true,
-            create_google_sheet: true,
-            headshot_base64: submitHeadshotBase64,
-            headshot_filename: submitHeadshotFilename,
-            headshot_content_type: submitHeadshotContentType,
-          }),
-        }
-      )
+      const { data: result, error: createError } = await supabase.functions.invoke('create-client-account', {
+        body: {
+          name: data.name,
+          email: data.email,
+          bio: generatedBio,
+          linkedin_url: data.linkedin_url || undefined,
+          website: data.website,
+          calendar_link: data.calendarLink || undefined,
+          contact_person: data.name,
+          notes: detailedNotes,
+          status: 'active',
+          enable_portal_access: true,
+          password: generatedPassword,
+          send_invitation_email: true,
+          create_google_sheet: true,
+          headshot_base64: submitHeadshotBase64,
+          headshot_filename: submitHeadshotFilename,
+          headshot_content_type: submitHeadshotContentType,
+        },
+      })
 
-      if (!response.ok) {
-        const error = await response.json()
-        if (response.status === 409) {
-          throw new Error('An account with this email already exists. Please use a different email or contact support.')
-        }
-        throw new Error(error.error || 'Failed to create account')
+      if (createError) {
+        throw new Error(createError.message || 'Failed to create account')
       }
 
-      const result = await response.json()
+      if (result?.error) {
+        if (result.error.includes('already exists')) {
+          throw new Error('An account with this email already exists. Please use a different email or contact support.')
+        }
+        throw new Error(result.error)
+      }
+
       setAccountDetails(result.client)
       setAccountCreated(true)
       clearSavedProgress()
