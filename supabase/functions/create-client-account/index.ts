@@ -29,7 +29,7 @@ interface RequestBody {
 
   // Portal access options
   enable_portal_access?: boolean
-  password?: string // If not provided, will use magic link only
+  password?: string // Portal login password
   send_invitation_email?: boolean
 
   // Google Sheet options

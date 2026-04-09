@@ -139,7 +139,7 @@ serve(async (req) => {
       })
 
       return new Response(
-        JSON.stringify({ error: 'Password authentication is not set up for this account. Please use magic link login or contact your administrator.' }),
+        JSON.stringify({ error: 'Password authentication is not set up for this account. Please contact your administrator.' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

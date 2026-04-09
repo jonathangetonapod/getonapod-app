@@ -12,7 +12,6 @@ paths:
 - Sanitize user search input before `.or()` or `.ilike()` Supabase filters
 - Sort columns must be validated against an allowlist, never pass raw user input
 - Portal session tokens have 24hr TTL — always check expiry server-side
-- Magic link tokens expire after 15 minutes
 - Admin routes must use ProtectedRoute with email validation
 - Database schema changes require migration files in `supabase/migrations/`
 - CORS must be restricted to known domains, never wildcard `'*'`
