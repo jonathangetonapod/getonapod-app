@@ -55,6 +55,7 @@ interface OnboardingData {
   // Social & Contact
   socialFollowers: string
   email: string
+  linkedin_url: string
 
   // Value Proposition
   audienceValue: string
@@ -95,6 +96,7 @@ const initialData: OnboardingData = {
   passions: '',
   socialFollowers: '',
   email: '',
+  linkedin_url: '',
   audienceValue: '',
   impact: '',
   personalStories: '',
@@ -152,6 +154,7 @@ const testimonials = [
 const STORAGE_KEY = 'onboarding_draft'
 const STORAGE_STEP_KEY = 'onboarding_step'
 const STORAGE_HEADSHOT_KEY = 'onboarding_headshot'
+const SESSION_ID_KEY = 'onboarding_session_id'
 
 // Separate interface for serializable data (excludes File object)
 interface SerializableOnboardingData extends Omit<OnboardingData, 'headshotFile'> {
@@ -171,9 +174,83 @@ export default function Onboarding() {
   const [headshotBase64, setHeadshotBase64] = useState<string | null>(null)
   const [headshotMeta, setHeadshotMeta] = useState<{ name: string; type: string } | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sessionIdRef = useRef<string>('')
 
   const totalSteps = 6
   const progress = (step / totalSteps) * 100
+
+  // Generate or restore session ID
+  useEffect(() => {
+    let id = localStorage.getItem(SESSION_ID_KEY)
+    if (!id) {
+      id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+      localStorage.setItem(SESSION_ID_KEY, id)
+    }
+    sessionIdRef.current = id
+
+    // Save initial session to server immediately (captures "started" state)
+    saveSessionToServer({
+      session_id: id,
+      status: 'started',
+      current_step: 1,
+      user_agent: navigator.userAgent,
+      referrer: document.referrer || undefined,
+      utm_source: new URLSearchParams(window.location.search).get('utm_source') || undefined,
+      utm_medium: new URLSearchParams(window.location.search).get('utm_medium') || undefined,
+      utm_campaign: new URLSearchParams(window.location.search).get('utm_campaign') || undefined,
+    })
+  }, [])
+
+  // Save session data to server (fire-and-forget, never blocks the UI)
+  const saveSessionToServer = async (payload: Record<string, unknown>) => {
+    try {
+      await supabase.functions.invoke('save-onboarding-session', { body: payload })
+    } catch (err) {
+      console.error('Failed to save onboarding session:', err)
+    }
+  }
+
+  // Debounced save: waits 2s after last change before saving to server
+  const debouncedServerSave = (currentData: OnboardingData, currentStep: number) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(() => {
+      if (!sessionIdRef.current || accountCreated) return
+      saveSessionToServer({
+        session_id: sessionIdRef.current,
+        status: 'in_progress',
+        current_step: currentStep,
+        name: currentData.name || undefined,
+        email: currentData.email || undefined,
+        title: currentData.title || undefined,
+        company: currentData.company || undefined,
+        website: currentData.website || undefined,
+        social_followers: currentData.socialFollowers || undefined,
+        bio: currentData.bio || undefined,
+        linkedin_url: currentData.linkedin_url || undefined,
+        compelling_story: currentData.compellingStory || undefined,
+        unique_journey: currentData.uniqueJourney || undefined,
+        previous_podcasts: currentData.previousPodcasts || undefined,
+        expertise: currentData.expertise.length ? currentData.expertise : undefined,
+        topics_confident: currentData.topicsConfident.length ? currentData.topicsConfident : undefined,
+        passions: currentData.passions || undefined,
+        goals: currentData.goals.length ? currentData.goals : undefined,
+        ideal_audience: currentData.idealAudience || undefined,
+        specific_podcasts: currentData.specificPodcasts || undefined,
+        audience_value: currentData.audienceValue || undefined,
+        availability: currentData.availability || undefined,
+        calendar_link: currentData.calendarLink || undefined,
+        personal_stories: currentData.personalStories || undefined,
+        hobbies: currentData.hobbies || undefined,
+        future_vision: currentData.futureVision || undefined,
+        specific_angles: currentData.specificAngles || undefined,
+        additional_info: currentData.additionalInfo || undefined,
+        key_messages: currentData.keyMessages.length ? currentData.keyMessages : undefined,
+        impact: currentData.impact || undefined,
+        has_headshot: !!(currentData.headshotFile || headshotBase64),
+      })
+    }, 2000)
+  }
 
   // Load saved progress from localStorage on mount
   useEffect(() => {
@@ -225,6 +302,9 @@ export default function Onboarding() {
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableData))
       localStorage.setItem(STORAGE_STEP_KEY, step.toString())
+
+      // Also save to server (debounced)
+      debouncedServerSave(data, step)
     } catch (error) {
       console.error('Error saving progress:', error)
     }
@@ -527,6 +607,18 @@ ${data.additionalInfo ? `Additional Info:\n${data.additionalInfo}` : ''}`
       setAccountDetails(result.client)
       setAccountCreated(true)
       clearSavedProgress()
+
+      // Mark onboarding session as completed on the server
+      if (sessionIdRef.current) {
+        saveSessionToServer({
+          session_id: sessionIdRef.current,
+          status: 'completed',
+          current_step: totalSteps,
+          client_id: result.client?.client_id,
+        })
+        localStorage.removeItem(SESSION_ID_KEY)
+      }
+
       toast.success('Your account has been created!')
 
       // Big celebration!
