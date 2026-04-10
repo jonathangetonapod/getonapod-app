@@ -16,12 +16,24 @@ async function getGoogleAccessToken(): Promise<string> {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON not configured')
   }
 
-  const serviceAccount = JSON.parse(serviceAccountJson)
+  let serviceAccount
+  try {
+    serviceAccount = JSON.parse(serviceAccountJson)
+  } catch (parseError) {
+    console.error('[Create Sheet] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:', parseError.message)
+    console.error('[Create Sheet] First 100 chars:', serviceAccountJson.substring(0, 100))
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON')
+  }
+
   const { client_email, private_key } = serviceAccount
 
   if (!client_email || !private_key) {
-    throw new Error('Invalid service account credentials')
+    throw new Error(`Invalid service account credentials. Has client_email: ${!!client_email}, has private_key: ${!!private_key}`)
   }
+
+  console.log('[Create Sheet] Service account email:', client_email)
+  console.log('[Create Sheet] Private key starts with BEGIN:', private_key.startsWith('-----BEGIN'))
+  console.log('[Create Sheet] Private key length:', private_key.length)
 
   // Create JWT
   const now = Math.floor(Date.now() / 1000)
@@ -38,34 +50,45 @@ async function getGoogleAccessToken(): Promise<string> {
     typ: 'JWT',
   }))
 
-  // Get user email for domain-wide delegation (impersonation)
+  // Domain-wide delegation with sheets-writer service account
   const userEmail = Deno.env.get('GOOGLE_WORKSPACE_USER_EMAIL')
-  if (!userEmail) {
-    throw new Error('GOOGLE_WORKSPACE_USER_EMAIL not configured')
-  }
-
-  console.log('[Domain-Wide Delegation] Enabled!')
-  console.log('[Domain-Wide Delegation] Service account will impersonate:', userEmail)
-  console.log('[Domain-Wide Delegation] Sheet will be created in user\'s Drive, not service account\'s')
-
-  const jwtPayload = base64UrlEncode(JSON.stringify({
+  const jwtPayloadObj: Record<string, unknown> = {
     iss: client_email,
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
     aud: 'https://oauth2.googleapis.com/token',
     exp: expiry,
     iat: now,
-    sub: userEmail,  // Domain-wide delegation: impersonate this user
-  }))
+  }
 
-  // Import private key
+  if (userEmail) {
+    jwtPayloadObj.sub = userEmail
+    console.log('[Create Sheet] Domain-wide delegation, impersonating:', userEmail)
+  } else {
+    console.log('[Create Sheet] No GOOGLE_WORKSPACE_USER_EMAIL, using service account directly')
+  }
+  console.log('[Create Sheet] Service account:', client_email)
+
+  const jwtPayload = base64UrlEncode(JSON.stringify(jwtPayloadObj))
+
+  // Import private key — handle both real newlines and escaped \n from env storage
+  const normalizedKey = private_key.replace(/\\n/g, '\n')
   const pemHeader = '-----BEGIN PRIVATE KEY-----'
   const pemFooter = '-----END PRIVATE KEY-----'
-  const pemContents = private_key
+  const pemContents = normalizedKey
     .replace(pemHeader, '')
     .replace(pemFooter, '')
     .replace(/\s/g, '')
 
-  const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0))
+  console.log('[Create Sheet] PEM base64 length after stripping:', pemContents.length)
+
+  let binaryDer: Uint8Array
+  try {
+    binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0))
+  } catch (b64Error) {
+    console.error('[Create Sheet] Failed to decode private key base64:', b64Error.message)
+    console.error('[Create Sheet] First 20 chars of PEM content:', pemContents.substring(0, 20))
+    throw new Error('Private key base64 decoding failed — key may be corrupted in env var')
+  }
 
   const key = await crypto.subtle.importKey(
     'pkcs8',
@@ -105,10 +128,19 @@ async function getGoogleAccessToken(): Promise<string> {
     }),
   })
 
-  const tokenData = await tokenResponse.json()
+  const tokenText = await tokenResponse.text()
+  console.log('[Create Sheet] Token response status:', tokenResponse.status)
+  console.log('[Create Sheet] Token response body:', tokenText)
+
+  let tokenData
+  try {
+    tokenData = JSON.parse(tokenText)
+  } catch {
+    throw new Error(`Token endpoint returned non-JSON: ${tokenText.substring(0, 200)}`)
+  }
 
   if (!tokenResponse.ok) {
-    throw new Error(`Failed to get access token: ${tokenData.error_description || tokenData.error}`)
+    throw new Error(`Failed to get access token (${tokenResponse.status}): ${tokenData.error_description || tokenData.error || tokenText}`)
   }
 
   return tokenData.access_token

@@ -42,7 +42,8 @@ async function getGoogleAccessToken(): Promise<string> {
     sub: userEmail,
   }))
 
-  const pemContents = private_key
+  const normalizedKey = private_key.replace(/\\n/g, '\n')
+  const pemContents = normalizedKey
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
     .replace(/\s/g, '')
@@ -677,14 +678,14 @@ serve(async (req) => {
   try {
     const body = await req.json()
     const {
-      dashboardId, prospectName, prospectBio, prospectTitle, prospectCompany,
+      dashboardId, clientId, prospectName, prospectBio, prospectTitle, prospectCompany,
       prospectIndustry, prospectExpertise, prospectTopics, prospectTargetAudience,
       prospectImageUrl, dashboardSlug,
     } = body
 
-    if (!dashboardId || !prospectName || !prospectBio) {
+    if ((!dashboardId && !clientId) || !prospectName || !prospectBio) {
       return new Response(
-        JSON.stringify({ success: false, error: 'dashboardId, prospectName, and prospectBio are required' }),
+        JSON.stringify({ success: false, error: 'dashboardId or clientId, prospectName, and prospectBio are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -737,13 +738,25 @@ serve(async (req) => {
 
     // Step 5: Save URL to database
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    const { error: updateError } = await supabase
-      .from('prospect_dashboards')
-      .update({ media_kit_url: docUrl })
-      .eq('id', dashboardId)
 
-    if (updateError) {
-      console.error('[Generate Media Kit] Failed to save URL:', updateError)
+    if (clientId) {
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({ media_kit_url: docUrl })
+        .eq('id', clientId)
+      if (updateError) {
+        console.error('[Generate Media Kit] Failed to save URL to client:', updateError)
+      }
+    }
+
+    if (dashboardId && !clientId) {
+      const { error: updateError } = await supabase
+        .from('prospect_dashboards')
+        .update({ media_kit_url: docUrl })
+        .eq('id', dashboardId)
+      if (updateError) {
+        console.error('[Generate Media Kit] Failed to save URL to dashboard:', updateError)
+      }
     }
 
     console.log('[Generate Media Kit] Done! URL:', docUrl)

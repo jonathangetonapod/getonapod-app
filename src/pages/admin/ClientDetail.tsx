@@ -109,6 +109,7 @@ export default function ClientDetail() {
   const [bioExpanded, setBioExpanded] = useState(false)
   const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
   const [savingMediaKit, setSavingMediaKit] = useState(false)
+  const [generatingMediaKit, setGeneratingMediaKit] = useState(false)
   // Podcast Approval Dashboard state
   const [dashboardCacheLoading, setDashboardCacheLoading] = useState(false)
   const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
@@ -781,6 +782,74 @@ export default function ClientDetail() {
       })
     } finally {
       setSavingMediaKit(false)
+    }
+  }
+
+  const generateMediaKit = async () => {
+    if (!client || !id) return
+
+    if (!client.bio) {
+      toast({
+        title: 'Bio Required',
+        description: 'Add a client bio first to generate a media kit',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setGeneratingMediaKit(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-media-kit-doc`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          dashboardId: id,
+          clientId: id,
+          prospectName: client.name,
+          prospectBio: client.bio,
+          prospectTitle: client.contact_person || undefined,
+          prospectCompany: undefined,
+          prospectImageUrl: client.photo_url || undefined,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate media kit')
+      }
+
+      // Save the URL to the client record
+      await supabase
+        .from('clients')
+        .update({ media_kit_url: data.docUrl })
+        .eq('id', id)
+
+      setEditMediaKitUrl(data.docUrl)
+      queryClient.invalidateQueries({ queryKey: ['client', id] })
+
+      toast({
+        title: 'Media Kit Generated!',
+        description: 'Opening Google Doc...'
+      })
+
+      window.open(data.docUrl, '_blank')
+    } catch (error) {
+      console.error('Error generating media kit:', error)
+      toast({
+        title: 'Generation Failed',
+        description: error instanceof Error ? error.message : 'Failed to generate media kit',
+        variant: 'destructive'
+      })
+    } finally {
+      setGeneratingMediaKit(false)
     }
   }
 
@@ -1928,6 +1997,28 @@ export default function ClientDetail() {
                 <FileText className="h-4 w-4 text-muted-foreground mt-1" />
                 <div className="flex-1">
                   <p className="text-sm font-medium mb-2">Media Kit / One Pager</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mb-2"
+                    onClick={generateMediaKit}
+                    disabled={generatingMediaKit || !client.bio}
+                  >
+                    {generatingMediaKit ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating Google Doc...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        {editMediaKitUrl ? 'Regenerate Media Kit' : 'Generate Media Kit'}
+                      </>
+                    )}
+                  </Button>
+                  {!client.bio && (
+                    <p className="text-xs text-amber-600 mb-2">Add a bio first to generate a media kit</p>
+                  )}
                   <div className="flex gap-2">
                     <Input
                       placeholder="Paste media kit URL..."
@@ -1964,9 +2055,6 @@ export default function ClientDetail() {
                       Preview Media Kit
                     </Button>
                   )}
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Link to the client's media kit or one-pager document (Google Doc, PDF, etc.)
-                  </p>
                 </div>
               </div>
 

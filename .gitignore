@@ -30,3 +30,4 @@ supabase/.temp/
 # Video generator service (local only)
 video-generator/
 video-generator-setup.md
+.gstack/
