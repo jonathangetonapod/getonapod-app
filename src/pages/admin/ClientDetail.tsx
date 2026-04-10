@@ -113,6 +113,7 @@ export default function ClientDetail() {
   const [generatingSequence, setGeneratingSequence] = useState(false)
   const [sampleSequence, setSampleSequence] = useState<{ subject: string; body: string; label: string; timing: string }[] | null>(null)
   const [sequenceExpanded, setSequenceExpanded] = useState(false)
+  const [sequenceDocUrl, setSequenceDocUrl] = useState<string | null>(null)
   // Podcast Approval Dashboard state
   const [dashboardCacheLoading, setDashboardCacheLoading] = useState(false)
   const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
@@ -890,11 +891,18 @@ export default function ClientDetail() {
 
       setSampleSequence(data.sequence)
       setSequenceExpanded(true)
+      if (data.docUrl) {
+        setSequenceDocUrl(data.docUrl)
+      }
 
       toast({
         title: 'Sample Sequence Generated!',
-        description: `Preview outreach sequence for ${firstName} is ready`,
+        description: data.docUrl ? 'Opening Google Doc...' : `Preview outreach sequence for ${firstName} is ready`,
       })
+
+      if (data.docUrl) {
+        window.open(data.docUrl, '_blank')
+      }
     } catch (error) {
       console.error('Error generating sample sequence:', error)
       toast({
@@ -2176,6 +2184,16 @@ export default function ClientDetail() {
               </Button>
               {!client.bio && (
                 <p className="text-xs text-amber-600">Add a bio first to generate a sample sequence</p>
+              )}
+              {sequenceDocUrl && (
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => window.open(sequenceDocUrl, '_blank')}
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  Open Client-Facing Google Doc
+                </Button>
               )}
 
               {sampleSequence && (
