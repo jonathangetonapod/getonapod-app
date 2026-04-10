@@ -123,7 +123,7 @@ async function createSequenceDoc(
   sequence: { label: string; timing: string; body: string }[]
 ): Promise<{ docId: string; docUrl: string }> {
   const firstName = clientName.split(' ')[0]
-  const docTitle = `${clientName} - Outreach Email Sequence | Get On A Pod`
+  const docTitle = `${firstName}'s Outreach Email Preview | Get On A Pod`
 
   const createResponse = await fetch('https://docs.googleapis.com/v1/documents', {
     method: 'POST',
@@ -140,34 +140,35 @@ async function createSequenceDoc(
   let idx = 1
 
   // ── Header ──
-  idx = insertStyledText(requests, idx, `OUTREACH EMAIL SEQUENCE`, {
+  idx = insertStyledText(requests, idx, `YOUR OUTREACH EMAILS`, {
     fontSize: 22, bold: true, color: COLOR_DARK, font: 'Arial',
   })
 
-  idx = insertStyledText(requests, idx, clientName, {
-    fontSize: 14, bold: true, color: COLOR_DARK, font: 'Arial',
+  idx = insertStyledText(requests, idx, `A preview of how we pitch ${firstName} to podcast hosts`, {
+    fontSize: 11, italic: true, color: COLOR_GRAY, font: 'Arial',
   })
 
-  idx = insertSpacer(requests, idx, 4)
+  idx = insertSpacer(requests, idx, 6)
 
   // ── Intro paragraph ──
-  idx = insertStyledText(requests, idx, `Below is a preview of the outreach emails we send to podcast hosts on ${firstName}'s behalf. Each real email is uniquely personalized to the specific podcast, referencing a recent episode and tailoring topics to their audience. This sample demonstrates the tone, structure, and quality of every message.`, {
-    fontSize: 10, color: COLOR_GRAY, font: 'Arial',
+  idx = insertStyledText(requests, idx, `Hi ${firstName},`, {
+    fontSize: 10, color: COLOR_DARK, font: 'Arial',
   })
 
-  idx = insertSpacer(requests, idx, 4)
+  idx = insertStyledText(requests, idx, `Below is a sample of the emails we'll send to podcast hosts on your behalf. We want you to see exactly what goes out with your name on it before we start outreach.`, {
+    fontSize: 10, color: COLOR_DARK, font: 'Arial',
+  })
 
-  // ── How it works bullets ──
-  idx = insertStyledText(requests, idx, 'How Our Outreach Works', {
-    fontSize: 12, bold: true, color: COLOR_DARK, font: 'Arial',
+  idx = insertStyledText(requests, idx, `A few things to know:`, {
+    fontSize: 10, color: COLOR_DARK, font: 'Arial',
   })
 
   const howItWorks = [
-    `Every email is written from scratch for each podcast, not templated`,
-    `We research the host, listen to a recent episode, and reference it naturally`,
-    `Topic bullets are tailored to what that specific audience cares about`,
-    `We follow up twice, then move on. No spam, no pressure`,
-    `Nothing goes out without your review and approval`,
+    `Every email is written from scratch for each podcast. These are not templates`,
+    `We research the host, listen to a recent episode, and reference it in the email`,
+    `Your topic bullets are tailored to what that specific audience cares about`,
+    `We follow up twice, then move on. No spam, no repeated messages`,
+    `Nothing goes out without your approval`,
   ]
 
   const bulletsStart = idx
@@ -178,6 +179,12 @@ async function createSequenceDoc(
     idx += t.length
   }
   requests.push({ createParagraphBullets: { range: { startIndex: bulletsStart, endIndex: idx }, bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE' } })
+
+  idx = insertSpacer(requests, idx, 4)
+
+  idx = insertStyledText(requests, idx, `The sample below uses a fictional podcast to show the tone and structure. Your real emails will reference actual shows we've matched you with.`, {
+    fontSize: 10, color: COLOR_GRAY, font: 'Arial',
+  })
 
   idx = insertSpacer(requests, idx, 8)
 
@@ -249,13 +256,13 @@ async function createSequenceDoc(
   idx = insertDivider(requests, idx)
   idx = insertSpacer(requests, idx, 4)
 
-  idx = insertStyledText(requests, idx, `Each real outreach email is uniquely written per podcast. The emails above show the structure and tone, not a copy-paste template.`, {
-    fontSize: 9, italic: true, color: COLOR_LIGHT_GRAY, font: 'Arial', alignment: 'CENTER',
+  idx = insertStyledText(requests, idx, `Have feedback on the tone, topics, or how you're introduced? Let us know and we'll adjust before we start outreach.`, {
+    fontSize: 10, color: COLOR_DARK, font: 'Arial',
   })
 
-  idx = insertSpacer(requests, idx, 4)
+  idx = insertSpacer(requests, idx, 6)
 
-  idx = insertStyledText(requests, idx, `Prepared by Get On A Pod  ·  getonapod.com`, {
+  idx = insertStyledText(requests, idx, `Get On A Pod  ·  getonapod.com`, {
     fontSize: 8, color: COLOR_LIGHT_GRAY, font: 'Arial', alignment: 'CENTER',
   })
 
