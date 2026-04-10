@@ -34,7 +34,7 @@ CLIENT DETAILS:
 - LinkedIn: ${clientLinkedin || 'Not provided'}
 - Website: ${clientWebsite || 'Not provided'}
 
-Write a 4-email sequence that pitches ${firstName} as a podcast guest. Use a FICTIONAL but realistic podcast as the example (invent a plausible podcast name, host name, and recent episode topic that fits ${firstName}'s expertise).
+Write a 3-email sequence that pitches ${firstName} as a podcast guest. Use a FICTIONAL but realistic podcast as the example (invent a plausible podcast name, host name, and recent episode topic that fits ${firstName}'s expertise).
 
 Return ONLY a JSON array with exactly 3 objects. No markdown, no code fences, just raw JSON:
 
@@ -42,7 +42,7 @@ Return ONLY a JSON array with exactly 3 objects. No markdown, no code fences, ju
   {
     "label": "Email 1",
     "timing": "Day 1 · Initial Outreach",
-    "body": "The full email body, ready to read. Start with 'Hey [host_first_name],' — use the fictional host's first name."
+    "body": "The full email body, ready to read."
   },
   {
     "label": "Email 2",
@@ -58,34 +58,45 @@ Return ONLY a JSON array with exactly 3 objects. No markdown, no code fences, ju
 
 EMAIL WRITING RULES:
 
-**Email 1 — Initial Outreach:**
+**Email 1 — Initial Outreach (120-150 words MAX):**
 - Open with "Hey [host_first_name],"
-- 2-3 sentence opening that references a specific (fictional) recent episode with a genuine insight
-- Introduce ${firstName} with CONCRETE accomplishments from their bio — specific numbers, outcomes, roles
-- 3-5 topic bullets that show what ${firstName} could discuss, framed as audience value
-- End with: "Would you be open to seeing some more info about ${firstName}?"
+- First sentence MUST be: "I had an idea about a potential guest you may want to interview if you're taking on guests."
+- Then 1-2 more sentences referencing the (fictional) recent episode naturally
+- Introduce ${firstName} with only 2-3 strongest credentials with specific numbers
+- Exactly 3-4 topic bullets, one line each
+- End with exactly: "Would you be open to seeing some more info about ${firstName}?"
 - No text after the CTA
 
-**Email 2 — Follow-Up:**
-- Short — 3-4 sentences max
+**Email 2 — Follow-Up (80-100 words MAX):**
+- Open with "Hey [host_first_name],"
+- Short, 3-4 sentences max
 - Add a NEW angle or detail about ${firstName} not mentioned in Email 1
 - Offer to send a media kit
 - Conversational, not pushy
 
-**Email 3 — Final Follow-Up:**
+**Email 3 — Final Follow-Up (60-80 words MAX):**
+- Open with "Hey [host_first_name],"
 - Lead with a specific, timely topic ${firstName} can speak to
 - Respectful, acknowledges the host is busy
-- Leave the door open — no guilt, no pressure
+- Leave the door open, no guilt, no pressure
 - End with a soft ask
 
-TONE RULES:
-- Conversational but professional
-- NO hype words: avoid "revolutionizing," "game-changing," "transforming," "incredible"
+STRICT FORMATTING RULES:
+- NO em dashes at all, anywhere, ever. Use commas, periods, or regular dashes (-) instead
+- NO hype words: "revolutionizing," "game-changing," "transforming," "disrupting," "innovative," "incredible"
+- NO formal phrases: "I am writing on behalf of," "specifically," "there is a," "in order to," "currently"
 - NO links in any email
-- NO em dashes — use regular dashes (-) or commas
+- NO signatures, no bold, no italic, no placeholder text
 - Use only the host's first name, never full name
 - Each email should feel like it was written by a real person, not a template
-- The sequence should make ${firstName} feel confident these emails would get responses`
+- The sequence should make ${firstName} feel confident these emails would get responses
+
+CUTTING PATTERNS - DELETE THESE IF THEY APPEAR:
+- "I am writing on behalf of" -> just introduce them
+- "specifically" -> cut it
+- "there is a" -> rewrite without it
+- "in order to" -> use "to"
+- "currently" -> usually unnecessary`
 
     console.log('[Generate Sequence] Generating for:', clientName)
 
