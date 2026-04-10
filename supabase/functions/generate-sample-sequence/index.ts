@@ -198,20 +198,47 @@ async function createSequenceDoc(
 
     idx = insertSpacer(requests, idx, 4)
 
-    // Email body - split into paragraphs
-    const paragraphs = email.body.split(/\n+/).filter(Boolean)
-    for (const para of paragraphs) {
-      // Check if it looks like a bullet line
-      if (para.trim().startsWith('-') || para.trim().startsWith('•')) {
-        const bulletText = para.replace(/^[\s\-•]+/, '').trim() + '\n'
-        requests.push({ insertText: { location: { index: idx }, text: bulletText } })
-        requests.push({ updateTextStyle: { range: { startIndex: idx, endIndex: idx + bulletText.length }, textStyle: { fontSize: { magnitude: 10, unit: 'PT' }, foregroundColor: { color: { rgbColor: COLOR_DARK } }, weightedFontFamily: { fontFamily: 'Arial' } }, fields: 'fontSize,foregroundColor,weightedFontFamily' } })
-        requests.push({ createParagraphBullets: { range: { startIndex: idx, endIndex: idx + bulletText.length }, bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE' } })
-        idx += bulletText.length
+    // Email body - parse into text blocks and bullet groups
+    const lines = email.body.split('\n')
+
+    // Group consecutive lines into: text paragraphs and bullet groups
+    const blocks: { type: 'text' | 'bullets'; content: string[] }[] = []
+    let currentBullets: string[] = []
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+
+      const isBullet = trimmed.startsWith('- ') || trimmed.startsWith('• ')
+      if (isBullet) {
+        currentBullets.push(trimmed.replace(/^[\-•]\s+/, ''))
       } else {
-        idx = insertStyledText(requests, idx, para, {
+        if (currentBullets.length > 0) {
+          blocks.push({ type: 'bullets', content: currentBullets })
+          currentBullets = []
+        }
+        blocks.push({ type: 'text', content: [trimmed] })
+      }
+    }
+    if (currentBullets.length > 0) {
+      blocks.push({ type: 'bullets', content: currentBullets })
+    }
+
+    for (const block of blocks) {
+      if (block.type === 'text') {
+        idx = insertStyledText(requests, idx, block.content[0], {
           fontSize: 10, color: COLOR_DARK, font: 'Arial',
         })
+      } else {
+        // Insert all bullets as a group, then apply bullet formatting once
+        const bulletStart = idx
+        for (const item of block.content) {
+          const t = item + '\n'
+          requests.push({ insertText: { location: { index: idx }, text: t } })
+          requests.push({ updateTextStyle: { range: { startIndex: idx, endIndex: idx + t.length }, textStyle: { fontSize: { magnitude: 10, unit: 'PT' }, foregroundColor: { color: { rgbColor: COLOR_DARK } }, weightedFontFamily: { fontFamily: 'Arial' } }, fields: 'fontSize,foregroundColor,weightedFontFamily' } })
+          idx += t.length
+        }
+        requests.push({ createParagraphBullets: { range: { startIndex: bulletStart, endIndex: idx }, bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE' } })
       }
     }
 
