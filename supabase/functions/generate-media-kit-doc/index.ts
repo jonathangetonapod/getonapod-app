@@ -9,9 +9,11 @@ const corsHeaders = {
 const GOAP_LOGO_URL = 'https://getonapod.com/logo.png'
 
 // Brand colors
-const COLOR_DARK = { red: 0.2, green: 0.2, blue: 0.2 }
-const COLOR_GRAY = { red: 0.4, green: 0.4, blue: 0.4 }
-const COLOR_LIGHT_GRAY = { red: 0.6, green: 0.6, blue: 0.6 }
+const COLOR_DARK = { red: 0.13, green: 0.13, blue: 0.13 }
+const COLOR_GRAY = { red: 0.35, green: 0.35, blue: 0.35 }
+const COLOR_LIGHT_GRAY = { red: 0.55, green: 0.55, blue: 0.55 }
+const COLOR_ACCENT = { red: 0.15, green: 0.4, blue: 0.75 } // Professional blue for links/accents
+const COLOR_DIVIDER = { red: 0.85, green: 0.85, blue: 0.85 }
 
 /**
  * Generate Google Access Token from Service Account (with domain-wide delegation)
@@ -31,16 +33,21 @@ async function getGoogleAccessToken(): Promise<string> {
   const jwtHeader = base64UrlEncode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
 
   const userEmail = Deno.env.get('GOOGLE_WORKSPACE_USER_EMAIL')
-  if (!userEmail) throw new Error('GOOGLE_WORKSPACE_USER_EMAIL not configured')
 
-  const jwtPayload = base64UrlEncode(JSON.stringify({
+  const jwtPayloadObj: Record<string, unknown> = {
     iss: client_email,
     scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive',
     aud: 'https://oauth2.googleapis.com/token',
     exp: now + 3600,
     iat: now,
-    sub: userEmail,
-  }))
+  }
+
+  if (userEmail) {
+    jwtPayloadObj.sub = userEmail
+    console.log('[Generate Media Kit] Domain-wide delegation, impersonating:', userEmail)
+  }
+
+  const jwtPayload = base64UrlEncode(JSON.stringify(jwtPayloadObj))
 
   const normalizedKey = private_key.replace(/\\n/g, '\n')
   const pemContents = normalizedKey
@@ -78,9 +85,18 @@ async function getGoogleAccessToken(): Promise<string> {
 }
 
 /**
- * Generate media kit content using Claude AI — returns structured JSON
+ * Generate media kit content using Claude AI — host-facing format
  */
-async function generateMediaKitContent(prospect: {
+interface MediaKitContent {
+  tagline: string
+  aboutBio: string
+  credentials: string[]
+  episodeTopics: { title: string; hook: string; audienceTakeaway: string }[]
+  sampleQuestions: string[]
+  audienceValue: string
+}
+
+async function generateMediaKitContent(guest: {
   name: string
   bio: string
   title?: string
@@ -89,45 +105,51 @@ async function generateMediaKitContent(prospect: {
   expertise?: string[]
   topics?: string[]
   targetAudience?: string
-}): Promise<{
-  aboutBio: string
-  credentials: string[]
-  speakingTopics: { title: string; description: string }[]
-}> {
+  linkedinUrl?: string
+  website?: string
+}): Promise<MediaKitContent> {
   const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured')
 
-  const expertiseList = prospect.expertise?.length ? prospect.expertise.join(', ') : 'Not specified'
-  const topicsList = prospect.topics?.length ? prospect.topics.join(', ') : 'Not specified'
+  const expertiseList = guest.expertise?.length ? guest.expertise.join(', ') : 'Not specified'
+  const topicsList = guest.topics?.length ? guest.topics.join(', ') : 'Not specified'
 
-  const prompt = `You are creating content for a professional podcast guest media kit.
+  const prompt = `You are creating content for a podcast guest media kit that will be sent to PODCAST HOSTS to convince them to book this person as a guest. This is NOT a sales document — it's a professional one-pager that makes a host think "I need this person on my show."
 
-PROSPECT DETAILS:
-- Name: ${prospect.name}
-- Title: ${prospect.title || 'Not specified'}
-- Company: ${prospect.company || 'Not specified'}
-- Industry: ${prospect.industry || 'Not specified'}
-- Bio: ${prospect.bio}
+GUEST DETAILS:
+- Name: ${guest.name}
+- Title: ${guest.title || 'Not specified'}
+- Company: ${guest.company || 'Not specified'}
+- Industry: ${guest.industry || 'Not specified'}
+- Bio: ${guest.bio}
 - Areas of Expertise: ${expertiseList}
-- Speaking Topics: ${topicsList}
-- Target Audience: ${prospect.targetAudience || 'Not specified'}
+- Topics They Can Speak On: ${topicsList}
+- Target Audience: ${guest.targetAudience || 'Not specified'}
 
 Return a JSON object with exactly this structure (no markdown, no code fences, just raw JSON):
 
 {
-  "aboutBio": "2-3 paragraph professional bio in third person. Compelling, highlights achievements and credibility. Use line breaks between paragraphs.",
-  "credentials": ["credential 1", "credential 2", "...5-7 impressive stats/achievements from their bio"],
-  "speakingTopics": [
-    {"title": "Topic Title", "description": "1-2 sentence description of what they'd discuss"},
-    {"title": "Topic Title", "description": "1-2 sentence description"},
-    ...4-6 topics
-  ]
+  "tagline": "One punchy sentence that captures who they are and why they're worth listening to. Under 15 words. Example format: 'The founder who scaled X to Y by doing Z'",
+  "aboutBio": "2-3 paragraph professional bio in third person. Written for a podcast host — emphasize storytelling ability, unique experiences, and what makes them a compelling interview. Use \\n\\n between paragraphs.",
+  "credentials": ["5-7 specific, verifiable achievements that prove credibility. Numbers, outcomes, recognitions. Each should make a host think 'my audience needs to hear this.'"],
+  "episodeTopics": [
+    {
+      "title": "Episode-ready topic title (how a host would name the episode)",
+      "hook": "One sentence that explains why this topic is timely and relevant right now",
+      "audienceTakeaway": "What listeners will walk away with — specific, actionable"
+    }
+  ],
+  "sampleQuestions": ["5-7 great interview questions a host could ask. Make them specific and conversation-starting, not generic. The kind of questions that lead to stories and insights."],
+  "audienceValue": "2-3 sentences explaining what value this guest brings to a podcast audience. Focus on unique perspective, real experience, and actionable insights — not credentials."
 }
 
 RULES:
-- Be specific — use real details from their bio
-- Make them sound like a must-have podcast guest
-- Don't make up facts not in their bio
+- Write for PODCAST HOSTS, not the guest themselves
+- Be specific — use real details from their bio, not generic praise
+- Episode topics should feel like real episode titles, not academic papers
+- Sample questions should be conversation starters that lead to stories
+- Don't fabricate facts not supported by the bio
+- Make the host feel like booking this guest is a no-brainer
 - Return ONLY valid JSON, nothing else`
 
   const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
@@ -138,8 +160,8 @@ RULES:
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2500,
+      model: 'claude-sonnet-4-5-20241022',
+      max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }],
     }),
   })
@@ -158,15 +180,14 @@ RULES:
     }
   }
 
-  // Strip markdown code fences if present
   rawText = rawText.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim()
-
   if (!rawText) throw new Error('Empty response from Claude')
 
   return JSON.parse(rawText)
 }
 
-// Helper: build requests to insert text with specific formatting
+// ── Document building helpers ──
+
 function insertStyledText(
   requests: any[],
   index: number,
@@ -174,9 +195,11 @@ function insertStyledText(
   style: {
     fontSize?: number
     bold?: boolean
+    italic?: boolean
     color?: { red: number; green: number; blue: number }
     font?: string
     alignment?: string
+    link?: string
   } = {}
 ): number {
   const textWithNewline = text.endsWith('\n') ? text : text + '\n'
@@ -185,7 +208,6 @@ function insertStyledText(
     insertText: { location: { index }, text: textWithNewline }
   })
 
-  // Text style
   const textStyle: any = {}
   const fields: string[] = []
 
@@ -197,6 +219,10 @@ function insertStyledText(
     textStyle.bold = style.bold
     fields.push('bold')
   }
+  if (style.italic !== undefined) {
+    textStyle.italic = style.italic
+    fields.push('italic')
+  }
   if (style.color) {
     textStyle.foregroundColor = { color: { rgbColor: style.color } }
     fields.push('foregroundColor')
@@ -204,6 +230,10 @@ function insertStyledText(
   if (style.font) {
     textStyle.weightedFontFamily = { fontFamily: style.font }
     fields.push('weightedFontFamily')
+  }
+  if (style.link) {
+    textStyle.link = { url: style.link }
+    fields.push('link')
   }
 
   if (fields.length > 0) {
@@ -216,7 +246,6 @@ function insertStyledText(
     })
   }
 
-  // Paragraph alignment
   if (style.alignment) {
     requests.push({
       updateParagraphStyle: {
@@ -230,7 +259,6 @@ function insertStyledText(
   return index + textWithNewline.length
 }
 
-// Helper: insert a section heading
 function insertSectionHeading(requests: any[], index: number, text: string): number {
   const headingText = text + '\n'
   requests.push({
@@ -239,16 +267,19 @@ function insertSectionHeading(requests: any[], index: number, text: string): num
   requests.push({
     updateParagraphStyle: {
       range: { startIndex: index, endIndex: index + headingText.length },
-      paragraphStyle: { namedStyleType: 'HEADING_2' },
-      fields: 'namedStyleType',
+      paragraphStyle: {
+        namedStyleType: 'HEADING_2',
+        spaceAbove: { magnitude: 16, unit: 'PT' },
+        spaceBelow: { magnitude: 6, unit: 'PT' },
+      },
+      fields: 'namedStyleType,spaceAbove,spaceBelow',
     }
   })
-  // Style the heading text
   requests.push({
     updateTextStyle: {
       range: { startIndex: index, endIndex: index + headingText.length },
       textStyle: {
-        fontSize: { magnitude: 14, unit: 'PT' },
+        fontSize: { magnitude: 13, unit: 'PT' },
         bold: true,
         foregroundColor: { color: { rgbColor: COLOR_DARK } },
         weightedFontFamily: { fontFamily: 'Arial' },
@@ -259,8 +290,7 @@ function insertSectionHeading(requests: any[], index: number, text: string): num
   return index + headingText.length
 }
 
-// Helper: insert a spacer line
-function insertSpacer(requests: any[], index: number): number {
+function insertSpacer(requests: any[], index: number, size: number = 6): number {
   const spacer = '\n'
   requests.push({
     insertText: { location: { index }, text: spacer }
@@ -268,15 +298,17 @@ function insertSpacer(requests: any[], index: number): number {
   requests.push({
     updateTextStyle: {
       range: { startIndex: index, endIndex: index + spacer.length },
-      textStyle: { fontSize: { magnitude: 6, unit: 'PT' } },
+      textStyle: { fontSize: { magnitude: size, unit: 'PT' } },
       fields: 'fontSize',
     }
   })
   return index + spacer.length
 }
 
-// Helper: insert bullet items
-function insertBullets(requests: any[], index: number, items: string[]): number {
+function insertBullets(requests: any[], index: number, items: string[], style: {
+  fontSize?: number
+  color?: { red: number; green: number; blue: number }
+} = {}): number {
   const startIndex = index
   let currentIndex = index
 
@@ -289,8 +321,8 @@ function insertBullets(requests: any[], index: number, items: string[]): number 
       updateTextStyle: {
         range: { startIndex: currentIndex, endIndex: currentIndex + bulletText.length },
         textStyle: {
-          fontSize: { magnitude: 10, unit: 'PT' },
-          foregroundColor: { color: { rgbColor: COLOR_DARK } },
+          fontSize: { magnitude: style.fontSize || 10, unit: 'PT' },
+          foregroundColor: { color: { rgbColor: style.color || COLOR_DARK } },
           weightedFontFamily: { fontFamily: 'Arial' },
         },
         fields: 'fontSize,foregroundColor,weightedFontFamily',
@@ -299,7 +331,6 @@ function insertBullets(requests: any[], index: number, items: string[]): number 
     currentIndex += bulletText.length
   }
 
-  // Apply bullets to all items
   requests.push({
     createParagraphBullets: {
       range: { startIndex, endIndex: currentIndex },
@@ -310,26 +341,42 @@ function insertBullets(requests: any[], index: number, items: string[]): number 
   return currentIndex
 }
 
+// Insert a horizontal rule-like divider
+function insertDivider(requests: any[], index: number): number {
+  const dividerText = '━━━━━━━━━━━━━━━━━━━━━━━━��━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  requests.push({
+    insertText: { location: { index }, text: dividerText }
+  })
+  requests.push({
+    updateTextStyle: {
+      range: { startIndex: index, endIndex: index + dividerText.length },
+      textStyle: {
+        fontSize: { magnitude: 6, unit: 'PT' },
+        foregroundColor: { color: { rgbColor: COLOR_DIVIDER } },
+      },
+      fields: 'fontSize,foregroundColor',
+    }
+  })
+  return index + dividerText.length
+}
+
 /**
- * Build the full media kit document with structured formatting
+ * Build the host-facing media kit document
  */
 async function createMediaKitDoc(
   accessToken: string,
-  prospect: {
+  guest: {
     name: string
     title?: string
     company?: string
     imageUrl?: string
-    dashboardSlug?: string
+    linkedinUrl?: string
+    website?: string
+    calendarLink?: string
   },
-  content: {
-    aboutBio: string
-    credentials: string[]
-    speakingTopics: { title: string; description: string }[]
-  }
+  content: MediaKitContent
 ): Promise<{ docId: string; docUrl: string }> {
-  // Create blank doc
-  const docTitle = `${prospect.name} — Podcast Guest Media Kit | Get On A Pod`
+  const docTitle = `${guest.name} — Podcast Guest Media Kit`
   const createResponse = await fetch('https://docs.googleapis.com/v1/documents', {
     method: 'POST',
     headers: {
@@ -351,35 +398,31 @@ async function createMediaKitDoc(
   const requests: any[] = []
   let idx = 1
 
-  // ── Title ──
-  idx = insertStyledText(requests, idx, 'PODCAST GUEST MEDIA KIT', {
-    fontSize: 24, bold: true, color: COLOR_DARK, font: 'Arial', alignment: 'START',
+  // ── Header: Name ──
+  idx = insertStyledText(requests, idx, guest.name.toUpperCase(), {
+    fontSize: 26, bold: true, color: COLOR_DARK, font: 'Arial',
   })
 
-  // ── Spacer ──
-  idx = insertSpacer(requests, idx)
-
-  // ── Prospect Name ──
-  idx = insertStyledText(requests, idx, prospect.name, {
-    fontSize: 18, bold: true, color: COLOR_DARK, font: 'Arial',
+  // ── Tagline ──
+  idx = insertStyledText(requests, idx, content.tagline, {
+    fontSize: 12, italic: true, color: COLOR_GRAY, font: 'Arial',
   })
 
   // ── Title & Company ──
-  const subtitle = [prospect.title, prospect.company].filter(Boolean).join(', ')
+  const subtitle = [guest.title, guest.company].filter(Boolean).join('  |  ')
   if (subtitle) {
     idx = insertStyledText(requests, idx, subtitle, {
-      fontSize: 12, color: COLOR_GRAY, font: 'Arial',
+      fontSize: 11, color: COLOR_GRAY, font: 'Arial',
     })
   }
 
-  idx = insertSpacer(requests, idx)
+  idx = insertDivider(requests, idx)
 
-  // ══════════════════════════════════════
+  // ════���═════════════════════════════════
   // SECTION: About
   // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, `About ${prospect.name.split(' ')[0]}`)
+  idx = insertSectionHeading(requests, idx, 'About')
 
-  // Split bio into paragraphs
   const bioParagraphs = content.aboutBio.split(/\n+/).filter(Boolean)
   for (const para of bioParagraphs) {
     idx = insertStyledText(requests, idx, para, {
@@ -387,23 +430,19 @@ async function createMediaKitDoc(
     })
   }
 
-  idx = insertSpacer(requests, idx)
-
   // ══════════════════════════════════════
-  // SECTION: Key Credentials
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'Key Credentials')
+  // SECTION: Notable Credentials
+  // ═════════════════════════════��════════
+  idx = insertSectionHeading(requests, idx, 'Notable Credentials')
   idx = insertBullets(requests, idx, content.credentials)
 
-  idx = insertSpacer(requests, idx)
-
+  // ════════════════════════���═════════════
+  // SECTION: Episode Topics
   // ══════════════════════════════════════
-  // SECTION: Speaking Topics
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'Speaking Topics')
+  idx = insertSectionHeading(requests, idx, 'Episode-Ready Topics')
 
-  for (const topic of content.speakingTopics) {
-    // Topic title (bold)
+  for (const topic of content.episodeTopics) {
+    // Topic title
     const titleText = topic.title + '\n'
     requests.push({
       insertText: { location: { index: idx }, text: titleText }
@@ -412,7 +451,7 @@ async function createMediaKitDoc(
       updateTextStyle: {
         range: { startIndex: idx, endIndex: idx + titleText.length },
         textStyle: {
-          fontSize: { magnitude: 10, unit: 'PT' },
+          fontSize: { magnitude: 11, unit: 'PT' },
           bold: true,
           foregroundColor: { color: { rgbColor: COLOR_DARK } },
           weightedFontFamily: { fontFamily: 'Arial' },
@@ -422,170 +461,111 @@ async function createMediaKitDoc(
     })
     idx += titleText.length
 
-    // Topic description
-    idx = insertStyledText(requests, idx, topic.description, {
+    // Hook
+    idx = insertStyledText(requests, idx, topic.hook, {
       fontSize: 10, color: COLOR_GRAY, font: 'Arial',
     })
+
+    // Audience takeaway
+    const takeawayText = `Your audience will learn: ${topic.audienceTakeaway}`
+    idx = insertStyledText(requests, idx, takeawayText, {
+      fontSize: 10, italic: true, color: COLOR_ACCENT, font: 'Arial',
+    })
+
+    idx = insertSpacer(requests, idx, 4)
   }
 
-  idx = insertSpacer(requests, idx)
+  // ════════════════════���═════════════════
+  // SECTION: What Your Audience Will Gain
+  // ═══════════════════════════════════���══
+  idx = insertSectionHeading(requests, idx, 'What Your Audience Will Gain')
 
-  // ══════════════════════════════════════
-  // SECTION: Your Podcast Opportunities
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'Your Podcast Opportunities')
-
-  idx = insertStyledText(requests, idx, "We've curated 50+ podcasts that are a strong fit for your expertise. View your personalized podcast dashboard with AI-powered match analysis, audience demographics, and one-click approval:", {
+  idx = insertStyledText(requests, idx, content.audienceValue, {
     fontSize: 10, color: COLOR_DARK, font: 'Arial',
   })
 
-  if (prospect.dashboardSlug) {
-    const dashboardUrl = `https://getonapod.com/prospect/${prospect.dashboardSlug}`
-    const linkText = `View Your Podcast Dashboard\n`
+  // ══════════════════════════════════════
+  // SECTION: Sample Interview Questions
+  // ═══════════════════════════════���══════
+  idx = insertSectionHeading(requests, idx, 'Sample Interview Questions')
+
+  // Numbered list for questions
+  const startQIdx = idx
+  for (const q of content.sampleQuestions) {
+    const qText = q + '\n'
     requests.push({
-      insertText: { location: { index: idx }, text: linkText }
+      insertText: { location: { index: idx }, text: qText }
     })
     requests.push({
       updateTextStyle: {
-        range: { startIndex: idx, endIndex: idx + linkText.length },
-        textStyle: {
-          fontSize: { magnitude: 11, unit: 'PT' },
-          bold: true,
-          link: { url: dashboardUrl },
-          weightedFontFamily: { fontFamily: 'Arial' },
-        },
-        fields: 'fontSize,bold,link,weightedFontFamily',
-      }
-    })
-    idx += linkText.length
-  }
-
-  idx = insertSpacer(requests, idx)
-
-  // ══════════════════════════════════════
-  // SECTION: About Get On A Pod
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'About Get On A Pod')
-
-  idx = insertStyledText(requests, idx, 'Get On A Pod is a done-for-you podcast booking agency that helps founders, executives, and thought leaders build authority through strategic podcast appearances — without pitching themselves.', {
-    fontSize: 10, color: COLOR_DARK, font: 'Arial',
-  })
-  idx = insertStyledText(requests, idx, 'We handle the research, pitching, follow-ups, and scheduling. You just show up and share your expertise.', {
-    fontSize: 10, color: COLOR_DARK, font: 'Arial',
-  })
-
-  idx = insertSpacer(requests, idx)
-
-  // ══════════════════════════════════════
-  // SECTION: How It Works
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'How It Works')
-
-  const steps = [
-    { label: 'Step 1 — Discovery Call', desc: 'A quick 15-minute call to understand your goals, niche, and the type of audiences you want to reach.' },
-    { label: 'Step 2 — Your Personalized Podcast Dashboard', desc: 'We build you a custom Podcast Command Center — a live dashboard with 50+ hand-picked shows tailored to your expertise. Each podcast includes AI-powered fit analysis explaining exactly why it\'s a match, audience demographics, listener ratings, and episode data. You review everything and approve each show before we ever reach out.' },
-    { label: 'Step 3 — Personalized Outreach', desc: 'We craft custom pitches for each host, highlighting why you\'re the perfect guest. Every message is reviewed by you before it\'s sent. We handle all follow-ups until they commit.' },
-    { label: 'Step 4 — You Show Up & Shine', desc: 'We coordinate scheduling, send you a guest prep kit with host research and talking points, and handle all logistics. You just show up and deliver value.' },
-    { label: 'Step 5 — Your Authority Compounds', desc: 'Every appearance builds your credibility, attracts qualified leads, and positions you as the go-to expert in your space — month after month.' },
-  ]
-
-  for (const step of steps) {
-    // Step label (bold)
-    const labelText = step.label + '\n'
-    requests.push({
-      insertText: { location: { index: idx }, text: labelText }
-    })
-    requests.push({
-      updateTextStyle: {
-        range: { startIndex: idx, endIndex: idx + labelText.length },
+        range: { startIndex: idx, endIndex: idx + qText.length },
         textStyle: {
           fontSize: { magnitude: 10, unit: 'PT' },
-          bold: true,
           foregroundColor: { color: { rgbColor: COLOR_DARK } },
           weightedFontFamily: { fontFamily: 'Arial' },
         },
-        fields: 'fontSize,bold,foregroundColor,weightedFontFamily',
+        fields: 'fontSize,foregroundColor,weightedFontFamily',
       }
     })
-    idx += labelText.length
-
-    // Step description
-    idx = insertStyledText(requests, idx, step.desc, {
-      fontSize: 10, color: COLOR_GRAY, font: 'Arial',
-    })
+    idx += qText.length
   }
-
-  idx = insertSpacer(requests, idx)
-
-  // ══════════════════════════════════════
-  // SECTION: What Sets Us Apart
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'What Sets Us Apart')
-
-  const differentiators = [
-    'Your Podcast Command Center — Most agencies send a monthly PDF. We give you a live, interactive dashboard where you see every podcast we\'ve curated, AI-generated fit analysis for each show, audience demographics, listener ratings, and real-time campaign progress.',
-    'AI-Powered Matching — Our AI analyzes each podcast against your expertise, speaking topics, and target audience to explain exactly why it\'s a fit. No guesswork — data-driven recommendations.',
-    'Full Approval Control — You review and approve every podcast and every outreach message before we send it. Your brand, your call. Nothing goes out without your sign-off.',
-    'Results Guaranteed — 2+ podcast placements per month, guaranteed. If we fall short, we keep working at no additional cost until every placement is delivered.',
-    'Completely Done-For-You — Research, curation, pitching, follow-ups, scheduling, guest prep kits. We handle everything. You just show up and share your expertise.',
-  ]
-
-  idx = insertBullets(requests, idx, differentiators)
-
-  idx = insertSpacer(requests, idx)
-
-  // ══════════════════════════════════════
-  // SECTION: CTA
-  // ══════════════════════════════════════
-  idx = insertSectionHeading(requests, idx, 'Ready to Build Your Authority?')
-
-  if (prospect.dashboardSlug) {
-    const dashboardUrl = `https://getonapod.com/prospect/${prospect.dashboardSlug}`
-    idx = insertStyledText(requests, idx, "We've already identified 50+ podcasts that are a perfect fit for your story. View your personalized dashboard and see exactly which shows we'd pitch you to:", {
-      fontSize: 10, color: COLOR_DARK, font: 'Arial',
-    })
-
-    const ctaLinkText = `View Your Podcast Dashboard\n`
-    requests.push({
-      insertText: { location: { index: idx }, text: ctaLinkText }
-    })
-    requests.push({
-      updateTextStyle: {
-        range: { startIndex: idx, endIndex: idx + ctaLinkText.length },
-        textStyle: {
-          fontSize: { magnitude: 11, unit: 'PT' },
-          bold: true,
-          link: { url: dashboardUrl },
-          weightedFontFamily: { fontFamily: 'Arial' },
-        },
-        fields: 'fontSize,bold,link,weightedFontFamily',
-      }
-    })
-    idx += ctaLinkText.length
-  }
-
-  idx = insertStyledText(requests, idx, 'Questions? Reply to this email or book a 15-minute call at getonapod.com.', {
-    fontSize: 10, color: COLOR_DARK, font: 'Arial',
+  requests.push({
+    createParagraphBullets: {
+      range: { startIndex: startQIdx, endIndex: idx },
+      bulletPreset: 'NUMBERED_DECIMAL_ALPHA_ROMAN',
+    }
   })
 
-  idx = insertSpacer(requests, idx)
+  // ════════════════════════════════════��═
+  // SECTION: Connect
+  // ══════════════════════════════════════
+  idx = insertDivider(requests, idx)
+
+  idx = insertSectionHeading(requests, idx, 'Connect')
+
+  const links: { label: string; url: string }[] = []
+  if (guest.linkedinUrl) links.push({ label: 'LinkedIn', url: guest.linkedinUrl })
+  if (guest.website) links.push({ label: 'Website', url: guest.website.startsWith('http') ? guest.website : `https://${guest.website}` })
+  if (guest.calendarLink) links.push({ label: 'Book a Call', url: guest.calendarLink })
+
+  if (links.length > 0) {
+    for (const link of links) {
+      const linkText = `${link.label}\n`
+      requests.push({
+        insertText: { location: { index: idx }, text: linkText }
+      })
+      requests.push({
+        updateTextStyle: {
+          range: { startIndex: idx, endIndex: idx + linkText.length },
+          textStyle: {
+            fontSize: { magnitude: 10, unit: 'PT' },
+            bold: true,
+            foregroundColor: { color: { rgbColor: COLOR_ACCENT } },
+            link: { url: link.url },
+            weightedFontFamily: { fontFamily: 'Arial' },
+          },
+          fields: 'fontSize,bold,foregroundColor,link,weightedFontFamily',
+        }
+      })
+      idx += linkText.length
+    }
+  }
+
+  idx = insertSpacer(requests, idx, 8)
 
   // ── Footer ──
-  idx = insertStyledText(requests, idx, 'Prepared by Get On A Pod  |  getonapod.com', {
-    fontSize: 9, bold: true, color: COLOR_LIGHT_GRAY, font: 'Arial', alignment: 'CENTER',
-  })
-  idx = insertStyledText(requests, idx, 'Get Booked on Podcasts. Build Your Authority. Without Pitching Yourself.', {
-    fontSize: 9, color: COLOR_LIGHT_GRAY, font: 'Arial', alignment: 'CENTER',
+  idx = insertStyledText(requests, idx, `Booking managed by Get On A Pod  ·  getonapod.com`, {
+    fontSize: 8, color: COLOR_LIGHT_GRAY, font: 'Arial', alignment: 'CENTER',
   })
 
-  // ── Set default document style ──
+  // ── Document margins ──
   requests.push({
     updateDocumentStyle: {
       documentStyle: {
-        marginTop: { magnitude: 50, unit: 'PT' },
-        marginBottom: { magnitude: 50, unit: 'PT' },
-        marginLeft: { magnitude: 60, unit: 'PT' },
-        marginRight: { magnitude: 60, unit: 'PT' },
+        marginTop: { magnitude: 55, unit: 'PT' },
+        marginBottom: { magnitude: 45, unit: 'PT' },
+        marginLeft: { magnitude: 65, unit: 'PT' },
+        marginRight: { magnitude: 65, unit: 'PT' },
       },
       fields: 'marginTop,marginBottom,marginLeft,marginRight',
     }
@@ -608,10 +588,10 @@ async function createMediaKitDoc(
     const errorText = await updateResponse.text()
     console.error('[Generate Media Kit] Batch update error:', errorText)
   } else {
-    console.log('[Generate Media Kit] Content inserted and formatted successfully')
+    console.log('[Generate Media Kit] Content inserted and formatted')
   }
 
-  // ── Insert images independently (each in its own batch so failures don't cascade) ──
+  // ── Insert images independently ──
   const insertImage = async (index: number, uri: string, width: number, height: number, label: string) => {
     try {
       const imgResponse = await fetch(
@@ -642,11 +622,10 @@ async function createMediaKitDoc(
         }
       )
       if (!imgResponse.ok) {
-        const imgError = await imgResponse.text()
-        console.error(`[Generate Media Kit] ${label} insertion failed:`, imgError)
+        console.error(`[Generate Media Kit] ${label} insertion failed:`, await imgResponse.text())
         return false
       }
-      console.log(`[Generate Media Kit] ${label} inserted successfully`)
+      console.log(`[Generate Media Kit] ${label} inserted`)
       return true
     } catch (err) {
       console.error(`[Generate Media Kit] ${label} error:`, err)
@@ -654,17 +633,9 @@ async function createMediaKitDoc(
     }
   }
 
-  // Insert GOAP logo at the top (index 1)
-  const logoInserted = await insertImage(1, GOAP_LOGO_URL, 120, 40, 'Logo')
-
-  // Insert prospect photo after logo + title
-  if (prospect.imageUrl) {
-    // If logo was inserted, content shifted by 2 (image + newline)
-    const offset = logoInserted ? 2 : 0
-    const titleLen = 'PODCAST GUEST MEDIA KIT\n'.length
-    const spacerLen = 1
-    const photoIdx = 1 + offset + titleLen + spacerLen
-    await insertImage(photoIdx, prospect.imageUrl, 100, 100, 'Prospect photo')
+  // Insert guest photo at the top
+  if (guest.imageUrl) {
+    await insertImage(1, guest.imageUrl, 90, 90, 'Guest photo')
   }
 
   return { docId, docUrl }
@@ -680,7 +651,8 @@ serve(async (req) => {
     const {
       dashboardId, clientId, prospectName, prospectBio, prospectTitle, prospectCompany,
       prospectIndustry, prospectExpertise, prospectTopics, prospectTargetAudience,
-      prospectImageUrl, dashboardSlug,
+      prospectImageUrl, prospectLinkedinUrl, prospectWebsite, prospectCalendarLink,
+      dashboardSlug,
     } = body
 
     if ((!dashboardId && !clientId) || !prospectName || !prospectBio) {
@@ -703,6 +675,8 @@ serve(async (req) => {
       expertise: prospectExpertise,
       topics: prospectTopics,
       targetAudience: prospectTargetAudience,
+      linkedinUrl: prospectLinkedinUrl,
+      website: prospectWebsite,
     })
     console.log('[Generate Media Kit] Content generated')
 
@@ -717,7 +691,9 @@ serve(async (req) => {
       title: prospectTitle,
       company: prospectCompany,
       imageUrl: prospectImageUrl,
-      dashboardSlug,
+      linkedinUrl: prospectLinkedinUrl,
+      website: prospectWebsite,
+      calendarLink: prospectCalendarLink,
     }, content)
 
     // Step 4: Make the doc publicly viewable

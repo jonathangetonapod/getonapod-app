@@ -810,13 +810,14 @@ export default function ClientDetail() {
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          dashboardId: id,
           clientId: id,
           prospectName: client.name,
           prospectBio: client.bio,
           prospectTitle: client.contact_person || undefined,
-          prospectCompany: undefined,
           prospectImageUrl: client.photo_url || undefined,
+          prospectLinkedinUrl: client.linkedin_url || undefined,
+          prospectWebsite: client.website || undefined,
+          prospectCalendarLink: client.calendar_link || undefined,
         }),
       })
 
