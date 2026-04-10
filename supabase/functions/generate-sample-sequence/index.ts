@@ -144,17 +144,13 @@ async function createSequenceDoc(
     fontSize: 22, bold: true, color: COLOR_DARK, font: 'Arial',
   })
 
-  idx = insertStyledText(requests, idx, `A preview of how we pitch ${firstName} to podcast hosts`, {
+  idx = insertStyledText(requests, idx, `A preview of how we pitch you to podcast hosts`, {
     fontSize: 11, italic: true, color: COLOR_GRAY, font: 'Arial',
   })
 
   idx = insertSpacer(requests, idx, 6)
 
   // ── Intro paragraph ──
-  idx = insertStyledText(requests, idx, `Hi ${firstName},`, {
-    fontSize: 10, color: COLOR_DARK, font: 'Arial',
-  })
-
   idx = insertStyledText(requests, idx, `Below is a sample of the emails we'll send to podcast hosts on your behalf. We want you to see exactly what goes out with your name on it before we start outreach.`, {
     fontSize: 10, color: COLOR_DARK, font: 'Arial',
   })
