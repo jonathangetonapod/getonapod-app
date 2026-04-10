@@ -110,6 +110,9 @@ export default function ClientDetail() {
   const [editMediaKitUrl, setEditMediaKitUrl] = useState('')
   const [savingMediaKit, setSavingMediaKit] = useState(false)
   const [generatingMediaKit, setGeneratingMediaKit] = useState(false)
+  const [generatingSequence, setGeneratingSequence] = useState(false)
+  const [sampleSequence, setSampleSequence] = useState<{ subject: string; body: string; label: string; timing: string }[] | null>(null)
+  const [sequenceExpanded, setSequenceExpanded] = useState(false)
   // Podcast Approval Dashboard state
   const [dashboardCacheLoading, setDashboardCacheLoading] = useState(false)
   const [dashboardAiLoading, setDashboardAiLoading] = useState(false)
@@ -851,6 +854,56 @@ export default function ClientDetail() {
       })
     } finally {
       setGeneratingMediaKit(false)
+    }
+  }
+
+  const generateSampleSequence = async () => {
+    if (!client || !id || !client.bio) return
+
+    setGeneratingSequence(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+
+      const firstName = client.name.split(' ')[0]
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-sample-sequence`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          clientName: client.name,
+          clientBio: client.bio,
+          clientTitle: client.contact_person || undefined,
+          clientLinkedin: client.linkedin_url || undefined,
+          clientWebsite: client.website || undefined,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate sequence')
+      }
+
+      setSampleSequence(data.sequence)
+      setSequenceExpanded(true)
+
+      toast({
+        title: 'Sample Sequence Generated!',
+        description: `Preview outreach sequence for ${firstName} is ready`,
+      })
+    } catch (error) {
+      console.error('Error generating sample sequence:', error)
+      toast({
+        title: 'Generation Failed',
+        description: error instanceof Error ? error.message : 'Failed to generate sequence',
+        variant: 'destructive',
+      })
+    } finally {
+      setGeneratingSequence(false)
     }
   }
 
@@ -2086,6 +2139,88 @@ export default function ClientDetail() {
                     </div>
                   </div>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Sample Outreach Sequence */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Outreach Email Sequence
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Generate a preview of the outreach emails we'll send to podcast hosts on {client.name.split(' ')[0]}'s behalf. Each real email is uniquely personalized per podcast — this shows the structure and tone.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={generateSampleSequence}
+                disabled={generatingSequence || !client.bio}
+              >
+                {generatingSequence ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating Sample Sequence...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {sampleSequence ? 'Regenerate Sample Sequence' : 'Generate Sample Sequence'}
+                  </>
+                )}
+              </Button>
+              {!client.bio && (
+                <p className="text-xs text-amber-600">Add a bio first to generate a sample sequence</p>
+              )}
+
+              {sampleSequence && (
+                <Collapsible open={sequenceExpanded} onOpenChange={setSequenceExpanded}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="w-full justify-between">
+                      <span className="text-sm font-medium">
+                        {sequenceExpanded ? 'Hide' : 'Show'} Email Sequence ({sampleSequence.length} emails)
+                      </span>
+                      {sequenceExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-4 mt-2">
+                    {sampleSequence.map((email, i) => (
+                      <div key={i} className="border rounded-lg overflow-hidden">
+                        <div className="bg-muted/50 px-4 py-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs font-mono">
+                              {email.label}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{email.timing}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => {
+                              navigator.clipboard.writeText(email.body)
+                              toast({ title: 'Copied!', description: `Email ${i + 1} copied to clipboard` })
+                            }}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            <span className="text-xs">Copy</span>
+                          </Button>
+                        </div>
+                        <div className="px-4 py-3">
+                          <p className="text-sm whitespace-pre-wrap leading-relaxed">{email.body}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground text-center pt-2">
+                      Each real outreach email is uniquely written per podcast — personalized to the host, a recent episode, and their audience.
+                    </p>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </CardContent>
           </Card>
