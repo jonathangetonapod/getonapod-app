@@ -36,7 +36,7 @@ CLIENT DETAILS:
 
 Write a 4-email sequence that pitches ${firstName} as a podcast guest. Use a FICTIONAL but realistic podcast as the example (invent a plausible podcast name, host name, and recent episode topic that fits ${firstName}'s expertise).
 
-Return ONLY a JSON array with exactly 4 objects. No markdown, no code fences, just raw JSON:
+Return ONLY a JSON array with exactly 3 objects. No markdown, no code fences, just raw JSON:
 
 [
   {
@@ -51,12 +51,7 @@ Return ONLY a JSON array with exactly 4 objects. No markdown, no code fences, ju
   },
   {
     "label": "Email 3",
-    "timing": "Day 8 · New Angle",
-    "body": "..."
-  },
-  {
-    "label": "Email 4",
-    "timing": "Day 14 · Gentle Close",
+    "timing": "Day 8 · Final Follow-Up",
     "body": "..."
   }
 ]
@@ -77,15 +72,11 @@ EMAIL WRITING RULES:
 - Offer to send a media kit
 - Conversational, not pushy
 
-**Email 3 — New Angle:**
+**Email 3 — Final Follow-Up:**
 - Lead with a specific, timely topic ${firstName} can speak to
-- Frame it as "your listeners would get [specific value]"
-- End with a soft ask: "Worth a conversation?"
-
-**Email 4 — Gentle Close:**
 - Respectful, acknowledges the host is busy
-- Mentions topics are evergreen and happy to revisit
-- No guilt, no pressure — leave the door open
+- Leave the door open — no guilt, no pressure
+- End with a soft ask
 
 TONE RULES:
 - Conversational but professional
