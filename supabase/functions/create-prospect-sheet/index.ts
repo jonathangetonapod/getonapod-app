@@ -167,9 +167,9 @@ serve(async (req) => {
       )
     }
 
-    if (!podcasts || podcasts.length === 0) {
+    if (!Array.isArray(podcasts)) {
       return new Response(
-        JSON.stringify({ error: 'At least one podcast must be selected for export' }),
+        JSON.stringify({ error: 'podcasts must be an array (may be empty)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -289,29 +289,34 @@ serve(async (req) => {
       }
     )
 
-    // Append data to the sheet
-    const appendResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1:append?valueInputOption=RAW`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: rows,
-        }),
+    // Append data to the sheet (skipped when no podcasts — empty dashboards are valid)
+    let appendResult: any = { updates: { updatedRange: 'Sheet1' } }
+    if (rows.length > 0) {
+      const appendResponse = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1:append?valueInputOption=RAW`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            values: rows,
+          }),
+        }
+      )
+
+      if (!appendResponse.ok) {
+        const errorText = await appendResponse.text()
+        console.error('[Prospect Sheet] Append failed:', errorText)
+        throw new Error(`Failed to write to Google Sheet: ${errorText}`)
       }
-    )
 
-    if (!appendResponse.ok) {
-      const errorText = await appendResponse.text()
-      console.error('[Prospect Sheet] Append failed:', errorText)
-      throw new Error(`Failed to write to Google Sheet: ${errorText}`)
+      appendResult = await appendResponse.json()
+      console.log('[Prospect Sheet] Data exported successfully')
+    } else {
+      console.log('[Prospect Sheet] Empty dashboard — no podcasts to append')
     }
-
-    const appendResult = await appendResponse.json()
-    console.log('[Prospect Sheet] Data exported successfully')
 
     // Create or update a record in the prospect_dashboards table
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
