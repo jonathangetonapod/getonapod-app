@@ -262,7 +262,7 @@ serve(async (req) => {
             language: podcast.language || null,
             region: podcast.region || null,
             podscan_email: podcast.podcast_email || null,
-            rss_feed: podcast.rss_feed || null,
+            rss_url: podcast.rss_feed || null,
             podcast_categories: podcast.podcast_categories || null,
             // Mark as saved from podcast finder export
             podscan_last_fetched_at: new Date().toISOString(),

@@ -39,16 +39,16 @@ export const API_CATEGORIES: ApiCategory[] = [
   {
     id: "prospect-dashboards",
     name: "Prospect Dashboards",
-    description: "Create and manage public-facing prospect dashboards with curated podcast lists, Google Sheet backends, and AI-powered podcast analysis.",
+    description: "Create and manage public-facing prospect dashboards with curated podcast lists, Google Sheet backends, and AI-powered podcast analysis. Each dashboard is a public URL (getonapod.com/prospect/{slug}) backed by a Google Sheet that stores podcast IDs in column E. The sheet is the source-of-truth for which podcasts a prospect sees; the central podcasts cache and prospect_podcast_analyses tables hold enrichment + AI fit data layered on top. Required env vars for sheet operations: GOOGLE_SERVICE_ACCOUNT_JSON (service account with domain-wide delegation), GOOGLE_WORKSPACE_USER_EMAIL (the user the service account impersonates), GOOGLE_SHEET_TEMPLATE_ID (the master template that gets copied per prospect). Sheet column layout: A=Podcast Name, B=Publisher, C=Description, D=Audience, E=Podscan ID (lookup key), F=Compatibility Score, G=Reasoning.",
     endpoints: [
       {
         id: "create-prospect-sheet",
         name: "Create Prospect Sheet",
         method: "POST",
         path: `${BASE_PATH}/create-prospect-sheet`,
-        description: "Creates a new prospect dashboard by copying a Google Sheet template, exporting podcast data, generating a public shareable link with an 8-character slug, and saving all podcasts to the central cache for cross-prospect reuse.",
+        description: "Creates a new prospect dashboard end-to-end: (1) copies the GOOGLE_SHEET_TEMPLATE_ID via Drive API, (2) titles it 'Podcast Opportunities - {prospectName} - {date}', (3) sets it to public read-only via the Drive permissions API, (4) writes header row F1:G1 (Score, Reasoning) on top of the template's A-E header, (5) appends podcast rows starting at row 2, (6) inserts a row in prospect_dashboards with a random 8-char base36 slug, (7) upserts all podcasts to the central podcasts cache for cross-prospect reuse. The dashboard URL is https://getonapod.com/prospect/{slug}.",
         auth: "API Key",
-        notes: "Also creates a record in prospect_dashboards table and upserts all podcasts to the central podcasts cache (shared globally). The Google Sheet is set to public read-only access.",
+        notes: "Required env vars: GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_WORKSPACE_USER_EMAIL, GOOGLE_SHEET_TEMPLATE_ID. The service account uses domain-wide delegation to impersonate GOOGLE_WORKSPACE_USER_EMAIL — the resulting sheet is owned by that workspace user, not the service account. Sheet is set to 'anyone with link can view'. Slug collision is not currently checked — relies on 36^8 = 2.8T entropy. Cache upsert is non-fatal: cacheErrors in the response surface any podcasts that failed to write to the central cache (the sheet itself still gets created).",
         bestPractices: "For best downstream matching via backfill-prospect-podcasts: (1) Always include a detailed prospectBio (100+ chars recommended) — this is the primary input for AI enrichment and embedding generation. (2) Include prospectIndustry, prospectExpertise, and prospectTopics if known — these structured fields dramatically improve vector search quality. (3) Provide at least 5-10 initial podcasts to seed the sheet for dedup and feedback.",
         params: [
           { name: "prospectName", type: "string", required: true, description: "Display name for the prospect" },
@@ -78,9 +78,9 @@ export const API_CATEGORIES: ApiCategory[] = [
         name: "Append Prospect Sheet",
         method: "POST",
         path: `${BASE_PATH}/append-prospect-sheet`,
-        description: "Appends additional podcasts to an existing prospect dashboard's Google Sheet. Automatically discovers the correct sheet tab name via metadata API (not hardcoded). Upserts all podcasts to the central cache and auto-generates OpenAI embeddings for any new podcasts.",
+        description: "Appends additional podcasts to an existing prospect dashboard's Google Sheet. Automatically discovers the correct sheet tab name via metadata API (not hardcoded). Upserts all podcasts to the central cache and auto-generates OpenAI embeddings for any new podcasts. Use this instead of create-prospect-sheet when adding podcasts to a dashboard that already exists (e.g. backfill matches, manual additions, sales-call follow-ups).",
         auth: "API Key",
-        notes: "Discovers actual sheet tab name via Google Sheets metadata API (e.g. 'Podcast Matches') instead of hardcoding 'Sheet1'. Auto-generates embeddings for new podcasts via fire-and-forget call to generateMissingEmbeddings. Identical caching behavior to create-prospect-sheet.",
+        notes: "Discovers actual sheet tab name via Google Sheets metadata API (e.g. 'Podcast Matches') instead of hardcoding 'Sheet1'. Required because the template tab can be renamed by the workspace user. Auto-generates embeddings for new podcasts via fire-and-forget call to generateMissingEmbeddings (does not block response). Identical caching behavior to create-prospect-sheet. Does NOT dedupe against existing sheet rows — caller must check first via get-prospect-podcasts in cacheOnly mode if dedup matters. Column layout matches create-prospect-sheet: A=Name, B=Publisher, C=Description, D=Audience, E=Podscan ID, F=Score, G=Reasoning.",
         performance: {
           avgLatency: "~2s",
           maxConcurrency: "20+ concurrent (tested)",
@@ -564,6 +564,39 @@ export const API_CATEGORIES: ApiCategory[] = [
           success: true,
           docUrl: "https://docs.google.com/document/d/1abc.../edit",
           docId: "1abc..."
+        }, null, 2),
+        category: "ai-content",
+      },
+      {
+        id: "generate-sample-sequence",
+        name: "Generate Sample Outreach Sequence",
+        method: "POST",
+        path: `${BASE_PATH}/generate-sample-sequence`,
+        description: "Generates a 3-email sample outreach sequence shown to a CLIENT (not a prospect) so they can preview how their pitches will read before campaigns launch. Uses Claude Sonnet 4.6 to write a fictional-but-realistic 3-touch sequence (Day 1 initial, Day 4 follow-up, Day 8 final) and renders it into a publicly-viewable Google Doc titled \"{firstName}'s Outreach Email Preview | Get On A Pod\". Returns the parsed JSON sequence plus the doc URL.",
+        auth: "API Key",
+        aiModel: "claude-sonnet-4-6 (max_tokens: 4000)",
+        notes: "Required env vars: ANTHROPIC_API_KEY (always), GOOGLE_SERVICE_ACCOUNT_JSON + GOOGLE_WORKSPACE_USER_EMAIL (for the Google Doc — if missing or doc creation fails, the sequence still returns successfully without docUrl). Uses Google Docs scope https://www.googleapis.com/auth/documents + Drive scope (not Sheets). Doc is set to anyone-with-link reader. Strict prompt rules enforced: no em dashes, no hype words ('revolutionizing', 'thrilled', 'excited'), no formal phrases ('I am writing on behalf of', 'specifically'), no links, no signatures. Email 1: 120-150 words with locked first sentence and CTA. Email 2: 80-100 words. Email 3: 60-80 words. Sequence is fictional (invented podcast/host) — labeled as such in the doc intro so clients don't think it's a real outreach.",
+        performance: {
+          avgLatency: "~10-18s (Claude generation + Google Doc batch update)",
+          maxConcurrency: "5-10 concurrent (Google Docs API)",
+          bottleneck: "Sequential Google API calls (create doc, batch update, set permissions)"
+        },
+        bestPractices: "Pass a detailed clientBio with specific credentials, numbers, and topics — Claude uses these to write 'topic bullets' that sound earned, not generic. Include clientTitle so the byline reads correctly. clientLinkedin and clientWebsite are passed to the prompt for context but never inserted as links (no-links rule). The doc creation step is wrapped in try/catch and is non-fatal — if Google Auth fails, you'll get a 200 response with sequence populated but docUrl undefined.",
+        params: [
+          { name: "clientName", type: "string", required: true, description: "Client's full name (used for doc title, prompt context, and pitch byline)" },
+          { name: "clientBio", type: "string", required: true, description: "Client's bio — primary input for credentials and topic bullets. More detail = less generic emails." },
+          { name: "clientTitle", type: "string", required: false, description: "Job title (e.g. 'Founder & CEO at Acme'). Improves the way the client is introduced in the email." },
+          { name: "clientLinkedin", type: "string", required: false, description: "LinkedIn URL — passed to the prompt for context only (never rendered as a link)" },
+          { name: "clientWebsite", type: "string", required: false, description: "Website URL — passed to the prompt for context only (never rendered as a link)" },
+        ],
+        responseExample: JSON.stringify({
+          success: true,
+          sequence: [
+            { label: "Email 1", timing: "Day 1 · Initial Outreach", body: "Hey Mark,\n\nI had an idea about a potential guest you may want to interview if you're taking on guests...\n\n- Scaled from $1M to $20M ARR in 18 months\n- Built and exited two SaaS companies\n- Hired 80+ remote engineers across 12 countries\n\nWould you be open to seeing some more info about Beth?" },
+            { label: "Email 2", timing: "Day 4 · Follow-Up", body: "Hey Mark,\n\nQuick follow-up..." },
+            { label: "Email 3", timing: "Day 8 · Final Follow-Up", body: "Hey Mark,\n\nLast note from me..." }
+          ],
+          docUrl: "https://docs.google.com/document/d/1abc.../edit"
         }, null, 2),
         category: "ai-content",
       },
@@ -2061,6 +2094,36 @@ export const API_CATEGORIES: ApiCategory[] = [
           note: "No AI scoring applied. All podcasts saved for human review to build training data.",
         }, null, 2),
         category: "matching-experiments",
+      },
+    ],
+  },
+  {
+    id: "system",
+    name: "System & Operations",
+    description: "Operational endpoints for monitoring, health checks, and infrastructure status.",
+    endpoints: [
+      {
+        id: "health-check",
+        name: "Health Check",
+        method: "GET",
+        path: `${BASE_PATH}/health-check`,
+        description: "Lightweight liveness/readiness probe. Performs a head-only SELECT against the clients table to verify Supabase DB connectivity and reports request latency. Returns 200 when healthy, 503 when the DB query fails or any error is thrown.",
+        auth: "None",
+        notes: "Designed for uptime monitors (UptimeRobot, BetterStack, etc.) and orchestrator readiness probes. The DB check is a count-only head request — does not pull row data, so it's cheap. Reads APP_VERSION env var if set (returns 'unknown' otherwise). Returned status values: 'healthy' (200, DB ok), 'degraded' (503, DB error from Supabase client), 'unhealthy' (503, exception thrown before DB call). Latency includes the full request including auth + DB round trip.",
+        performance: {
+          avgLatency: "~50-150ms",
+          maxConcurrency: "100+ concurrent (single read, no AI calls)",
+          bottleneck: "Supabase DB connection pool"
+        },
+        params: [],
+        responseExample: JSON.stringify({
+          status: "healthy",
+          timestamp: "2025-01-15T10:30:00.000Z",
+          latency_ms: 87,
+          database: "connected",
+          version: "1.2.3"
+        }, null, 2),
+        category: "system",
       },
     ],
   },
