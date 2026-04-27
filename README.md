@@ -211,6 +211,14 @@ npx supabase functions deploy get-client-podcasts
 npx supabase functions deploy analyze-podcast-fit
 ```
 
+## 📝 Recent Updates (April 2026)
+
+### Prospect Cache Bug Fix + API Docs Expansion (April 27, 2026)
+- ✅ **Fixed silent cache write bug** - `create-prospect-sheet`, `append-prospect-sheet`, and `export-to-google-sheets` were upserting `rss_feed` to the `podcasts` table, but the schema column is `rss_url` (renamed in the email→podscan_email migration era). Every prospect dashboard creation was logging `cacheErrors` for all podcasts (PGRST204: "Could not find the 'rss_feed' column"). Three-line fix: rename the upsert column key to `rss_url` while keeping `rss_feed` as the input payload field for backwards compat with frontend callers.
+- ✅ **Verified end-to-end** - Created a prospect via curl, confirmed `cacheSaved: 1`, `cacheErrors: 0`, dashboard URL + Google Sheet both rendered correctly, then auto-cleaned the test data.
+- ✅ **Expanded `src/lib/api-docs.ts`** - Documented the full Google Sheet pipeline (env vars `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_WORKSPACE_USER_EMAIL`, `GOOGLE_SHEET_TEMPLATE_ID`; column layout A-G; slug entropy; service-account domain-wide delegation flow). Enriched `create-prospect-sheet` and `append-prospect-sheet` notes with the 7-step creation flow and dedup behavior.
+- ✅ **Documented missing endpoints** - Added `health-check` (new System & Operations category) and `generate-sample-sequence` (AI Content Generation) to `/docs`. API docs now cover 78/78 deployed edge functions.
+
 ## 📝 Recent Updates (January 2026)
 
 ### AI-Powered Semantic Podcast Matching (January 29, 2026)
