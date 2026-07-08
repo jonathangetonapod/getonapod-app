@@ -1683,10 +1683,21 @@ export default function ProspectView() {
               <SocialProofSection />
             </div>
 
-            <div className="mx-auto mt-12 max-w-2xl rounded-[32px] border border-[#0d1b2a]/8 bg-white/84 p-5 text-[#0d1b2a] shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm sm:mt-16 sm:p-6">
-              <h3 className="font-display text-2xl font-semibold tracking-[-0.04em]">Common questions</h3>
-              <div className="mt-4">
-                <PricingFAQ variant="compact" />
+            <div className="mt-10 rounded-[32px] border border-[#0d1b2a]/8 bg-white/84 p-5 text-[#0d1b2a] shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm sm:p-6 lg:p-8">
+              <div className="grid gap-8 lg:grid-cols-[0.34fr_0.66fr] lg:items-start">
+                <div>
+                  <p className="section-kicker">Q+A</p>
+                  <h3 className="mt-3 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a] sm:text-4xl">
+                    Common questions before you approve the shortlist.
+                  </h3>
+                  <p className="mt-4 max-w-md text-base leading-7 text-[#4c5d73]">
+                    These cover how approvals work, what happens after you choose shows, and how the campaign moves into outreach.
+                  </p>
+                </div>
+
+                <div className="min-w-0">
+                  <PricingFAQ variant="compact" />
+                </div>
               </div>
             </div>
           </div>
