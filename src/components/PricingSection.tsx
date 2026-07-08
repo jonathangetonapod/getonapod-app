@@ -82,7 +82,7 @@ const PricingSection = () => {
                 ))}
               </div>
 
-              <div className="mt-8 rounded-[28px] border border-[#0d1b2a]/8 bg-[#fffaf4]/92 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
+              <div className="mt-8 rounded-[28px] border border-[#0d1b2a]/8 bg-[#fffaf4]/92 p-5 shadow-[0_18px_36px_rgba(13,27,42,0.08)] sm:p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-[#f4ede4] text-[#b46a3c]">
                     <Shield className="h-6 w-6" strokeWidth={1.8} />
@@ -101,7 +101,7 @@ const PricingSection = () => {
 
             <div className="space-y-5">
               <div className="rounded-[32px] border border-[#0d1b2a]/10 bg-[#fffdf9] p-6 shadow-[0_24px_55px_rgba(13,27,42,0.12)] sm:p-8">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="mb-4 inline-flex items-center gap-2">
                       <Sparkles className="h-5 w-5 text-[#b46a3c]" />
@@ -113,7 +113,7 @@ const PricingSection = () => {
                       {plan.name}
                     </h3>
                     <div className="mt-3 flex items-end gap-2">
-                      <span className="font-display text-6xl font-semibold tracking-[-0.06em] text-[#0d1b2a]">
+                      <span className="font-display text-5xl font-semibold tracking-[-0.06em] text-[#0d1b2a] sm:text-6xl">
                         {plan.price}
                       </span>
                       <span className="pb-2 text-base text-[#76665a]">{plan.period}</span>
@@ -123,7 +123,7 @@ const PricingSection = () => {
                     </p>
                   </div>
 
-                  <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#fff3e8] px-4 py-3 text-sm leading-6 text-[#3f342c]">
+                  <div className="w-full rounded-[20px] border border-[#0d1b2a]/8 bg-[#fff3e8] px-4 py-3 text-sm leading-6 text-[#3f342c] sm:max-w-xs">
                     <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#7a6554]">Best for</p>
                     <p className="mt-2">
                       Experts who want the outreach handled without losing approval control or visibility.

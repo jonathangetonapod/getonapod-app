@@ -28,7 +28,7 @@ const Navbar = () => {
   return (
     <nav className="fixed left-0 right-0 top-0 z-50">
       <div className="border-b border-[#0d1b2a]/8 bg-[#f4ede4]/88 px-4 py-2 backdrop-blur-sm">
-        <div className="container flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.22em] text-[#7a6554]">
+        <div className="container flex items-center justify-center gap-4 text-center text-[10px] uppercase leading-5 tracking-[0.18em] text-[#7a6554] sm:justify-between sm:text-left sm:text-[11px] sm:tracking-[0.22em]">
           <span className="font-mono">Podcast placement system for trust-led sales</span>
           <span className="hidden font-mono sm:block">Audience-fit targeting, outreach, approvals, and tracking</span>
         </div>

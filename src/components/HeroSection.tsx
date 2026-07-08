@@ -28,7 +28,7 @@ const dashboardRows = [
 
 const HeroSection = () => {
   return (
-    <section className="paper-noise relative overflow-hidden bg-transparent px-4 pb-16 pt-32 md:pb-24 md:pt-40">
+    <section className="paper-noise relative overflow-hidden bg-transparent px-4 pb-16 pt-28 md:pb-24 md:pt-40">
       <div className="absolute inset-x-0 top-0 h-px bg-[#0d1b2a]/8" />
       <div className="absolute left-0 top-28 h-[280px] w-[280px] rounded-full bg-[#b46a3c]/10 blur-3xl sm:h-[420px] sm:w-[420px]" />
       <div className="absolute right-0 top-16 h-[240px] w-[240px] rounded-full bg-[#d9c6b3]/50 blur-3xl sm:top-20 sm:h-[420px] sm:w-[420px]" />
@@ -43,11 +43,11 @@ const HeroSection = () => {
               </span>
             </div>
 
-            <h1 className="animate-fade-up animation-delay-100 mt-6 max-w-4xl font-editorial text-[clamp(3.5rem,7vw,6.6rem)] leading-[0.9] tracking-[-0.045em] text-[#0d1b2a] text-balance">
+            <h1 className="animate-fade-up animation-delay-100 mt-6 max-w-4xl font-editorial text-[clamp(3rem,12vw,6.6rem)] leading-[0.9] tracking-[-0.045em] text-[#0d1b2a] text-balance">
               Get booked on podcasts your buyers already trust.
             </h1>
 
-            <p className="animate-fade-up animation-delay-200 mt-6 max-w-2xl text-lg leading-8 text-[#54473d] md:text-xl">
+            <p className="animate-fade-up animation-delay-200 mt-6 max-w-2xl text-base leading-8 text-[#54473d] sm:text-lg md:text-xl">
               We build the shortlist, write the pitches, handle the follow-up, and track every booking in one client portal so podcast guesting does not become another job on your team.
             </p>
 
@@ -110,19 +110,19 @@ const HeroSection = () => {
           <div className="animate-fade-up animation-delay-300 space-y-5 xl:pt-2">
             <div className="overflow-hidden rounded-[34px] border border-[#0d1b2a]/10 bg-[#fffaf3] shadow-[0_28px_60px_rgba(13,27,42,0.14)]">
               <div className="relative aspect-video overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(180,106,60,0.18),_transparent_36%),linear-gradient(180deg,#142638_0%,#0d1b2a_100%)]">
-                <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#f6ecdf] backdrop-blur">
+                <div className="absolute left-4 top-4 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-[#f6ecdf] backdrop-blur sm:left-5 sm:top-5 sm:text-[10px] sm:tracking-[0.2em]">
                   Founder video
                 </div>
-                <div className="absolute right-5 top-5 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#f6ecdf] backdrop-blur">
+                <div className="absolute right-4 top-4 hidden rounded-full border border-white/15 bg-white/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#f6ecdf] backdrop-blur sm:block sm:right-5 sm:top-5">
                   ~3 min explainer
                 </div>
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-[#f7fafc]">
-                  <PlayCircle className="h-16 w-16 text-[#eed6bf]" strokeWidth={1.6} />
-                  <p className="mt-5 max-w-md font-display text-3xl font-semibold tracking-[-0.04em]">
+                  <PlayCircle className="h-14 w-14 text-[#eed6bf] sm:h-16 sm:w-16" strokeWidth={1.6} />
+                  <p className="mt-4 max-w-md font-display text-2xl font-semibold tracking-[-0.04em] sm:mt-5 sm:text-3xl">
                     Video sales letter placeholder
                   </p>
-                  <p className="mt-3 max-w-lg text-sm leading-7 text-[#d9cbbc]">
+                  <p className="mt-3 max-w-lg text-xs leading-6 text-[#d9cbbc] sm:text-sm sm:leading-7">
                     This is where the founder walkthrough sits so visitors can hear the offer, the process, and the reason clients trust the service.
                   </p>
                 </div>
@@ -131,7 +131,7 @@ const HeroSection = () => {
               <div className="grid gap-4 border-t border-[#0d1b2a]/8 px-5 py-5 md:grid-cols-[0.92fr_1.08fr]">
                 <div>
                   <p className="section-kicker">Why it belongs here</p>
-                  <p className="mt-2 text-base leading-7 text-[#3f342c]">
+                  <p className="mt-2 text-sm leading-7 text-[#3f342c] sm:text-base">
                     Put the founder front and center early so the page builds trust before visitors start comparing plans.
                   </p>
                 </div>
@@ -152,7 +152,7 @@ const HeroSection = () => {
               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div className="max-w-xl">
                   <p className="section-kicker text-[#d4b08f]">Client portal preview</p>
-                  <h2 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-[#f7fafc]">
+                  <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-0.04em] text-[#f7fafc] sm:text-3xl">
                     Approval desk
                   </h2>
                   <p className="mt-2 text-sm leading-7 text-[#d8c8b5]">
@@ -176,15 +176,27 @@ const HeroSection = () => {
                   <div className="mt-4 space-y-3">
                     {dashboardRows.map((row) => (
                       <div key={row.name} className="rounded-[18px] border border-[#0d1b2a]/8 bg-white px-4 py-3">
-                        <div className="grid gap-3 md:grid-cols-[1.5fr_0.5fr_0.8fr_0.9fr] md:items-center">
-                          <div>
-                            <span className="text-sm font-medium leading-6 text-[#14283d]">{row.name}</span>
-                            <span className="mt-1 block text-xs uppercase tracking-[0.14em] text-[#76665a] md:hidden">
-                              {row.status}
+                        <div className="md:hidden">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="block text-sm font-medium leading-6 text-[#14283d]">{row.name}</span>
+                              <span className="mt-1 block text-xs uppercase tracking-[0.14em] text-[#76665a]">
+                                {row.status}
+                              </span>
+                            </div>
+                            <span className="rounded-full bg-[#fff3e8] px-2.5 py-1 text-sm font-semibold text-[#b46a3c]">
+                              {row.fit}
                             </span>
                           </div>
+                          <div className="mt-3 flex items-center justify-between gap-3 text-xs uppercase tracking-[0.14em] text-[#76665a]">
+                            <span>Next step</span>
+                            <span className="text-right text-sm normal-case tracking-normal text-[#54473d]">{row.date}</span>
+                          </div>
+                        </div>
+                        <div className="hidden gap-3 md:grid md:grid-cols-[1.5fr_0.5fr_0.8fr_0.9fr] md:items-center">
+                          <span className="text-sm font-medium leading-6 text-[#14283d]">{row.name}</span>
                           <span className="text-sm font-semibold text-[#b46a3c]">{row.fit}</span>
-                          <span className="hidden text-xs uppercase tracking-[0.14em] text-[#76665a] md:block">{row.status}</span>
+                          <span className="text-xs uppercase tracking-[0.14em] text-[#76665a]">{row.status}</span>
                           <span className="text-sm text-[#54473d]">{row.date}</span>
                         </div>
                       </div>
@@ -195,7 +207,7 @@ const HeroSection = () => {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
                   <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
                     <p className="section-kicker text-[#d4b08f]">In motion this month</p>
-                    <p className="mt-3 font-display text-5xl font-semibold tracking-[-0.05em] text-[#f7fafc]">11</p>
+                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#f7fafc] sm:text-5xl">11</p>
                     <p className="mt-2 text-sm leading-6 text-[#d8c8b5]">
                       Shows moving across approval, outreach, booking, and publish stages.
                     </p>
@@ -203,7 +215,7 @@ const HeroSection = () => {
 
                   <div className="rounded-[24px] border border-[#d4b08f]/20 bg-[#132436] p-5">
                     <p className="section-kicker text-[#d4b08f]">What you see</p>
-                    <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-[#f7fafc]">
+                    <p className="mt-3 font-display text-xl font-semibold tracking-[-0.04em] text-[#f7fafc] sm:text-2xl">
                       Shortlist, approvals, bookings, and publish tracking.
                     </p>
                     <p className="mt-2 text-sm leading-7 text-[#d8c8b5]">
@@ -220,7 +232,7 @@ const HeroSection = () => {
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-end">
             <div className="max-w-xl">
               <p className="section-kicker">Your first 14 days</p>
-              <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a] sm:text-4xl">
+              <h2 className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a] sm:text-4xl">
                 See the fit before outreach begins.
               </h2>
               <p className="mt-3 text-base leading-7 text-[#6a5a4d]">
