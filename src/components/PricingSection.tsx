@@ -9,10 +9,10 @@ const plan = {
   price: "$749",
   period: "/month",
   features: [
-    "2+ guaranteed podcast bookings every month",
-    "Podcast Command Center access",
-    "Reporting & analytics dashboard",
-    "Guest prep kit",
+    "Minimum 2 podcast bookings per month",
+    "Private client portal with approvals and status tracking",
+    "Show research, outreach, and follow-up handled for you",
+    "Guest prep support before each recording",
   ],
 };
 
@@ -30,7 +30,7 @@ const comparisons = [
   {
     option: 'Get On A Pod',
     cost: '$749/mo',
-    tradeoff: 'Managed service plus portal visibility, audience-fit targeting, and booking tracking.',
+    tradeoff: 'Managed outreach with approvals, portal visibility, and a built-in placement commitment.',
   },
 ];
 
@@ -51,11 +51,11 @@ const PricingSection = () => {
             <div className="max-w-xl">
               <p className="section-kicker">Pricing</p>
               <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-                Choose done-for-you support without losing visibility.
+                Done-for-you podcast booking with clear pricing and a real delivery commitment.
               </h2>
               <p className="mt-5 text-base leading-8 text-[#4c5d73] sm:text-lg">
-                This is for buyers who want the right audience, not random interviews.
-                We prioritize audience fit over vanity rankings, and you can see the work as it happens.
+                This is for buyers who care more about audience fit than vanity reach. You can see the work,
+                approve the targets, and know what the monthly fee is tied to.
               </p>
 
               <div className="mt-8 space-y-4">
@@ -105,7 +105,7 @@ const PricingSection = () => {
                 <div className="mb-4 inline-flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-[#8cb0dd]" />
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">
-                    Starts here
+                    Core plan
                   </span>
                 </div>
 
@@ -122,7 +122,7 @@ const PricingSection = () => {
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-[#c7d9ee]">
-                    Month-to-month. Cancel anytime.
+                    Month-to-month. Includes a placement commitment.
                   </p>
                 </div>
 
@@ -150,7 +150,7 @@ const PricingSection = () => {
                     asChild
                   >
                     <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                      Get My Podcast Shortlist
+                      Book My Shortlist Call
                     </a>
                   </Button>
                   <Button
@@ -169,15 +169,15 @@ const PricingSection = () => {
               <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[#4c5d73]">
                 <div className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-[#2d6df6]" />
-                  <span>No long-term contracts</span>
+                  <span>Month-to-month</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-[#2d6df6]" />
-                  <span>Approval before outreach</span>
+                  <span>Approve targets before outreach</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="h-4 w-4 text-[#2d6df6]" />
-                  <span>Placement commitment built in</span>
+                  <span>Placement commitment included</span>
                 </div>
               </div>
 

@@ -4,22 +4,22 @@ import { Brain, Mail, MonitorSmartphone } from 'lucide-react';
 
 const pillars = [
   {
-    title: 'Match',
-    description: 'We find shows based on your expertise, buyer profile, category, and authority goals.',
+    title: 'Find the right shows',
+    description: 'We research podcasts around your expertise, buyer profile, market, and the stories you can credibly tell.',
     icon: Brain,
-    points: ['AI-assisted show research', 'Human review for audience fit', 'Shortlist approval before outreach'],
+    points: ['Research shaped around buyer fit', 'Human review before anything gets pitched', 'Shortlist approval before outreach starts'],
   },
   {
-    title: 'Pitch',
-    description: 'We create personalized outreach that sounds like you, not a generic agency template.',
+    title: 'Pitch with context',
+    description: 'We write outreach around your angle, the host, and the show so it sounds relevant instead of mass-produced.',
     icon: Mail,
-    points: ['Positioning angles based on your story', 'Host-specific personalization', 'Follow-up handled for you'],
+    points: ['Angles built from your expertise and story', 'Host-specific personalization', 'Follow-up handled without sounding templated'],
   },
   {
-    title: 'Track',
-    description: 'You see every opportunity, booking, recording, and published episode inside your portal.',
+    title: 'Track every stage',
+    description: 'You can see what is approved, pitched, booked, recorded, and published inside one client portal.',
     icon: MonitorSmartphone,
-    points: ['Live status pipeline', 'Recording and publish dates', 'One place to review progress'],
+    points: ['Live status from target to publish', 'Recording and publish dates in one place', 'Visibility without status-chasing'],
   },
 ];
 
@@ -38,11 +38,11 @@ const SolutionSection = () => {
           <div className="mx-auto max-w-3xl text-center">
             <p className="section-kicker mb-4">The system</p>
             <h2 className="font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-              A complete podcast placement system, not a spreadsheet.
+              A podcast booking system with targeting, outreach, and tracking in one place.
             </h2>
             <p className="mx-auto mt-5 max-w-3xl text-base leading-8 text-[#4c5d73] sm:text-lg md:text-xl">
-              We combine human outreach with AI-assisted podcast research, fit scoring, and transparent tracking
-              so every campaign stays targeted, organized, and accountable.
+              We pair human outreach with data-backed show research and a live portal so you can approve
+              targets, see progress, and stay confident about fit.
             </p>
           </div>
 

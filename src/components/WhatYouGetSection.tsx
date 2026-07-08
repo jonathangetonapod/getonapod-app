@@ -3,22 +3,22 @@ import { Badge } from '@/components/ui/badge';
 import { BarChart3, CheckCircle2, Mail, Monitor, Sparkles } from 'lucide-react';
 
 const reviewList = [
-  'Approve shows before any outreach goes live',
-  'See fit reasoning, audience, and category context',
-  'Add notes so the campaign stays aligned with your brand',
+  'Approve target shows before outreach starts',
+  'See why each show fits your audience and topic',
+  'Leave notes so the targeting stays aligned with your brand',
 ];
 
 const portalCards = [
   {
     icon: Mail,
     title: 'Outreach engine',
-    description: 'Track pitches, follow-ups, and replies without asking for a status update.',
+    description: 'See who has been pitched, who replied, and what needs attention without chasing updates.',
     items: ['Live campaign pipeline', 'Status by show', 'Clear next-step visibility'],
   },
   {
     icon: BarChart3,
     title: 'Visibility and reporting',
-    description: 'See what is booked, recorded, publishing, and live month over month.',
+    description: 'Track booked interviews, recording dates, publish dates, and live links month over month.',
     items: ['Recording calendar', 'Published episode links', 'Campaign momentum by stage'],
   },
 ];
@@ -44,11 +44,11 @@ const WhatYouGetSection = () => {
                 </Badge>
               </div>
               <h2 className="font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-                Know exactly what is happening with every podcast opportunity.
+                Approve shows, track outreach, and see every booking without asking for updates.
               </h2>
               <p className="mt-5 max-w-2xl text-base leading-8 text-[#4c5d73] sm:text-lg">
-                Most agencies send a monthly PDF or an occasional update. GOAP gives you a live command center
-                so you can review shows, follow the pipeline, and see every booking from first pitch to published episode.
+                Instead of monthly PDFs and scattered email threads, your portal shows recommended podcasts,
+                approvals, outreach status, recording dates, and published episodes in one place.
               </p>
 
               <div className="mt-8 overflow-hidden rounded-[28px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_24px_55px_rgba(13,27,42,0.18)] sm:rounded-[32px] sm:p-5">
@@ -156,7 +156,7 @@ const WhatYouGetSection = () => {
               <div className="rounded-[28px] border border-[#2d6df6]/18 bg-[#eef4ff] p-6">
                 <p className="section-kicker">No more checking in</p>
                 <p className="mt-3 text-base leading-7 text-[#30465f]">
-                  The portal shows the pipeline from first pitch to published episode, so you never need to ask what is happening.
+                  You should not have to ask where things stand. The portal shows every opportunity from first pitch to published episode.
                 </p>
               </div>
             </div>

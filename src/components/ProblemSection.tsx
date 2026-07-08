@@ -7,12 +7,12 @@ const painCards = [
     description: 'Big audience, poor buyer fit. You spend time chasing visibility that never turns into trust.',
   },
   {
-    title: 'Generic pitches',
-    description: 'Hosts ignore agency-sounding outreach that feels templated, lazy, or misaligned with the show.',
+    title: 'Generic outreach',
+    description: 'Hosts ignore pitches that feel templated, self-centered, or misaligned with the show they run.',
   },
   {
-    title: 'No tracking',
-    description: 'Replies, bookings, recording dates, and publishing links disappear across inboxes and spreadsheets.',
+    title: 'No visibility',
+    description: 'Replies, bookings, recording dates, and publish links disappear across inboxes, notes, and spreadsheets.',
   },
 ];
 
@@ -31,16 +31,16 @@ const ProblemSection = () => {
           <div className="max-w-xl">
             <p className="section-kicker text-[#8cb0dd]">The friction</p>
             <h2 className="mt-5 font-display text-4xl font-semibold leading-[1] tracking-[-0.05em] text-balance md:text-6xl">
-              Getting on the right podcasts should not take 10 hours a week.
+              Getting booked on the right podcasts should not become a second job.
             </h2>
             <p className="mt-6 text-lg leading-8 text-[#c7d9ee]">
-              Finding shows, checking fit, writing custom pitches, following up, coordinating schedules,
-              and tracking publication dates quickly becomes a second job. Most experts either stall out,
-              send generic outreach, or get booked on shows their buyers do not even listen to.
+              Researching shows, checking buyer fit, writing personalized pitches, following up, coordinating
+              recordings, and tracking publish dates pile up fast. Most experts either stall out, send generic
+              outreach, or land on shows their buyers would never care about.
             </p>
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-white/5 p-6">
-              <p className="section-kicker text-[#8cb0dd]">What GOAP replaces</p>
+              <p className="section-kicker text-[#8cb0dd]">What GOAP takes off your plate</p>
               <div className="mt-4 grid gap-4 sm:grid-cols-3">
                 <div>
                   <p className="font-display text-3xl font-semibold tracking-[-0.05em]">Research</p>
@@ -79,7 +79,7 @@ const ProblemSection = () => {
             <div className="rounded-[26px] border border-[#8cb0dd]/24 bg-[#8cb0dd]/10 p-6">
               <p className="section-kicker text-[#bdd0e8]">The shift</p>
               <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
-                Stop treating podcast guesting like a side task. Run it like a pipeline.
+                Run podcast guesting like a pipeline, not a side task.
               </p>
               <a
                 href="#how-it-works"
@@ -92,8 +92,8 @@ const ProblemSection = () => {
             <div className="rounded-[26px] border border-white/10 bg-white/5 p-6">
               <p className="section-kicker text-[#8cb0dd]">Reality check</p>
               <p className="mt-3 text-base leading-7 text-[#c7d9ee]">
-                The bottleneck is rarely your expertise. It is the targeting, outreach discipline,
-                and visibility needed to get invited consistently.
+                The bottleneck is rarely your expertise. It is consistent targeting, follow-up, and visibility
+                from first pitch to published episode.
               </p>
             </div>
           </div>

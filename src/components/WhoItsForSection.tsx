@@ -39,11 +39,11 @@ const WhoItsForSection = () => {
           <div className="mx-auto max-w-3xl text-center">
             <p className="section-kicker">Who it is for</p>
             <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-              Built for experts who sell through trust.
+              Built for experts whose buyers need trust before they buy.
             </h2>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#4c5d73] sm:text-lg">
-              Get On A Pod works best for people with real expertise, a clear point of view,
-              and a market that buys after credibility is established.
+              GOAP works best when you have real expertise, a clear point of view, and a market
+              that buys after credibility is established.
             </p>
           </div>
 
@@ -73,7 +73,7 @@ const WhoItsForSection = () => {
             <div>
               <p className="section-kicker">Best fit</p>
               <p className="mt-3 max-w-3xl text-base leading-7 text-[#30465f]">
-                The best campaigns come from clients with clear expertise, usable stories, and a willingness to show up prepared.
+                The strongest campaigns come from clients with clear expertise, usable stories, and a willingness to show up prepared.
               </p>
             </div>
             <a href="#pricing" className="inline-flex items-center gap-2 text-sm font-semibold text-[#2d6df6] transition hover:gap-3">

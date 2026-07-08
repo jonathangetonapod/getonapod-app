@@ -7,15 +7,15 @@ const proofTiles = [
 ];
 
 const firstFourteenDays = [
-  'Authority angles tailored to your expertise, audience, and goals.',
-  'A curated shortlist of podcasts worth pitching before outreach starts.',
-  'A live portal so you can track every pitch, booking, and recording date.',
+  'A positioning angle built around your expertise, buyer, and market.',
+  'A shortlist of podcasts worth pitching before any outreach is sent.',
+  'A live portal to review pitches, bookings, recording dates, and published episodes.',
 ];
 
 const operatingSignals = [
-  'AI-matched show research',
-  'Human-written outreach',
-  'Approval-first workflow',
+  'Buyer-fit podcast shortlist',
+  'Host-specific outreach',
+  'Approval before pitching',
   'Booking and publish tracking',
 ];
 
@@ -36,7 +36,7 @@ const HeroSection = () => {
         <div className="grid items-start gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16">
           <div className="max-w-3xl">
             <div className="animate-fade-up flex flex-wrap items-center gap-3">
-              <p className="section-kicker">Podcast authority system</p>
+              <p className="section-kicker">Podcast booking for experts</p>
               <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
                 For founders, advisors, and operators
               </span>
@@ -46,14 +46,14 @@ const HeroSection = () => {
             </h1>
 
             <p className="animate-fade-up animation-delay-200 mt-6 max-w-2xl text-lg leading-8 text-[#4c5d73] md:text-xl">
-              Get On A Pod matches founders, financial professionals, and experts with relevant podcasts,
-              then handles the targeting, outreach, scheduling, and tracking inside a private client portal.
+              We build your shortlist, write host-specific pitches, handle follow-up, and track every booking
+              in a private client portal so podcast guesting does not turn into another job on your team.
             </p>
 
             <div className="animate-fade-up animation-delay-300 mt-8 flex flex-col gap-3 sm:flex-row">
               <Button variant="hero" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
                 <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                  Get My Podcast Shortlist
+                  Book My Shortlist Call
                 </a>
               </Button>
               <Button variant="heroOutline" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
@@ -62,7 +62,7 @@ const HeroSection = () => {
             </div>
 
             <p className="animate-fade-up animation-delay-400 mt-4 text-sm leading-6 text-[#5f7590]">
-              We build your first shortlist after a short strategy call.
+              On the call, we pressure-test fit and show the kind of podcasts worth targeting.
             </p>
 
             <div className="animate-fade-up animation-delay-400 mt-8 max-w-2xl rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/72 p-4 shadow-[0_20px_40px_rgba(13,27,42,0.08)] backdrop-blur-sm">
@@ -98,11 +98,11 @@ const HeroSection = () => {
                 <div>
                   <p className="section-kicker">What happens in your first 14 days</p>
                   <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
-                    You see where you fit before we ever start spraying outreach.
+                    See your fit before outreach begins.
                   </h2>
                 </div>
                 <p className="max-w-xs text-sm leading-6 text-[#5d7188]">
-                  That is the difference between random appearances and a real authority system.
+                  That is how you avoid random appearances and vague agency updates.
                 </p>
               </div>
 
@@ -183,7 +183,7 @@ const HeroSection = () => {
 
                 <div className="flex flex-col gap-4">
                   <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
-                    <p className="section-kicker text-[#8cb0dd]">This month</p>
+                    <p className="section-kicker text-[#8cb0dd]">Approved this month</p>
                     <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em]">11</p>
                     <p className="mt-2 text-sm leading-6 text-[#c7d9ee]">
                       Approved shows in motion across founder, finance, and operator categories.
@@ -193,10 +193,10 @@ const HeroSection = () => {
                   <div className="rounded-[28px] border border-[#2d6df6]/30 bg-[#132a44] p-5 text-[#f7fafc]">
                     <p className="section-kicker text-[#8cb0dd]">Portal view</p>
                     <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em]">
-                      Shortlist, approvals, bookings, and episode tracking.
+                      Shortlist, approvals, bookings, and published episodes.
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[#c7d9ee]/90">
-                      No spreadsheets. No “just checking in.” No opacity.
+                      No spreadsheets. No status-chasing. No blind spots.
                     </p>
                   </div>
                 </div>

@@ -10,7 +10,7 @@ const Footer = () => {
               GET ON A POD
             </div>
             <p className="mt-3 max-w-xl text-sm leading-7 text-[#4c5d73]">
-              A podcast authority platform for founders, financial professionals, and experts who need buyer trust before they sell.
+              Done-for-you podcast booking for founders, financial professionals, and experts who need buyer trust before they sell.
             </p>
             <a
               href="https://calendly.com/getonapodjg/30min"
@@ -18,7 +18,7 @@ const Footer = () => {
               rel="noopener noreferrer"
               className="mt-5 inline-flex items-center rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 text-sm font-medium text-[#0d1b2a] transition hover:-translate-y-0.5 hover:bg-[#ffffff]"
             >
-              Book a shortlist call
+              Book My Shortlist Call
             </a>
           </div>
 

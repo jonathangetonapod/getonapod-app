@@ -18,20 +18,20 @@ const FAQSection = () => {
             <div className="lg:sticky lg:top-36">
               <p className="section-kicker">FAQ</p>
               <h2 className="mt-4 font-editorial text-4xl leading-[0.95] tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-                Questions serious buyers ask before they commit.
+                Questions buyers ask before they book.
               </h2>
               <p className="mt-5 max-w-lg text-base leading-8 text-[#4c5d73] sm:text-lg">
-                These answers focus on fit, guarantees, transparency, and how GOAP actually runs a podcast campaign.
+                These answers cover fit, pricing, guarantees, and how the campaign actually runs.
               </p>
 
               <div className="mt-8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#f4f8fc]/92 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
                 <p className="section-kicker">Still unsure?</p>
                 <p className="mt-3 text-base leading-7 text-[#30465f]">
-                  The shortlist call is where we pressure-test fit. If podcast guesting is not the right channel for you, we will say that directly.
+                  The shortlist call is where we pressure-test fit. If podcast guesting is not a strong channel for your market, we will tell you directly.
                 </p>
                 <Button variant="hero" size="lg" className="mt-6 rounded-full px-7" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book a shortlist call
+                    Book My Shortlist Call
                   </a>
                 </Button>
               </div>

@@ -75,7 +75,7 @@ const Navbar = () => {
                 )}
                 <Button variant="hero" size="default" className="rounded-full px-6" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book a shortlist call
+                    Book My Shortlist Call
                   </a>
                 </Button>
               </div>
@@ -120,7 +120,7 @@ const Navbar = () => {
                   <div className="pt-3">
                     <Button variant="hero" size="default" className="w-full rounded-full" asChild>
                       <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                        Book a shortlist call
+                        Book My Shortlist Call
                       </a>
                     </Button>
                   </div>

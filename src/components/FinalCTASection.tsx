@@ -2,9 +2,9 @@ import { Button } from '@/components/ui/button';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 
 const nextSteps = [
-  'We learn your background, buyer profile, and authority angle.',
-  'We show the kind of podcasts that fit before outreach begins.',
-  'You see how approvals, booking ops, and portal tracking would work.',
+  'We review your expertise, buyer profile, and best guest angles.',
+  'We show the kinds of podcasts that fit before outreach starts.',
+  'We explain approvals, booking workflow, and portal tracking.',
 ];
 
 const FinalCTASection = () => {
@@ -23,11 +23,11 @@ const FinalCTASection = () => {
             <div className="max-w-2xl">
               <p className="section-kicker text-[#8cb0dd]">Next step</p>
               <h2 className="mt-4 font-editorial text-4xl leading-[0.92] tracking-[-0.05em] sm:text-5xl md:text-6xl">
-                See which podcasts you could be a fit for before you commit.
+                Book a shortlist call and see where you fit.
               </h2>
 
               <p className="mt-5 max-w-xl text-sm leading-8 text-[#d6e5f5] sm:text-base md:text-lg lg:text-xl">
-                Get a personalized shortlist based on your background, market, and expertise. We will show you where you fit, how the outreach would work, and what the portal experience looks like.
+                We will pressure-test fit, show you the kinds of podcasts we would target, and explain how outreach and tracking would work before you commit to anything.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -38,7 +38,7 @@ const FinalCTASection = () => {
                   asChild
                 >
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Get My Podcast Shortlist
+                    Book My Shortlist Call
                   </a>
                 </Button>
                 <Button
@@ -52,7 +52,7 @@ const FinalCTASection = () => {
               </div>
 
               <p className="mt-5 text-sm text-[#c7d9ee]">
-                We build the first shortlist after a short strategy call.
+                You leave with a clearer answer on fit, even if the answer is no.
               </p>
             </div>
 

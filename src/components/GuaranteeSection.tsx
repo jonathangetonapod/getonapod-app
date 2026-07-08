@@ -3,9 +3,9 @@ import { Shield, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const checkmarks = [
-  "Placement commitment tied to your plan",
-  "If we miss the target, we keep working at no extra management fee",
-  "Transparency in the portal while we make up any shortfall",
+  "A placement commitment is built into your plan",
+  "If we miss it, we keep pitching at no extra management fee",
+  "You can watch the make-good work happen in your portal",
 ];
 
 const GuaranteeSection = () => {
@@ -34,14 +34,14 @@ const GuaranteeSection = () => {
                 </div>
 
                 <h2 className="mt-6 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-4xl md:text-5xl">
-                  If we miss the agreed target, we keep working until the owed placements are made up.
+                  If we miss your placement commitment, we keep working until it is made up.
                 </h2>
               </div>
 
               <div>
                 <p className="text-base leading-8 text-[#4c5d73] sm:text-lg">
-                  We do not treat podcast booking like a vague awareness project. Your plan includes a clear delivery target.
-                  If we fall short on the agreed placement commitment, we continue pitching, following up, and coordinating at no
+                  Podcast booking should not be sold like a vague awareness project. Your plan includes a clear
+                  delivery target. If we fall short, we keep pitching, following up, and coordinating at no
                   additional management fee until the shortfall is closed.
                 </p>
 

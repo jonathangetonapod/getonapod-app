@@ -22,7 +22,7 @@ export const faqCategories = [
         answer: "Most clients see their first booking within 2 to 4 weeks, depending on positioning, show approval speed, and the responsiveness of hosts. Publish dates usually trail recordings by several weeks.",
       },
       {
-        question: "Can I approve shows before you pitch me?",
+        question: "Can I approve shows before you pitch them?",
         answer: "Yes. Your portal shows the podcasts we recommend, why they fit, and where they sit in the workflow. We only pitch the shows you approve.",
       },
       {
