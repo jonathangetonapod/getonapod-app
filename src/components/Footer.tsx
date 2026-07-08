@@ -4,64 +4,53 @@ const Footer = () => {
   return (
     <footer className="border-t border-[#0d1b2a]/8 bg-[#f3f5f7] py-12 md:py-16">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
+        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
           <div>
-            <div className="font-display text-2xl font-semibold tracking-[-0.05em] text-[#0d1b2a] mb-3">
+            <div className="font-display text-2xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
               GET ON A POD
             </div>
-            <p className="text-sm leading-7 text-[#4c5d73]">
-              A podcast authority platform for founders, financial professionals, and experts who need trust before they sell.
+            <p className="mt-3 max-w-xl text-sm leading-7 text-[#4c5d73]">
+              A podcast authority platform for founders, financial professionals, and experts who need buyer trust before they sell.
             </p>
+            <a
+              href="https://calendly.com/getonapodjg/30min"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center rounded-full border border-[#0d1b2a]/10 bg-[#fffaf4] px-4 py-2 text-sm font-medium text-[#0d1b2a] transition hover:-translate-y-0.5 hover:bg-[#ffffff]"
+            >
+              Book a shortlist call
+            </a>
           </div>
 
-          <div>
-            <h4 className="text-sm font-semibold text-[#0d1b2a] mb-3">Explore</h4>
-            <nav className="flex flex-col gap-2">
-              <a href="/#results" className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors">Results</a>
-              <a href="/#pricing" className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors">Pricing</a>
-              <Link to="/premium-placements" className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors">Premium Placements</Link>
-            </nav>
-          </div>
+          <div className="grid gap-8 sm:grid-cols-2">
+            <div>
+              <h4 className="text-sm font-semibold text-[#0d1b2a]">Navigate</h4>
+              <nav className="mt-3 flex flex-col gap-2">
+                <a href="/#results" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Results</a>
+                <a href="/#pricing" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Pricing</a>
+                <a href="/#faq" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">FAQ</a>
+                <Link to="/premium-placements" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Premium Placements</Link>
+              </nav>
+            </div>
 
-          <div>
-            <h4 className="text-sm font-semibold text-[#0d1b2a] mb-3">Learn</h4>
-            <nav className="flex flex-col gap-2">
-              <a href="/#how-it-works" className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors">How It Works</a>
-              <Link to="/resources" className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors">Resources</Link>
-              <Link to="/blog" className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors">Blog</Link>
-            </nav>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-semibold text-[#0d1b2a] mb-3">Access</h4>
-            <nav className="flex flex-col gap-2">
-              <Link
-                to="/portal/login"
-                className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors"
-              >
-                Client Portal Login
-              </Link>
-              <Link
-                to="/what-to-expect"
-                className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors"
-              >
-                What to Expect
-              </Link>
-              <a
-                href="https://calendly.com/getonapodjg/30min"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-[#4c5d73] hover:text-[#0d1b2a] transition-colors"
-              >
-                Get My Podcast Shortlist
-              </a>
-            </nav>
+            <div>
+              <h4 className="text-sm font-semibold text-[#0d1b2a]">Access</h4>
+              <nav className="mt-3 flex flex-col gap-2">
+                <a href="/#how-it-works" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">How It Works</a>
+                <Link to="/resources" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Resources</Link>
+                <Link to="/blog" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Blog</Link>
+                <Link to="/portal/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Client Portal Login</Link>
+              </nav>
+            </div>
           </div>
         </div>
 
-        <div className="border-t border-[#0d1b2a]/8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="mt-10 flex flex-col gap-4 border-t border-[#0d1b2a]/8 pt-6 md:flex-row md:items-center md:justify-between">
           <p className="text-sm text-[#5d7188]">
             &copy; {new Date().getFullYear()} Get On A Pod. All rights reserved.
+          </p>
+          <p className="text-sm text-[#5d7188]">
+            Audience-fit podcast outreach, managed inside a live client portal.
           </p>
         </div>
       </div>

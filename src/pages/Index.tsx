@@ -15,7 +15,7 @@ import Footer from '@/components/Footer';
 
 const Index = () => {
   return (
-    <main className="min-h-screen bg-[#f3f5f7] text-[#0d1b2a]">
+    <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-[#0d1b2a] focus:px-4 focus:py-2 focus:text-sm focus:text-[#f7fafc]"
@@ -23,7 +23,7 @@ const Index = () => {
         Skip to content
       </a>
       <Navbar />
-      <div id="main-content">
+      <div id="main-content" className="relative">
         <HeroSection />
         <PodcastShowcaseSection />
         <ProblemSection />

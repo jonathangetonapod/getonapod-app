@@ -12,6 +12,13 @@ const firstFourteenDays = [
   'A live portal so you can track every pitch, booking, and recording date.',
 ];
 
+const operatingSignals = [
+  'AI-matched show research',
+  'Human-written outreach',
+  'Approval-first workflow',
+  'Booking and publish tracking',
+];
+
 const dashboardRows = [
   { name: 'Fintech Growth Show', fit: '9.2', status: 'Pitch sent', date: 'Pending' },
   { name: 'Founder Operator', fit: '8.8', status: 'Booked', date: 'Aug 14' },
@@ -20,16 +27,21 @@ const dashboardRows = [
 
 const HeroSection = () => {
   return (
-    <section className="paper-noise relative overflow-hidden bg-[#f3f5f7] px-4 pb-16 pt-32 md:pb-24 md:pt-40">
+    <section className="paper-noise relative overflow-hidden bg-transparent px-4 pb-16 pt-32 md:pb-24 md:pt-40">
       <div className="absolute inset-x-0 top-0 h-px bg-[#0d1b2a]/8" />
-      <div className="absolute left-0 top-28 h-[420px] w-[420px] rounded-full bg-[#2d6df6]/12 blur-3xl" />
-      <div className="absolute right-0 top-20 h-[420px] w-[420px] rounded-full bg-[#18c08f]/10 blur-3xl" />
+      <div className="absolute left-0 top-28 h-[420px] w-[420px] rounded-full bg-[#2d6df6]/10 blur-3xl" />
+      <div className="absolute right-0 top-20 h-[420px] w-[420px] rounded-full bg-[#f1d7b4]/35 blur-3xl" />
 
       <div className="container relative mx-auto">
         <div className="grid items-start gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16">
           <div className="max-w-3xl">
-            <p className="section-kicker animate-fade-up">Tech-enabled podcast authority</p>
-            <h1 className="animate-fade-up animation-delay-100 mt-5 font-display text-[clamp(3.3rem,7.2vw,6.2rem)] font-semibold leading-[0.92] tracking-[-0.06em] text-[#0d1b2a] text-balance">
+            <div className="animate-fade-up flex flex-wrap items-center gap-3">
+              <p className="section-kicker">Podcast authority system</p>
+              <span className="rounded-full border border-[#0d1b2a]/10 bg-[#fff9f3] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
+                For founders, advisors, and operators
+              </span>
+            </div>
+            <h1 className="animate-fade-up animation-delay-100 mt-5 font-editorial text-[clamp(3.7rem,7.6vw,6.8rem)] leading-[0.88] tracking-[-0.05em] text-[#0d1b2a] text-balance">
               Get booked on podcasts your buyers already trust.
             </h1>
 
@@ -53,27 +65,35 @@ const HeroSection = () => {
               We build your first shortlist after a short strategy call.
             </p>
 
-            <div className="animate-fade-up animation-delay-400 mt-6 flex flex-wrap gap-3 text-sm font-medium text-[#4d657e]">
-              <span className="rounded-full border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-2">AI-matched shows</span>
-              <span className="rounded-full border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-2">Done-for-you outreach</span>
-              <span className="rounded-full border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-2">Private client portal</span>
-              <span className="rounded-full border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-2">Booking tracking</span>
-              <span className="rounded-full border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-2">Premium placements available</span>
+            <div className="animate-fade-up animation-delay-400 mt-8 max-w-2xl rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/72 p-4 shadow-[0_20px_40px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {operatingSignals.map((signal, index) => (
+                  <div
+                    key={signal}
+                    className="flex items-center gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-[#fdfbf7] px-4 py-3 text-sm font-medium text-[#30465f]"
+                  >
+                    <span className="font-mono text-xs text-[#2d6df6]">0{index + 1}</span>
+                    <span>{signal}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="animate-fade-up animation-delay-500 mt-10 grid gap-4 sm:grid-cols-3">
-              {proofTiles.map((tile) => (
-                <div
-                  key={tile.label}
-                  className="rounded-[24px] border border-[#0d1b2a]/8 bg-[#ffffff]/90 p-5 ink-shadow"
-                >
-                  <div className="font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{tile.value}</div>
-                  <p className="mt-2 text-sm leading-6 text-[#5d7188]">{tile.label}</p>
-                </div>
-              ))}
+            <div className="animate-fade-up animation-delay-500 mt-10 overflow-hidden rounded-[30px] border border-[#0d1b2a]/8 bg-[#ffffff]/78 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+              <div className="grid sm:grid-cols-3">
+                {proofTiles.map((tile, index) => (
+                  <div
+                    key={tile.label}
+                    className={`px-5 py-6 ${index > 0 ? 'border-t border-[#0d1b2a]/8 sm:border-l sm:border-t-0' : ''}`}
+                  >
+                    <div className="font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{tile.value}</div>
+                    <p className="mt-2 max-w-[16rem] text-sm leading-6 text-[#5d7188]">{tile.label}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="animate-fade-up animation-delay-500 mt-8 rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/90 p-6 ink-shadow">
+            <div className="animate-fade-up animation-delay-500 mt-8 rounded-[32px] border border-[#0d1b2a]/8 bg-[#fffaf4]/88 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="section-kicker">What happens in your first 14 days</p>
@@ -90,7 +110,7 @@ const HeroSection = () => {
 
               <ul className="grid gap-4 md:grid-cols-3">
                 {firstFourteenDays.map((item, index) => (
-                  <li key={item} className="flex gap-3">
+                  <li key={item} className="flex gap-3 rounded-[20px] bg-[#ffffff]/70 px-3 py-3">
                     <span className="font-mono text-xs text-[#2d6df6]">0{index + 1}</span>
                     <span className="text-sm leading-6 text-[#30465f]">{item}</span>
                   </li>
@@ -157,7 +177,9 @@ const HeroSection = () => {
 
                   <div className="rounded-[28px] border border-[#2d6df6]/30 bg-[#132a44] p-5 text-[#f7fafc]">
                     <p className="section-kicker text-[#8cb0dd]">Portal view</p>
-                    <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em]">Shortlist, approvals, bookings, and episode tracking.</p>
+                    <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em]">
+                      Shortlist, approvals, bookings, and episode tracking.
+                    </p>
                     <p className="mt-2 text-sm leading-6 text-[#c7d9ee]/90">
                       No spreadsheets. No “just checking in.” No opacity.
                     </p>

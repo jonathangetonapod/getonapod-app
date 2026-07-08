@@ -3,39 +3,39 @@ import { ArrowRight, Calendar, ClipboardList, Mail, Mic, MonitorCheck, Sparkles 
 
 const steps = [
   {
-    number: "01",
-    title: "Authority audit",
-    description: "We clarify your positioning, audience, stories, and the topics hosts will actually care about.",
+    number: '01',
+    title: 'Authority audit',
+    description: 'We clarify your positioning, audience, stories, and the topics hosts will actually care about.',
     icon: Calendar,
   },
   {
-    number: "02",
-    title: "Podcast matching",
-    description: "We build a curated target list using podcast data, fit scoring, and human review.",
+    number: '02',
+    title: 'Podcast matching',
+    description: 'We build a curated target list using podcast data, fit scoring, and human review.',
     icon: ClipboardList,
   },
   {
-    number: "03",
-    title: "Pitch campaign",
-    description: "We send personalized outreach and handle the follow-up without breaking your voice.",
+    number: '03',
+    title: 'Pitch campaign',
+    description: 'We send personalized outreach and handle the follow-up without breaking your voice.',
     icon: Mail,
   },
   {
-    number: "04",
-    title: "Booking and prep",
-    description: "We coordinate scheduling, lock dates, and help you show up sharp for the interview.",
+    number: '04',
+    title: 'Booking and prep',
+    description: 'We coordinate scheduling, lock dates, and help you show up sharp for the interview.',
     icon: Mic,
   },
   {
-    number: "05",
-    title: "Track and publish",
-    description: "Your portal shows what is pitched, booked, recorded, and published in one pipeline.",
+    number: '05',
+    title: 'Track and publish',
+    description: 'Your portal shows what is pitched, booked, recorded, and published in one pipeline.',
     icon: MonitorCheck,
   },
   {
-    number: "06",
-    title: "Optional amplification",
-    description: "Repurpose the interview into content assets that keep the authority compounding after it airs.",
+    number: '06',
+    title: 'Optional amplification',
+    description: 'Repurpose the interview into content assets that keep the authority compounding after it airs.',
     icon: Sparkles,
   },
 ];
@@ -49,13 +49,13 @@ const HowItWorksSection = () => {
         <div
           ref={ref}
           className={`transition-all duration-700 ${
-            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+            isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
           }`}
         >
           <div className="grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
             <div className="max-w-xl">
               <p className="section-kicker">Process</p>
-              <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
+              <h2 className="mt-4 font-editorial text-4xl leading-[0.95] tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
                 From positioning to published episode.
               </h2>
               <p className="mt-5 text-base leading-8 text-[#4c5d73] sm:text-lg">
@@ -82,16 +82,22 @@ const HowItWorksSection = () => {
               </div>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="relative pl-8 md:pl-10">
+              <div className="absolute bottom-4 left-3 top-3 w-px bg-[#0d1b2a]/12 md:left-4" />
+
               {steps.map((step, index) => {
                 const Icon = step.icon;
 
                 return (
                   <article
                     key={step.number}
-                    className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
+                    className={`relative mb-5 rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/88 p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm md:max-w-[88%] ${
+                      index % 2 === 1 ? 'md:ml-auto' : ''
+                    }`}
                     style={{ transitionDelay: `${index * 80}ms` }}
                   >
+                    <div className="absolute left-[-2.4rem] top-7 h-5 w-5 rounded-full border border-[#0d1b2a]/10 bg-[#f8fbff] md:left-[-2.9rem]" />
+
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-mono text-xs uppercase tracking-[0.28em] text-[#2d6df6]">
                         {step.number}
@@ -100,6 +106,7 @@ const HowItWorksSection = () => {
                         <Icon className="h-5 w-5" strokeWidth={1.8} />
                       </div>
                     </div>
+
                     <h3 className="mt-5 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
                       {step.title}
                     </h3>
@@ -110,6 +117,7 @@ const HowItWorksSection = () => {
                 );
               })}
             </div>
+          </div>
 
           <div className="mt-10 text-center">
             <a

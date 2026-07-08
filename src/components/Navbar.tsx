@@ -3,6 +3,15 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
+const navLinks = [
+  { href: '/#how-it-works', label: 'How It Works' },
+  { href: '/#who-its-for', label: "Who It's For" },
+  { href: '/#results', label: 'Results' },
+  { href: '/#pricing', label: 'Pricing' },
+  { href: '/resources', label: 'Resources' },
+  { href: '/portal/login', label: 'Login' },
+];
+
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -11,96 +20,46 @@ const Navbar = () => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
     };
+
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navLinks = [
-    { href: '/#how-it-works', label: 'How It Works' },
-    { href: '/#who-its-for', label: "Who It's For" },
-    { href: '/#results', label: 'Results' },
-    { href: '/#pricing', label: 'Pricing' },
-    { href: '/resources', label: 'Resources' },
-    { href: '/portal/login', label: 'Login' },
-  ];
-
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50">
-      <div className="border-b border-[#0d1b2a]/8 bg-[#dfeafb]/80 px-4 py-2 backdrop-blur-sm">
-        <div className="container flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.28em] text-[#47637f]">
-          <span className="font-mono">AI-matched targeting + human outreach</span>
-          <span className="hidden sm:block font-mono">Private portal, approvals, and booking tracking</span>
+    <nav className="fixed left-0 right-0 top-0 z-50">
+      <div className="border-b border-[#0d1b2a]/8 bg-[#f1e7da]/85 px-4 py-2 backdrop-blur-sm">
+        <div className="container flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.24em] text-[#5a6f87]">
+          <span className="font-mono">Podcast placement system for trust-led sales</span>
+          <span className="hidden font-mono sm:block">Audience-fit targeting, outreach, approvals, and tracking</span>
         </div>
       </div>
 
-      <div
-        className={`transition-all duration-300 ${
-          isScrolled
-            ? 'border-b border-[#0d1b2a]/8 bg-[#f7fafc]/92 backdrop-blur-md'
-            : 'bg-transparent'
-        }`}
-      >
+      <div className="px-4 pt-3">
         <div className="container mx-auto">
-          <div className="flex items-center justify-between gap-6 py-4 md:py-5">
-            <Link to="/" className="min-w-0">
-              <div className="font-display text-2xl font-semibold leading-none tracking-[-0.04em] text-[#0d1b2a]">
-                Get On A Pod
-              </div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.28em] text-[#56708d]">
-                Podcast Authority Platform
-              </div>
-            </Link>
+          <div
+            className={`transition-all duration-300 ${
+              isScrolled
+                ? 'rounded-[28px] border border-[#0d1b2a]/10 bg-[#f7fafc]/88 shadow-[0_18px_44px_rgba(13,27,42,0.12)] backdrop-blur-xl'
+                : 'rounded-[28px] border border-[#ffffff]/70 bg-[#f7fafc]/66 backdrop-blur-md'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-6 px-5 py-4 md:px-6 md:py-5">
+              <Link to="/" className="min-w-0">
+                <div className="font-display text-2xl font-semibold leading-none tracking-[-0.05em] text-[#0d1b2a]">
+                  Get On A Pod
+                </div>
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.24em] text-[#5f7590]">
+                  Buyer trust through podcast placement
+                </div>
+              </Link>
 
-            <div className="hidden lg:flex items-center gap-7">
-              {navLinks.map((link) => (
-                link.href.startsWith('/#') ? (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    className="text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
-                  >
-                    {link.label}
-                  </a>
-                ) : (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    className="text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
-                  >
-                    {link.label}
-                  </Link>
-                )
-              ))}
-              <Button variant="hero" size="default" className="rounded-full px-6" asChild>
-                <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                  Get My Podcast Shortlist
-                </a>
-              </Button>
-            </div>
-
-            <button
-              className="rounded-full border border-[#0d1b2a]/10 bg-[#ffffff] p-2 text-[#0d1b2a] lg:hidden"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              aria-label="Toggle navigation"
-            >
-              {isMobileMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
-            </button>
-          </div>
-
-          {isMobileMenuOpen && (
-            <div className="lg:hidden border-t border-[#0d1b2a]/10 bg-[#f7fafc] py-4">
-              <div className="flex flex-col gap-1">
-                {navLinks.map((link) => (
+              <div className="hidden items-center gap-7 lg:flex">
+                {navLinks.map((link) =>
                   link.href.startsWith('/#') ? (
                     <a
                       key={link.href}
                       href={link.href}
-                      className="px-4 py-2 text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
-                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
                     >
                       {link.label}
                     </a>
@@ -108,23 +67,67 @@ const Navbar = () => {
                     <Link
                       key={link.href}
                       to={link.href}
-                      className="px-4 py-2 text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
-                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
                     >
                       {link.label}
                     </Link>
                   )
-                ))}
-                <div className="px-4 pt-3">
-                  <Button variant="hero" size="default" className="w-full rounded-full" asChild>
-                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                      Get My Podcast Shortlist
-                    </a>
-                  </Button>
+                )}
+                <Button variant="hero" size="default" className="rounded-full px-6" asChild>
+                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                    Book a shortlist call
+                  </a>
+                </Button>
+              </div>
+
+              <button
+                className="rounded-full border border-[#0d1b2a]/10 bg-[#ffffff] p-2 text-[#0d1b2a] lg:hidden"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                aria-label="Toggle navigation"
+              >
+                {isMobileMenuOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+
+            {isMobileMenuOpen && (
+              <div className="border-t border-[#0d1b2a]/10 bg-[#f7fafc]/92 px-5 py-4 lg:hidden">
+                <div className="flex flex-col gap-1">
+                  {navLinks.map((link) =>
+                    link.href.startsWith('/#') ? (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        className="px-2 py-2 text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        {link.label}
+                      </a>
+                    ) : (
+                      <Link
+                        key={link.href}
+                        to={link.href}
+                        className="px-2 py-2 text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        {link.label}
+                      </Link>
+                    )
+                  )}
+                  <div className="pt-3">
+                    <Button variant="hero" size="default" className="w-full rounded-full" asChild>
+                      <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                        Book a shortlist call
+                      </a>
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </nav>
