@@ -67,23 +67,23 @@ const HowItWorksSection = () => {
                 <p className="section-kicker">You leave the first call with</p>
                 <ul className="mt-4 space-y-3 text-sm leading-6 text-[#30465f]">
                   <li className="flex items-start gap-3">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2d6df6]" />
                     A clearer authority angle for podcast outreach
                   </li>
                   <li className="flex items-start gap-3">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2d6df6]" />
                     A shortlist and approval workflow, not vague promises
                   </li>
                   <li className="flex items-start gap-3">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2d6df6]" />
                     A clear view of how booking and tracking will work
                   </li>
                 </ul>
               </div>
             </div>
 
-            <div className="relative pl-8 md:pl-10">
-              <div className="absolute bottom-4 left-3 top-3 w-px bg-[#0d1b2a]/12 md:left-4" />
+            <div className="relative pl-6 sm:pl-8 md:pl-10">
+              <div className="absolute bottom-4 left-2 top-3 w-px bg-[#0d1b2a]/12 sm:left-3 md:left-4" />
 
               {steps.map((step, index) => {
                 const Icon = step.icon;
@@ -91,12 +91,12 @@ const HowItWorksSection = () => {
                 return (
                   <article
                     key={step.number}
-                    className={`relative mb-5 rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/88 p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm md:max-w-[88%] ${
+                    className={`relative mb-5 rounded-[24px] border border-[#0d1b2a]/8 bg-[#ffffff]/88 p-5 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm sm:rounded-[28px] sm:p-6 md:max-w-[88%] ${
                       index % 2 === 1 ? 'md:ml-auto' : ''
                     }`}
                     style={{ transitionDelay: `${index * 80}ms` }}
                   >
-                    <div className="absolute left-[-2.4rem] top-7 h-5 w-5 rounded-full border border-[#0d1b2a]/10 bg-[#f8fbff] md:left-[-2.9rem]" />
+                    <div className="absolute left-[-1.55rem] top-6 h-4 w-4 rounded-full border border-[#0d1b2a]/10 bg-[#f8fbff] sm:left-[-2.4rem] sm:top-7 sm:h-5 sm:w-5 md:left-[-2.9rem]" />
 
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-mono text-xs uppercase tracking-[0.28em] text-[#2d6df6]">

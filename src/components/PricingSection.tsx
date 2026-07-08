@@ -83,9 +83,9 @@ const PricingSection = () => {
                 ))}
               </div>
 
-              <div className="mt-8 rounded-[28px] border border-[#18c08f]/18 bg-[#eaf7f2] p-6">
+              <div className="mt-8 rounded-[28px] border border-[#2d6df6]/14 bg-[#eef4ff] p-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#18c08f]/14 text-[#18c08f]">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2d6df6]/12 text-[#2d6df6]">
                     <Shield className="h-6 w-6" strokeWidth={1.8} />
                   </div>
                   <div>
@@ -133,7 +133,7 @@ const PricingSection = () => {
                       className="group flex cursor-pointer items-start gap-3 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 transition hover:bg-white/10"
                       onClick={() => setSelectedFeature(feature)}
                     >
-                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#8ef0cd]" />
+                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#b8ccff]" />
                       <span className="flex-1 text-sm leading-6 text-[#f7fafc]">
                         {feature}
                       </span>
@@ -168,15 +168,15 @@ const PricingSection = () => {
 
               <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[#4c5d73]">
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-[#18c08f]" />
+                  <Check className="h-4 w-4 text-[#2d6df6]" />
                   <span>No long-term contracts</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-[#18c08f]" />
+                  <Check className="h-4 w-4 text-[#2d6df6]" />
                   <span>Approval before outreach</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-[#18c08f]" />
+                  <Check className="h-4 w-4 text-[#2d6df6]" />
                   <span>Placement commitment built in</span>
                 </div>
               </div>

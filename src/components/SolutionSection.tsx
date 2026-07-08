@@ -67,7 +67,7 @@ const SolutionSection = () => {
                   <ul className="mt-5 space-y-3">
                     {pillar.points.map((point) => (
                       <li key={point} className="flex items-start gap-3 text-sm leading-6 text-[#30465f]">
-                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2d6df6]" />
                         <span>{point}</span>
                       </li>
                     ))}

@@ -128,7 +128,7 @@ const PodcastShowcaseSection = () => {
             </div>
 
             <div>
-              <div className="mb-6 flex items-end justify-between gap-4">
+              <div className="mb-6 flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="section-kicker">Results and examples</p>
                   <h3 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
@@ -146,7 +146,7 @@ const PodcastShowcaseSection = () => {
                   <span className="ml-3 text-[#5d7188]">Loading shows...</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 min-[520px]:grid-cols-2 md:grid-cols-3">
                   {podcasts.map((podcast, index) => (
                     <button
                       key={podcast.podcast_id}
@@ -155,7 +155,7 @@ const PodcastShowcaseSection = () => {
                       className="group overflow-hidden rounded-[24px] border border-[#0d1b2a]/8 bg-[#ffffff] text-left transition-all duration-300 hover:-translate-y-1 hover:border-[#2d6df6]/30 hover:shadow-[0_18px_34px_rgba(13,27,42,0.12)]"
                       style={{ transitionDelay: `${index * 40}ms` }}
                     >
-                      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-[#dfeafb] via-[#eef4ff] to-[#d8f7ed]">
+                      <div className="relative aspect-[5/4] overflow-hidden bg-gradient-to-br from-[#dfeafb] via-[#eef4ff] to-[#edf3fa] min-[520px]:aspect-square">
                         {podcast.podcast_image_url ? (
                           <img
                             src={podcast.podcast_image_url}
@@ -174,7 +174,7 @@ const PodcastShowcaseSection = () => {
                         </div>
                       </div>
 
-                      <div className="p-4">
+                      <div className="p-4 sm:p-5">
                         <h4 className="line-clamp-2 text-sm font-semibold leading-6 text-[#0d1b2a] md:text-base">
                           {podcast.podcast_name}
                         </h4>

@@ -57,7 +57,7 @@ const WhoItsForSection = () => {
                   className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf7f2] text-[#18c08f]">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
                     <Icon className="h-7 w-7" strokeWidth={1.8} />
                   </div>
                   <h3 className="mt-5 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">

@@ -29,15 +29,15 @@ const HeroSection = () => {
   return (
     <section className="paper-noise relative overflow-hidden bg-transparent px-4 pb-16 pt-32 md:pb-24 md:pt-40">
       <div className="absolute inset-x-0 top-0 h-px bg-[#0d1b2a]/8" />
-      <div className="absolute left-0 top-28 h-[420px] w-[420px] rounded-full bg-[#2d6df6]/10 blur-3xl" />
-      <div className="absolute right-0 top-20 h-[420px] w-[420px] rounded-full bg-[#f1d7b4]/35 blur-3xl" />
+      <div className="absolute left-0 top-28 h-[280px] w-[280px] rounded-full bg-[#2d6df6]/10 blur-3xl sm:h-[420px] sm:w-[420px]" />
+      <div className="absolute right-0 top-16 h-[240px] w-[240px] rounded-full bg-[#dce7f5]/50 blur-3xl sm:top-20 sm:h-[420px] sm:w-[420px]" />
 
       <div className="container relative mx-auto">
         <div className="grid items-start gap-12 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16">
           <div className="max-w-3xl">
             <div className="animate-fade-up flex flex-wrap items-center gap-3">
               <p className="section-kicker">Podcast authority system</p>
-              <span className="rounded-full border border-[#0d1b2a]/10 bg-[#fff9f3] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
+              <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
                 For founders, advisors, and operators
               </span>
             </div>
@@ -70,7 +70,7 @@ const HeroSection = () => {
                 {operatingSignals.map((signal, index) => (
                   <div
                     key={signal}
-                    className="flex items-center gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-[#fdfbf7] px-4 py-3 text-sm font-medium text-[#30465f]"
+                    className="flex items-center gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-3 text-sm font-medium text-[#30465f]"
                   >
                     <span className="font-mono text-xs text-[#2d6df6]">0{index + 1}</span>
                     <span>{signal}</span>
@@ -93,7 +93,7 @@ const HeroSection = () => {
               </div>
             </div>
 
-            <div className="animate-fade-up animation-delay-500 mt-8 rounded-[32px] border border-[#0d1b2a]/8 bg-[#fffaf4]/88 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
+            <div className="animate-fade-up animation-delay-500 mt-8 rounded-[32px] border border-[#0d1b2a]/8 bg-[#f4f8fc]/92 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="section-kicker">What happens in your first 14 days</p>
@@ -129,22 +129,22 @@ const HeroSection = () => {
               <p className="mt-1 text-sm text-[#5d7188]">Greenlight them and we start pitching today.</p>
             </div>
 
-            <div className="overflow-hidden rounded-[36px] border border-[#0d1b2a]/10 bg-[#081a2b] p-5 text-[#f7fafc] shadow-[0_32px_80px_rgba(13,27,42,0.22)]">
-              <div className="flex items-center justify-between rounded-[24px] border border-white/10 bg-white/5 px-4 py-3">
+            <div className="overflow-hidden rounded-[30px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_32px_80px_rgba(13,27,42,0.22)] sm:rounded-[36px] sm:p-5">
+              <div className="flex flex-col items-start gap-3 rounded-[24px] border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="section-kicker text-[#8cb0dd]">Sample portal view</p>
                   <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em]">
                     Podcast Authority Desk
                   </h2>
                 </div>
-                <div className="rounded-full border border-[#18c08f]/30 bg-[#18c08f]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#8ef0cd]">
+                <div className="self-start rounded-full border border-[#8cb0dd]/30 bg-[#8cb0dd]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#dce9f7]">
                   Campaign live
                 </div>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
-                <div className="rounded-[28px] border border-white/10 bg-[#f8fbff] p-5 text-[#0d1b2a]">
-                  <div className="grid grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr] gap-3 border-b border-[#0d1b2a]/10 pb-3 text-[11px] uppercase tracking-[0.24em] text-[#5d7188]">
+                <div className="rounded-[24px] border border-white/10 bg-[#f8fbff] p-4 text-[#0d1b2a] sm:rounded-[28px] sm:p-5">
+                  <div className="hidden grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr] gap-3 border-b border-[#0d1b2a]/10 pb-3 text-[11px] uppercase tracking-[0.24em] text-[#5d7188] sm:grid">
                     <span>Podcast</span>
                     <span>Fit</span>
                     <span>Status</span>
@@ -155,12 +155,27 @@ const HeroSection = () => {
                     {dashboardRows.map((row) => (
                       <div
                         key={row.name}
-                        className="grid grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr] items-center gap-3 rounded-2xl border border-[#0d1b2a]/10 bg-white px-4 py-3"
+                        className="rounded-2xl border border-[#0d1b2a]/10 bg-white px-4 py-3"
                       >
-                        <span className="text-sm font-medium leading-6 text-[#14283d]">{row.name}</span>
-                        <span className="text-sm font-semibold text-[#2d6df6]">{row.fit}</span>
-                        <span className="text-xs uppercase tracking-[0.16em] text-[#4d657e]">{row.status}</span>
-                        <span className="text-sm text-[#5d7188]">{row.date}</span>
+                        <div className="flex items-start justify-between gap-3 sm:hidden">
+                          <div>
+                            <span className="text-sm font-medium leading-6 text-[#14283d]">{row.name}</span>
+                            <span className="mt-2 block text-xs uppercase tracking-[0.16em] text-[#4d657e]">{row.status}</span>
+                          </div>
+                          <span className="rounded-full bg-[#eef4ff] px-2.5 py-1 text-sm font-semibold text-[#2d6df6]">
+                            {row.fit}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between text-xs uppercase tracking-[0.16em] text-[#5d7188] sm:hidden">
+                          <span>Next date</span>
+                          <span className="text-right text-sm normal-case tracking-normal text-[#30465f]">{row.date}</span>
+                        </div>
+                        <div className="hidden grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr] items-center gap-3 sm:grid">
+                          <span className="text-sm font-medium leading-6 text-[#14283d]">{row.name}</span>
+                          <span className="text-sm font-semibold text-[#2d6df6]">{row.fit}</span>
+                          <span className="text-xs uppercase tracking-[0.16em] text-[#4d657e]">{row.status}</span>
+                          <span className="text-sm text-[#5d7188]">{row.date}</span>
+                        </div>
                       </div>
                     ))}
                   </div>

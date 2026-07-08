@@ -24,7 +24,7 @@ const FAQSection = () => {
                 These answers focus on fit, guarantees, transparency, and how GOAP actually runs a podcast campaign.
               </p>
 
-              <div className="mt-8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#fffaf4]/88 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
+              <div className="mt-8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#f4f8fc]/92 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
                 <p className="section-kicker">Still unsure?</p>
                 <p className="mt-3 text-base leading-7 text-[#30465f]">
                   The shortlist call is where we pressure-test fit. If podcast guesting is not the right channel for you, we will say that directly.

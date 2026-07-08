@@ -23,7 +23,7 @@ const GuaranteeSection = () => {
           <div className="mx-auto max-w-5xl rounded-[36px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 shadow-[0_30px_70px_rgba(13,27,42,0.2)] md:p-6">
             <div className="grid gap-8 rounded-[28px] bg-[#f8fbff] p-8 md:grid-cols-[0.82fr_1.18fr] md:p-12">
               <div>
-                <Badge className="border-[#18c08f]/20 bg-[#18c08f]/10 text-[#087f5b]">
+                <Badge className="border-[#2d6df6]/18 bg-[#eef4ff] text-[#2d6df6]">
                   Placement commitment
                 </Badge>
 
@@ -48,7 +48,7 @@ const GuaranteeSection = () => {
                 <div className="mt-8 space-y-4">
                   {checkmarks.map((label) => (
                     <div key={label} className="flex items-start gap-3 rounded-2xl border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-4">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#18c08f]" />
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#2d6df6]" />
                       <span className="text-sm leading-6 text-[#30465f]">
                         {label}
                       </span>

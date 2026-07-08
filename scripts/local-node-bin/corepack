@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+NODE_DIR="$ROOT_DIR/.tools/node"
+
+exec "$NODE_DIR/bin/node" "$NODE_DIR/lib/node_modules/corepack/dist/corepack.js" "$@"

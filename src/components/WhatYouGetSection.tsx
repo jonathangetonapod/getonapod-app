@@ -51,16 +51,16 @@ const WhatYouGetSection = () => {
                 so you can review shows, follow the pipeline, and see every booking from first pitch to published episode.
               </p>
 
-              <div className="mt-8 overflow-hidden rounded-[32px] border border-[#0d1b2a]/10 bg-[#081a2b] p-5 text-[#f7fafc] shadow-[0_24px_55px_rgba(13,27,42,0.18)]">
-                <div className="rounded-[24px] border border-white/10 bg-white/5 px-5 py-4">
-                  <div className="flex items-center justify-between gap-4">
+              <div className="mt-8 overflow-hidden rounded-[28px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_24px_55px_rgba(13,27,42,0.18)] sm:rounded-[32px] sm:p-5">
+                <div className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4 sm:px-5">
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="section-kicker text-[#8cb0dd]">Client portal preview</p>
                       <h3 className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em]">
                         Approval desk
                       </h3>
                     </div>
-                    <div className="rounded-full border border-[#18c08f]/25 bg-[#18c08f]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-[#8ef0cd]">
+                    <div className="rounded-full border border-[#8cb0dd]/25 bg-[#8cb0dd]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-[#dce9f7]">
                       Live
                     </div>
                   </div>
@@ -85,7 +85,7 @@ const WhatYouGetSection = () => {
                       </div>
                       <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-sm text-[#d6e5f5]">
                         <span>Booked</span>
-                        <span className="font-semibold text-[#8ef0cd]">4</span>
+                        <span className="font-semibold text-[#b8ccff]">4</span>
                       </div>
                       <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-sm text-[#d6e5f5]">
                         <span>Publishing soon</span>
@@ -118,7 +118,7 @@ const WhatYouGetSection = () => {
                 <ul className="mt-5 space-y-3">
                   {reviewList.map((item) => (
                     <li key={item} className="flex items-start gap-3 text-sm leading-6 text-[#30465f]">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#18c08f]" />
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2d6df6]" />
                       <span>{item}</span>
                     </li>
                   ))}
@@ -134,7 +134,7 @@ const WhatYouGetSection = () => {
                     className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
                     style={{ transitionDelay: `${index * 100}ms` }}
                   >
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf7f2] text-[#18c08f]">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
                       <Icon className="h-7 w-7" strokeWidth={1.8} />
                     </div>
                     <h3 className="mt-5 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">

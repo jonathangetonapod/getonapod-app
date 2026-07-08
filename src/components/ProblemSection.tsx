@@ -76,14 +76,14 @@ const ProblemSection = () => {
                 </div>
               </div>
             ))}
-            <div className="rounded-[26px] border border-[#18c08f]/24 bg-[#18c08f]/10 p-6">
-              <p className="section-kicker text-[#90ebd1]">The shift</p>
+            <div className="rounded-[26px] border border-[#8cb0dd]/24 bg-[#8cb0dd]/10 p-6">
+              <p className="section-kicker text-[#bdd0e8]">The shift</p>
               <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
                 Stop treating podcast guesting like a side task. Run it like a pipeline.
               </p>
               <a
                 href="#how-it-works"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#90ebd1] transition hover:gap-3"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#d6e5f5] transition hover:gap-3"
               >
                 See the workflow
                 <ArrowRight className="h-4 w-4" />

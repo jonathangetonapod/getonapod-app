@@ -16,7 +16,7 @@ const Footer = () => {
               href="https://calendly.com/getonapodjg/30min"
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-5 inline-flex items-center rounded-full border border-[#0d1b2a]/10 bg-[#fffaf4] px-4 py-2 text-sm font-medium text-[#0d1b2a] transition hover:-translate-y-0.5 hover:bg-[#ffffff]"
+              className="mt-5 inline-flex items-center rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 text-sm font-medium text-[#0d1b2a] transition hover:-translate-y-0.5 hover:bg-[#ffffff]"
             >
               Book a shortlist call
             </a>

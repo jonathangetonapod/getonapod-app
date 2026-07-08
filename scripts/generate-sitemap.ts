@@ -6,8 +6,17 @@ import { config } from 'dotenv'
 // Load environment variables from .env.local
 config({ path: resolve(process.cwd(), '.env.local') })
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || ''
+const SUPABASE_URL =
+  process.env.PODCASTS_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  ''
+
+const SUPABASE_KEY =
+  process.env.PODCASTS_SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  ''
 const BASE_URL = process.env.VITE_APP_URL || 'https://getonapod.com'
 
 interface BlogPost {
@@ -20,7 +29,7 @@ async function generateSitemap() {
   console.log('🗺️  Generating sitemap...')
 
   // Initialize Supabase client
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
   // Fetch all published blog posts
   const { data: posts, error } = await supabase
