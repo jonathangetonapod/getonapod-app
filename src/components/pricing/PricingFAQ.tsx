@@ -7,53 +7,73 @@ import {
 
 export const faqCategories = [
   {
-    category: "Podcasts & Booking",
+    category: "Fit & Booking",
     faqs: [
       {
         question: "What kind of podcasts will I be on?",
-        answer: "Shows that match your niche and have engaged audiences. We vet every show for quality and relevance before pitching you.",
+        answer: "We target shows based on your expertise, audience fit, topic match, host quality, and whether the format actually supports guest conversations. The goal is relevance and trust, not random appearances.",
       },
       {
-        question: "What size podcasts will I be on?",
-        answer: "It varies. We focus on relevance over size. A niche podcast with 5,000 engaged listeners in your industry is often more valuable than a general show with 50,000.",
+        question: "Do you prioritize big podcasts or the right podcasts?",
+        answer: "We prioritize audience fit over vanity rankings. A smaller, buyer-relevant show is often more valuable than a larger podcast with weak alignment to your market.",
       },
       {
         question: "How fast will I get booked?",
-        answer: "Most clients see their first booking within 2-4 weeks. Episodes typically air 4-8 weeks after recording.",
+        answer: "Most clients see their first booking within 2 to 4 weeks, depending on positioning, show approval speed, and the responsiveness of hosts. Publish dates usually trail recordings by several weeks.",
       },
       {
         question: "Can I approve shows before you pitch me?",
-        answer: "Absolutely. Your Podcast Command Center shows you every podcast we've hand-picked for you. You'll see AI-powered insights on why each show fits, audience demographics, and you approve or reject with one click. We only pitch shows YOU greenlight.",
+        answer: "Yes. Your portal shows the podcasts we recommend, why they fit, and where they sit in the workflow. We only pitch the shows you approve.",
+      },
+      {
+        question: "Is this earned outreach or paid placement?",
+        answer: "The core service focuses on earned outreach, where hosts or producers decide to book you. Premium paid placements can be offered separately as an add-on when appropriate.",
       },
     ],
   },
   {
-    category: "Command Center & Analytics",
+    category: "Platform & Process",
     faqs: [
       {
         question: "What is the Podcast Command Center?",
-        answer: "It's your personal dashboard where you control everything. See 50+ hand-picked podcasts curated for you, review AI-powered fit analysis, check audience demographics, and approve or reject shows before we pitch. No more mystery spreadsheets—full transparency.",
+        answer: "It is your private client portal. You can review recommended shows, approve outreach targets, track statuses, see recording dates, and follow each opportunity through publication without relying on spreadsheet updates.",
       },
       {
         question: "How does the AI analysis work?",
-        answer: "Our AI reviews each podcast and explains exactly why it's a fit for your expertise and goals. You'll see talking points, audience insights, and potential pitch angles—so you can make informed decisions.",
+        answer: "AI helps score fit, summarize audience and topic alignment, and surface useful pitch angles. Human review still matters, so recommendations are filtered through real campaign judgment before outreach starts.",
       },
       {
         question: "What's included in reporting & analytics?",
-        answer: "Track your entire podcast journey: shows booked, episodes recorded, episodes aired, total audience reach, and your campaign pipeline. Everything updates in real-time in your dashboard.",
+        answer: "You can see what is pitched, booked, recorded, publishing, and live, along with the links and dates tied to each stage. The point is operational clarity, not vanity dashboards.",
+      },
+      {
+        question: "Do you write the pitches for me?",
+        answer: "Yes. We build the outreach based on your background, positioning, and authority angles so the final message sounds like you instead of a mass email.",
+      },
+      {
+        question: "Do you help financial professionals stay compliant?",
+        answer: "We can help shape educational, non-promissory topic angles and work with your compliance process, but we do not provide legal or compliance advice.",
       },
     ],
   },
   {
-    category: "Pricing & Plans",
+    category: "Pricing & Guarantees",
     faqs: [
       {
         question: "How much does it cost?",
-        answer: "$749/month for 2 podcast bookings minimum, full Podcast Command Center access, and reporting & analytics.",
+        answer: "The current core offer starts at $749 per month and includes a minimum placement commitment, portal access, tracking, and guest prep support.",
       },
       {
         question: "Is there a long-term commitment?",
-        answer: "No. We're month-to-month — cancel anytime. That said, authority builds over time, so clients who stick with it see compounding results.",
+        answer: "No. The service is month-to-month. That said, podcast authority compounds over time, so the strongest results usually come from consistency rather than one-off bursts.",
+      },
+      {
+        question: "Do you guarantee bookings?",
+        answer: "Your plan includes a clear placement commitment. If we miss the agreed target, we continue working at no additional management fee until the shortfall is made up.",
+      },
+      {
+        question: "Do I need a big audience already?",
+        answer: "No. You do need credible expertise, useful stories, and a reason a host should care. Strong positioning matters more than a large existing audience.",
       },
     ],
   },

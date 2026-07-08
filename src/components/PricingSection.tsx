@@ -1,26 +1,45 @@
 import { Button } from '@/components/ui/button';
-import { Check, Sparkles, ArrowRight, Info } from 'lucide-react';
+import { ArrowRight, Check, Info, Shield, Sparkles } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { useState } from 'react';
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal';
 
 const plan = {
-  name: "Get On A Pod",
+  name: "GOAP Core",
   price: "$749",
   period: "/month",
   features: [
     "2+ guaranteed podcast bookings every month",
     "Podcast Command Center access",
     "Reporting & analytics dashboard",
+    "Guest prep kit",
   ],
 };
+
+const comparisons = [
+  {
+    option: 'DIY tools',
+    cost: '$49-$299/mo',
+    tradeoff: 'Cheap, but you still do the research, pitching, follow-up, and tracking yourself.',
+  },
+  {
+    option: 'Traditional agency',
+    cost: '$1,500-$5,000+/mo',
+    tradeoff: 'Done for you, but often less transparent once the campaign is live.',
+  },
+  {
+    option: 'Get On A Pod',
+    cost: '$749/mo',
+    tradeoff: 'Managed service plus portal visibility, audience-fit targeting, and booking tracking.',
+  },
+];
 
 const PricingSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
 
   return (
-    <section id="pricing" className="py-8 md:py-16 bg-surface-subtle px-4">
+    <section id="pricing" className="bg-[#f8fbff] px-4 py-12 md:py-20">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -28,105 +47,149 @@ const PricingSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground text-center mb-6 sm:mb-12 md:mb-16">
-            Simple, Transparent Pricing
-          </h2>
+          <div className="grid gap-10 lg:grid-cols-[0.94fr_1.06fr] lg:items-start">
+            <div className="max-w-xl">
+              <p className="section-kicker">Pricing</p>
+              <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
+                Choose done-for-you support without losing visibility.
+              </h2>
+              <p className="mt-5 text-base leading-8 text-[#4c5d73] sm:text-lg">
+                This is for buyers who want the right audience, not random interviews.
+                We prioritize audience fit over vanity rankings, and you can see the work as it happens.
+              </p>
 
-          <div className="max-w-sm mx-auto">
-            <div className="relative flex flex-col p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl bg-background border border-border hover:border-foreground/20 transition-all duration-300">
-              <div className="mb-3 sm:mb-4">
-                <h3 className="text-lg sm:text-xl font-semibold text-foreground">
-                  {plan.name}
-                </h3>
-                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground">
-                    {plan.price}
-                  </span>
-                  <span className="text-sm sm:text-base text-muted-foreground">
-                    {plan.period}
+              <div className="mt-8 space-y-4">
+                {comparisons.map((comparison) => (
+                  <div
+                    key={comparison.option}
+                    className={`rounded-[24px] border p-5 ${
+                      comparison.option === 'Get On A Pod'
+                        ? 'border-[#2d6df6]/20 bg-[#eef4ff]'
+                        : 'border-[#0d1b2a]/8 bg-[#ffffff]'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                          {comparison.option}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[#4c5d73]">{comparison.tradeoff}</p>
+                      </div>
+                      <p className="font-mono text-sm uppercase tracking-[0.22em] text-[#2d6df6]">
+                        {comparison.cost}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-8 rounded-[28px] border border-[#18c08f]/18 bg-[#eaf7f2] p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#18c08f]/14 text-[#18c08f]">
+                    <Shield className="h-6 w-6" strokeWidth={1.8} />
+                  </div>
+                  <div>
+                    <p className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                      Premium placements available as an add-on
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-[#30465f]">
+                      Earned outreach comes first. If you want curated paid opportunities, those sit alongside the core service rather than replacing it.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-xl">
+              <div className="relative flex flex-col rounded-[32px] border border-[#0d1b2a]/10 bg-[#081a2b] p-6 text-[#f7fafc] shadow-[0_28px_60px_rgba(13,27,42,0.22)] sm:p-8">
+                <div className="mb-4 inline-flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-[#8cb0dd]" />
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">
+                    Starts here
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs sm:text-sm text-muted-foreground/80">
-                  Month-to-month, cancel anytime
-                </p>
-              </div>
 
-              <ul className="space-y-2 sm:space-y-3 mb-6 sm:mb-8 flex-1">
-                {plan.features.map((feature, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 sm:gap-3 cursor-pointer group transition-all duration-200 rounded-lg -mx-2 px-2 py-1.5 sm:py-1 hover:bg-muted"
-                    onClick={() => setSelectedFeature(feature)}
-                  >
-                    <Check className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5 text-green-500" />
-                    <span className="flex-1 text-sm sm:text-base text-muted-foreground">
-                      {feature}
+                <div className="mb-4">
+                  <h3 className="font-display text-3xl font-semibold tracking-[-0.05em]">
+                    {plan.name}
+                  </h3>
+                  <div className="mt-3 flex items-end gap-2">
+                    <span className="font-display text-5xl font-semibold tracking-[-0.06em]">
+                      {plan.price}
                     </span>
-                    <Info className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" />
-                  </li>
-                ))}
-              </ul>
+                    <span className="pb-1 text-base text-[#c7d9ee]">
+                      {plan.period}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-[#c7d9ee]">
+                    Month-to-month. Cancel anytime.
+                  </p>
+                </div>
 
-              <Button
-                size="lg"
-                className="w-full min-h-[48px] text-sm sm:text-base"
-                asChild
+                <ul className="mb-8 space-y-3">
+                  {plan.features.map((feature, i) => (
+                    <li
+                      key={i}
+                      className="group flex cursor-pointer items-start gap-3 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 transition hover:bg-white/10"
+                      onClick={() => setSelectedFeature(feature)}
+                    >
+                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#8ef0cd]" />
+                      <span className="flex-1 text-sm leading-6 text-[#f7fafc]">
+                        {feature}
+                      </span>
+                      <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#8cb0dd] opacity-0 transition-opacity group-hover:opacity-100" />
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="flex flex-col gap-3">
+                  <Button
+                    variant="heroOutline"
+                    size="lg"
+                    className="w-full rounded-full border-white/15 bg-[#f7fafc] text-[#0d1b2a]"
+                    asChild
+                  >
+                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                      Get My Podcast Shortlist
+                    </a>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    className="w-full rounded-full text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc]"
+                    asChild
+                  >
+                    <a href="/what-to-expect">
+                      See exactly what happens after sign-up
+                    </a>
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-[#4c5d73]">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-[#18c08f]" />
+                  <span>No long-term contracts</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-[#18c08f]" />
+                  <span>Approval before outreach</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-[#18c08f]" />
+                  <span>Placement commitment built in</span>
+                </div>
+              </div>
+
+              <a
+                href="/what-to-expect"
+                className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-[#2d6df6] transition hover:gap-3"
               >
-                <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Get Started Today</a>
-              </Button>
+                <Sparkles className="h-4 w-4" />
+                See onboarding and delivery details
+                <ArrowRight className="h-4 w-4" />
+              </a>
             </div>
-          </div>
-
-          {/* Reassurance pills */}
-          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-8">
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-              <span>No long-term contracts</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-              <span>Cancel anytime</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-              <span>Results guaranteed</span>
-            </div>
-          </div>
-
-          {/* Comparison callout */}
-          <div className="max-w-lg mx-auto mt-10 sm:mt-12">
-            <p className="text-xs font-semibold text-muted-foreground text-center mb-4 uppercase tracking-widest">
-              Why this is a no-brainer
-            </p>
-            <div className="grid grid-cols-3 gap-3 sm:gap-4">
-              <div className="text-center p-3 sm:p-4 rounded-xl bg-background border border-border">
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">DIY outreach</p>
-                <p className="text-sm sm:text-base font-semibold text-muted-foreground/60 line-through">$2,000–3,000</p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground/50 mt-0.5">per month</p>
-              </div>
-              <div className="text-center p-3 sm:p-4 rounded-xl bg-background border border-border">
-                <p className="text-xs sm:text-sm text-muted-foreground mb-1">Booking agency</p>
-                <p className="text-sm sm:text-base font-semibold text-muted-foreground/60 line-through">$3,000–5,000</p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground/50 mt-0.5">per month</p>
-              </div>
-              <div className="text-center p-3 sm:p-4 rounded-xl bg-primary/5 border-2 border-primary/30">
-                <p className="text-xs sm:text-sm font-semibold text-primary mb-1">Get On A Pod</p>
-                <p className="text-sm sm:text-base font-bold text-foreground">$749</p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">per month</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Post-signup link */}
-          <div className="text-center mt-10 sm:mt-12">
-            <a
-              href="/what-to-expect"
-              className="group inline-flex items-center gap-2 text-sm sm:text-base text-primary font-medium hover:gap-3 transition-all"
-            >
-              <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
-              See exactly what happens after you sign up
-              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-            </a>
           </div>
         </div>
       </div>

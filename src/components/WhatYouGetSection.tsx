@@ -1,46 +1,25 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Monitor, FileText, BarChart3, CheckCircle2, Sparkles, ThumbsUp, Brain } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { BarChart3, CheckCircle2, Mail, Monitor, Sparkles } from 'lucide-react';
 
-const features = [
+const reviewList = [
+  'Approve shows before any outreach goes live',
+  'See fit reasoning, audience, and category context',
+  'Add notes so the campaign stays aligned with your brand',
+];
+
+const portalCards = [
   {
-    icon: Monitor,
-    title: "Podcast Command Center",
-    description: "Your personal dashboard to review and approve every podcast before we pitch.",
-    items: [
-      "See 50+ hand-picked podcasts for you",
-      "AI explains why each show fits your expertise",
-      "View audience demographics per podcast",
-      "Approve or reject with one click"
-    ],
-    color: "from-blue-500/20 to-blue-600/20",
-    badge: "Full Transparency"
-  },
-  {
-    icon: ThumbsUp,
-    title: "You're In Control",
-    description: "No spray-and-pray outreach. We only pitch shows YOU approve.",
-    items: [
-      "Review every podcast before outreach",
-      "Add notes on your preferences",
-      "Quality over quantity approach",
-      "Your brand, your choice"
-    ],
-    color: "from-purple-500/20 to-purple-600/20",
-    badge: "Your Call"
+    icon: Mail,
+    title: 'Outreach engine',
+    description: 'Track pitches, follow-ups, and replies without asking for a status update.',
+    items: ['Live campaign pipeline', 'Status by show', 'Clear next-step visibility'],
   },
   {
     icon: BarChart3,
-    title: "Reporting & Analytics",
-    description: "Track your podcast journey with real-time insights and metrics.",
-    items: [
-      "Shows booked and aired",
-      "Total audience reach",
-      "Campaign progress tracking",
-      "Pipeline visibility"
-    ],
-    color: "from-orange-500/20 to-orange-600/20",
-    badge: "Real-Time"
+    title: 'Visibility and reporting',
+    description: 'See what is booked, recorded, publishing, and live month over month.',
+    items: ['Recording calendar', 'Published episode links', 'Campaign momentum by stage'],
   },
 ];
 
@@ -48,7 +27,7 @@ const WhatYouGetSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-8 md:py-16 bg-background">
+    <section id="command-center" className="bg-[#eaf0f6] px-4 py-12 md:py-20">
       <div className="container mx-auto px-4">
         <div
           ref={ref}
@@ -56,76 +35,131 @@ const WhatYouGetSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          {/* Header */}
-          <div className="text-center mb-8 sm:mb-12 md:mb-16">
-            <div className="inline-flex items-center gap-2 mb-3 sm:mb-4">
-              <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-              <Badge variant="outline" className="text-xs sm:text-sm">
-                Full Transparency
-              </Badge>
-            </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-3 sm:mb-4">
-              Your Podcast Command Center
-            </h2>
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
-              Most agencies send you a monthly PDF. We give you a live dashboard where you control everything.
-            </p>
-          </div>
+          <div className="grid gap-10 lg:grid-cols-[1.08fr_0.92fr] lg:items-start">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-[#2d6df6]" />
+                <Badge variant="outline" className="border-[#0d1b2a]/10 bg-[#ffffff] text-xs text-[#30465f]">
+                  Private client portal
+                </Badge>
+              </div>
+              <h2 className="font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
+                Know exactly what is happening with every podcast opportunity.
+              </h2>
+              <p className="mt-5 max-w-2xl text-base leading-8 text-[#4c5d73] sm:text-lg">
+                Most agencies send a monthly PDF or an occasional update. GOAP gives you a live command center
+                so you can review shows, follow the pipeline, and see every booking from first pitch to published episode.
+              </p>
 
-          {/* Features Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 max-w-6xl mx-auto">
-            {features.map((feature, index) => {
-              const Icon = feature.icon;
-              return (
-                <div
-                  key={index}
-                  className="group relative bg-background rounded-xl sm:rounded-2xl border-2 border-border p-4 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
-                  style={{ transitionDelay: `${index * 100}ms` }}
-                >
-                  {/* Badge */}
-                  <div className="absolute -top-3 right-4 sm:right-6">
-                    <Badge className="bg-primary/10 text-primary border-primary/20 text-xs sm:text-sm">
-                      {feature.badge}
-                    </Badge>
-                  </div>
-
-                  {/* Icon */}
-                  <div className="mb-4 sm:mb-6">
-                    <div className={`inline-flex w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br ${feature.color} items-center justify-center`}>
-                      <Icon className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-foreground" strokeWidth={1.5} />
+              <div className="mt-8 overflow-hidden rounded-[32px] border border-[#0d1b2a]/10 bg-[#081a2b] p-5 text-[#f7fafc] shadow-[0_24px_55px_rgba(13,27,42,0.18)]">
+                <div className="rounded-[24px] border border-white/10 bg-white/5 px-5 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="section-kicker text-[#8cb0dd]">Client portal preview</p>
+                      <h3 className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em]">
+                        Approval desk
+                      </h3>
+                    </div>
+                    <div className="rounded-full border border-[#18c08f]/25 bg-[#18c08f]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-[#8ef0cd]">
+                      Live
                     </div>
                   </div>
 
-                  {/* Content */}
-                  <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-foreground mb-1 sm:mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
-                    {feature.description}
-                  </p>
-
-                  {/* Items List */}
-                  <ul className="space-y-2 sm:space-y-2.5">
-                    {feature.items.map((item, i) => (
-                      <li key={i} className="flex items-start gap-2 sm:gap-3 text-foreground">
-                        <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0 mt-0.5" />
-                        <span className="text-sm sm:text-base">{item}</span>
-                      </li>
+                  <div className="mt-5 grid gap-3">
+                    {reviewList.map((item, index) => (
+                      <div key={item} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                        <span className="font-mono text-xs text-[#8cb0dd]">0{index + 1}</span>
+                        <span className="text-sm leading-6 text-[#d6e5f5]">{item}</span>
+                      </div>
                     ))}
-                  </ul>
-
-                  {/* Hover Indicator */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary/0 via-primary to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity rounded-b-2xl" />
+                  </div>
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Bottom Note */}
-          <div className="text-center mt-8 sm:mt-12 md:mt-16 px-2">
-            <p className="text-base sm:text-lg text-muted-foreground">
-              <span className="font-semibold text-foreground">Pro clients</span> get guest prep kits for every episode so you show up confident and deliver your best.
-            </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
+                    <p className="section-kicker text-[#8cb0dd]">Pipeline</p>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-sm text-[#d6e5f5]">
+                        <span>Pitch sent</span>
+                        <span className="font-semibold text-[#8cb0dd]">14</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-sm text-[#d6e5f5]">
+                        <span>Booked</span>
+                        <span className="font-semibold text-[#8ef0cd]">4</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3 text-sm text-[#d6e5f5]">
+                        <span>Publishing soon</span>
+                        <span className="font-semibold text-[#b8ccff]">2</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-[#132a44] p-5">
+                    <p className="section-kicker text-[#8cb0dd]">Visibility</p>
+                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">
+                      Recording dates, published episode links, and attention-needed alerts all live in one place.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5">
+              <article className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
+                  <Monitor className="h-7 w-7" strokeWidth={1.8} />
+                </div>
+                <h3 className="mt-5 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                  Approval-first workflow
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-[#4c5d73]">
+                  You stay in control without having to manage the campaign yourself.
+                </p>
+                <ul className="mt-5 space-y-3">
+                  {reviewList.map((item) => (
+                    <li key={item} className="flex items-start gap-3 text-sm leading-6 text-[#30465f]">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#18c08f]" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+
+              {portalCards.map((card, index) => {
+                const Icon = card.icon;
+
+                return (
+                  <article
+                    key={card.title}
+                    className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
+                    style={{ transitionDelay: `${index * 100}ms` }}
+                  >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf7f2] text-[#18c08f]">
+                      <Icon className="h-7 w-7" strokeWidth={1.8} />
+                    </div>
+                    <h3 className="mt-5 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                      {card.title}
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-[#4c5d73]">{card.description}</p>
+                    <ul className="mt-5 space-y-3">
+                      {card.items.map((item) => (
+                        <li key={item} className="flex items-start gap-3 text-sm leading-6 text-[#30465f]">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2d6df6]" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                );
+              })}
+
+              <div className="rounded-[28px] border border-[#2d6df6]/18 bg-[#eef4ff] p-6">
+                <p className="section-kicker">No more checking in</p>
+                <p className="mt-3 text-base leading-7 text-[#30465f]">
+                  The portal shows the pipeline from first pitch to published episode, so you never need to ask what is happening.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

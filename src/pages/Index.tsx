@@ -5,33 +5,39 @@ import SolutionSection from '@/components/SolutionSection';
 import HowItWorksSection from '@/components/HowItWorksSection';
 import WhatYouGetSection from '@/components/WhatYouGetSection';
 import PodcastShowcaseSection from '@/components/PodcastShowcaseSection';
+import WhoItsForSection from '@/components/WhoItsForSection';
 import PricingSection from '@/components/PricingSection';
 import GuaranteeSection from '@/components/GuaranteeSection';
-import WhoItsForSection from '@/components/WhoItsForSection';
 import SocialProofSection from '@/components/SocialProofSection';
 import FAQSection from '@/components/FAQSection';
 import FinalCTASection from '@/components/FinalCTASection';
 import Footer from '@/components/Footer';
-import { SocialProofNotifications } from '@/components/SocialProofNotifications';
 
 const Index = () => {
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen bg-[#f3f5f7] text-[#0d1b2a]">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-[#0d1b2a] focus:px-4 focus:py-2 focus:text-sm focus:text-[#f7fafc]"
+      >
+        Skip to content
+      </a>
       <Navbar />
-      <HeroSection />
-      <ProblemSection />
-      <SolutionSection />
-      <HowItWorksSection />
-      <WhatYouGetSection />
-      <GuaranteeSection />
-      <SocialProofSection />
-      <PodcastShowcaseSection />
-      <PricingSection />
-      <WhoItsForSection />
-      <FAQSection />
-      <FinalCTASection />
-      <Footer />
-      <SocialProofNotifications />
+      <div id="main-content">
+        <HeroSection />
+        <PodcastShowcaseSection />
+        <ProblemSection />
+        <SolutionSection />
+        <WhoItsForSection />
+        <HowItWorksSection />
+        <WhatYouGetSection />
+        <SocialProofSection />
+        <PricingSection />
+        <GuaranteeSection />
+        <FAQSection />
+        <FinalCTASection />
+        <Footer />
+      </div>
     </main>
   );
 };

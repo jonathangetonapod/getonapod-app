@@ -3,16 +3,16 @@ import { Shield, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 const checkmarks = [
-  "Every placement delivered",
-  "No time limits on our guarantee",
-  "No excuses, just results",
+  "Placement commitment tied to your plan",
+  "If we miss the target, we keep working at no extra management fee",
+  "Transparency in the portal while we make up any shortfall",
 ];
 
 const GuaranteeSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-12 md:py-20 bg-primary/5 px-4" id="guarantee">
+    <section className="bg-[#f3f5f7] px-4 py-12 md:py-20" id="guarantee">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -20,41 +20,42 @@ const GuaranteeSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <div className="max-w-3xl mx-auto text-center rounded-3xl border-2 border-primary/30 bg-background p-8 sm:p-10 md:p-14 shadow-lg">
-            {/* Badge */}
-            <Badge className="mb-6 bg-success/10 text-success border-success/20">
-              Results Guaranteed
-            </Badge>
+          <div className="mx-auto max-w-5xl rounded-[36px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 shadow-[0_30px_70px_rgba(13,27,42,0.2)] md:p-6">
+            <div className="grid gap-8 rounded-[28px] bg-[#f8fbff] p-8 md:grid-cols-[0.82fr_1.18fr] md:p-12">
+              <div>
+                <Badge className="border-[#18c08f]/20 bg-[#18c08f]/10 text-[#087f5b]">
+                  Placement commitment
+                </Badge>
 
-            {/* Shield Icon */}
-            <div className="flex items-center justify-center mb-6">
-              <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-primary/10">
-                <Shield className="h-8 w-8 sm:h-10 sm:w-10 text-primary" />
-              </div>
-            </div>
-
-            {/* Main Heading */}
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-4 sm:mb-6">
-              If We Don't Deliver, We Work For Free
-            </h2>
-
-            {/* Subtext */}
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed">
-              You get the exact number of podcast placements promised in your plan. If we fall short
-              in your agreed timeframe, we keep pitching, booking, and coordinating at no additional
-              cost until every placement is delivered.
-            </p>
-
-            {/* Checkmarks */}
-            <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-8">
-              {checkmarks.map((label) => (
-                <div key={label} className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
-                  <span className="text-sm sm:text-base font-medium text-foreground">
-                    {label}
-                  </span>
+                <div className="mt-6 flex items-center justify-center md:justify-start">
+                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#eef4ff] md:h-20 md:w-20">
+                    <Shield className="h-8 w-8 text-[#2d6df6] md:h-10 md:w-10" />
+                  </div>
                 </div>
-              ))}
+
+                <h2 className="mt-6 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-4xl md:text-5xl">
+                  If we miss the agreed target, we keep working until the owed placements are made up.
+                </h2>
+              </div>
+
+              <div>
+                <p className="text-base leading-8 text-[#4c5d73] sm:text-lg">
+                  We do not treat podcast booking like a vague awareness project. Your plan includes a clear delivery target.
+                  If we fall short on the agreed placement commitment, we continue pitching, following up, and coordinating at no
+                  additional management fee until the shortfall is closed.
+                </p>
+
+                <div className="mt-8 space-y-4">
+                  {checkmarks.map((label) => (
+                    <div key={label} className="flex items-start gap-3 rounded-2xl border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-4">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#18c08f]" />
+                      <span className="text-sm leading-6 text-[#30465f]">
+                        {label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>

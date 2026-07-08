@@ -1,50 +1,42 @@
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Calendar, Target, Mic, TrendingUp, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Calendar, ClipboardList, Mail, Mic, MonitorCheck, Sparkles } from 'lucide-react';
 
 const steps = [
   {
     number: "01",
-    title: "Book a Call",
-    description: "We'll discuss your goals, niche, and which plan fits.",
-    details: [
-      "15-minute discovery call",
-      "Identify your ideal shows",
-      "Pick the right plan"
-    ],
+    title: "Authority audit",
+    description: "We clarify your positioning, audience, stories, and the topics hosts will actually care about.",
     icon: Calendar,
   },
   {
     number: "02",
-    title: "We Get to Work",
-    description: "Researching, pitching, and booking shows that match your expertise.",
-    details: [
-      "Build your custom podcast list",
-      "Craft personalized pitches",
-      "Follow up until they say yes"
-    ],
-    icon: Target,
+    title: "Podcast matching",
+    description: "We build a curated target list using podcast data, fit scoring, and human review.",
+    icon: ClipboardList,
   },
   {
     number: "03",
-    title: "You Show Up",
-    description: "We handle prep, coordination, and scheduling.",
-    details: [
-      "Get your guest prep kit",
-      "Show up and share your story",
-      "We handle all the logistics"
-    ],
-    icon: Mic,
+    title: "Pitch campaign",
+    description: "We send personalized outreach and handle the follow-up without breaking your voice.",
+    icon: Mail,
   },
   {
     number: "04",
-    title: "Your Authority Grows",
-    description: "Consistently, month after month.",
-    details: [
-      "Build audience and credibility",
-      "Generate qualified leads",
-      "Become the go-to expert"
-    ],
-    icon: TrendingUp,
+    title: "Booking and prep",
+    description: "We coordinate scheduling, lock dates, and help you show up sharp for the interview.",
+    icon: Mic,
+  },
+  {
+    number: "05",
+    title: "Track and publish",
+    description: "Your portal shows what is pitched, booked, recorded, and published in one pipeline.",
+    icon: MonitorCheck,
+  },
+  {
+    number: "06",
+    title: "Optional amplification",
+    description: "Repurpose the interview into content assets that keep the authority compounding after it airs.",
+    icon: Sparkles,
   },
 ];
 
@@ -52,7 +44,7 @@ const HowItWorksSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section id="how-it-works" className="py-8 md:py-16 bg-surface-subtle">
+    <section id="how-it-works" className="bg-[#f3f5f7] px-4 py-12 md:py-20">
       <div className="container mx-auto px-4">
         <div
           ref={ref}
@@ -60,77 +52,72 @@ const HowItWorksSection = () => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          {/* Header */}
-          <div className="text-center mb-8 sm:mb-12 md:mb-16">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-3 sm:mb-4">
-              How It Works
-            </h2>
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto px-2">
-              From first call to published episode—we handle everything so you can focus on showing up and delivering value.
-            </p>
-          </div>
+          <div className="grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-start">
+            <div className="max-w-xl">
+              <p className="section-kicker">Process</p>
+              <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
+                From positioning to published episode.
+              </h2>
+              <p className="mt-5 text-base leading-8 text-[#4c5d73] sm:text-lg">
+                The workflow is designed to reduce friction for you while preserving quality control.
+                You stay visible to the process without becoming the process.
+              </p>
 
-          {/* Timeline Steps */}
-          <div className="max-w-4xl mx-auto">
-            {steps.map((step, index) => {
-              const Icon = step.icon;
-              const isLast = index === steps.length - 1;
-              return (
-                <div
-                  key={index}
-                  className="relative flex gap-4 sm:gap-6 md:gap-8"
-                  style={{ transitionDelay: `${index * 100}ms` }}
-                >
-                  {/* Timeline Column */}
-                  <div className="flex flex-col items-center flex-shrink-0">
-                    {/* Numbered Circle */}
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm sm:text-base z-10">
-                      {step.number}
-                    </div>
-                    {/* Vertical Line */}
-                    {!isLast && (
-                      <div className="w-px flex-1 bg-border" />
-                    )}
-                  </div>
+              <div className="mt-8 rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]">
+                <p className="section-kicker">You leave the first call with</p>
+                <ul className="mt-4 space-y-3 text-sm leading-6 text-[#30465f]">
+                  <li className="flex items-start gap-3">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                    A clearer authority angle for podcast outreach
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                    A shortlist and approval workflow, not vague promises
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#18c08f]" />
+                    A clear view of how booking and tracking will work
+                  </li>
+                </ul>
+              </div>
+            </div>
 
-                  {/* Card Content */}
-                  <div className={`group flex-1 bg-background rounded-xl sm:rounded-2xl border-2 border-border p-4 sm:p-6 md:p-8 hover:border-primary/50 transition-all duration-300 hover:shadow-xl ${isLast ? 'mb-0' : 'mb-4 sm:mb-6 md:mb-8'}`}>
-                    <div className="flex items-start gap-3 sm:gap-4 mb-2 md:mb-3">
-                      <Icon className="w-6 h-6 sm:w-7 sm:h-7 text-primary flex-shrink-0 mt-0.5" />
-                      <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground">
-                        {step.title}
-                      </h3>
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {steps.map((step, index) => {
+                const Icon = step.icon;
+
+                return (
+                  <article
+                    key={step.number}
+                    className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
+                    style={{ transitionDelay: `${index * 80}ms` }}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-xs uppercase tracking-[0.28em] text-[#2d6df6]">
+                        {step.number}
+                      </span>
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
+                        <Icon className="h-5 w-5" strokeWidth={1.8} />
+                      </div>
                     </div>
-                    <p className="text-base sm:text-lg text-muted-foreground mb-3 md:mb-4 ml-9 sm:ml-11">
+                    <h3 className="mt-5 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                      {step.title}
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-[#4c5d73]">
                       {step.description}
                     </p>
+                  </article>
+                );
+              })}
+            </div>
 
-                    {/* Details List */}
-                    <ul className="space-y-2 ml-9 sm:ml-11">
-                      {step.details.map((detail, detailIndex) => (
-                        <li key={detailIndex} className="flex items-start gap-2 sm:gap-3 text-foreground text-sm sm:text-base">
-                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0 mt-0.5" />
-                          <span>{detail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Bottom CTA */}
-          <div className="text-center mt-8 sm:mt-12 md:mt-16">
-            <p className="text-base sm:text-lg text-muted-foreground mb-4 sm:mb-6">
-              Simple, proven, and completely done-for-you.
-            </p>
+          <div className="mt-10 text-center">
             <a
-              href="#pricing"
-              className="inline-flex items-center gap-2 text-primary font-semibold text-base sm:text-lg hover:gap-3 transition-all"
+              href="#command-center"
+              className="inline-flex items-center gap-2 text-base font-semibold text-[#2d6df6] transition-all hover:gap-3"
             >
-              See Pricing & Plans
-              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              See the client portal
+              <ArrowRight className="h-5 w-5" />
             </a>
           </div>
         </div>

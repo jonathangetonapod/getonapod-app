@@ -2,7 +2,7 @@ import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { useQuery } from '@tanstack/react-query';
 import { getFeaturedTestimonials, getEmbedUrl } from '@/services/testimonials';
 import { supabase } from '@/lib/supabase';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Quote } from 'lucide-react';
 
 interface SocialProofSectionProps {
   testimonialIds?: string[];
@@ -38,7 +38,7 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
   }
 
   return (
-    <section className="py-8 md:py-16 bg-surface-subtle">
+    <section className="bg-[#081a2b] px-4 py-12 md:py-20 text-[#f7fafc]">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -46,29 +46,29 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-4">
-              What Our Clients Say
+          <div className="mx-auto mb-12 max-w-3xl text-center">
+            <p className="section-kicker text-[#8cb0dd]">Proof</p>
+            <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#f7fafc] sm:text-5xl md:text-6xl">
+              Hear it from clients who stopped doing this alone.
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Hear directly from founders and executives who've transformed their authority through strategic podcast placements.
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#c7d9ee] sm:text-lg">
+              Video proof beats polished promises. These are the people who already moved from random outreach to a system.
             </p>
           </div>
 
           {isLoading ? (
             <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Loader2 className="h-8 w-8 animate-spin text-[#8cb0dd]" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
               {testimonials.map((testimonial, index) => (
                 <div
                   key={testimonial.id}
-                  className="group bg-background rounded-xl border border-border overflow-hidden hover:border-primary/50 transition-all duration-300 hover:shadow-lg"
+                  className="group overflow-hidden rounded-[28px] border border-white/10 bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-[#2d6df6]/30 hover:shadow-[0_20px_36px_rgba(3,10,18,0.28)]"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
-                  {/* Video Embed */}
-                  <div className="relative aspect-video bg-muted">
+                  <div className="relative aspect-video bg-[#10263b]">
                     <iframe
                       src={getEmbedUrl(testimonial.video_url)}
                       title={`${testimonial.client_name} testimonial`}
@@ -78,22 +78,24 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
                     />
                   </div>
 
-                  {/* Testimonial Info */}
                   <div className="p-6">
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
+                      <Quote className="h-5 w-5" strokeWidth={1.8} />
+                    </div>
                     {testimonial.quote && (
-                      <blockquote className="text-foreground mb-4 italic">
+                      <blockquote className="mb-4 text-base italic leading-7 text-[#f7fafc]">
                         "{testimonial.quote}"
                       </blockquote>
                     )}
                     <div>
-                      <p className="font-semibold text-foreground">{testimonial.client_name}</p>
+                      <p className="font-semibold text-[#f7fafc]">{testimonial.client_name}</p>
                       {testimonial.client_title && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-[#c7d9ee]">
                           {testimonial.client_title}
                         </p>
                       )}
                       {testimonial.client_company && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-[#8cb0dd]">
                           {testimonial.client_company}
                         </p>
                       )}

@@ -1,49 +1,101 @@
-import { X } from 'lucide-react';
+import { ArrowRight, X } from 'lucide-react';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 
-const painPoints = [
-  "Your competitors are on every podcast. You're still the best-kept secret in your industry.",
-  "You spend hours researching shows — and most aren't even a fit.",
-  "You craft the perfect pitch... and hear nothing back.",
-  "You follow up. Still nothing.",
-  "Months pass. They keep building authority. You keep waiting.",
+const painCards = [
+  {
+    title: 'Wrong shows',
+    description: 'Big audience, poor buyer fit. You spend time chasing visibility that never turns into trust.',
+  },
+  {
+    title: 'Generic pitches',
+    description: 'Hosts ignore agency-sounding outreach that feels templated, lazy, or misaligned with the show.',
+  },
+  {
+    title: 'No tracking',
+    description: 'Replies, bookings, recording dates, and publishing links disappear across inboxes and spreadsheets.',
+  },
 ];
 
 const ProblemSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="py-8 md:py-16 bg-surface-subtle">
+    <section className="bg-[#081a2b] px-4 py-14 text-[#f7fafc] md:py-20">
       <div className="container mx-auto px-4 sm:px-6">
         <div
           ref={ref}
-          className={`max-w-3xl mx-auto transition-all duration-700 ${
+          className={`grid gap-10 transition-all duration-700 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16 ${
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
           }`}
         >
-          <p className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 sm:mb-4">
-            The Problem
-          </p>
+          <div className="max-w-xl">
+            <p className="section-kicker text-[#8cb0dd]">The friction</p>
+            <h2 className="mt-5 font-display text-4xl font-semibold leading-[1] tracking-[-0.05em] text-balance md:text-6xl">
+              Getting on the right podcasts should not take 10 hours a week.
+            </h2>
+            <p className="mt-6 text-lg leading-8 text-[#c7d9ee]">
+              Finding shows, checking fit, writing custom pitches, following up, coordinating schedules,
+              and tracking publication dates quickly becomes a second job. Most experts either stall out,
+              send generic outreach, or get booked on shows their buyers do not even listen to.
+            </p>
 
-          <p className="text-xl sm:text-2xl md:text-3xl text-foreground leading-relaxed mb-8 sm:mb-12">
-            You've seen it happen. Competitors land podcast after podcast, build
-            their audience, generate leads — and become the go-to expert in your
-            space. Meanwhile...
-          </p>
+            <div className="mt-8 rounded-[28px] border border-white/10 bg-white/5 p-6">
+              <p className="section-kicker text-[#8cb0dd]">What GOAP replaces</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                <div>
+                  <p className="font-display text-3xl font-semibold tracking-[-0.05em]">Research</p>
+                  <p className="mt-2 text-sm leading-6 text-[#9bb5d2]">Finding shows that actually fit your expertise and buyer profile.</p>
+                </div>
+                <div>
+                  <p className="font-display text-3xl font-semibold tracking-[-0.05em]">Follow-up</p>
+                  <p className="mt-2 text-sm leading-6 text-[#9bb5d2]">Persistent outreach without making your brand sound mass-produced.</p>
+                </div>
+                <div>
+                  <p className="font-display text-3xl font-semibold tracking-[-0.05em]">Booking ops</p>
+                  <p className="mt-2 text-sm leading-6 text-[#9bb5d2]">Scheduling, prep, and keeping every interview moving toward publish.</p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-          <div className="space-y-3 sm:space-y-4">
-            {painPoints.map((point, index) => (
+          <div className="grid gap-4">
+            {painCards.map((card, index) => (
               <div
-                key={index}
-                className={`flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-background rounded-lg border border-border transition-all duration-500`}
+                key={card.title}
+                className="rounded-[26px] border border-white/10 bg-[#10263b] p-6 transition-all duration-500"
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
-                <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-destructive/10 flex items-center justify-center">
-                  <X className="w-3 h-3 sm:w-4 sm:h-4 text-destructive" />
+                <div className="flex items-start gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2d6df6]/14">
+                    <X className="h-4 w-4 text-[#8cb0dd]" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold tracking-[-0.03em] text-[#f7fafc]">{card.title}</p>
+                    <p className="mt-2 text-base leading-7 text-[#c7d9ee]">{card.description}</p>
+                  </div>
                 </div>
-                <p className="text-sm sm:text-base text-foreground">{point}</p>
               </div>
             ))}
+            <div className="rounded-[26px] border border-[#18c08f]/24 bg-[#18c08f]/10 p-6">
+              <p className="section-kicker text-[#90ebd1]">The shift</p>
+              <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
+                Stop treating podcast guesting like a side task. Run it like a pipeline.
+              </p>
+              <a
+                href="#how-it-works"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#90ebd1] transition hover:gap-3"
+              >
+                See the workflow
+                <ArrowRight className="h-4 w-4" />
+              </a>
+            </div>
+            <div className="rounded-[26px] border border-white/10 bg-white/5 p-6">
+              <p className="section-kicker text-[#8cb0dd]">Reality check</p>
+              <p className="mt-3 text-base leading-7 text-[#c7d9ee]">
+                The bottleneck is rarely your expertise. It is the targeting, outreach discipline,
+                and visibility needed to get invited consistently.
+              </p>
+            </div>
           </div>
         </div>
       </div>
