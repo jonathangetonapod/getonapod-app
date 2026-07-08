@@ -5,10 +5,9 @@ import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, Target, Loader2, ChevronDown, ChevronUp, ShoppingCart, Search, X, SlidersHorizontal } from 'lucide-react';
+import { Mic, Users, TrendingUp, CheckCircle2, Filter, Star, Award, BarChart3, ChevronDown, ChevronUp, ShoppingCart, Search, X, SlidersHorizontal } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getActivePremiumPodcasts, type PremiumPodcast } from '@/services/premiumPodcasts';
-import { useToast } from '@/hooks/use-toast';
 import { SocialProofNotifications } from '@/components/SocialProofNotifications';
 import { CartButton } from '@/components/CartButton';
 import { CartDrawer } from '@/components/CartDrawer';
@@ -63,6 +62,47 @@ const SORT_OPTIONS = [
   { label: "Name: A-Z", value: "name-asc" },
 ];
 
+const HERO_SIGNALS = [
+  'Guaranteed placement once purchased',
+  'Choose from a pre-vetted private menu',
+  'Prep support included before recording',
+];
+
+const DIFFERENCE_POINTS = [
+  'Pick exact shows instead of waiting on earned outreach',
+  'Buy one-time placements without committing to a monthly retainer',
+  'Use this when a specific show matters more than broad campaign volume',
+];
+
+const FAQ_ITEMS = [
+  {
+    question: "What's the difference between Premium Placements and your retainer plans?",
+    answer:
+      "Retainer plans are earned outreach campaigns where we research and pitch shows that fit your niche. Premium Placements let you choose specific shows from our pre-vetted menu and purchase guaranteed placement slots.",
+  },
+  {
+    question: "How quickly can I get booked?",
+    answer:
+      "Most Premium Placements are booked within 2 to 3 weeks. Recording usually happens within 4 to 6 weeks, and episodes often air 4 to 8 weeks after recording depending on the show.",
+  },
+  {
+    question: "Can I book multiple shows at once?",
+    answer:
+      "Yes. Many clients book 3 to 5 placements upfront to create a more consistent content pipeline. We coordinate timing so the appearances do not stack awkwardly.",
+  },
+  {
+    question: "What if I want a show that's not on this list?",
+    answer:
+      "Book a call with us. We may be able to source specific shows for your package or recommend close alternatives from the broader menu.",
+  },
+];
+
+const CTA_STEPS = [
+  'Tell us which shows or audience types matter most.',
+  'We confirm fit, availability, and the best order to book them.',
+  'You move into checkout only after the options are clear.',
+];
+
 const PremiumPlacements = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
   const [podcasts, setPodcasts] = useState<PremiumPodcast[]>([]);
@@ -76,8 +116,6 @@ const PremiumPlacements = () => {
   const [selectedAudienceTier, setSelectedAudienceTier] = useState("all");
   const [selectedPriceRange, setSelectedPriceRange] = useState("all");
   const [sortBy, setSortBy] = useState("featured");
-
-  const { toast: toastHook } = useToast();
 
   // Cart store
   const { addItem, isInCart } = useCartStore();
@@ -232,137 +270,311 @@ const PremiumPlacements = () => {
 
   // Check if any filters are active
   const hasActiveFilters = searchQuery || selectedCategory || selectedAudienceTier !== "all" || selectedPriceRange !== "all" || sortBy !== "featured";
+  const featuredCount = useMemo(() => podcasts.filter((podcast) => podcast.is_featured).length, [podcasts]);
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
       <Helmet>
         <title>Premium Podcast Placements | Get On A Pod</title>
-        <meta name="description" content="Browse and book premium podcast placements. Get featured on top shows in your industry with guaranteed placement slots." />
+        <meta name="description" content="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows." />
         <link rel="canonical" href="https://getonapod.com/premium-placements" />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://getonapod.com/premium-placements" />
         <meta property="og:title" content="Premium Podcast Placements | Get On A Pod" />
-        <meta property="og:description" content="Browse and book premium podcast placements. Get featured on top shows in your industry with guaranteed placement slots." />
+        <meta property="og:description" content="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows." />
         <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
         <meta property="og:site_name" content="Get On A Pod" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Premium Podcast Placements | Get On A Pod" />
-        <meta name="twitter:description" content="Browse and book premium podcast placements. Get featured on top shows in your industry with guaranteed placement slots." />
+        <meta name="twitter:description" content="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows." />
         <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
       </Helmet>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-[#0d1b2a] focus:px-4 focus:py-2 focus:text-sm focus:text-[#f7fafc]"
+      >
+        Skip to content
+      </a>
       <Navbar />
 
-      {/* Hero Section */}
-      <section className="pt-28 pb-16 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
-        <div className="container mx-auto">
-          <div className="max-w-3xl mx-auto text-center">
-            <Badge className="mb-4">Industry-First Offering</Badge>
-            <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-foreground mb-6 leading-tight px-2">
-              Pick Your Exact Show.<br />Get Booked. Guaranteed.
-            </h1>
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-8 leading-relaxed px-4">
-              <span className="font-semibold text-foreground">This doesn't exist anywhere else.</span> We've secured exclusive placements on shows that normally ignore cold pitches. You pick from our private menu, we guarantee the booking—no pitching, no rejection, no waiting months for a "maybe."
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
-                Guaranteed placement
+      <div id="main-content" className="relative">
+        <section className="paper-noise relative overflow-hidden px-4 pb-14 pt-32 md:pb-20 md:pt-40">
+          <div className="absolute left-0 top-28 h-[280px] w-[280px] rounded-full bg-[#2d6df6]/10 blur-3xl sm:h-[420px] sm:w-[420px]" />
+          <div className="absolute right-0 top-16 h-[240px] w-[240px] rounded-full bg-[#dce7f5]/50 blur-3xl sm:top-20 sm:h-[420px] sm:w-[420px]" />
+
+          <div className="container relative mx-auto">
+            <div className="grid gap-12 lg:grid-cols-[1.02fr_0.98fr] lg:items-start lg:gap-16">
+              <div className="max-w-3xl">
+                <div className="animate-fade-up flex flex-wrap items-center gap-3">
+                  <p className="section-kicker">Premium placements</p>
+                  <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
+                    For buyers who want exact-show access
+                  </span>
+                </div>
+
+                <h1 className="animate-fade-up animation-delay-100 mt-5 font-editorial text-[clamp(3.25rem,7vw,6.4rem)] leading-[0.9] tracking-[-0.05em] text-[#0d1b2a] text-balance">
+                  Pick the exact shows. Buy the placement with confidence.
+                </h1>
+
+                <p className="animate-fade-up animation-delay-200 mt-6 max-w-2xl text-lg leading-8 text-[#4c5d73] md:text-xl">
+                  Premium Placements give you access to a private menu of pre-vetted podcasts where the slot is guaranteed once purchased.
+                  This is the fast path for buyers who care about specific shows, not just general outreach volume.
+                </p>
+
+                <div className="animate-fade-up animation-delay-300 mt-8 flex flex-col gap-3 sm:flex-row">
+                  <Button variant="hero" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
+                    <a href="#placements">Browse Available Shows</a>
+                  </Button>
+                  <Button variant="heroOutline" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
+                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                      Talk Through My Options
+                    </a>
+                  </Button>
+                </div>
+
+                <p className="animate-fade-up animation-delay-400 mt-4 text-sm leading-6 text-[#5f7590]">
+                  Use this when earned outreach is too slow or you already know the rooms you want to be in.
+                </p>
+
+                <div className="animate-fade-up animation-delay-400 mt-8 max-w-2xl rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/72 p-4 shadow-[0_20px_40px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {HERO_SIGNALS.map((signal, index) => (
+                      <div
+                        key={signal}
+                        className="flex items-start gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-3 text-sm font-medium text-[#30465f]"
+                      >
+                        <span className="font-mono text-xs text-[#2d6df6]">0{index + 1}</span>
+                        <span>{signal}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
-                Pre-vetted shows
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-success" />
-                Full prep included
+
+              <div className="animate-fade-up animation-delay-300 lg:pt-4">
+                <div className="overflow-hidden rounded-[34px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_32px_80px_rgba(13,27,42,0.22)] sm:p-5">
+                  <div className="rounded-[24px] border border-[#8cb0dd]/18 bg-[#10263b] px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="section-kicker text-[#8cb0dd]">How it differs</p>
+                        <p className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
+                          This is a show-by-show buying experience, not a broad outreach campaign.
+                        </p>
+                      </div>
+                      <div className="self-start rounded-full border border-[#8cb0dd]/25 bg-[#8cb0dd]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#dce9f7]">
+                        Private menu
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+                      <p className="section-kicker text-[#8cb0dd]">Available now</p>
+                      <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em]">
+                        {isLoading ? '...' : podcasts.length}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#c7d9ee]">
+                        Pre-vetted shows currently listed in the premium menu.
+                      </p>
+                    </div>
+                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+                      <p className="section-kicker text-[#8cb0dd]">Featured</p>
+                      <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em]">
+                        {isLoading ? '...' : featuredCount}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#c7d9ee]">
+                        Priority opportunities highlighted from the current menu.
+                      </p>
+                    </div>
+                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+                      <p className="section-kicker text-[#8cb0dd]">Buying model</p>
+                      <p className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em]">
+                        One-time
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#c7d9ee]">
+                        Purchase only the placements you want instead of committing to a retainer.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-5">
+                    <div className="grid gap-3">
+                      {DIFFERENCE_POINTS.map((point, index) => (
+                        <div key={point} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-[#132a44] px-4 py-3">
+                          <span className="font-mono text-xs text-[#8cb0dd]">0{index + 1}</span>
+                          <span className="text-sm leading-6 text-[#d6e5f5]">{point}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Filter & Search Section */}
-      <section className="pb-6 md:pb-8 border-b px-4">
-        <div className="container mx-auto space-y-3 md:space-y-4">
-          {/* Search and Sort */}
-          <div className="flex flex-col md:flex-row gap-3 md:gap-4">
-            {/* Search Bar */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search podcasts..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-10 min-h-[48px]"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 p-2"
-                >
-                  <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                </button>
-              )}
-            </div>
+        <section id="placements" className="px-4 pb-8 md:pb-10">
+          <div className="container mx-auto">
+            <div className="rounded-[32px] border border-[#0d1b2a]/8 bg-[#ffffff]/82 p-5 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm md:p-6">
+              <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-2xl">
+                  <p className="section-kicker">Available shows</p>
+                  <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-4xl md:text-5xl">
+                    Browse the current premium placements menu.
+                  </h2>
+                  <p className="mt-4 text-base leading-8 text-[#4c5d73] sm:text-lg">
+                    Filter by category, audience, or price and add the shows you want to your cart. Every listing here is a direct premium placement opportunity.
+                  </p>
+                </div>
+                <div className="rounded-[24px] border border-[#0d1b2a]/8 bg-[#f4f8fc] px-4 py-4 text-sm text-[#30465f]">
+                  Showing <span className="font-semibold text-[#0d1b2a]">{filteredAndSortedPodcasts.length}</span> of{' '}
+                  <span className="font-semibold text-[#0d1b2a]">{podcasts.length}</span> available shows
+                </div>
+              </div>
 
-            {/* Sort Dropdown */}
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-full md:w-[220px] min-h-[48px]">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                {SORT_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Mobile Filter Button */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="md:hidden min-h-[48px]">
-                  <SlidersHorizontal className="h-4 w-4 mr-2" />
-                  Filters
-                  {hasActiveFilters && (
-                    <Badge variant="destructive" className="ml-2 rounded-full px-2">
-                      {[searchQuery, selectedCategory, selectedAudienceTier !== "all", selectedPriceRange !== "all"].filter(Boolean).length}
-                    </Badge>
-                  )}
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-[300px] overflow-y-auto">
-                <SheetHeader>
-                  <SheetTitle>Filters</SheetTitle>
-                  <SheetDescription>
-                    Refine your podcast search
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="space-y-6 mt-6">
-                  {/* Mobile Category Filter */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Category</label>
-                    <Select value={selectedCategory || "all"} onValueChange={(v) => setSelectedCategory(v === "all" ? null : v)}>
-                      <SelectTrigger className="min-h-[48px]">
-                        <SelectValue placeholder="All Categories" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        {PODCAST_CATEGORIES.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              <div className="space-y-3 md:space-y-4">
+                <div className="flex flex-col gap-3 md:flex-row md:gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-[#5d7188]" />
+                    <Input
+                      placeholder="Search by show name, category, or fit..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="min-h-[48px] border-[#0d1b2a]/10 bg-[#f8fbff] pl-10 pr-10 text-[#0d1b2a] placeholder:text-[#7b8da3]"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 p-2 -translate-y-1/2 transform"
+                      >
+                        <X className="h-4 w-4 text-[#5d7188] hover:text-[#0d1b2a]" />
+                      </button>
+                    )}
                   </div>
 
-                  {/* Mobile Audience Filter */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Audience Size</label>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-full min-h-[48px] border-[#0d1b2a]/10 bg-[#f8fbff] text-[#0d1b2a] md:w-[220px]">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SORT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <Button variant="heroOutline" className="min-h-[48px] md:hidden">
+                        <SlidersHorizontal className="mr-2 h-4 w-4" />
+                        Filters
+                        {hasActiveFilters && (
+                          <Badge className="ml-2 rounded-full bg-[#0d1b2a] px-2 text-[#f7fafc]">
+                            {[searchQuery, selectedCategory, selectedAudienceTier !== "all", selectedPriceRange !== "all"].filter(Boolean).length}
+                          </Badge>
+                        )}
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="w-[300px] overflow-y-auto border-l border-[#0d1b2a]/10 bg-[#f8fbff]">
+                      <SheetHeader>
+                        <SheetTitle className="text-[#0d1b2a]">Filters</SheetTitle>
+                        <SheetDescription>
+                          Refine the premium placements menu
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="mt-6 space-y-6">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-[#30465f]">Category</label>
+                          <Select value={selectedCategory || "all"} onValueChange={(value) => setSelectedCategory(value === "all" ? null : value)}>
+                            <SelectTrigger className="min-h-[48px] border-[#0d1b2a]/10 bg-white">
+                              <SelectValue placeholder="All Categories" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Categories</SelectItem>
+                              {PODCAST_CATEGORIES.map((category) => (
+                                <SelectItem key={category} value={category}>
+                                  {category}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-[#30465f]">Audience Size</label>
+                          <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
+                            <SelectTrigger className="min-h-[48px] border-[#0d1b2a]/10 bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {AUDIENCE_TIERS.map((tier) => (
+                                <SelectItem key={tier.value} value={tier.value}>
+                                  {tier.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-[#30465f]">Price Range</label>
+                          <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
+                            <SelectTrigger className="min-h-[48px] border-[#0d1b2a]/10 bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PRICE_RANGES.map((range) => (
+                                <SelectItem key={range.value} value={range.value}>
+                                  {range.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {hasActiveFilters && (
+                          <Button onClick={clearFilters} variant="heroOutline" className="w-full min-h-[48px]">
+                            <X className="mr-2 h-4 w-4" />
+                            Clear Filters
+                          </Button>
+                        )}
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                </div>
+
+                <div className="hidden items-center gap-3 md:flex">
+                  <span className="whitespace-nowrap text-sm text-[#5d7188]">Category:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant={selectedCategory === null ? "hero" : "heroOutline"}
+                      size="sm"
+                      onClick={() => setSelectedCategory(null)}
+                      className="h-8 rounded-full px-4 text-xs"
+                    >
+                      All
+                    </Button>
+                    {PODCAST_CATEGORIES.map((category) => (
+                      <Button
+                        key={category}
+                        variant={selectedCategory === category ? "hero" : "heroOutline"}
+                        size="sm"
+                        onClick={() => setSelectedCategory(category)}
+                        className="h-8 whitespace-nowrap rounded-full px-4 text-xs"
+                      >
+                        {category}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="hidden items-center gap-4 md:flex">
+                  <div className="flex items-center gap-2">
+                    <span className="whitespace-nowrap text-sm text-[#5d7188]">Audience:</span>
                     <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
-                      <SelectTrigger className="min-h-[48px]">
+                      <SelectTrigger className="h-9 w-[180px] border-[#0d1b2a]/10 bg-[#f8fbff]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -375,10 +587,10 @@ const PremiumPlacements = () => {
                     </Select>
                   </div>
 
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Price Range</label>
+                  <div className="flex items-center gap-2">
+                    <span className="whitespace-nowrap text-sm text-[#5d7188]">Price:</span>
                     <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
-                      <SelectTrigger className="min-h-[48px]">
+                      <SelectTrigger className="h-9 w-[180px] border-[#0d1b2a]/10 bg-[#f8fbff]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -392,289 +604,200 @@ const PremiumPlacements = () => {
                   </div>
 
                   {hasActiveFilters && (
-                    <Button onClick={clearFilters} variant="outline" className="w-full min-h-[48px]">
-                      <X className="h-4 w-4 mr-2" />
-                      Clear Filters
+                    <Button onClick={clearFilters} variant="ghost" size="sm" className="h-9 text-[#2d6df6] hover:bg-[#eef4ff] hover:text-[#2d6df6]">
+                      <X className="mr-2 h-4 w-4" />
+                      Clear All
                     </Button>
                   )}
                 </div>
-              </SheetContent>
-            </Sheet>
-          </div>
-
-          {/* Desktop Filters */}
-          <div className="hidden md:flex items-center gap-3">
-            {/* Category Pills */}
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Category:</span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                variant={selectedCategory === null ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory(null)}
-                className="h-8"
-              >
-                All
-              </Button>
-              {PODCAST_CATEGORIES.map((category) => (
-                <Button
-                  key={category}
-                  variant={selectedCategory === category ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedCategory(category)}
-                  className="h-8 whitespace-nowrap"
-                >
-                  {category}
-                </Button>
-              ))}
+              </div>
             </div>
           </div>
+        </section>
 
-          <div className="hidden md:flex items-center gap-4">
-            {/* Audience Tier Filter */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground whitespace-nowrap">Audience:</span>
-              <Select value={selectedAudienceTier} onValueChange={setSelectedAudienceTier}>
-                <SelectTrigger className="w-[180px] h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {AUDIENCE_TIERS.map((tier) => (
-                    <SelectItem key={tier.value} value={tier.value}>
-                      {tier.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <section className="px-4 pb-16 pt-2 md:pb-28">
+          <div className="container mx-auto">
+            <div
+              ref={ref}
+              className={`transition-all duration-700 ${
+                isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+              }`}
+            >
+              {isLoading ? (
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="overflow-hidden rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/88 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
+                    >
+                      <Skeleton className="h-40 w-full rounded-none bg-[#dfeafb]" />
 
-            {/* Price Range Filter */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground whitespace-nowrap">Price:</span>
-              <Select value={selectedPriceRange} onValueChange={setSelectedPriceRange}>
-                <SelectTrigger className="w-[180px] h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRICE_RANGES.map((range) => (
-                    <SelectItem key={range.value} value={range.value}>
-                      {range.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                      <div className="p-5 md:p-6">
+                        <div className="mb-4 flex min-h-[3rem] items-center md:h-16">
+                          <Skeleton className="h-8 w-3/4 bg-[#eef4ff]" />
+                        </div>
 
-            {/* Clear Filters */}
-            {hasActiveFilters && (
-              <Button onClick={clearFilters} variant="ghost" size="sm" className="h-9">
-                <X className="h-4 w-4 mr-2" />
-                Clear All
-              </Button>
-            )}
-          </div>
-
-          {/* Results Count */}
-          <div className="flex items-center justify-between text-sm text-muted-foreground pt-2">
-            <span>
-              Showing <span className="font-semibold text-foreground">{filteredAndSortedPodcasts.length}</span> of{' '}
-              <span className="font-semibold text-foreground">{podcasts.length}</span> podcasts
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* Placements Grid */}
-      <section className="py-6 md:py-10 pb-16 md:pb-32 px-4">
-        <div className="container mx-auto">
-          <div
-            ref={ref}
-            className={`transition-all duration-700 ${
-              isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-            }`}
-          >
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-surface-subtle rounded-2xl border-2 border-border overflow-hidden"
-                  >
-                    {/* Image placeholder */}
-                    <Skeleton className="h-32 md:h-48 w-full rounded-none" />
-
-                    <div className="p-4 md:p-6">
-                      {/* Title */}
-                      <div className="mb-3 md:mb-4 min-h-[3rem] md:h-16 flex items-center">
-                        <Skeleton className="h-7 w-3/4" />
-                      </div>
-
-                      {/* Stats grid */}
-                      <div className="grid grid-cols-2 gap-2 md:gap-3 mb-3 md:mb-4">
-                        {Array.from({ length: 4 }).map((_, j) => (
-                          <div key={j} className="flex items-center gap-2">
-                            <Skeleton className="h-4 w-4 rounded-full" />
-                            <div className="space-y-1">
-                              <Skeleton className="h-3 w-12" />
-                              <Skeleton className="h-4 w-16" />
+                        <div className="mb-4 grid grid-cols-2 gap-3">
+                          {Array.from({ length: 4 }).map((_, j) => (
+                            <div key={j} className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3">
+                              <div className="space-y-1">
+                                <Skeleton className="h-3 w-12 bg-[#dfeafb]" />
+                                <Skeleton className="h-4 w-16 bg-[#dfeafb]" />
+                              </div>
                             </div>
+                          ))}
+                        </div>
+
+                        <div className="mb-4 rounded-[20px] border border-[#2d6df6]/12 bg-[#eef4ff] p-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <Skeleton className="h-4 w-4 rounded-full bg-[#b8ccff]" />
+                            <Skeleton className="h-3 w-24 bg-[#b8ccff]" />
                           </div>
-                        ))}
-                      </div>
-
-                      {/* Why This Show placeholder */}
-                      <div className="mb-3 md:mb-4 p-2 md:p-3 rounded-lg border border-border">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Skeleton className="h-4 w-4 rounded-full" />
-                          <Skeleton className="h-3 w-24" />
+                          <Skeleton className="mb-1 h-4 w-full bg-[#dce7f5]" />
+                          <Skeleton className="h-4 w-2/3 bg-[#dce7f5]" />
                         </div>
-                        <Skeleton className="h-4 w-full mb-1" />
-                        <Skeleton className="h-4 w-2/3" />
-                      </div>
 
-                      {/* Features toggle placeholder */}
-                      <div className="mb-4 md:mb-6">
-                        <Skeleton className="h-4 w-32" />
-                      </div>
-
-                      {/* Price & CTA */}
-                      <div className="border-t-2 border-border pt-4 md:pt-6">
-                        <div className="mb-3 md:mb-4">
-                          <Skeleton className="h-3 w-16 mb-2" />
-                          <Skeleton className="h-10 w-28 mb-1" />
-                          <Skeleton className="h-3 w-24" />
+                        <div className="mb-4 md:mb-6">
+                          <Skeleton className="h-4 w-32 bg-[#dfeafb]" />
                         </div>
-                        <Skeleton className="h-12 w-full rounded-md" />
+
+                        <div className="border-t border-[#0d1b2a]/8 pt-5">
+                          <div className="mb-3 md:mb-4">
+                            <Skeleton className="mb-2 h-3 w-16 bg-[#dfeafb]" />
+                            <Skeleton className="mb-1 h-10 w-28 bg-[#dfeafb]" />
+                            <Skeleton className="h-3 w-24 bg-[#dfeafb]" />
+                          </div>
+                          <Skeleton className="h-12 w-full rounded-full bg-[#dfeafb]" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredAndSortedPodcasts.length === 0 ? (
-              <div className="text-center py-20">
-                <Filter className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-2">No podcasts found</h3>
-                <p className="text-muted-foreground mb-4">
-                  Try adjusting your filters or search query
-                </p>
-                {hasActiveFilters && (
-                  <Button onClick={clearFilters} variant="outline">
-                    <X className="h-4 w-4 mr-2" />
-                    Clear All Filters
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
-                {filteredAndSortedPodcasts.map((podcast, index) => (
+                  ))}
+                </div>
+              ) : filteredAndSortedPodcasts.length === 0 ? (
+                <div className="rounded-[32px] border border-[#0d1b2a]/8 bg-[#ffffff]/82 px-6 py-16 text-center shadow-[0_20px_42px_rgba(13,27,42,0.08)]">
+                  <Filter className="mx-auto mb-4 h-16 w-16 text-[#8cb0dd]" />
+                  <h3 className="mb-2 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">No podcasts found</h3>
+                  <p className="mb-4 text-[#5d7188]">
+                    Try adjusting your filters or search query
+                  </p>
+                  {hasActiveFilters && (
+                    <Button onClick={clearFilters} variant="heroOutline">
+                      <X className="mr-2 h-4 w-4" />
+                      Clear All Filters
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredAndSortedPodcasts.map((podcast, index) => (
                     <div
                       key={podcast.id}
-                      className="bg-surface-subtle rounded-2xl border-2 border-border hover:border-primary/50 transition-all duration-300 hover:shadow-2xl relative overflow-hidden group"
+                      className="group relative flex h-full flex-col overflow-hidden rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff]/88 shadow-[0_16px_34px_rgba(13,27,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-[#2d6df6]/20 hover:shadow-[0_22px_40px_rgba(13,27,42,0.12)]"
                       style={{ transitionDelay: `${index * 100}ms` }}
                     >
-                      {/* Badges */}
-                      <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+                      <div className="absolute right-4 top-4 z-10 flex flex-col gap-2">
                         {podcast.is_featured && (
-                          <Badge className="bg-gradient-to-r from-primary to-purple-600 border-0">
-                            ⭐ Featured
+                          <Badge className="border border-[#2d6df6]/18 bg-[#eef4ff] text-[#2d6df6]">
+                            Featured
                           </Badge>
                         )}
                       </div>
 
-                      {/* Podcast Artwork */}
-                      <div className="relative h-32 md:h-48 bg-gradient-to-br from-primary/20 to-primary/5 overflow-hidden">
+                      <div className="relative h-40 overflow-hidden bg-gradient-to-br from-[#dfeafb] via-[#eef4ff] to-[#edf3fa] md:h-48">
                         {podcast.podcast_image_url ? (
                           <img
                             src={podcast.podcast_image_url}
                             alt={podcast.podcast_name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Mic className="h-12 w-12 md:h-16 md:w-16 text-muted-foreground" />
+                          <div className="flex h-full w-full items-center justify-center">
+                            <Mic className="h-12 w-12 text-[#5d7188] md:h-16 md:w-16" />
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-surface-subtle via-transparent to-transparent" />
+                        {podcast.category && (
+                          <div className="absolute left-4 top-4 rounded-full border border-white/60 bg-white/85 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#56708d] backdrop-blur">
+                            {podcast.category}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-white/65 via-transparent to-transparent" />
                       </div>
 
-                      <div className="p-4 md:p-6">
-                        {/* Podcast Name */}
-                        <div className="mb-3 md:mb-4 min-h-[3rem] md:h-16 flex items-center">
-                          <h3 className="text-lg md:text-2xl font-bold text-foreground line-clamp-2">
+                      <div className="flex flex-1 flex-col p-5 md:p-6">
+                        <div className="mb-4 flex min-h-[3rem] items-center md:h-16">
+                          <h3 className="line-clamp-2 font-display text-2xl font-semibold leading-tight tracking-[-0.04em] text-[#0d1b2a]">
                             {podcast.podcast_name}
                           </h3>
                         </div>
 
-                        {/* Stats Grid */}
-                        <div className="grid grid-cols-2 gap-2 md:gap-3 mb-3 md:mb-4">
+                        <div className="mb-4 grid grid-cols-2 gap-3">
                           {podcast.audience_size && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Users className="h-4 w-4 text-primary" />
-                              <div>
-                                <p className="text-xs text-muted-foreground">Audience</p>
-                                <p className="font-semibold text-foreground">{podcast.audience_size}</p>
+                            <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
+                              <div className="mb-2 flex items-center gap-2">
+                                <Users className="h-4 w-4 text-[#2d6df6]" />
+                                <p className="text-xs uppercase tracking-[0.18em] text-[#5d7188]">Audience</p>
                               </div>
+                              <p className="font-semibold text-[#0d1b2a]">{podcast.audience_size}</p>
                             </div>
                           )}
                           {podcast.episode_count && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <BarChart3 className="h-4 w-4 text-primary" />
-                              <div>
-                                <p className="text-xs text-muted-foreground">Episodes</p>
-                                <p className="font-semibold text-foreground">{podcast.episode_count}</p>
+                            <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
+                              <div className="mb-2 flex items-center gap-2">
+                                <BarChart3 className="h-4 w-4 text-[#2d6df6]" />
+                                <p className="text-xs uppercase tracking-[0.18em] text-[#5d7188]">Episodes</p>
                               </div>
+                              <p className="font-semibold text-[#0d1b2a]">{podcast.episode_count}</p>
                             </div>
                           )}
                           {podcast.rating && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Star className="h-4 w-4 text-primary" />
-                              <div>
-                                <p className="text-xs text-muted-foreground">Rating</p>
-                                <p className="font-semibold text-foreground">{podcast.rating}</p>
+                            <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
+                              <div className="mb-2 flex items-center gap-2">
+                                <Star className="h-4 w-4 text-[#2d6df6]" />
+                                <p className="text-xs uppercase tracking-[0.18em] text-[#5d7188]">Rating</p>
                               </div>
+                              <p className="font-semibold text-[#0d1b2a]">{podcast.rating}</p>
                             </div>
                           )}
                           {podcast.reach_score && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <TrendingUp className="h-4 w-4 text-primary" />
-                              <div>
-                                <p className="text-xs text-muted-foreground">Reach Score</p>
-                                <p className="font-semibold text-foreground">{podcast.reach_score}</p>
+                            <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
+                              <div className="mb-2 flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4 text-[#2d6df6]" />
+                                <p className="text-xs uppercase tracking-[0.18em] text-[#5d7188]">Reach score</p>
                               </div>
+                              <p className="font-semibold text-[#0d1b2a]">{podcast.reach_score}</p>
                             </div>
                           )}
                         </div>
 
-                        {/* Why This Show */}
                         {podcast.why_this_show && (
-                          <div className="mb-3 md:mb-4 p-2 md:p-3 bg-gradient-to-br from-purple-500/10 to-primary/10 rounded-lg border border-purple-500/20">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Award className="h-4 w-4 text-purple-500" />
-                              <p className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
-                                Why This Show
+                          <div className="mb-4 rounded-[20px] border border-[#2d6df6]/12 bg-[#eef4ff] p-4">
+                            <div className="mb-2 flex items-center gap-2">
+                              <Award className="h-4 w-4 text-[#2d6df6]" />
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#56708d]">
+                                Why this show
                               </p>
                             </div>
-                            <div className="text-sm text-foreground leading-relaxed">
+                            <div className="text-sm leading-7 text-[#30465f]">
                               <p>{getPreviewText(podcast.why_this_show)}</p>
                               {needsReadMore(podcast.why_this_show) && (
                                 <button
                                   onClick={() => setModalPodcast(podcast)}
-                                  className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium mt-2 text-xs underline transition-colors"
+                                  className="mt-2 font-medium text-[#2d6df6] transition-colors hover:text-[#204fad]"
                                 >
-                                  Read More
+                                  Read the full rationale
                                 </button>
                               )}
                             </div>
                           </div>
                         )}
 
-                        {/* Features - Collapsible */}
                         {podcast.whats_included && podcast.whats_included.length > 0 && (
-                          <div className="mb-4 md:mb-6">
+                          <div className="mb-5 border-t border-[#0d1b2a]/8 pt-4">
                             <button
                               onClick={() => toggleFeatures(podcast.id)}
-                              className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 hover:text-foreground transition-colors py-2 min-h-[44px]"
+                              className="flex min-h-[44px] w-full items-center justify-between gap-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.22em] text-[#56708d] transition-colors hover:text-[#0d1b2a]"
                             >
-                              <span>What's Included:</span>
+                              <span>What's included</span>
                               {expandedCards.has(podcast.id) ? (
                                 <ChevronUp className="h-5 w-5" />
                               ) : (
@@ -682,10 +805,10 @@ const PremiumPlacements = () => {
                               )}
                             </button>
                             {expandedCards.has(podcast.id) && (
-                              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                              <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {podcast.whats_included.map((feature, idx) => (
-                                  <div key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-                                    <CheckCircle2 className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                                  <div key={idx} className="flex items-start gap-3 text-sm leading-6 text-[#30465f]">
+                                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#2d6df6]" />
                                     {feature}
                                   </div>
                                 ))}
@@ -694,18 +817,15 @@ const PremiumPlacements = () => {
                           </div>
                         )}
 
-                        {/* Price & CTA */}
-                        <div className="border-t-2 border-border pt-4 md:pt-6">
-                          <div className="flex items-end justify-between mb-3 md:mb-4">
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase tracking-wider">Investment</p>
-                              <p className="text-3xl md:text-4xl font-bold text-foreground">{podcast.price}</p>
-                              <p className="text-xs text-muted-foreground mt-1">One-time placement</p>
-                            </div>
+                        <div className="mt-auto border-t border-[#0d1b2a]/8 pt-5">
+                          <div className="mb-4">
+                            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#56708d]">Investment</p>
+                            <p className="mt-2 font-display text-5xl font-semibold tracking-[-0.06em] text-[#0d1b2a]">{podcast.price}</p>
+                            <p className="mt-1 text-sm text-[#5d7188]">One-time placement</p>
                           </div>
                           {isInCart(podcast.id) ? (
                             <Button
-                              className="w-full min-h-[48px] bg-green-600 hover:bg-green-700"
+                              className="w-full rounded-full border border-[#2d6df6]/16 bg-[#eef4ff] text-[#2d6df6] hover:bg-[#eef4ff]"
                               size="lg"
                               disabled
                             >
@@ -714,99 +834,151 @@ const PremiumPlacements = () => {
                             </Button>
                           ) : (
                             <Button
-                              className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 min-h-[48px]"
+                              variant="hero"
+                              className="w-full rounded-full"
                               size="lg"
                               onClick={() => handleAddToCart(podcast)}
                             >
                               <ShoppingCart className="mr-2 h-5 w-5" />
-                              Add to Cart
+                              Add Placement to Cart
                             </Button>
                           )}
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-transparent px-4 py-12 md:py-20">
+          <div className="container mx-auto">
+            <div className="grid gap-8 lg:grid-cols-[0.76fr_1.24fr] lg:items-start">
+              <div className="lg:sticky lg:top-36">
+                <p className="section-kicker">Questions</p>
+                <h2 className="mt-4 font-editorial text-4xl leading-[0.95] tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
+                  What buyers usually want to know first.
+                </h2>
+                <p className="mt-5 max-w-lg text-base leading-8 text-[#4c5d73] sm:text-lg">
+                  Premium Placements are a different buying motion than a retainer, so the questions are different too.
+                </p>
+
+                <div className="mt-8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#f4f8fc]/92 p-6 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
+                  <p className="section-kicker">Need help choosing?</p>
+                  <p className="mt-3 text-base leading-7 text-[#30465f]">
+                    If you are unsure whether to buy a placement or run earned outreach, we can pressure-test the right option with you first.
+                  </p>
+                  <Button variant="hero" size="lg" className="mt-6 rounded-full px-7" asChild>
+                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                      Talk Through My Options
+                    </a>
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-      </section>
 
-      {/* FAQ Section */}
-      <section className="py-10 md:py-20 bg-surface-subtle px-4">
-        <div className="container mx-auto max-w-3xl">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground text-center mb-8 md:mb-12 leading-tight">
-            How Premium Placements Work
-          </h2>
-          <div className="space-y-5 md:space-y-6">
-            <div>
-              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
-                What's the difference between Premium Placements and your retainer plans?
-              </h3>
-              <p className="text-sm md:text-base text-muted-foreground">
-                Retainer plans involve us researching and pitching shows that match your niche—you don't choose the specific shows. Premium Placements let you pick exactly which shows you want to be on from our pre-vetted menu, with guaranteed booking.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
-                How quickly can I get booked?
-              </h3>
-              <p className="text-sm md:text-base text-muted-foreground">
-                Most Premium Placements are booked within 2-3 weeks. Recording typically happens within 4-6 weeks, and episodes air 4-8 weeks after recording (varies by show).
-              </p>
-            </div>
-            <div>
-              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
-                Can I book multiple shows at once?
-              </h3>
-              <p className="text-sm md:text-base text-muted-foreground">
-                Absolutely. Many clients book 3-5 Premium Placements upfront to create a consistent content pipeline. We'll coordinate timing to avoid overlap.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-lg md:text-xl font-bold text-foreground mb-2">
-                What if I want a show that's not on this list?
-              </h3>
-              <p className="text-sm md:text-base text-muted-foreground">
-                Book a call with us. We may be able to add specific shows to your package or recommend similar alternatives. Our menu is constantly growing.
-              </p>
+              <div className="grid gap-5 md:grid-cols-2">
+                {FAQ_ITEMS.map((item) => (
+                  <article
+                    key={item.question}
+                    className="rounded-[30px] border border-[#0d1b2a]/8 bg-[#ffffff]/82 p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm"
+                  >
+                    <h3 className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                      {item.question}
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-[#4c5d73] sm:text-base">
+                      {item.answer}
+                    </p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* CTA Section */}
-      <section className="py-10 md:py-20 bg-primary text-primary-foreground px-4">
-        <div className="container mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 md:mb-6 leading-tight">
-            Ready To Pick Your Shows?
-          </h2>
-          <p className="text-base sm:text-lg md:text-xl mb-6 md:mb-8 max-w-2xl mx-auto opacity-90 leading-relaxed">
-            Book a call to discuss which shows are the best fit for your message and goals.
-          </p>
-          <Button variant="secondary" size="lg" asChild className="min-h-[48px]">
-            <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">Book Your Call</a>
-          </Button>
-        </div>
-      </section>
+        <section className="bg-[#0b2036] px-4 py-12 text-[#f7fafc] md:py-20">
+          <div className="container mx-auto">
+            <div className="mx-auto overflow-hidden rounded-[38px] border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(45,109,246,0.28),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(140,176,221,0.18),_transparent_34%),#10263b]">
+              <div className="grid gap-8 px-6 py-10 md:px-10 md:py-14 lg:grid-cols-[1.06fr_0.94fr] lg:gap-12">
+                <div className="max-w-2xl">
+                  <p className="section-kicker text-[#8cb0dd]">Next step</p>
+                  <h2 className="mt-4 font-editorial text-4xl leading-[0.92] tracking-[-0.05em] sm:text-5xl md:text-6xl">
+                    Want help choosing the right premium placements?
+                  </h2>
 
-      <Footer />
+                  <p className="mt-5 max-w-xl text-sm leading-8 text-[#d6e5f5] sm:text-base md:text-lg lg:text-xl">
+                    Book a call and we will help you decide which shows fit your message, audience, and budget before you check out.
+                  </p>
+
+                  <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                    <Button
+                      variant="heroOutline"
+                      size="xl"
+                      className="min-h-[48px] w-full rounded-full bg-[#f7fafc] text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
+                      asChild
+                    >
+                      <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                        Book My Premium Call
+                      </a>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xl"
+                      className="min-h-[48px] w-full rounded-full border border-white/12 text-sm text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc] sm:min-h-[56px] sm:w-auto sm:text-base"
+                      asChild
+                    >
+                      <a href="#placements">Browse the Menu</a>
+                    </Button>
+                  </div>
+
+                  <p className="mt-5 text-sm text-[#c7d9ee]">
+                    If earned outreach is a better fit than paid placements, we will tell you directly.
+                  </p>
+                </div>
+
+                <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+                  <p className="section-kicker text-[#8cb0dd]">What happens on the call</p>
+                  <div className="mt-5 space-y-4">
+                    {CTA_STEPS.map((step, index) => (
+                      <div
+                        key={step}
+                        className="flex items-start gap-4 rounded-[24px] border border-white/10 bg-white/5 px-4 py-4"
+                      >
+                        <span className="font-mono text-xs text-[#8cb0dd]">0{index + 1}</span>
+                        <p className="text-sm leading-7 text-[#d6e5f5]">{step}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 rounded-[24px] border border-[#f7fafc]/10 bg-[#0b2036] px-4 py-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#8cb0dd]">Clarity first</p>
+                    <p className="mt-2 text-sm leading-7 text-[#d6e5f5]">
+                      The goal is to help you buy the right placements, not push the wrong ones.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <Footer />
+      </div>
+
       <SocialProofNotifications />
-
-      {/* Cart Components */}
       <CartButton />
       <CartDrawer />
 
-      {/* Why This Show Modal */}
       <Dialog open={!!modalPodcast} onOpenChange={(open) => !open && setModalPodcast(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto mx-4 sm:mx-auto">
+        <DialogContent className="mx-4 max-h-[80vh] max-w-2xl overflow-y-auto rounded-[28px] border border-[#0d1b2a]/10 bg-[#f8fbff] sm:mx-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl md:text-2xl font-bold flex items-center gap-2">
-              <Award className="h-5 w-5 md:h-6 md:w-6 text-purple-500 flex-shrink-0" />
+            <DialogTitle className="flex items-center gap-2 text-xl font-semibold md:text-2xl">
+              <Award className="h-5 w-5 flex-shrink-0 text-[#2d6df6] md:h-6 md:w-6" />
               <span className="line-clamp-2">Why {modalPodcast?.podcast_name}?</span>
             </DialogTitle>
           </DialogHeader>
-          <DialogDescription className="text-sm md:text-base text-foreground leading-relaxed pt-4">
+          <DialogDescription className="pt-4 text-sm leading-relaxed text-[#30465f] md:text-base">
             {modalPodcast?.why_this_show}
           </DialogDescription>
         </DialogContent>
