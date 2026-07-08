@@ -361,8 +361,11 @@ export default function ProspectView() {
         if (response.ok) {
           const data = await response.json()
           setPersonalizedTagline(data.tagline)
-          // Update local dashboard state to prevent regeneration
-          setDashboard(prev => prev ? { ...prev, personalized_tagline: data.tagline } : null)
+          // Keep the React Query cache in sync so the tagline does not regenerate.
+          queryClient.setQueryData<{ success: true; dashboard: ProspectDashboard; feedback: PodcastFeedback[] } | undefined>(
+            ['prospect-dashboard', slug],
+            (prev) => prev ? { ...prev, dashboard: { ...prev.dashboard, personalized_tagline: data.tagline } } : prev
+          )
         }
       } catch (err) {
         console.error('Error generating tagline:', err)
@@ -372,7 +375,7 @@ export default function ProspectView() {
     }
 
     generateTagline()
-  }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline])
+  }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline, queryClient, slug])
 
   // Show tutorial on first visit or if ?tour=1 is in URL
   useEffect(() => {
@@ -620,76 +623,62 @@ export default function ProspectView() {
   // Loading state - show skeleton UI for snappier feel
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-        {/* Skeleton Header */}
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10" />
-          <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
-            <div className="text-center space-y-4">
-              {/* Badge skeleton */}
-              <div className="h-8 w-48 bg-white/60 rounded-full mx-auto animate-pulse" />
-              {/* Title skeleton */}
-              <div className="h-10 w-80 bg-slate-200/60 rounded-lg mx-auto animate-pulse" />
-              {/* Subtitle skeleton */}
-              <div className="h-6 w-96 bg-slate-100/60 rounded-lg mx-auto animate-pulse" />
-              {/* Stats skeleton */}
-              <div className="flex justify-center gap-6 pt-4">
-                <div className="h-8 w-24 bg-white/60 rounded-lg animate-pulse" />
-                <div className="h-8 w-24 bg-white/60 rounded-lg animate-pulse" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Skeleton Content */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Search skeleton */}
-          <div className="h-12 w-full max-w-md bg-white rounded-xl shadow-sm animate-pulse mb-6" />
-
-          {/* Filter tabs skeleton */}
-          <div className="flex gap-2 mb-6">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-9 w-24 bg-white rounded-full animate-pulse" />
-            ))}
-          </div>
-
-          {/* Podcast grid skeleton */}
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-white rounded-xl shadow-lg overflow-hidden animate-pulse">
-                <div className="aspect-[16/10] bg-slate-200" />
-                <div className="p-4 space-y-3">
-                  <div className="h-5 w-3/4 bg-slate-200 rounded" />
-                  <div className="h-4 w-1/2 bg-slate-100 rounded" />
-                  <div className="flex gap-2">
-                    <div className="h-6 w-16 bg-slate-100 rounded-full" />
-                    <div className="h-6 w-16 bg-slate-100 rounded-full" />
-                  </div>
+      <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+        <section className="paper-noise px-4 py-16 md:py-20">
+          <div className="container mx-auto">
+            <div className="grid gap-10 xl:grid-cols-[1.02fr_0.98fr]">
+              <div className="space-y-5">
+                <div className="h-6 w-40 rounded-full bg-[#dfeafb] animate-pulse" />
+                <div className="h-24 max-w-2xl rounded-[28px] bg-[#eef4ff] animate-pulse" />
+                <div className="h-8 max-w-xl rounded-[20px] bg-[#eef4ff] animate-pulse" />
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-36 rounded-[24px] bg-white/80 shadow-[0_14px_30px_rgba(13,27,42,0.08)] animate-pulse" />
+                  ))}
                 </div>
               </div>
-            ))}
+              <div className="h-[420px] rounded-[34px] bg-[#10263b] animate-pulse" />
+            </div>
+
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="overflow-hidden rounded-[28px] border border-[#0d1b2a]/8 bg-white/82 shadow-[0_16px_34px_rgba(13,27,42,0.08)] animate-pulse">
+                  <div className="aspect-[16/10] bg-[#dfeafb]" />
+                  <div className="space-y-3 p-5">
+                    <div className="h-5 w-3/4 rounded bg-[#e8f0fb]" />
+                    <div className="h-4 w-1/2 rounded bg-[#edf3fa]" />
+                    <div className="flex gap-2">
+                      <div className="h-6 w-16 rounded-full bg-[#edf3fa]" />
+                      <div className="h-6 w-16 rounded-full bg-[#edf3fa]" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     )
   }
 
   // Error state
   if (error || !dashboard) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-0 shadow-xl">
-          <CardContent className="pt-8 pb-8 text-center space-y-4">
-            <div className="h-16 w-16 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mx-auto">
-              <X className="h-8 w-8 text-red-600" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Dashboard Not Available</h2>
-              <p className="text-muted-foreground">{error || 'This dashboard could not be found.'}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+        <section className="paper-noise flex min-h-screen items-center justify-center px-4 py-16">
+          <Card className="max-w-md w-full border border-[#0d1b2a]/8 bg-white/84 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+            <CardContent className="pt-8 pb-8 text-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-[#fce9ea] flex items-center justify-center mx-auto">
+                <X className="h-8 w-8 text-[#c5545b]" />
+              </div>
+              <div className="space-y-2">
+                <h2 className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">Dashboard not available</h2>
+                <p className="text-[#5d7188]">{error || 'This dashboard could not be found.'}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      </main>
     )
   }
 
@@ -824,203 +813,234 @@ export default function ProspectView() {
   const totalPages = Math.ceil(sortedPodcasts.length / CARDS_PER_PAGE)
   const startIndex = (currentPage - 1) * CARDS_PER_PAGE
   const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  const reviewedCountTotal = Array.from(feedbackMap.values()).filter(f => f.status).length
+  const approvedCountTotal = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
+  const progressPercent = uniquePodcasts.length > 0 ? (reviewedCountTotal / uniquePodcasts.length) * 100 : 0
+  const prospectFirstName = dashboard.prospect_name.trim().split(/\s+/)[0] || dashboard.prospect_name
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      {/* Hero Header */}
-      <div className="relative overflow-hidden">
-        {/* Animated gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-purple-500/10 via-transparent to-transparent" />
+    <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+      <a
+        href="#opportunities"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-[#0d1b2a] focus:px-4 focus:py-2 focus:text-sm focus:text-[#f7fafc]"
+      >
+        Skip to opportunities
+      </a>
 
-        {/* Floating decorative elements */}
-        <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+      <section className="paper-noise relative overflow-hidden px-4 pb-10 pt-16 md:pb-14 md:pt-20">
+        <div className="absolute left-0 top-16 h-[240px] w-[240px] rounded-full bg-[#2d6df6]/10 blur-3xl sm:h-[380px] sm:w-[380px]" />
+        <div className="absolute right-0 top-4 h-[220px] w-[220px] rounded-full bg-[#dce7f5]/60 blur-3xl sm:h-[360px] sm:w-[360px]" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16">
-          {/* Video Card - Right Side (stays in hero section) */}
-          {dashboard.loom_video_url && dashboard.show_loom_video && (
-            <div className="hidden xl:block absolute top-8 xl:-right-16 2xl:-right-32 w-80 z-10 animate-fade-in">
-              {/* Attention Banner */}
-              <div className="mb-3 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg animate-pulse">
-                <Sparkles className="h-4 w-4" />
-                <span className="text-sm font-bold">👋 WATCH THIS FIRST!</span>
-                <Sparkles className="h-4 w-4" />
+        <div className="container relative mx-auto">
+          <div className="grid gap-10 xl:grid-cols-[1.02fr_0.98fr] xl:items-start xl:gap-14">
+            <div className="max-w-3xl">
+              <div className="animate-fade-up flex flex-wrap items-center gap-3">
+                <p className="section-kicker">Prospect dashboard</p>
+                <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
+                  Private shortlist built for {prospectFirstName}
+                </span>
               </div>
 
-              <button
-                onClick={() => setShowLoomVideo(true)}
-                className="block group w-full text-left cursor-pointer"
-              >
-              <div className="relative rounded-xl overflow-hidden shadow-2xl border-3 border-primary/30 hover:border-primary/60 transition-all duration-300 hover:scale-[1.02] bg-white dark:bg-slate-900 p-[2px]">
-                {/* Video Thumbnail */}
-                <div className="relative aspect-video flex items-center justify-center rounded-lg overflow-hidden">
-                  {/* Background - thumbnail image or gradient */}
-                  {dashboard.loom_thumbnail_url ? (
-                    <img
-                      src={dashboard.loom_thumbnail_url}
-                      alt="Video thumbnail"
-                      className="absolute inset-0 w-full h-full object-cover"
-                      loading="eager"
-                      decoding="async"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20" />
-                  )}
-                </div>
-
-                {/* Video label */}
-                <div className="bg-gradient-to-br from-primary/5 to-purple-500/5 px-5 py-4 border-t-2 border-primary/20">
-                  <p className="text-base font-bold text-center mb-1">
-                    {dashboard.loom_video_title || 'Your Personal Video Message'}
-                  </p>
-                  <p className="text-xs text-center text-muted-foreground">
-                    Click to watch your custom intro
-                  </p>
-                </div>
-              </div>
-              </button>
-            </div>
-          )}
-
-          <div className="text-center space-y-3 sm:space-y-4">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-primary/20 shadow-lg animate-fade-in">
-              <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-              <span className="text-sm font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                Personalized Podcast Opportunities
-              </span>
-            </div>
-
-            {/* Prospect Profile Picture */}
-            {dashboard.prospect_image_url && (
-              <div className="flex justify-center animate-scale-in">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary to-purple-600 rounded-full blur-md opacity-50 animate-pulse" />
-                  <div className="relative h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 rounded-full overflow-hidden ring-3 ring-white dark:ring-slate-800 shadow-xl">
+              <div className="mt-6 flex items-center gap-4">
+                {dashboard.prospect_image_url && (
+                  <div className="h-16 w-16 overflow-hidden rounded-[22px] border border-[#0d1b2a]/10 bg-white shadow-[0_16px_34px_rgba(13,27,42,0.08)] sm:h-20 sm:w-20">
                     <img
                       src={dashboard.prospect_image_url}
                       alt={dashboard.prospect_name}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
+                  </div>
+                )}
+                <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#ffffff]/80 px-4 py-3 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#56708d]">Built around your story</p>
+                  <p className="mt-1 text-sm leading-6 text-[#30465f]">
+                    Review the rooms that fit, approve the strongest ones, and we handle outreach from there.
+                  </p>
+                </div>
+              </div>
+
+              <h1 className="animate-fade-up animation-delay-100 mt-6 font-editorial text-[clamp(3rem,7vw,6.4rem)] leading-[0.9] tracking-[-0.05em] text-[#0d1b2a] text-balance">
+                Hi, {prospectFirstName}. Your podcast shortlist is ready.
+              </h1>
+
+              <p className="animate-fade-up animation-delay-200 mt-6 max-w-2xl text-lg leading-8 text-[#4c5d73] md:text-xl">
+                {loadingPodcasts
+                  ? 'Loading your personalized podcast matches.'
+                  : personalizedTagline || `${sortedPodcasts.length} podcasts matched to your expertise and audience fit.`}
+              </p>
+
+              <div className="animate-fade-up animation-delay-300 mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button variant="hero" size="xl" className="rounded-full px-8 text-base" asChild>
+                  <a href="#opportunities">Review Opportunities</a>
+                </Button>
+                {dashboard.media_kit_url ? (
+                  <Button
+                    variant="heroOutline"
+                    size="xl"
+                    className="rounded-full px-8 text-base"
+                    onClick={() => window.open(dashboard.media_kit_url!, '_blank')}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View My Media Kit
+                  </Button>
+                ) : dashboard.show_pricing_section !== false ? (
+                  <Button
+                    variant="heroOutline"
+                    size="xl"
+                    className="rounded-full px-8 text-base"
+                    onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Talk Through My Shortlist
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="animate-fade-up animation-delay-400 mt-8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#ffffff]/82 p-4 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm sm:p-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-4">
+                    <p className="section-kicker">Total listeners</p>
+                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                      {formatNumber(totalReach)}+
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">Combined estimated reach across your shortlist.</p>
+                  </div>
+                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-4">
+                    <p className="section-kicker">Shows matched</p>
+                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                      {uniquePodcasts.length}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">Podcast rooms curated around your expertise and audience overlap.</p>
+                  </div>
+                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-4">
+                    <p className="section-kicker">Average rating</p>
+                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                      {avgRating > 0 ? avgRating.toFixed(1) : '4.5'}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">A quick quality signal across the current shortlist.</p>
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* Greeting */}
-            <div className="space-y-1 animate-fade-in-up">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-2">
-                Hi, <span className="bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">{dashboard.prospect_name}</span>!
-              </h1>
-              <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto px-2 transition-opacity duration-300">
-                {loadingPodcasts ? (
-                  <span>Loading your personalized podcast matches...</span>
-                ) : personalizedTagline ? (
-                  <span>{personalizedTagline}</span>
-                ) : (
-                  <><span className="font-bold text-foreground">{sortedPodcasts.length}</span> podcast{sortedPodcasts.length !== 1 ? 's' : ''} matched to your expertise</>
-                )}
-              </p>
             </div>
 
-            {/* Compact Stats Row */}
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 pt-2 animate-fade-in-up delay-200">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-green-500" />
-                <span className="text-lg sm:text-xl font-bold">{formatNumber(totalReach)}+</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">listeners</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
-                <span className="text-lg sm:text-xl font-bold">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">avg rating</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mic className="h-5 w-5 text-primary" />
-                <span className="text-lg sm:text-xl font-bold">{uniquePodcasts.length}</span>
-                <span className="text-xs sm:text-sm text-muted-foreground">podcasts</span>
-              </div>
-            </div>
-
-            {/* Media Kit Button */}
-            {dashboard?.media_kit_url && (
-              <div className="mt-4 animate-fade-in-up delay-200">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800"
-                  onClick={() => window.open(dashboard.media_kit_url!, '_blank')}
-                >
-                  <FileText className="h-4 w-4" />
-                  View My Media Kit
-                </Button>
-              </div>
-            )}
-
-            {/* AI Insights Loading Status */}
-            {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
-              <div className="flex items-center justify-center gap-2 pt-2 animate-fade-in">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-100/80 dark:bg-purple-900/30 border border-purple-200/50 dark:border-purple-800/50">
-                  <Sparkles className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 animate-pulse" />
-                  <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
-                    AI insights ready: {analysisCache.size}/{uniquePodcasts.length}
-                  </span>
-                </div>
-              </div>
-            )}
-            {analysisCache.size >= uniquePodcasts.length && analysisCache.size > 0 && (
-              <div className="flex items-center justify-center gap-2 pt-2 animate-fade-in">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-100/80 dark:bg-green-900/30 border border-green-200/50 dark:border-green-800/50">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-                  <span className="text-xs font-medium text-green-700 dark:text-green-300">
-                    All AI insights ready
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Action CTA */}
-            <div className="mt-4 animate-fade-in-up delay-300">
-              {(() => {
-                // Count feedback for filtered podcasts (or all if no filter active)
-                const isFiltering = debouncedSearch || selectedCategories.length > 0 || feedbackFilter !== 'all' || episodeFilter !== 'any' || audienceFilter !== 'any'
-                const displayPodcasts = isFiltering ? sortedPodcasts : uniquePodcasts
-                const displayPodcastIds = new Set(displayPodcasts.map(p => p.podcast_id))
-                const reviewedCount = Array.from(feedbackMap.values()).filter(f => f.status && displayPodcastIds.has(f.podcast_id)).length
-                const approvedCount = Array.from(feedbackMap.values()).filter(f => f.status === 'approved' && displayPodcastIds.has(f.podcast_id)).length
-
-                if (reviewedCount > 0 || isFiltering) {
-                  return (
-                    <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
-                      <div className="w-32 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-primary to-purple-600 rounded-full transition-all duration-500"
-                          style={{ width: `${displayPodcasts.length > 0 ? (reviewedCount / displayPodcasts.length) * 100 : 0}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-medium">
-                        {reviewedCount}/{displayPodcasts.length} reviewed
-                        {approvedCount > 0 && <span className="text-green-600 ml-1">• {approvedCount} approved</span>}
-                      </span>
+            <div className="animate-fade-up animation-delay-300 xl:pt-4">
+              <div className="overflow-hidden rounded-[34px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_32px_80px_rgba(13,27,42,0.22)] sm:p-5">
+                <div className="rounded-[24px] border border-[#8cb0dd]/18 bg-[#10263b] px-4 py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="section-kicker text-[#8cb0dd]">What happens next</p>
+                      <p className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
+                        Approve the rooms you want us to pursue and we take it from there.
+                      </p>
                     </div>
-                  )
-                }
-                return (
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-semibold text-foreground">Your action needed:</span> Review each podcast and approve the ones you'd like us to pitch
-                  </p>
-                )
-              })()}
-            </div>
+                    <div className="self-start rounded-full border border-[#8cb0dd]/25 bg-[#8cb0dd]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#dce9f7]">
+                      Approval first
+                    </div>
+                  </div>
+                </div>
 
+                <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="section-kicker text-[#8cb0dd]">Review progress</p>
+                      <p className="mt-2 text-sm leading-6 text-[#d6e5f5]">
+                        {reviewedCountTotal > 0
+                          ? `${reviewedCountTotal} of ${uniquePodcasts.length} reviewed so far`
+                          : 'Start by approving the rooms that feel strongest for your story.'}
+                      </p>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-[#0b2036] px-3 py-2 text-sm font-semibold text-[#f7fafc]">
+                      {approvedCountTotal} approved
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#8cb0dd_0%,#f7fafc_100%)] transition-all duration-500"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">01</p>
+                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">Open any show to see the fit logic, audience signals, and suggested angles.</p>
+                  </div>
+                  <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">02</p>
+                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">Approve the shows you want pursued, reject the ones that are off, and leave notes where useful.</p>
+                  </div>
+                  <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">03</p>
+                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">Once approved, our team handles the pitching, follow-up, and booking workflow.</p>
+                  </div>
+                </div>
+
+                {dashboard.loom_video_url && dashboard.show_loom_video ? (
+                  <button
+                    onClick={() => setShowLoomVideo(true)}
+                    className="mt-4 block w-full rounded-[26px] border border-white/10 bg-white/5 p-4 text-left transition-colors hover:bg-white/10"
+                  >
+                    <div className="grid gap-4 sm:grid-cols-[0.85fr_1.15fr] sm:items-center">
+                      <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#0b2036]">
+                        <div className="relative aspect-video">
+                          {dashboard.loom_thumbnail_url ? (
+                            <img
+                              src={dashboard.loom_thumbnail_url}
+                              alt={dashboard.loom_video_title || 'Your personal video message'}
+                              className="h-full w-full object-cover"
+                              loading="eager"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(45,109,246,0.35),_transparent_40%),#10263b]">
+                              <Video className="h-10 w-10 text-[#dce9f7]" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="section-kicker text-[#8cb0dd]">Watch this first</p>
+                        <p className="mt-2 font-display text-2xl font-semibold tracking-[-0.04em] text-[#f7fafc]">
+                          {dashboard.loom_video_title || 'Your personal video message'}
+                        </p>
+                        <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">
+                          A quick walkthrough of how to use this dashboard and which opportunities deserve the most attention first.
+                        </p>
+                        <p className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#f7fafc]">
+                          Watch the walkthrough
+                          <ArrowRight className="h-4 w-4" />
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="mt-4 rounded-[24px] border border-white/10 bg-[#0b2036] px-4 py-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#8cb0dd]">How to review</p>
+                    <p className="mt-2 text-sm leading-7 text-[#d6e5f5]">
+                      Use the shortlist below to decide which rooms feel most aligned with your voice, offer, and audience. A short note on any approval helps our team pitch more sharply.
+                    </p>
+                  </div>
+                )}
+
+                {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
+                  <div className="mt-4 rounded-[22px] border border-[#8cb0dd]/20 bg-[#8cb0dd]/10 px-4 py-3 text-sm text-[#dce9f7]">
+                    AI insights ready: {analysisCache.size}/{uniquePodcasts.length}
+                  </div>
+                )}
+                {analysisCache.size >= uniquePodcasts.length && analysisCache.size > 0 && (
+                  <div className="mt-4 rounded-[22px] border border-[#8cb0dd]/20 bg-[#8cb0dd]/10 px-4 py-3 text-sm text-[#dce9f7]">
+                    All AI fit insights are loaded and ready.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Featured Podcasts Section */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8" id="opportunities">
         <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
           Featured Opportunities
         </p>
@@ -1626,125 +1646,111 @@ export default function ProspectView() {
 
       {/* CTA Section */}
       {dashboard?.show_pricing_section !== false && (
-      <section className="py-10 sm:py-16 lg:py-20 bg-gradient-to-b from-transparent via-primary/5 to-primary/10">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="text-center mb-8 sm:mb-12">
-            <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-primary/10 text-primary text-xs sm:text-sm font-medium mb-4 sm:mb-6">
-              <Rocket className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              Ready to Get Started?
-            </div>
+        <section className="bg-[#0b2036] px-4 py-12 text-[#f7fafc] md:py-20">
+          <div className="container mx-auto">
+            <div className="mx-auto overflow-hidden rounded-[38px] border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(45,109,246,0.28),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(140,176,221,0.18),_transparent_34%),#10263b]">
+              <div className="grid gap-8 px-6 py-10 md:px-10 md:py-14 lg:grid-cols-[1.06fr_0.94fr] lg:gap-12">
+                <div className="max-w-2xl">
+                  <p className="section-kicker text-[#8cb0dd]">Next step</p>
+                  <h2 className="mt-4 font-editorial text-4xl leading-[0.92] tracking-[-0.05em] sm:text-5xl md:text-6xl">
+                    Turn the approved rooms into real bookings.
+                  </h2>
 
-            <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4 px-2">
-              Let's Turn These Opportunities Into Bookings
-            </h2>
+                  <p className="mt-5 max-w-xl text-sm leading-8 text-[#d6e5f5] sm:text-base md:text-lg lg:text-xl">
+                    Once you approve the podcasts that feel right, our team handles host outreach, follow-up, scheduling, and the booking workflow.
+                  </p>
 
-            <p className="text-muted-foreground text-sm sm:text-base lg:text-lg max-w-2xl mx-auto px-2">
-              {podcasts.length} podcasts matched to your profile. Our team handles everything —
-              you just show up and share your expertise.
-            </p>
-          </div>
+                  <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                    <Button
+                      variant="heroOutline"
+                      size="xl"
+                      className="min-h-[48px] w-full rounded-full bg-[#f7fafc] text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
+                      onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                    >
+                      <Phone className="mr-2 h-4 w-4" />
+                      Book a Call
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xl"
+                      className="min-h-[48px] w-full rounded-full border border-white/12 text-sm text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc] sm:min-h-[56px] sm:w-auto sm:text-base"
+                      onClick={() => window.open('/what-to-expect', '_blank')}
+                    >
+                      See What to Expect
+                    </Button>
+                  </div>
 
-          {/* Pricing Card */}
-          <div className="max-w-sm mx-auto mb-8 sm:mb-10">
-            <div className="relative flex flex-col p-4 sm:p-6 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg">
-              <div className="mb-3 sm:mb-4">
-                <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">Starter</h3>
-                <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">$749</span>
-                  <span className="text-sm text-muted-foreground">/month</span>
+                  <p className="mt-5 text-sm text-[#c7d9ee]">
+                    Month-to-month. Cancel anytime. Use the dashboard first, then decide how you want to move.
+                  </p>
+                </div>
+
+                <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+                  <p className="section-kicker text-[#8cb0dd]">Starter plan</p>
+                  <div className="mt-4 flex items-end gap-2">
+                    <span className="font-display text-6xl font-semibold tracking-[-0.06em] text-[#f7fafc]">$749</span>
+                    <span className="pb-2 text-sm text-[#c7d9ee]">/month</span>
+                  </div>
+
+                  <div className="mt-6 space-y-3">
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10"
+                      onClick={() => setSelectedPricingFeature('2+ guaranteed podcast bookings every month')}
+                    >
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#8cb0dd]" />
+                      <span className="flex-1 text-sm leading-7 text-[#d6e5f5]">2+ guaranteed podcast bookings every month</span>
+                      <Info className="mt-0.5 h-4 w-4 text-[#8cb0dd]" />
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10"
+                      onClick={() => setSelectedPricingFeature('Podcast Command Center access')}
+                    >
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#8cb0dd]" />
+                      <span className="flex-1 text-sm leading-7 text-[#d6e5f5]">Podcast Command Center access</span>
+                      <Info className="mt-0.5 h-4 w-4 text-[#8cb0dd]" />
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10"
+                      onClick={() => setSelectedPricingFeature('Reporting & analytics dashboard')}
+                    >
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#8cb0dd]" />
+                      <span className="flex-1 text-sm leading-7 text-[#d6e5f5]">Reporting and analytics dashboard</span>
+                      <Info className="mt-0.5 h-4 w-4 text-[#8cb0dd]" />
+                    </button>
+                  </div>
+
+                  <div className="mt-6 rounded-[24px] border border-white/10 bg-[#0b2036] px-4 py-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#8cb0dd]">Best for</p>
+                    <p className="mt-2 text-sm leading-7 text-[#d6e5f5]">
+                      Founders, operators, and experts who want steady guest appearances without managing the booking process themselves.
+                    </p>
+                  </div>
                 </div>
               </div>
-              <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 flex-1">
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('2+ guaranteed podcast bookings every month')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">2+ guaranteed podcast bookings every month</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Podcast Command Center access')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Podcast Command Center access</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-                <li
-                  className="flex items-start gap-2 cursor-pointer group rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                  onClick={() => setSelectedPricingFeature('Reporting & analytics dashboard')}
-                >
-                  <Check className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 flex-1">Reporting & analytics dashboard</span>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-0.5" />
-                </li>
-              </ul>
-              <Button
-                size="sm"
-                className="w-full sm:h-10"
-                onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
-              >
-                Book a Call
-              </Button>
+            </div>
+
+            <div className="my-12 sm:my-16">
+              <SocialProofSection />
+            </div>
+
+            <div className="mx-auto mt-12 max-w-2xl rounded-[32px] border border-[#0d1b2a]/8 bg-white/84 p-5 text-[#0d1b2a] shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm sm:mt-16 sm:p-6">
+              <h3 className="font-display text-2xl font-semibold tracking-[-0.04em]">Common questions</h3>
+              <div className="mt-4">
+                <PricingFAQ variant="compact" />
+              </div>
             </div>
           </div>
-
-          <p className="text-center text-xs sm:text-sm text-muted-foreground mb-4">
-            Month-to-month. Cancel anytime.
-          </p>
-          <div className="text-center mb-8 sm:mb-12">
-            <Button
-              variant="ghost"
-              size="default"
-              className="gap-2 text-primary hover:text-primary hover:bg-primary/10 border border-primary/20 hover:border-primary/40 transition-all duration-300 group"
-              onClick={() => window.open('/what-to-expect', '_blank')}
-            >
-              <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
-              Curious what happens after you sign up?
-              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-            </Button>
-          </div>
-
-          {/* Testimonials Section — always shown */}
-          <div className="my-12 sm:my-16">
-            <SocialProofSection />
-          </div>
-
-          {/* FAQ Section */}
-          <div className="mt-12 sm:mt-16">
-            <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 sm:mb-8">
-              Common Questions
-            </h3>
-            <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-700">
-              <PricingFAQ variant="compact" />
-            </div>
-          </div>
-
-          {/* Bottom CTA */}
-          <div className="text-center px-2 mt-8 sm:mt-12">
-            <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
-              Month-to-month. Cancel anytime.
-            </p>
-            <Button
-              size="default"
-              variant="outline"
-              className="gap-2 text-sm sm:text-base"
-              onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
-            >
-              <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
-              Book a Call
-            </Button>
-          </div>
-        </div>
-      </section>
+        </section>
       )}
 
       {/* Footer */}
-      <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+      <footer className="border-t border-[#0d1b2a]/8 bg-white/40 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 text-center">
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Powered by <span className="font-semibold text-foreground">Authority Built</span>
+          <p className="text-xs sm:text-sm text-[#5d7188]">
+            Powered by <span className="font-semibold text-[#0d1b2a]">Authority Built</span>
           </p>
         </div>
       </footer>
@@ -1752,13 +1758,10 @@ export default function ProspectView() {
       {/* Floating Info Button */}
       <button
         onClick={() => setShowReviewPanel(true)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-slate-800 hover:bg-slate-700 text-white px-2 py-4 rounded-l-lg shadow-lg transition-all hover:pr-4 group"
-        style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+        className="fixed bottom-24 right-4 z-40 inline-flex items-center gap-2 rounded-full border border-[#0d1b2a]/10 bg-white/92 px-4 py-3 text-sm font-medium text-[#0d1b2a] shadow-[0_16px_34px_rgba(13,27,42,0.12)] backdrop-blur-sm transition-colors hover:bg-white"
       >
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <BarChart3 className="h-4 w-4 rotate-90" />
-          About Our Data
-        </span>
+        <BarChart3 className="h-4 w-4 text-[#2d6df6]" />
+        About the data
       </button>
 
       {/* Floating CTA Bar */}
@@ -1771,54 +1774,37 @@ export default function ProspectView() {
               : "translate-y-full opacity-0 pointer-events-none"
           )}
         >
-          <div className="relative overflow-hidden shadow-[0_-8px_30px_rgba(0,0,0,0.15)] animate-pulse-glow">
-            {/* Animated gradient background */}
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-violet-600 via-fuchsia-500 via-pink-500 to-orange-400 bg-[length:200%_100%] animate-gradient-shift"
-            />
-            {/* Shimmer overlay effect */}
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-            </div>
-            {/* Sparkle decorations */}
-            <div className="absolute top-2 left-[10%] w-1 h-1 bg-white rounded-full opacity-60 animate-pulse" />
-            <div className="absolute bottom-3 left-[25%] w-1.5 h-1.5 bg-white rounded-full opacity-40 animate-pulse" style={{ animationDelay: '0.5s' }} />
-            <div className="absolute top-3 right-[30%] w-1 h-1 bg-white rounded-full opacity-50 animate-pulse" style={{ animationDelay: '1s' }} />
-            <div className="absolute bottom-2 right-[15%] w-1.5 h-1.5 bg-white rounded-full opacity-40 animate-pulse" style={{ animationDelay: '0.3s' }} />
-
-            <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="border-t border-[#0d1b2a]/10 bg-[#081a2b]/96 shadow-[0_-10px_34px_rgba(13,27,42,0.22)] backdrop-blur-xl">
+            <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
               <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                {/* Animated icon container */}
-                <div className="hidden sm:flex p-2.5 rounded-xl bg-white/20 backdrop-blur-sm animate-bounce-gentle shadow-lg">
-                  <Sparkles className="h-5 w-5 text-white drop-shadow-lg" />
+                <div className="hidden sm:flex p-2.5 rounded-xl bg-white/10 backdrop-blur-sm shadow-lg">
+                  <Sparkles className="h-5 w-5 text-[#dce9f7]" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white font-bold text-sm sm:text-base md:text-lg truncate drop-shadow-md flex items-center gap-1.5">
-                    <span className="sm:hidden">Ready to grow?</span>
-                    <span className="hidden sm:inline">Ready to 10x Your Reach?</span>
-                    <span className="hidden md:inline text-lg">🎙️</span>
+                  <p className="text-[#f7fafc] font-semibold text-sm sm:text-base md:text-lg truncate">
+                    Approve the right shows, then let us handle the outreach.
                   </p>
-                  <p className="text-white/90 text-[11px] sm:text-sm md:text-base truncate font-medium">
-                    <span className="sm:hidden">Get booked now</span>
-                    <span className="hidden sm:inline">Let's get you on these podcasts — spots fill fast!</span>
+                  <p className="text-[#c7d9ee] text-[11px] sm:text-sm md:text-base truncate">
+                    Book a call if you want help picking the strongest rooms first.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
                 <Button
+                  variant="heroOutline"
                   size="sm"
-                  className="gap-1.5 sm:gap-2 whitespace-nowrap bg-white text-violet-700 hover:bg-yellow-300 hover:text-violet-900 text-xs sm:text-sm font-bold h-9 sm:h-11 px-3 sm:px-5 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 group"
+                  className="gap-1.5 sm:gap-2 whitespace-nowrap bg-[#f7fafc] text-[#0d1b2a] text-xs sm:text-sm font-semibold h-9 sm:h-11 px-3 sm:px-5 rounded-full hover:bg-white"
                   onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
                 >
-                  <Calendar className="h-4 w-4 sm:h-5 sm:w-5 group-hover:animate-bounce-gentle" />
-                  <span className="hidden sm:inline">Book Your Free Call</span>
+                  <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="hidden sm:inline">Book Your Call</span>
                   <span className="sm:hidden">Book Call</span>
-                  <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 sm:h-9 sm:w-9 text-white/60 hover:text-white hover:bg-white/20 rounded-full transition-all"
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-all"
                   onClick={() => setCtaBarDismissed(true)}
                 >
                   <X className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -2846,6 +2832,6 @@ export default function ProspectView() {
           </DialogContent>
         </Dialog>
       )}
-    </div>
+    </main>
   )
 }

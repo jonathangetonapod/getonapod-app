@@ -130,7 +130,7 @@ export default function ProspectDashboards() {
   const [dashboards, setDashboards] = useState<ProspectDashboard[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [allTestimonials, setAllTestimonials] = useState<any[]>([])
+  const [allTestimonials, setAllTestimonials] = useState<unknown[]>([])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [dashboardToDelete, setDashboardToDelete] = useState<ProspectDashboard | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -1880,142 +1880,152 @@ export default function ProspectDashboards() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Prospect Dashboards</h1>
-          <p className="text-muted-foreground mt-1">
-            Create and share visual podcast opportunity dashboards with prospects
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setCreateDialogOpen(true)} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            New Prospect
-          </Button>
-          <Button onClick={fetchDashboards} variant="outline" size="sm">
-            <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card className="border-0 shadow-md bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Dashboards</p>
-                <p className="text-3xl font-bold mt-1">{dashboards.length}</p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <Share2 className="h-6 w-6 text-blue-600" />
-              </div>
+      <div className="space-y-5">
+        <section className="paper-noise relative overflow-hidden rounded-[32px] border border-[#0d1b2a]/8 bg-white/84 p-6 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm md:p-7">
+          <div className="absolute left-0 top-0 h-32 w-32 rounded-full bg-[#2d6df6]/8 blur-3xl" />
+          <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-[#dce7f5]/80 blur-3xl" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="section-kicker">Prospect dashboards</p>
+              <h1 className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl">
+                Manage the public shortlist experience.
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-8 text-[#4c5d73] sm:text-lg">
+                Create, review, and share prospect-specific podcast dashboards, then prep the cache and AI layer before the link goes out.
+              </p>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className="border-0 shadow-md bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-green-600 dark:text-green-400">Active Links</p>
-                <p className="text-3xl font-bold mt-1">{activeDashboards}</p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-green-500/10 flex items-center justify-center">
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
-              </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="rounded-full px-5">
+                <Plus className="h-4 w-4 mr-2" />
+                New Prospect
+              </Button>
+              <Button onClick={fetchDashboards} variant="outline" size="sm" className="rounded-full px-5 border-[#0d1b2a]/10 bg-white/70">
+                <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                Refresh
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-md bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Total Views</p>
-                <p className="text-3xl font-bold mt-1">{totalViews}</p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-purple-500/10 flex items-center justify-center">
-                <Eye className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-md bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Viewed This Week</p>
-                <p className="text-3xl font-bold mt-1">{recentlyViewed}</p>
-              </div>
-              <div className="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-amber-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search + Bulk Actions */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-3">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search prospects..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
           </div>
-          {!loading && filteredDashboards.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (selectedIds.size === filteredDashboards.length) {
-                  setSelectedIds(new Set())
-                } else {
-                  setSelectedIds(new Set(filteredDashboards.map(d => d.id)))
-                }
-              }}
-            >
-              {selectedIds.size === filteredDashboards.length ? 'Deselect All' : 'Select All'}
-            </Button>
-          )}
+        </section>
+
+        <div className="grid gap-4 grid-cols-2 xl:grid-cols-4">
+          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="section-kicker">Total</p>
+                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{dashboards.length}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef4ff] text-[#2d6df6]">
+                  <Share2 className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="section-kicker">Active links</p>
+                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{activeDashboards}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef9f1] text-[#27925a]">
+                  <CheckCircle2 className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="section-kicker">Views</p>
+                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{totalViews}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#f3f6fb] text-[#5d7188]">
+                  <Eye className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="section-kicker">Viewed this week</p>
+                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{recentlyViewed}</p>
+                </div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#fff3e8] text-[#c87a26]">
+                  <TrendingUp className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-        {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-3 py-2 bg-muted rounded-md">
-            <span className="text-sm font-medium">{selectedIds.size} selected</span>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setBulkDeleteDialogOpen(true)}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Selected
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedIds(new Set())}
-            >
-              <X className="h-4 w-4 mr-1" />
-              Clear
-            </Button>
+
+        <div className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 p-4 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <div className="relative max-w-md flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#5d7188]" />
+                <Input
+                  placeholder="Search prospects..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 border-[#0d1b2a]/10 bg-[#f8fbff]"
+                />
+              </div>
+              {!loading && filteredDashboards.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full border-[#0d1b2a]/10 bg-white/70"
+                  onClick={() => {
+                    if (selectedIds.size === filteredDashboards.length) {
+                      setSelectedIds(new Set())
+                    } else {
+                      setSelectedIds(new Set(filteredDashboards.map(d => d.id)))
+                    }
+                  }}
+                >
+                  {selectedIds.size === filteredDashboards.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              )}
+            </div>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-[#f4f8fc] px-3 py-3">
+                <span className="text-sm font-medium text-[#0d1b2a]">{selectedIds.size} selected</span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => setBulkDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Selected
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full text-[#2d6df6] hover:bg-[#eef4ff] hover:text-[#2d6df6]"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
 
       {/* Dashboard Cards */}
       {loading ? (
         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="border-0 shadow-md">
+            <Card key={i} className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)]">
               <CardContent className="p-5 space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="space-y-2 flex-1">
@@ -2034,15 +2044,15 @@ export default function ProspectDashboards() {
           ))}
         </div>
       ) : filteredDashboards.length === 0 ? (
-        <Card className="border-0 shadow-md">
+        <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)]">
           <CardContent className="p-12 text-center">
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-              <Share2 className="h-8 w-8 text-muted-foreground" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef4ff]">
+              <Share2 className="h-8 w-8 text-[#2d6df6]" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">
+            <h3 className="font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a] mb-2">
               {searchQuery ? 'No dashboards match your search' : 'No prospect dashboards yet'}
             </h3>
-            <p className="text-muted-foreground max-w-sm mx-auto">
+            <p className="max-w-sm mx-auto text-[#5d7188]">
               {searchQuery
                 ? 'Try a different search term'
                 : 'Create one from the Podcast Finder by selecting "New Prospect" mode and exporting podcasts.'}
@@ -2055,24 +2065,24 @@ export default function ProspectDashboards() {
             <Card
               key={dashboard.id}
               className={cn(
-                "border-0 shadow-md hover:shadow-lg transition-all cursor-pointer group",
+                "group cursor-pointer overflow-hidden rounded-[28px] border border-[#0d1b2a]/8 bg-white/88 shadow-[0_16px_34px_rgba(13,27,42,0.08)] transition-all hover:-translate-y-1 hover:border-[#2d6df6]/20 hover:shadow-[0_22px_40px_rgba(13,27,42,0.12)]",
                 !dashboard.is_active && "opacity-60",
-                selectedDashboard?.id === dashboard.id && "ring-2 ring-primary",
+                selectedDashboard?.id === dashboard.id && "border-[#2d6df6]/20 ring-2 ring-[#2d6df6]/20",
                 selectedIds.has(dashboard.id) && "ring-2 ring-destructive"
               )}
               onClick={() => setSelectedDashboard(dashboard)}
             >
               <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-3">
+                <div className="mb-4 flex items-start justify-between gap-3">
                   <div className="flex items-start gap-2 flex-1 min-w-0">
                     <div onClick={(e) => { e.stopPropagation(); toggleSelectDashboard(dashboard.id) }} className="mt-1 shrink-0">
                       <Checkbox checked={selectedIds.has(dashboard.id)} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
+                      <h3 className="truncate font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a] transition-colors group-hover:text-[#2d6df6]">
                         {dashboard.prospect_name}
                       </h3>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="mt-1 text-sm text-[#5d7188]">
                         Created {formatDistanceToNow(new Date(dashboard.created_at), { addSuffix: true })}
                       </p>
                     </div>
@@ -2080,40 +2090,64 @@ export default function ProspectDashboards() {
                   <Badge
                     variant={dashboard.is_active ? 'default' : 'secondary'}
                     className={cn(
-                      "ml-2 shrink-0",
-                      dashboard.is_active && "bg-green-500 hover:bg-green-500"
+                      "ml-2 shrink-0 rounded-full px-3",
+                      dashboard.is_active
+                        ? "bg-[#eef9f1] text-[#27925a] hover:bg-[#eef9f1]"
+                        : "bg-[#edf3fa] text-[#5d7188] hover:bg-[#edf3fa]"
                     )}
                   >
-                    {dashboard.is_active ? 'Active' : 'Disabled'}
+                    {dashboard.is_active ? 'Live' : 'Hidden'}
                   </Badge>
                 </div>
 
+                {(dashboard.prospect_title || dashboard.prospect_company) && (
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {dashboard.prospect_title && (
+                      <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f4f8fc] px-3 py-1 text-xs text-[#56708d]">
+                        {dashboard.prospect_title}
+                      </span>
+                    )}
+                    {dashboard.prospect_company && (
+                      <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f4f8fc] px-3 py-1 text-xs text-[#56708d]">
+                        {dashboard.prospect_company}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {dashboard.prospect_bio && (
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                  <p className="mb-4 line-clamp-3 text-sm leading-7 text-[#4c5d73]">
                     {dashboard.prospect_bio}
                   </p>
                 )}
 
                 {/* Stats Row */}
-                <div className="flex items-center gap-4 mb-4 text-sm">
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Eye className="h-4 w-4" />
-                    <span className="font-medium">{dashboard.view_count || 0}</span>
-                    <span>views</span>
-                  </div>
-                  {dashboard.last_viewed_at && (
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      <span>{formatDistanceToNow(new Date(dashboard.last_viewed_at), { addSuffix: true })}</span>
+                <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
+                    <div className="mb-2 flex items-center gap-2 text-[#56708d]">
+                      <Eye className="h-4 w-4 text-[#2d6df6]" />
+                      <span className="text-xs uppercase tracking-[0.18em]">Views</span>
                     </div>
-                  )}
+                    <p className="font-semibold text-[#0d1b2a]">{dashboard.view_count || 0}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
+                    <div className="mb-2 flex items-center gap-2 text-[#56708d]">
+                      <Clock className="h-4 w-4 text-[#2d6df6]" />
+                      <span className="text-xs uppercase tracking-[0.18em]">Last viewed</span>
+                    </div>
+                    <p className="font-semibold text-[#0d1b2a]">
+                      {dashboard.last_viewed_at
+                        ? formatDistanceToNow(new Date(dashboard.last_viewed_at), { addSuffix: true })
+                        : 'Not yet viewed'}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="default" size="sm" className="flex-1">
+                      <Button variant="default" size="sm" className="flex-1 rounded-full">
                         <Copy className="h-4 w-4 mr-2" />
                         Copy Link
                       </Button>
@@ -2132,13 +2166,14 @@ export default function ProspectDashboards() {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="rounded-full border-[#0d1b2a]/10 bg-white/70"
                     onClick={() => window.open(`${appUrl}/prospect/${dashboard.slug}`, '_blank')}
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" className="rounded-full border-[#0d1b2a]/10 bg-white/70">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -2183,7 +2218,7 @@ export default function ProspectDashboards() {
 
       {/* Side Panel */}
       <Sheet open={!!selectedDashboard} onOpenChange={() => setSelectedDashboard(null)}>
-        <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-y-auto overflow-x-hidden" aria-describedby={undefined}>
+        <SheetContent className="!w-full sm:!max-w-xl border-l border-[#0d1b2a]/10 bg-[#f8fbff] p-0 overflow-y-auto overflow-x-hidden" aria-describedby={undefined}>
           <VisuallyHidden>
             <SheetTitle>Prospect Dashboard Details</SheetTitle>
           </VisuallyHidden>
@@ -2194,7 +2229,7 @@ export default function ProspectDashboards() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+                  className="h-8 w-8 rounded-full bg-white/85 backdrop-blur-sm"
                   onClick={() => setSelectedDashboard(null)}
                 >
                   <X className="h-4 w-4" />
@@ -2203,15 +2238,18 @@ export default function ProspectDashboards() {
 
               <ScrollArea className="flex-1 overflow-x-hidden">
                 {/* Header */}
-                <div className="p-6 bg-gradient-to-br from-primary/10 to-purple-500/10 border-b">
+                <div className="paper-noise border-b border-[#0d1b2a]/8 bg-white/88 p-6">
                   <div className="flex items-start justify-between mb-4">
                     <Badge
                       variant={selectedDashboard.is_active ? 'default' : 'secondary'}
                       className={cn(
-                        selectedDashboard.is_active && "bg-green-500 hover:bg-green-500"
+                        "rounded-full px-3",
+                        selectedDashboard.is_active
+                          ? "bg-[#eef9f1] text-[#27925a] hover:bg-[#eef9f1]"
+                          : "bg-[#edf3fa] text-[#5d7188] hover:bg-[#edf3fa]"
                       )}
                     >
-                      {selectedDashboard.is_active ? 'Active' : 'Disabled'}
+                      {selectedDashboard.is_active ? 'Live' : 'Hidden'}
                     </Badge>
                   </div>
                   {isEditingName ? (
@@ -2219,7 +2257,7 @@ export default function ProspectDashboards() {
                       <Input
                         value={editProspectName}
                         onChange={(e) => setEditProspectName(e.target.value)}
-                        className="text-2xl font-bold h-auto py-2"
+                        className="h-auto border-[#0d1b2a]/10 bg-[#f8fbff] py-2 text-3xl font-semibold tracking-[-0.04em]"
                         placeholder="Enter prospect name"
                         autoFocus
                         onKeyDown={(e) => {
@@ -2255,10 +2293,11 @@ export default function ProspectDashboards() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <h2 className="text-2xl font-bold">{selectedDashboard.prospect_name}</h2>
+                      <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{selectedDashboard.prospect_name}</h2>
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="rounded-full text-[#2d6df6] hover:bg-[#eef4ff] hover:text-[#2d6df6]"
                         onClick={() => setIsEditingName(true)}
                       >
                         <Pencil className="h-4 w-4" />
@@ -2268,7 +2307,7 @@ export default function ProspectDashboards() {
                   {selectedDashboard.prospect_bio && (
                     <div className="mt-2">
                       <p className={cn(
-                        "text-muted-foreground text-sm whitespace-pre-wrap",
+                        "text-sm leading-7 text-[#4c5d73] whitespace-pre-wrap",
                         !bioExpanded && "line-clamp-3"
                       )}>
                         {selectedDashboard.prospect_bio}
@@ -2276,7 +2315,7 @@ export default function ProspectDashboards() {
                       {selectedDashboard.prospect_bio.length > 150 && (
                         <button
                           onClick={() => setBioExpanded(!bioExpanded)}
-                          className="text-primary text-sm font-medium mt-1 hover:underline"
+                          className="mt-1 text-sm font-medium text-[#2d6df6] hover:underline"
                         >
                           {bioExpanded ? 'Show less' : 'Show more'}
                         </button>
@@ -2284,37 +2323,37 @@ export default function ProspectDashboards() {
                     </div>
                   )}
                 </div>
-                <div className="p-6 pr-8 space-y-6">
+                <div className="space-y-6 bg-[#f8fbff] p-6 pr-8">
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Eye className="h-4 w-4 text-purple-600" />
-                        <span className="text-sm font-medium text-purple-600">Total Views</span>
+                    <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-white/90 p-4 shadow-[0_14px_28px_rgba(13,27,42,0.06)]">
+                      <div className="mb-1 flex items-center gap-2">
+                        <Eye className="h-4 w-4 text-[#2d6df6]" />
+                        <span className="text-sm font-medium text-[#56708d]">Total Views</span>
                       </div>
-                      <p className="text-2xl font-bold">{selectedDashboard.view_count || 0}</p>
+                      <p className="font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{selectedDashboard.view_count || 0}</p>
                     </div>
-                    <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Calendar className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-600">Created</span>
+                    <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-white/90 p-4 shadow-[0_14px_28px_rgba(13,27,42,0.06)]">
+                      <div className="mb-1 flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-[#2d6df6]" />
+                        <span className="text-sm font-medium text-[#56708d]">Created</span>
                       </div>
-                      <p className="text-lg font-bold">
+                      <p className="text-lg font-bold text-[#0d1b2a]">
                         {format(new Date(selectedDashboard.created_at), 'MMM d, yyyy')}
                       </p>
                     </div>
                   </div>
 
                   {selectedDashboard.last_viewed_at && (
-                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Clock className="h-4 w-4 text-amber-600" />
-                        <span className="text-sm font-medium text-amber-600">Last Viewed</span>
+                    <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f4f8fc] p-4">
+                      <div className="mb-1 flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-[#2d6df6]" />
+                        <span className="text-sm font-medium text-[#56708d]">Last Viewed</span>
                       </div>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-[#0d1b2a]">
                         {format(new Date(selectedDashboard.last_viewed_at), 'MMM d, yyyy')} at {format(new Date(selectedDashboard.last_viewed_at), 'h:mm a')}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-[#5d7188]">
                         {formatDistanceToNow(new Date(selectedDashboard.last_viewed_at), { addSuffix: true })}
                       </p>
                     </div>
@@ -2872,7 +2911,10 @@ export default function ProspectDashboards() {
                           variant={selectedDashboard.show_pricing_section !== false ? "default" : "outline"}
                           size="sm"
                           className={cn(
-                            selectedDashboard.show_pricing_section !== false && "bg-purple-600 hover:bg-purple-700"
+                            "rounded-full",
+                            selectedDashboard.show_pricing_section !== false
+                              ? "bg-[#2d6df6] hover:bg-[#255fd7]"
+                              : "border-[#0d1b2a]/10 bg-white"
                           )}
                         >
                           {togglingPricing ? (
@@ -3191,9 +3233,9 @@ export default function ProspectDashboards() {
               </ScrollArea>
 
               {/* Footer CTA */}
-              <div className="p-4 border-t bg-muted/30 space-y-2">
+              <div className="space-y-2 border-t border-[#0d1b2a]/8 bg-white/88 p-4">
                 <Button
-                  className="w-full"
+                  className="w-full rounded-full"
                   onClick={() => copyLink(selectedDashboard.slug)}
                 >
                   <Copy className="h-4 w-4 mr-2" />
@@ -3201,7 +3243,7 @@ export default function ProspectDashboards() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="w-full"
+                  className="w-full rounded-full border-[#0d1b2a]/10 bg-white/70"
                   onClick={() => copyLink(selectedDashboard.slug, true)}
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
