@@ -27,8 +27,8 @@ const Navbar = () => {
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50">
-      <div className="border-b border-[#0d1b2a]/8 bg-[#e9f0f8]/85 px-4 py-2 backdrop-blur-sm">
-        <div className="container flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.24em] text-[#5a6f87]">
+      <div className="border-b border-[#0d1b2a]/8 bg-[#f4ede4]/88 px-4 py-2 backdrop-blur-sm">
+        <div className="container flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.22em] text-[#7a6554]">
           <span className="font-mono">Podcast placement system for trust-led sales</span>
           <span className="hidden font-mono sm:block">Audience-fit targeting, outreach, approvals, and tracking</span>
         </div>
@@ -39,8 +39,8 @@ const Navbar = () => {
           <div
             className={`transition-all duration-300 ${
               isScrolled
-                ? 'rounded-[28px] border border-[#0d1b2a]/10 bg-[#f7fafc]/88 shadow-[0_18px_44px_rgba(13,27,42,0.12)] backdrop-blur-xl'
-                : 'rounded-[28px] border border-[#ffffff]/70 bg-[#f7fafc]/66 backdrop-blur-md'
+                ? 'rounded-[28px] border border-[#0d1b2a]/10 bg-[#fffdf9]/92 shadow-[0_18px_44px_rgba(13,27,42,0.12)] backdrop-blur-xl'
+                : 'rounded-[28px] border border-[#ffffff]/70 bg-[#fffdf9]/72 backdrop-blur-md'
             }`}
           >
             <div className="flex items-center justify-between gap-6 px-5 py-4 md:px-6 md:py-5">
@@ -48,7 +48,7 @@ const Navbar = () => {
                 <div className="font-display text-2xl font-semibold leading-none tracking-[-0.05em] text-[#0d1b2a]">
                   Get On A Pod
                 </div>
-                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.24em] text-[#5f7590]">
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.22em] text-[#7a6554]">
                   Buyer trust through podcast placement
                 </div>
               </Link>
@@ -59,7 +59,7 @@ const Navbar = () => {
                     <a
                       key={link.href}
                       href={link.href}
-                      className="text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
+                      className="text-sm font-medium text-[#645447] transition-colors hover:text-[#0d1b2a]"
                     >
                       {link.label}
                     </a>
@@ -67,7 +67,7 @@ const Navbar = () => {
                     <Link
                       key={link.href}
                       to={link.href}
-                      className="text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
+                      className="text-sm font-medium text-[#645447] transition-colors hover:text-[#0d1b2a]"
                     >
                       {link.label}
                     </Link>
@@ -81,7 +81,7 @@ const Navbar = () => {
               </div>
 
               <button
-                className="rounded-full border border-[#0d1b2a]/10 bg-[#ffffff] p-2 text-[#0d1b2a] lg:hidden"
+                className="rounded-full border border-[#0d1b2a]/10 bg-[#fffdf9] p-2 text-[#0d1b2a] lg:hidden"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 aria-label="Toggle navigation"
               >
@@ -94,14 +94,14 @@ const Navbar = () => {
             </div>
 
             {isMobileMenuOpen && (
-              <div className="border-t border-[#0d1b2a]/10 bg-[#f7fafc]/92 px-5 py-4 lg:hidden">
+              <div className="border-t border-[#0d1b2a]/10 bg-[#fffdf9]/94 px-5 py-4 lg:hidden">
                 <div className="flex flex-col gap-1">
                   {navLinks.map((link) =>
                     link.href.startsWith('/#') ? (
                       <a
                         key={link.href}
                         href={link.href}
-                        className="px-2 py-2 text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
+                        className="px-2 py-2 text-sm font-medium text-[#645447] transition-colors hover:text-[#0d1b2a]"
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
                         {link.label}
@@ -110,7 +110,7 @@ const Navbar = () => {
                       <Link
                         key={link.href}
                         to={link.href}
-                        className="px-2 py-2 text-sm font-medium text-[#4a6178] transition-colors hover:text-[#0d1b2a]"
+                        className="px-2 py-2 text-sm font-medium text-[#645447] transition-colors hover:text-[#0d1b2a]"
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
                         {link.label}

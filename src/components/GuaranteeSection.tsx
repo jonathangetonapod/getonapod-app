@@ -12,7 +12,7 @@ const GuaranteeSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="bg-[#f3f5f7] px-4 py-12 md:py-20" id="guarantee">
+    <section className="bg-[#f4efe7] px-4 py-12 md:py-20" id="guarantee">
       <div className="container mx-auto">
         <div
           ref={ref}
@@ -23,13 +23,13 @@ const GuaranteeSection = () => {
           <div className="mx-auto max-w-5xl rounded-[36px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 shadow-[0_30px_70px_rgba(13,27,42,0.2)] md:p-6">
             <div className="grid gap-8 rounded-[28px] bg-[#f8fbff] p-8 md:grid-cols-[0.82fr_1.18fr] md:p-12">
               <div>
-                <Badge className="border-[#2d6df6]/18 bg-[#eef4ff] text-[#2d6df6]">
+                <Badge className="border-[#b46a3c]/18 bg-[#fff3e8] text-[#b46a3c]">
                   Placement commitment
                 </Badge>
 
                 <div className="mt-6 flex items-center justify-center md:justify-start">
-                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#eef4ff] md:h-20 md:w-20">
-                    <Shield className="h-8 w-8 text-[#2d6df6] md:h-10 md:w-10" />
+                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-[#fff3e8] md:h-20 md:w-20">
+                    <Shield className="h-8 w-8 text-[#b46a3c] md:h-10 md:w-10" />
                   </div>
                 </div>
 
@@ -48,7 +48,7 @@ const GuaranteeSection = () => {
                 <div className="mt-8 space-y-4">
                   {checkmarks.map((label) => (
                     <div key={label} className="flex items-start gap-3 rounded-2xl border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-4">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#2d6df6]" />
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#b46a3c]" />
                       <span className="text-sm leading-6 text-[#30465f]">
                         {label}
                       </span>

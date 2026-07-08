@@ -9,13 +9,13 @@ export default {
       center: true,
       padding: "1.5rem",
       screens: {
-        "2xl": "1200px",
+        "2xl": "1360px",
       },
     },
     extend: {
       fontFamily: {
-        sans: ["Instrument Sans", "system-ui", "sans-serif"],
-        display: ["Instrument Sans", "system-ui", "sans-serif"],
+        sans: ["Outfit", "system-ui", "sans-serif"],
+        display: ["Outfit", "system-ui", "sans-serif"],
         mono: ["DM Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {

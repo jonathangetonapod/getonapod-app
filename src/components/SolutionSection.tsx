@@ -27,7 +27,7 @@ const SolutionSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section className="bg-[#f3f5f7] px-4 py-10 md:py-20">
+    <section className="bg-[#f4efe7] px-4 py-10 md:py-20">
       <div className="container mx-auto px-4 sm:px-6">
         <div
           ref={ref}
@@ -56,7 +56,7 @@ const SolutionSection = () => {
                   className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#ffffff] p-6 text-left shadow-[0_18px_40px_rgba(13,27,42,0.08)]"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f4ede4] text-[#b46a3c]">
                     <Icon className="h-7 w-7" strokeWidth={1.8} />
                   </div>
                   <h3 className="mt-5 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
@@ -67,7 +67,7 @@ const SolutionSection = () => {
                   <ul className="mt-5 space-y-3">
                     {pillar.points.map((point) => (
                       <li key={point} className="flex items-start gap-3 text-sm leading-6 text-[#30465f]">
-                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2d6df6]" />
+                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#b46a3c]" />
                         <span>{point}</span>
                       </li>
                     ))}

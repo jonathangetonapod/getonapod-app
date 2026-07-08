@@ -47,25 +47,25 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
           }`}
         >
           <div className="mx-auto mb-12 max-w-3xl text-center">
-            <p className="section-kicker text-[#8cb0dd]">Proof</p>
+            <p className="section-kicker text-[#d4b08f]">Proof</p>
             <h2 className="mt-4 font-display text-4xl font-semibold tracking-[-0.05em] text-[#f7fafc] sm:text-5xl md:text-6xl">
               Hear it from clients who stopped doing this alone.
             </h2>
-            <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#c7d9ee] sm:text-lg">
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#d8c8b5] sm:text-lg">
               Video proof beats polished promises. These are the people who already moved from random outreach to a system.
             </p>
           </div>
 
           {isLoading ? (
             <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#8cb0dd]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[#d4b08f]" />
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
               {testimonials.map((testimonial, index) => (
                 <div
                   key={testimonial.id}
-                  className="group overflow-hidden rounded-[28px] border border-white/10 bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-[#2d6df6]/30 hover:shadow-[0_20px_36px_rgba(3,10,18,0.28)]"
+                  className="group overflow-hidden rounded-[28px] border border-white/10 bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-[#d4b08f]/30 hover:shadow-[0_20px_36px_rgba(3,10,18,0.28)]"
                   style={{ transitionDelay: `${index * 100}ms` }}
                 >
                   <div className="relative aspect-video bg-[#10263b]">
@@ -79,7 +79,7 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
                   </div>
 
                   <div className="p-6">
-                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff3e8] text-[#b46a3c]">
                       <Quote className="h-5 w-5" strokeWidth={1.8} />
                     </div>
                     {testimonial.quote && (
@@ -90,12 +90,12 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
                     <div>
                       <p className="font-semibold text-[#f7fafc]">{testimonial.client_name}</p>
                       {testimonial.client_title && (
-                        <p className="text-sm text-[#c7d9ee]">
+                        <p className="text-sm text-[#d8c8b5]">
                           {testimonial.client_title}
                         </p>
                       )}
                       {testimonial.client_company && (
-                        <p className="text-sm text-[#8cb0dd]">
+                        <p className="text-sm text-[#d4b08f]">
                           {testimonial.client_company}
                         </p>
                       )}

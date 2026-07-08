@@ -44,7 +44,7 @@ const HowItWorksSection = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
 
   return (
-    <section id="how-it-works" className="bg-[#f3f5f7] px-4 py-12 md:py-20">
+    <section id="how-it-works" className="bg-[#f4efe7] px-4 py-12 md:py-20">
       <div className="container mx-auto px-4">
         <div
           ref={ref}
@@ -67,7 +67,7 @@ const HowItWorksSection = () => {
                 <p className="section-kicker">You leave the first call with</p>
                 <ul className="mt-4 space-y-3 text-sm leading-6 text-[#30465f]">
                   <li className="flex items-start gap-3">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#2d6df6]" />
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#b46a3c]" />
                     A clearer authority angle for podcast outreach
                   </li>
                   <li className="flex items-start gap-3">
@@ -99,10 +99,10 @@ const HowItWorksSection = () => {
                     <div className="absolute left-[-1.55rem] top-6 h-4 w-4 rounded-full border border-[#0d1b2a]/10 bg-[#f8fbff] sm:left-[-2.4rem] sm:top-7 sm:h-5 sm:w-5 md:left-[-2.9rem]" />
 
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-mono text-xs uppercase tracking-[0.28em] text-[#2d6df6]">
+                      <span className="font-mono text-xs uppercase tracking-[0.28em] text-[#b46a3c]">
                         {step.number}
                       </span>
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eef4ff] text-[#2d6df6]">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f4ede4] text-[#b46a3c]">
                         <Icon className="h-5 w-5" strokeWidth={1.8} />
                       </div>
                     </div>
@@ -122,7 +122,7 @@ const HowItWorksSection = () => {
           <div className="mt-10 text-center">
             <a
               href="#command-center"
-              className="inline-flex items-center gap-2 text-base font-semibold text-[#2d6df6] transition-all hover:gap-3"
+              className="inline-flex items-center gap-2 text-base font-semibold text-[#b46a3c] transition-all hover:gap-3"
             >
               See the client portal
               <ArrowRight className="h-5 w-5" />

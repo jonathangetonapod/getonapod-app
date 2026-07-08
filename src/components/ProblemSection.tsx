@@ -29,7 +29,7 @@ const ProblemSection = () => {
           }`}
         >
           <div className="max-w-xl">
-            <p className="section-kicker text-[#8cb0dd]">The friction</p>
+            <p className="section-kicker text-[#d4b08f]">The friction</p>
             <h2 className="mt-5 font-display text-4xl font-semibold leading-[1] tracking-[-0.05em] text-balance md:text-6xl">
               Getting booked on the right podcasts should not become a second job.
             </h2>
@@ -40,7 +40,7 @@ const ProblemSection = () => {
             </p>
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-white/5 p-6">
-              <p className="section-kicker text-[#8cb0dd]">What GOAP takes off your plate</p>
+              <p className="section-kicker text-[#d4b08f]">What GOAP takes off your plate</p>
               <div className="mt-4 grid gap-4 sm:grid-cols-3">
                 <div>
                   <p className="font-display text-3xl font-semibold tracking-[-0.05em]">Research</p>
@@ -66,8 +66,8 @@ const ProblemSection = () => {
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
                 <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2d6df6]/14">
-                    <X className="h-4 w-4 text-[#8cb0dd]" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b46a3c]/14">
+                    <X className="h-4 w-4 text-[#d4b08f]" />
                   </div>
                   <div>
                     <p className="text-lg font-semibold tracking-[-0.03em] text-[#f7fafc]">{card.title}</p>
@@ -76,21 +76,21 @@ const ProblemSection = () => {
                 </div>
               </div>
             ))}
-            <div className="rounded-[26px] border border-[#8cb0dd]/24 bg-[#8cb0dd]/10 p-6">
-              <p className="section-kicker text-[#bdd0e8]">The shift</p>
+            <div className="rounded-[26px] border border-[#d4b08f]/24 bg-[#d4b08f]/10 p-6">
+              <p className="section-kicker text-[#f0ddc8]">The shift</p>
               <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
                 Run podcast guesting like a pipeline, not a side task.
               </p>
               <a
                 href="#how-it-works"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#d6e5f5] transition hover:gap-3"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#f0ddc8] transition hover:gap-3"
               >
                 See the workflow
                 <ArrowRight className="h-4 w-4" />
               </a>
             </div>
             <div className="rounded-[26px] border border-white/10 bg-white/5 p-6">
-              <p className="section-kicker text-[#8cb0dd]">Reality check</p>
+              <p className="section-kicker text-[#d4b08f]">Reality check</p>
               <p className="mt-3 text-base leading-7 text-[#c7d9ee]">
                 The bottleneck is rarely your expertise. It is consistent targeting, follow-up, and visibility
                 from first pitch to published episode.

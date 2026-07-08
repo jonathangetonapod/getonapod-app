@@ -21,12 +21,12 @@ const FinalCTASection = () => {
         >
           <div className="grid gap-8 px-6 py-10 md:px-10 md:py-14 lg:grid-cols-[1.06fr_0.94fr] lg:gap-12">
             <div className="max-w-2xl">
-              <p className="section-kicker text-[#8cb0dd]">Next step</p>
+              <p className="section-kicker text-[#d4b08f]">Next step</p>
               <h2 className="mt-4 font-editorial text-4xl leading-[0.92] tracking-[-0.05em] sm:text-5xl md:text-6xl">
                 Book a shortlist call and see where you fit.
               </h2>
 
-              <p className="mt-5 max-w-xl text-sm leading-8 text-[#d6e5f5] sm:text-base md:text-lg lg:text-xl">
+              <p className="mt-5 max-w-xl text-sm leading-8 text-[#d8c8b5] sm:text-base md:text-lg lg:text-xl">
                 We will pressure-test fit, show you the kinds of podcasts we would target, and explain how outreach and tracking would work before you commit to anything.
               </p>
 
@@ -51,28 +51,28 @@ const FinalCTASection = () => {
                 </Button>
               </div>
 
-              <p className="mt-5 text-sm text-[#c7d9ee]">
+              <p className="mt-5 text-sm text-[#d8c8b5]">
                 You leave with a clearer answer on fit, even if the answer is no.
               </p>
             </div>
 
             <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-              <p className="section-kicker text-[#8cb0dd]">What happens on the call</p>
+              <p className="section-kicker text-[#d4b08f]">What happens on the call</p>
               <div className="mt-5 space-y-4">
                 {nextSteps.map((step, index) => (
                   <div
                     key={step}
                     className="flex items-start gap-4 rounded-[24px] border border-white/10 bg-white/5 px-4 py-4"
                   >
-                    <span className="font-mono text-xs text-[#8cb0dd]">0{index + 1}</span>
-                    <p className="text-sm leading-7 text-[#d6e5f5]">{step}</p>
+                    <span className="font-mono text-xs text-[#d4b08f]">0{index + 1}</span>
+                    <p className="text-sm leading-7 text-[#d8c8b5]">{step}</p>
                   </div>
                 ))}
               </div>
 
               <div className="mt-5 rounded-[24px] border border-[#f7fafc]/10 bg-[#0b2036] px-4 py-4">
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#8cb0dd]">No pressure</p>
-                <p className="mt-2 text-sm leading-7 text-[#d6e5f5]">
+                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#d4b08f]">No pressure</p>
+                <p className="mt-2 text-sm leading-7 text-[#d8c8b5]">
                   Clear fit, clear workflow, and a direct answer on whether podcast guesting is worth pursuing for your market.
                 </p>
               </div>
