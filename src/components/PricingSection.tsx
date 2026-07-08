@@ -118,17 +118,26 @@ const PricingSection = () => {
                       </span>
                       <span className="pb-2 text-base text-[#76665a]">{plan.period}</span>
                     </div>
-                    <p className="mt-2 text-sm text-[#76665a]">
-                      Month-to-month. Includes a placement commitment.
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFeature('placement commitment')}
+                      className="mt-2 inline-flex items-center gap-2 text-left text-sm text-[#76665a] transition-colors hover:text-[#0d1b2a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b46a3c]/30 focus-visible:ring-offset-2"
+                    >
+                      <span>Month-to-month. Includes a placement commitment.</span>
+                      <Info className="h-4 w-4 shrink-0 text-[#b46a3c]" />
+                    </button>
                   </div>
 
-                  <div className="w-full rounded-[20px] border border-[#0d1b2a]/8 bg-[#fff3e8] px-4 py-3 text-sm leading-6 text-[#3f342c] sm:max-w-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFeature('placement commitment')}
+                    className="w-full rounded-[20px] border border-[#0d1b2a]/8 bg-[#fff3e8] px-4 py-3 text-left text-sm leading-6 text-[#3f342c] transition-colors hover:bg-[#fdebdc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b46a3c]/30 focus-visible:ring-offset-2 sm:max-w-xs"
+                  >
                     <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#7a6554]">Best for</p>
                     <p className="mt-2">
                       Experts who want the outreach handled without losing approval control or visibility.
                     </p>
-                  </div>
+                  </button>
                 </div>
 
                 <ul className="mt-8 grid gap-3">
