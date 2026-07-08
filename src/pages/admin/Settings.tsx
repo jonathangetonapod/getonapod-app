@@ -619,7 +619,7 @@ const data = await response.json()`
             </div>
             <div className="space-y-2">
               <Label htmlFor="site-url">Site URL</Label>
-              <Input id="site-url" value="https://authoritylab.com" />
+              <Input id="site-url" value="https://getonapod.com" />
             </div>
             <Button>
               <Save className="mr-2 h-4 w-4" />

@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://authoritylab.com/sitemap.xml
+Sitemap: https://getonapod.com/sitemap.xml

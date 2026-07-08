@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Helmet } from 'react-helmet-async'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { Label } from '@/components/ui/label'
 import { Loader2, Lock, Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import PageSEO from '@/components/seo/PageSEO'
 
 export default function PortalLogin() {
   const [email, setEmail] = useState('')
@@ -42,9 +42,12 @@ export default function PortalLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <Helmet>
-        <title>Login - Client Portal | Get On A Pod</title>
-      </Helmet>
+      <PageSEO
+        title="Client Portal Login | Get On A Pod"
+        description="Log in to your Get On A Pod client portal to review approvals, outreach activity, bookings, and live episodes."
+        path="/portal/login"
+        noindex
+      />
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70">

@@ -1,4 +1,5 @@
 import { Helmet } from 'react-helmet-async'
+import { DEFAULT_OG_IMAGE_ALT, DEFAULT_OG_IMAGE_PATH, SITE_NAME, getSiteUrl, toAbsoluteUrl } from '@/lib/seo'
 import type { BlogPost } from '@/services/blog'
 
 interface BlogSEOProps {
@@ -7,11 +8,11 @@ interface BlogSEOProps {
 }
 
 export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
-  const baseUrl = import.meta.env.VITE_APP_URL || 'https://getonapod.com'
+  const baseUrl = getSiteUrl()
   const postUrl = isPreview ? `${baseUrl}/blog/preview` : `${baseUrl}/blog/${post.slug}`
 
   // Use featured image or fallback
-  const ogImage = post.featured_image_url || `${baseUrl}/og-image.jpg`
+  const ogImage = post.featured_image_url || toAbsoluteUrl(DEFAULT_OG_IMAGE_PATH)
 
   // Build keywords
   const keywords = [
@@ -34,7 +35,10 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
       <meta property="og:title" content={post.title} />
       <meta property="og:description" content={post.meta_description} />
       <meta property="og:image" content={ogImage} />
-      <meta property="og:site_name" content="Get On A Pod" />
+      <meta property="og:image:alt" content={post.title || DEFAULT_OG_IMAGE_ALT} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:site_name" content={SITE_NAME} />
       {post.published_at && (
         <meta property="article:published_time" content={post.published_at} />
       )}
@@ -55,6 +59,7 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
       <meta name="twitter:title" content={post.title} />
       <meta name="twitter:description" content={post.meta_description} />
       <meta name="twitter:image" content={ogImage} />
+      <meta name="twitter:image:alt" content={post.title || DEFAULT_OG_IMAGE_ALT} />
 
       {/* Additional SEO */}
       <meta name="robots" content={isPreview ? 'noindex, nofollow' : 'index, follow'} />

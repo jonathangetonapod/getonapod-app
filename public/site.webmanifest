@@ -1,0 +1,21 @@
+{
+  "name": "Get On A Pod",
+  "short_name": "GOAP",
+  "description": "Podcast booking for experts with shortlist approvals, outreach visibility, and booking tracking.",
+  "theme_color": "#0d1b2a",
+  "background_color": "#f7f2ea",
+  "display": "standalone",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

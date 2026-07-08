@@ -1,4 +1,3 @@
-import { Helmet } from 'react-helmet-async';
 import { Button } from '@/components/ui/button';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -18,6 +17,7 @@ import {
   PlayCircle,
   BookOpen
 } from 'lucide-react';
+import PageSEO from '@/components/seo/PageSEO';
 
 const steps = [
   {
@@ -228,21 +228,11 @@ const protectionPrinciples = [
 const WhatToExpect = () => {
   return (
     <div className="homepage-shell min-h-screen bg-transparent">
-      <Helmet>
-        <title>What to Expect After You Sign Up | Get On A Pod</title>
-        <meta name="description" content="See exactly how Get On A Pod runs a podcast booking campaign, from shortlist call to published episode." />
-        <link rel="canonical" href="https://getonapod.com/what-to-expect" />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://getonapod.com/what-to-expect" />
-        <meta property="og:title" content="What to Expect After You Sign Up | Get On A Pod" />
-        <meta property="og:description" content="See exactly how Get On A Pod runs a podcast booking campaign, from shortlist call to published episode." />
-        <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
-        <meta property="og:site_name" content="Get On A Pod" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="What to Expect After You Sign Up | Get On A Pod" />
-        <meta name="twitter:description" content="See exactly how Get On A Pod runs a podcast booking campaign, from shortlist call to published episode." />
-        <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
-      </Helmet>
+      <PageSEO
+        title="What to Expect After You Sign Up | Get On A Pod"
+        description="See exactly how Get On A Pod runs a podcast booking campaign, from shortlist call to published episode."
+        path="/what-to-expect"
+      />
       <Navbar />
 
       <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-24 sm:pt-32 md:pb-16 md:pt-36">

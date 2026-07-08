@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import DOMPurify from 'dompurify'
-import { Helmet } from 'react-helmet-async'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import Navbar from '@/components/Navbar'
@@ -25,6 +24,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getGuestResources, type GuestResource, type ResourceCategory } from '@/services/guestResources'
+import PageSEO from '@/components/seo/PageSEO'
 
 const categoryInfo: Record<
   ResourceCategory,
@@ -226,30 +226,11 @@ export default function Resources() {
 
   return (
     <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
-      <Helmet>
-        <title>Podcast Guest Resources | Get On A Pod</title>
-        <meta
-          name="description"
-          content="Browse podcast guest resources, templates, examples, and preparation guides from Get On A Pod."
-        />
-        <link rel="canonical" href="https://getonapod.com/resources" />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://getonapod.com/resources" />
-        <meta property="og:title" content="Podcast Guest Resources | Get On A Pod" />
-        <meta
-          property="og:description"
-          content="Browse podcast guest resources, templates, examples, and preparation guides from Get On A Pod."
-        />
-        <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
-        <meta property="og:site_name" content="Get On A Pod" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Podcast Guest Resources | Get On A Pod" />
-        <meta
-          name="twitter:description"
-          content="Browse podcast guest resources, templates, examples, and preparation guides from Get On A Pod."
-        />
-        <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
-      </Helmet>
+      <PageSEO
+        title="Podcast Guest Resources | Get On A Pod"
+        description="Browse podcast guest resources, templates, examples, and preparation guides from Get On A Pod."
+        path="/resources"
+      />
 
       <Navbar />
 

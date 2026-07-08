@@ -14,7 +14,7 @@ export interface BlogPost {
   featured_image_url?: string
   featured_image_alt?: string
   focus_keyword?: string
-  schema_markup?: any
+  schema_markup?: Record<string, unknown>
   category_id?: string
   tags?: string[]
   status: 'draft' | 'published'
@@ -50,7 +50,7 @@ export interface CreateBlogPostInput {
   featured_image_url?: string
   featured_image_alt?: string
   focus_keyword?: string
-  schema_markup?: any
+  schema_markup?: Record<string, unknown>
   category_id?: string
   tags?: string[]
   status?: 'draft' | 'published'
@@ -348,7 +348,7 @@ export const generateSchemaMarkup = (post: BlogPost) => {
     '@type': 'BlogPosting',
     headline: post.title,
     description: post.meta_description,
-    image: post.featured_image_url || 'https://getonapod.com/og-image.jpg',
+    image: post.featured_image_url || 'https://getonapod.com/og-image.png',
     datePublished: post.published_at,
     dateModified: post.updated_at,
     author: {
@@ -360,7 +360,7 @@ export const generateSchemaMarkup = (post: BlogPost) => {
       name: 'Get On A Pod',
       logo: {
         '@type': 'ImageObject',
-        url: 'https://getonapod.com/logo.png',
+        url: 'https://getonapod.com/icon-512.png',
       },
     },
     mainEntityOfPage: {

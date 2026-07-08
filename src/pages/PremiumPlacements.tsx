@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Helmet } from 'react-helmet-async';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -37,6 +36,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { PODCAST_CATEGORIES } from '@/lib/categories';
+import PageSEO from '@/components/seo/PageSEO';
 
 const AUDIENCE_TIERS = [
   { label: "All Sizes", value: "all", min: 0, max: Infinity },
@@ -274,21 +274,11 @@ const PremiumPlacements = () => {
 
   return (
     <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
-      <Helmet>
-        <title>Premium Podcast Placements | Get On A Pod</title>
-        <meta name="description" content="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows." />
-        <link rel="canonical" href="https://getonapod.com/premium-placements" />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://getonapod.com/premium-placements" />
-        <meta property="og:title" content="Premium Podcast Placements | Get On A Pod" />
-        <meta property="og:description" content="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows." />
-        <meta property="og:image" content="https://getonapod.com/og-image.jpg" />
-        <meta property="og:site_name" content="Get On A Pod" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Premium Podcast Placements | Get On A Pod" />
-        <meta name="twitter:description" content="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows." />
-        <meta name="twitter:image" content="https://getonapod.com/og-image.jpg" />
-      </Helmet>
+      <PageSEO
+        title="Premium Podcast Placements | Get On A Pod"
+        description="Browse pre-vetted premium podcast placements and book guaranteed podcast appearances on specific shows."
+        path="/premium-placements"
+      />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-[#0d1b2a] focus:px-4 focus:py-2 focus:text-sm focus:text-[#f7fafc]"

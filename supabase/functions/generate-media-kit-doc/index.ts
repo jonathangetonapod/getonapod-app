@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const GOAP_LOGO_URL = 'https://getonapod.com/logo.png'
+const GOAP_LOGO_URL = 'https://getonapod.com/icon-512.png'
 
 // Brand colors
 const COLOR_DARK = { red: 0.13, green: 0.13, blue: 0.13 }
