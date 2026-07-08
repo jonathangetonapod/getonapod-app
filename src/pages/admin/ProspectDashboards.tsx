@@ -1881,16 +1881,14 @@ export default function ProspectDashboards() {
   return (
     <DashboardLayout>
       <div className="space-y-5">
-        <section className="paper-noise relative overflow-hidden rounded-[32px] border border-[#0d1b2a]/8 bg-white/84 p-6 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm md:p-7">
-          <div className="absolute left-0 top-0 h-32 w-32 rounded-full bg-[#2d6df6]/8 blur-3xl" />
-          <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-[#dce7f5]/80 blur-3xl" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <section className="rounded-[24px] border border-[#0d1b2a]/8 bg-white p-6 shadow-[0_16px_34px_rgba(13,27,42,0.06)]">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="section-kicker">Prospect dashboards</p>
-              <h1 className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl">
+              <h1 className="mt-3 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a] sm:text-4xl">
                 Manage the public shortlist experience.
               </h1>
-              <p className="mt-4 max-w-2xl text-base leading-8 text-[#4c5d73] sm:text-lg">
+              <p className="mt-3 max-w-2xl text-base leading-7 text-[#4c5d73]">
                 Create, review, and share prospect-specific podcast dashboards, then prep the cache and AI layer before the link goes out.
               </p>
             </div>
@@ -1908,65 +1906,65 @@ export default function ProspectDashboards() {
           </div>
         </section>
 
-        <div className="grid gap-4 grid-cols-2 xl:grid-cols-4">
-          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+        <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
+          <Card className="rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="section-kicker">Total</p>
-                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{dashboards.length}</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">{dashboards.length}</p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef4ff] text-[#2d6df6]">
-                  <Share2 className="h-6 w-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-[#eef4ff] text-[#2d6df6]">
+                  <Share2 className="h-5 w-5" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+          <Card className="rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="section-kicker">Active links</p>
-                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{activeDashboards}</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">{activeDashboards}</p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#eef9f1] text-[#27925a]">
-                  <CheckCircle2 className="h-6 w-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-[#eef9f1] text-[#27925a]">
+                  <CheckCircle2 className="h-5 w-5" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+          <Card className="rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="section-kicker">Views</p>
-                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{totalViews}</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">{totalViews}</p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#f3f6fb] text-[#5d7188]">
-                  <Eye className="h-6 w-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-[#f3f6fb] text-[#5d7188]">
+                  <Eye className="h-5 w-5" />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+          <Card className="rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="section-kicker">Viewed this week</p>
-                  <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{recentlyViewed}</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">{recentlyViewed}</p>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-[18px] bg-[#fff3e8] text-[#c87a26]">
-                  <TrendingUp className="h-6 w-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-[#fff3e8] text-[#c87a26]">
+                  <TrendingUp className="h-5 w-5" />
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 p-4 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
+        <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-white p-4 shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
               <div className="relative max-w-md flex-1">
@@ -2025,7 +2023,7 @@ export default function ProspectDashboards() {
       {loading ? (
         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)]">
+            <Card key={i} className="rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
               <CardContent className="p-5 space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="space-y-2 flex-1">
@@ -2044,7 +2042,7 @@ export default function ProspectDashboards() {
           ))}
         </div>
       ) : filteredDashboards.length === 0 ? (
-        <Card className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/84 shadow-[0_16px_34px_rgba(13,27,42,0.08)]">
+        <Card className="rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)]">
           <CardContent className="p-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#eef4ff]">
               <Share2 className="h-8 w-8 text-[#2d6df6]" />
@@ -2065,7 +2063,7 @@ export default function ProspectDashboards() {
             <Card
               key={dashboard.id}
               className={cn(
-                "group cursor-pointer overflow-hidden rounded-[28px] border border-[#0d1b2a]/8 bg-white/88 shadow-[0_16px_34px_rgba(13,27,42,0.08)] transition-all hover:-translate-y-1 hover:border-[#2d6df6]/20 hover:shadow-[0_22px_40px_rgba(13,27,42,0.12)]",
+                "group cursor-pointer overflow-hidden rounded-[20px] border border-[#0d1b2a]/8 bg-white shadow-[0_10px_24px_rgba(13,27,42,0.05)] transition-all hover:border-[#2d6df6]/20 hover:shadow-[0_16px_30px_rgba(13,27,42,0.08)]",
                 !dashboard.is_active && "opacity-60",
                 selectedDashboard?.id === dashboard.id && "border-[#2d6df6]/20 ring-2 ring-[#2d6df6]/20",
                 selectedIds.has(dashboard.id) && "ring-2 ring-destructive"
@@ -2079,7 +2077,7 @@ export default function ProspectDashboards() {
                       <Checkbox checked={selectedIds.has(dashboard.id)} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="truncate font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a] transition-colors group-hover:text-[#2d6df6]">
+                      <h3 className="truncate font-display text-[1.45rem] font-semibold tracking-[-0.03em] text-[#0d1b2a] transition-colors group-hover:text-[#2d6df6]">
                         {dashboard.prospect_name}
                       </h3>
                       <p className="mt-1 text-sm text-[#5d7188]">
@@ -2103,12 +2101,12 @@ export default function ProspectDashboards() {
                 {(dashboard.prospect_title || dashboard.prospect_company) && (
                   <div className="mb-4 flex flex-wrap gap-2">
                     {dashboard.prospect_title && (
-                      <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f4f8fc] px-3 py-1 text-xs text-[#56708d]">
+                      <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f8fbff] px-3 py-1 text-xs text-[#56708d]">
                         {dashboard.prospect_title}
                       </span>
                     )}
                     {dashboard.prospect_company && (
-                      <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f4f8fc] px-3 py-1 text-xs text-[#56708d]">
+                      <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f8fbff] px-3 py-1 text-xs text-[#56708d]">
                         {dashboard.prospect_company}
                       </span>
                     )}
@@ -2122,24 +2120,24 @@ export default function ProspectDashboards() {
                 )}
 
                 {/* Stats Row */}
-                <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
-                    <div className="mb-2 flex items-center gap-2 text-[#56708d]">
+                <div className="mb-4 space-y-2 rounded-[16px] border border-[#0d1b2a]/8 bg-[#f8fbff] px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-[#56708d]">
                       <Eye className="h-4 w-4 text-[#2d6df6]" />
-                      <span className="text-xs uppercase tracking-[0.18em]">Views</span>
-                    </div>
-                    <p className="font-semibold text-[#0d1b2a]">{dashboard.view_count || 0}</p>
+                      Views
+                    </span>
+                    <span className="font-medium text-[#0d1b2a]">{dashboard.view_count || 0}</span>
                   </div>
-                  <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#f5f8fc] p-3 text-sm">
-                    <div className="mb-2 flex items-center gap-2 text-[#56708d]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-[#56708d]">
                       <Clock className="h-4 w-4 text-[#2d6df6]" />
-                      <span className="text-xs uppercase tracking-[0.18em]">Last viewed</span>
-                    </div>
-                    <p className="font-semibold text-[#0d1b2a]">
+                      Last viewed
+                    </span>
+                    <span className="font-medium text-right text-[#0d1b2a]">
                       {dashboard.last_viewed_at
                         ? formatDistanceToNow(new Date(dashboard.last_viewed_at), { addSuffix: true })
                         : 'Not yet viewed'}
-                    </p>
+                    </span>
                   </div>
                 </div>
 
@@ -2218,7 +2216,7 @@ export default function ProspectDashboards() {
 
       {/* Side Panel */}
       <Sheet open={!!selectedDashboard} onOpenChange={() => setSelectedDashboard(null)}>
-        <SheetContent className="!w-full sm:!max-w-xl border-l border-[#0d1b2a]/10 bg-[#f8fbff] p-0 overflow-y-auto overflow-x-hidden" aria-describedby={undefined}>
+        <SheetContent className="!w-full sm:!max-w-xl border-l border-[#0d1b2a]/10 bg-white p-0 overflow-y-auto overflow-x-hidden" aria-describedby={undefined}>
           <VisuallyHidden>
             <SheetTitle>Prospect Dashboard Details</SheetTitle>
           </VisuallyHidden>
@@ -2238,7 +2236,7 @@ export default function ProspectDashboards() {
 
               <ScrollArea className="flex-1 overflow-x-hidden">
                 {/* Header */}
-                <div className="paper-noise border-b border-[#0d1b2a]/8 bg-white/88 p-6">
+                <div className="border-b border-[#0d1b2a]/8 bg-white p-6">
                   <div className="flex items-start justify-between mb-4">
                     <Badge
                       variant={selectedDashboard.is_active ? 'default' : 'secondary'}
@@ -2323,17 +2321,17 @@ export default function ProspectDashboards() {
                     </div>
                   )}
                 </div>
-                <div className="space-y-6 bg-[#f8fbff] p-6 pr-8">
+                <div className="space-y-6 bg-white p-6 pr-8">
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-white/90 p-4 shadow-[0_14px_28px_rgba(13,27,42,0.06)]">
+                    <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f8fbff] p-4">
                       <div className="mb-1 flex items-center gap-2">
                         <Eye className="h-4 w-4 text-[#2d6df6]" />
                         <span className="text-sm font-medium text-[#56708d]">Total Views</span>
                       </div>
                       <p className="font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">{selectedDashboard.view_count || 0}</p>
                     </div>
-                    <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-white/90 p-4 shadow-[0_14px_28px_rgba(13,27,42,0.06)]">
+                    <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f8fbff] p-4">
                       <div className="mb-1 flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-[#2d6df6]" />
                         <span className="text-sm font-medium text-[#56708d]">Created</span>
@@ -2345,7 +2343,7 @@ export default function ProspectDashboards() {
                   </div>
 
                   {selectedDashboard.last_viewed_at && (
-                    <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f4f8fc] p-4">
+                    <div className="rounded-[18px] border border-[#0d1b2a]/8 bg-[#f8fbff] p-4">
                       <div className="mb-1 flex items-center gap-2">
                         <Clock className="h-4 w-4 text-[#2d6df6]" />
                         <span className="text-sm font-medium text-[#56708d]">Last Viewed</span>

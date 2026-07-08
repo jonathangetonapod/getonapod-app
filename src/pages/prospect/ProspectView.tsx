@@ -193,10 +193,6 @@ export default function ProspectView() {
   // Review panel state
   const [showReviewPanel, setShowReviewPanel] = useState(false)
 
-  // CTA bar state (shows after scrolling)
-  const [showCtaBar, setShowCtaBar] = useState(false)
-  const [ctaBarDismissed, setCtaBarDismissed] = useState(false)
-
   // Pricing feature modal state
   const [selectedPricingFeature, setSelectedPricingFeature] = useState<string | null>(null)
 
@@ -314,22 +310,6 @@ export default function ProspectView() {
   useEffect(() => {
     setCurrentPage(1)
   }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter, sortBy])
-
-  // Show CTA bar after scrolling down
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollY = window.scrollY
-      const threshold = 600 // Show after scrolling 600px
-      if (scrollY > threshold && !ctaBarDismissed) {
-        setShowCtaBar(true)
-      } else if (scrollY <= threshold) {
-        setShowCtaBar(false)
-      }
-    }
-
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [ctaBarDismissed])
 
   // Generate personalized tagline if not already set
   useEffect(() => {
@@ -827,23 +807,20 @@ export default function ProspectView() {
         Skip to opportunities
       </a>
 
-      <section className="paper-noise relative overflow-hidden px-4 pb-10 pt-16 md:pb-14 md:pt-20">
-        <div className="absolute left-0 top-16 h-[240px] w-[240px] rounded-full bg-[#2d6df6]/10 blur-3xl sm:h-[380px] sm:w-[380px]" />
-        <div className="absolute right-0 top-4 h-[220px] w-[220px] rounded-full bg-[#dce7f5]/60 blur-3xl sm:h-[360px] sm:w-[360px]" />
-
-        <div className="container relative mx-auto">
-          <div className="grid gap-10 xl:grid-cols-[1.02fr_0.98fr] xl:items-start xl:gap-14">
-            <div className="max-w-3xl">
-              <div className="animate-fade-up flex flex-wrap items-center gap-3">
+      <section className="px-4 pb-10 pt-14 md:pb-12 md:pt-16">
+        <div className="container mx-auto">
+          <div className="grid gap-6 rounded-[32px] border border-[#0d1b2a]/8 bg-white px-5 py-6 shadow-[0_18px_38px_rgba(13,27,42,0.08)] sm:px-6 sm:py-7 lg:grid-cols-[minmax(0,1.2fr)_360px] lg:gap-8">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
                 <p className="section-kicker">Prospect dashboard</p>
-                <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
-                  Private shortlist built for {prospectFirstName}
+                <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f6f9fc] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
+                  Built for {prospectFirstName}
                 </span>
               </div>
 
-              <div className="mt-6 flex items-center gap-4">
+              <div className="mt-5 flex items-center gap-4">
                 {dashboard.prospect_image_url && (
-                  <div className="h-16 w-16 overflow-hidden rounded-[22px] border border-[#0d1b2a]/10 bg-white shadow-[0_16px_34px_rgba(13,27,42,0.08)] sm:h-20 sm:w-20">
+                  <div className="h-14 w-14 overflow-hidden rounded-[18px] border border-[#0d1b2a]/10 bg-white sm:h-16 sm:w-16">
                     <img
                       src={dashboard.prospect_image_url}
                       alt={dashboard.prospect_name}
@@ -851,25 +828,22 @@ export default function ProspectView() {
                     />
                   </div>
                 )}
-                <div className="rounded-[20px] border border-[#0d1b2a]/8 bg-[#ffffff]/80 px-4 py-3 shadow-[0_16px_34px_rgba(13,27,42,0.08)] backdrop-blur-sm">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#56708d]">Built around your story</p>
-                  <p className="mt-1 text-sm leading-6 text-[#30465f]">
-                    Review the rooms that fit, approve the strongest ones, and we handle outreach from there.
-                  </p>
-                </div>
+                <p className="max-w-xl text-sm leading-6 text-[#4c5d73]">
+                  Review the best-fit shows, approve the ones you want, and we handle the outreach and booking workflow from there.
+                </p>
               </div>
 
-              <h1 className="animate-fade-up animation-delay-100 mt-6 font-editorial text-[clamp(3rem,7vw,6.4rem)] leading-[0.9] tracking-[-0.05em] text-[#0d1b2a] text-balance">
-                Hi, {prospectFirstName}. Your podcast shortlist is ready.
+              <h1 className="mt-6 font-editorial text-[clamp(2.8rem,7vw,5.4rem)] leading-[0.92] tracking-[-0.05em] text-[#0d1b2a] text-balance">
+                Hi, {prospectFirstName}. Your shortlist is ready.
               </h1>
 
-              <p className="animate-fade-up animation-delay-200 mt-6 max-w-2xl text-lg leading-8 text-[#4c5d73] md:text-xl">
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-[#4c5d73]">
                 {loadingPodcasts
                   ? 'Loading your personalized podcast matches.'
                   : personalizedTagline || `${sortedPodcasts.length} podcasts matched to your expertise and audience fit.`}
               </p>
 
-              <div className="animate-fade-up animation-delay-300 mt-8 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Button variant="hero" size="xl" className="rounded-full px-8 text-base" asChild>
                   <a href="#opportunities">Review Opportunities</a>
                 </Button>
@@ -896,144 +870,117 @@ export default function ProspectView() {
                 ) : null}
               </div>
 
-              <div className="animate-fade-up animation-delay-400 mt-8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#ffffff]/82 p-4 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm sm:p-5">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-4">
-                    <p className="section-kicker">Total listeners</p>
-                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
-                      {formatNumber(totalReach)}+
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">Combined estimated reach across your shortlist.</p>
-                  </div>
-                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-4">
-                    <p className="section-kicker">Shows matched</p>
-                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
-                      {uniquePodcasts.length}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">Podcast rooms curated around your expertise and audience overlap.</p>
-                  </div>
-                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f5f8fc] px-4 py-4">
-                    <p className="section-kicker">Average rating</p>
-                    <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
-                      {avgRating > 0 ? avgRating.toFixed(1) : '4.5'}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">A quick quality signal across the current shortlist.</p>
-                  </div>
+              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f8fbff] px-4 py-4">
+                  <p className="section-kicker">Total listeners</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                    {formatNumber(totalReach)}+
+                  </p>
+                </div>
+                <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f8fbff] px-4 py-4">
+                  <p className="section-kicker">Shows matched</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                    {uniquePodcasts.length}
+                  </p>
+                </div>
+                <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-[#f8fbff] px-4 py-4">
+                  <p className="section-kicker">Average rating</p>
+                  <p className="mt-2 font-display text-3xl font-semibold tracking-[-0.05em] text-[#0d1b2a]">
+                    {avgRating > 0 ? avgRating.toFixed(1) : '4.5'}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="animate-fade-up animation-delay-300 xl:pt-4">
-              <div className="overflow-hidden rounded-[34px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_32px_80px_rgba(13,27,42,0.22)] sm:p-5">
-                <div className="rounded-[24px] border border-[#8cb0dd]/18 bg-[#10263b] px-4 py-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="section-kicker text-[#8cb0dd]">What happens next</p>
-                      <p className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
-                        Approve the rooms you want us to pursue and we take it from there.
-                      </p>
-                    </div>
-                    <div className="self-start rounded-full border border-[#8cb0dd]/25 bg-[#8cb0dd]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#dce9f7]">
-                      Approval first
-                    </div>
-                  </div>
-                </div>
+            <div className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#f8fbff] p-5">
+              <p className="section-kicker">How this works</p>
+              <h2 className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                Approve the shows you want us to pitch.
+              </h2>
 
-                <div className="mt-4 rounded-[24px] border border-white/10 bg-white/5 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="section-kicker text-[#8cb0dd]">Review progress</p>
-                      <p className="mt-2 text-sm leading-6 text-[#d6e5f5]">
-                        {reviewedCountTotal > 0
-                          ? `${reviewedCountTotal} of ${uniquePodcasts.length} reviewed so far`
-                          : 'Start by approving the rooms that feel strongest for your story.'}
-                      </p>
-                    </div>
-                    <div className="rounded-full border border-white/10 bg-[#0b2036] px-3 py-2 text-sm font-semibold text-[#f7fafc]">
-                      {approvedCountTotal} approved
-                    </div>
+              <div className="mt-5 rounded-[22px] border border-[#0d1b2a]/8 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-[#0d1b2a]">Review progress</p>
+                    <p className="mt-1 text-sm leading-6 text-[#4c5d73]">
+                      {reviewedCountTotal > 0
+                        ? `${reviewedCountTotal} of ${uniquePodcasts.length} reviewed so far`
+                        : 'Start by approving the rooms that feel strongest for your story.'}
+                    </p>
                   </div>
-                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,#8cb0dd_0%,#f7fafc_100%)] transition-all duration-500"
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
+                  <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f6f9fc] px-3 py-1.5 text-sm font-semibold text-[#0d1b2a]">
+                    {approvedCountTotal} approved
+                  </span>
                 </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#e5edf6]">
+                  <div
+                    className="h-full rounded-full bg-[#2d6df6] transition-all duration-500"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">01</p>
-                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">Open any show to see the fit logic, audience signals, and suggested angles.</p>
+              <div className="mt-5 space-y-3">
+                {[
+                  'Open any show to see the fit logic, audience signals, and suggested angles.',
+                  'Approve the shows you want pursued, reject the ones that are off, and leave notes where useful.',
+                  'Once approved, our team handles the pitching, follow-up, and booking workflow.',
+                ].map((step, index) => (
+                  <div key={step} className="flex gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-3">
+                    <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#eef4ff] text-xs font-semibold text-[#2d6df6]">
+                      {index + 1}
+                    </span>
+                    <p className="text-sm leading-6 text-[#4c5d73]">{step}</p>
                   </div>
-                  <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">02</p>
-                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">Approve the shows you want pursued, reject the ones that are off, and leave notes where useful.</p>
-                  </div>
-                  <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#8cb0dd]">03</p>
-                    <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">Once approved, our team handles the pitching, follow-up, and booking workflow.</p>
-                  </div>
-                </div>
+                ))}
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3">
+                <Button
+                  variant="outline"
+                  className="justify-start rounded-full border-[#0d1b2a]/10 bg-white"
+                  onClick={() => setShowReviewPanel(true)}
+                >
+                  <BarChart3 className="mr-2 h-4 w-4 text-[#2d6df6]" />
+                  About the data
+                </Button>
 
                 {dashboard.loom_video_url && dashboard.show_loom_video ? (
                   <button
                     onClick={() => setShowLoomVideo(true)}
-                    className="mt-4 block w-full rounded-[26px] border border-white/10 bg-white/5 p-4 text-left transition-colors hover:bg-white/10"
+                    className="rounded-[22px] border border-[#0d1b2a]/8 bg-white p-4 text-left transition-colors hover:bg-[#f8fbff]"
                   >
-                    <div className="grid gap-4 sm:grid-cols-[0.85fr_1.15fr] sm:items-center">
-                      <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#0b2036]">
-                        <div className="relative aspect-video">
-                          {dashboard.loom_thumbnail_url ? (
-                            <img
-                              src={dashboard.loom_thumbnail_url}
-                              alt={dashboard.loom_video_title || 'Your personal video message'}
-                              className="h-full w-full object-cover"
-                              loading="eager"
-                              decoding="async"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(45,109,246,0.35),_transparent_40%),#10263b]">
-                              <Video className="h-10 w-10 text-[#dce9f7]" />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="section-kicker text-[#8cb0dd]">Watch this first</p>
-                        <p className="mt-2 font-display text-2xl font-semibold tracking-[-0.04em] text-[#f7fafc]">
-                          {dashboard.loom_video_title || 'Your personal video message'}
-                        </p>
-                        <p className="mt-3 text-sm leading-7 text-[#d6e5f5]">
-                          A quick walkthrough of how to use this dashboard and which opportunities deserve the most attention first.
-                        </p>
-                        <p className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#f7fafc]">
-                          Watch the walkthrough
-                          <ArrowRight className="h-4 w-4" />
-                        </p>
-                      </div>
-                    </div>
+                    <p className="section-kicker">Watch this first</p>
+                    <p className="mt-2 font-medium text-[#0d1b2a]">
+                      {dashboard.loom_video_title || 'Your personal video message'}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#4c5d73]">
+                      A quick walkthrough of how to use this dashboard and where to start.
+                    </p>
+                    <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[#0d1b2a]">
+                      Watch the walkthrough
+                      <ArrowRight className="h-4 w-4" />
+                    </p>
                   </button>
                 ) : (
-                  <div className="mt-4 rounded-[24px] border border-white/10 bg-[#0b2036] px-4 py-4">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#8cb0dd]">How to review</p>
-                    <p className="mt-2 text-sm leading-7 text-[#d6e5f5]">
+                  <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-white px-4 py-4">
+                    <p className="text-sm leading-6 text-[#4c5d73]">
                       Use the shortlist below to decide which rooms feel most aligned with your voice, offer, and audience. A short note on any approval helps our team pitch more sharply.
                     </p>
                   </div>
                 )}
-
-                {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
-                  <div className="mt-4 rounded-[22px] border border-[#8cb0dd]/20 bg-[#8cb0dd]/10 px-4 py-3 text-sm text-[#dce9f7]">
-                    AI insights ready: {analysisCache.size}/{uniquePodcasts.length}
-                  </div>
-                )}
-                {analysisCache.size >= uniquePodcasts.length && analysisCache.size > 0 && (
-                  <div className="mt-4 rounded-[22px] border border-[#8cb0dd]/20 bg-[#8cb0dd]/10 px-4 py-3 text-sm text-[#dce9f7]">
-                    All AI fit insights are loaded and ready.
-                  </div>
-                )}
               </div>
+
+              {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
+                <div className="mt-4 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-3 text-sm text-[#4c5d73]">
+                  AI insights ready: {analysisCache.size}/{uniquePodcasts.length}
+                </div>
+              )}
+              {analysisCache.size >= uniquePodcasts.length && analysisCache.size > 0 && (
+                <div className="mt-4 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-3 text-sm text-[#4c5d73]">
+                  All AI fit insights are loaded and ready.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1646,85 +1593,85 @@ export default function ProspectView() {
 
       {/* CTA Section */}
       {dashboard?.show_pricing_section !== false && (
-        <section className="bg-[#0b2036] px-4 py-12 text-[#f7fafc] md:py-20">
+        <section className="px-4 py-12 md:py-16">
           <div className="container mx-auto">
-            <div className="mx-auto overflow-hidden rounded-[38px] border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(45,109,246,0.28),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(140,176,221,0.18),_transparent_34%),#10263b]">
-              <div className="grid gap-8 px-6 py-10 md:px-10 md:py-14 lg:grid-cols-[1.06fr_0.94fr] lg:gap-12">
+            <div className="mx-auto overflow-hidden rounded-[32px] border border-[#0d1b2a]/8 bg-white shadow-[0_20px_42px_rgba(13,27,42,0.08)]">
+              <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.06fr_0.94fr] lg:gap-10">
                 <div className="max-w-2xl">
-                  <p className="section-kicker text-[#8cb0dd]">Next step</p>
-                  <h2 className="mt-4 font-editorial text-4xl leading-[0.92] tracking-[-0.05em] sm:text-5xl md:text-6xl">
+                  <p className="section-kicker">Next step</p>
+                  <h2 className="mt-4 font-editorial text-4xl leading-[0.92] tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl">
                     Turn the approved rooms into real bookings.
                   </h2>
 
-                  <p className="mt-5 max-w-xl text-sm leading-8 text-[#d6e5f5] sm:text-base md:text-lg lg:text-xl">
+                  <p className="mt-5 max-w-xl text-base leading-8 text-[#4c5d73] md:text-lg">
                     Once you approve the podcasts that feel right, our team handles host outreach, follow-up, scheduling, and the booking workflow.
                   </p>
 
                   <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                     <Button
-                      variant="heroOutline"
+                      variant="hero"
                       size="xl"
-                      className="min-h-[48px] w-full rounded-full bg-[#f7fafc] text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
+                      className="min-h-[48px] w-full rounded-full text-sm sm:min-h-[56px] sm:w-auto sm:text-base"
                       onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
                     >
                       <Phone className="mr-2 h-4 w-4" />
                       Book a Call
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="xl"
-                      className="min-h-[48px] w-full rounded-full border border-white/12 text-sm text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc] sm:min-h-[56px] sm:w-auto sm:text-base"
+                      className="min-h-[48px] w-full rounded-full border-[#0d1b2a]/10 bg-white text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
                       onClick={() => window.open('/what-to-expect', '_blank')}
                     >
                       See What to Expect
                     </Button>
                   </div>
 
-                  <p className="mt-5 text-sm text-[#c7d9ee]">
+                  <p className="mt-5 text-sm text-[#5d7188]">
                     Month-to-month. Cancel anytime. Use the dashboard first, then decide how you want to move.
                   </p>
                 </div>
 
-                <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-                  <p className="section-kicker text-[#8cb0dd]">Starter plan</p>
+                <div className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#f8fbff] p-6">
+                  <p className="section-kicker">Starter plan</p>
                   <div className="mt-4 flex items-end gap-2">
-                    <span className="font-display text-6xl font-semibold tracking-[-0.06em] text-[#f7fafc]">$749</span>
-                    <span className="pb-2 text-sm text-[#c7d9ee]">/month</span>
+                    <span className="font-display text-6xl font-semibold tracking-[-0.06em] text-[#0d1b2a]">$749</span>
+                    <span className="pb-2 text-sm text-[#5d7188]">/month</span>
                   </div>
 
                   <div className="mt-6 space-y-3">
                     <button
                       type="button"
-                      className="flex w-full items-start gap-3 rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10"
+                      className="flex w-full items-start gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-4 text-left transition-colors hover:bg-[#f2f7ff]"
                       onClick={() => setSelectedPricingFeature('2+ guaranteed podcast bookings every month')}
                     >
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#8cb0dd]" />
-                      <span className="flex-1 text-sm leading-7 text-[#d6e5f5]">2+ guaranteed podcast bookings every month</span>
-                      <Info className="mt-0.5 h-4 w-4 text-[#8cb0dd]" />
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#2d6df6]" />
+                      <span className="flex-1 text-sm leading-7 text-[#4c5d73]">2+ guaranteed podcast bookings every month</span>
+                      <Info className="mt-0.5 h-4 w-4 text-[#2d6df6]" />
                     </button>
                     <button
                       type="button"
-                      className="flex w-full items-start gap-3 rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10"
+                      className="flex w-full items-start gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-4 text-left transition-colors hover:bg-[#f2f7ff]"
                       onClick={() => setSelectedPricingFeature('Podcast Command Center access')}
                     >
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#8cb0dd]" />
-                      <span className="flex-1 text-sm leading-7 text-[#d6e5f5]">Podcast Command Center access</span>
-                      <Info className="mt-0.5 h-4 w-4 text-[#8cb0dd]" />
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#2d6df6]" />
+                      <span className="flex-1 text-sm leading-7 text-[#4c5d73]">Podcast Command Center access</span>
+                      <Info className="mt-0.5 h-4 w-4 text-[#2d6df6]" />
                     </button>
                     <button
                       type="button"
-                      className="flex w-full items-start gap-3 rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10"
+                      className="flex w-full items-start gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-4 text-left transition-colors hover:bg-[#f2f7ff]"
                       onClick={() => setSelectedPricingFeature('Reporting & analytics dashboard')}
                     >
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#8cb0dd]" />
-                      <span className="flex-1 text-sm leading-7 text-[#d6e5f5]">Reporting and analytics dashboard</span>
-                      <Info className="mt-0.5 h-4 w-4 text-[#8cb0dd]" />
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#2d6df6]" />
+                      <span className="flex-1 text-sm leading-7 text-[#4c5d73]">Reporting and analytics dashboard</span>
+                      <Info className="mt-0.5 h-4 w-4 text-[#2d6df6]" />
                     </button>
                   </div>
 
-                  <div className="mt-6 rounded-[24px] border border-white/10 bg-[#0b2036] px-4 py-4">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#8cb0dd]">Best for</p>
-                    <p className="mt-2 text-sm leading-7 text-[#d6e5f5]">
+                  <div className="mt-6 rounded-[22px] border border-[#0d1b2a]/8 bg-white px-4 py-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[#5d7188]">Best for</p>
+                    <p className="mt-2 text-sm leading-7 text-[#4c5d73]">
                       Founders, operators, and experts who want steady guest appearances without managing the booking process themselves.
                     </p>
                   </div>
@@ -1754,66 +1701,6 @@ export default function ProspectView() {
           </p>
         </div>
       </footer>
-
-      {/* Floating Info Button */}
-      <button
-        onClick={() => setShowReviewPanel(true)}
-        className="fixed bottom-24 right-4 z-40 inline-flex items-center gap-2 rounded-full border border-[#0d1b2a]/10 bg-white/92 px-4 py-3 text-sm font-medium text-[#0d1b2a] shadow-[0_16px_34px_rgba(13,27,42,0.12)] backdrop-blur-sm transition-colors hover:bg-white"
-      >
-        <BarChart3 className="h-4 w-4 text-[#2d6df6]" />
-        About the data
-      </button>
-
-      {/* Floating CTA Bar */}
-      {dashboard?.show_pricing_section !== false && (
-        <div
-          className={cn(
-            "fixed bottom-0 left-0 right-0 z-50 transition-all duration-500 transform",
-            showCtaBar && !ctaBarDismissed
-              ? "translate-y-0 opacity-100"
-              : "translate-y-full opacity-0 pointer-events-none"
-          )}
-        >
-          <div className="border-t border-[#0d1b2a]/10 bg-[#081a2b]/96 shadow-[0_-10px_34px_rgba(13,27,42,0.22)] backdrop-blur-xl">
-            <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
-              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <div className="hidden sm:flex p-2.5 rounded-xl bg-white/10 backdrop-blur-sm shadow-lg">
-                  <Sparkles className="h-5 w-5 text-[#dce9f7]" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[#f7fafc] font-semibold text-sm sm:text-base md:text-lg truncate">
-                    Approve the right shows, then let us handle the outreach.
-                  </p>
-                  <p className="text-[#c7d9ee] text-[11px] sm:text-sm md:text-base truncate">
-                    Book a call if you want help picking the strongest rooms first.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
-                <Button
-                  variant="heroOutline"
-                  size="sm"
-                  className="gap-1.5 sm:gap-2 whitespace-nowrap bg-[#f7fafc] text-[#0d1b2a] text-xs sm:text-sm font-semibold h-9 sm:h-11 px-3 sm:px-5 rounded-full hover:bg-white"
-                  onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
-                >
-                  <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="hidden sm:inline">Book Your Call</span>
-                  <span className="sm:hidden">Book Call</span>
-                  <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 sm:h-9 sm:w-9 text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-all"
-                  onClick={() => setCtaBarDismissed(true)}
-                >
-                  <X className="h-4 w-4 sm:h-5 sm:w-5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Data Methodology Panel */}
       <Sheet open={showReviewPanel} onOpenChange={setShowReviewPanel}>
