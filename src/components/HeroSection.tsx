@@ -20,8 +20,8 @@ const operatingSignals = [
 ];
 
 const dashboardRows = [
-  { name: 'Fintech Growth Show', fit: '9.2', status: 'Pitch sent', date: 'Pending' },
-  { name: 'Founder Operator', fit: '8.8', status: 'Booked', date: 'Aug 14' },
+  { name: 'Fintech Growth Show', fit: '9.2', status: 'Ready', date: 'Awaiting approval' },
+  { name: 'Founder Operator', fit: '8.8', status: 'Booked', date: 'Recording Aug 14' },
   { name: 'WealthTech Weekly', fit: '8.5', status: 'Recorded', date: 'Publishing soon' },
 ];
 
@@ -119,36 +119,50 @@ const HeroSection = () => {
             </div>
           </div>
 
-          <div className="animate-fade-up animation-delay-300 relative lg:pt-4">
-            <div className="absolute -left-4 top-8 hidden rounded-full border border-[#0d1b2a]/8 bg-[#ffffff] px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-[#5d7188] md:block">
-              Buyer-fit over vanity reach
-            </div>
-            <div className="absolute bottom-10 left-0 hidden rounded-[24px] border border-[#0d1b2a]/10 bg-[#ffffff] p-4 shadow-[0_18px_40px_rgba(13,27,42,0.12)] md:block">
-              <p className="section-kicker">Attention needed</p>
-              <p className="mt-2 font-display text-2xl font-semibold text-[#0d1b2a]">3 shows ready for approval</p>
-              <p className="mt-1 text-sm text-[#5d7188]">Greenlight them and we start pitching today.</p>
-            </div>
-
+          <div className="animate-fade-up animation-delay-300 lg:pt-4">
             <div className="overflow-hidden rounded-[30px] border border-[#0d1b2a]/10 bg-[#081a2b] p-4 text-[#f7fafc] shadow-[0_32px_80px_rgba(13,27,42,0.22)] sm:rounded-[36px] sm:p-5">
-              <div className="flex flex-col items-start gap-3 rounded-[24px] border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="rounded-[24px] border border-[#8cb0dd]/18 bg-[#10263b] px-4 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="section-kicker text-[#8cb0dd]">Needs your approval</p>
+                    <p className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em] text-[#f7fafc]">
+                      3 shortlisted shows are ready for review.
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-[#c7d9ee]">
+                      Approve them and outreach can start immediately.
+                    </p>
+                  </div>
+                  <div className="self-start rounded-full border border-[#8cb0dd]/25 bg-[#8cb0dd]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#dce9f7]">
+                    Live client portal
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col items-start gap-3 rounded-[24px] border border-white/10 bg-white/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="section-kicker text-[#8cb0dd]">Sample portal view</p>
+                  <p className="section-kicker text-[#8cb0dd]">Client portal preview</p>
                   <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-0.05em]">
-                    Podcast Authority Desk
+                    Campaign Desk
                   </h2>
                 </div>
                 <div className="self-start rounded-full border border-[#8cb0dd]/30 bg-[#8cb0dd]/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-[#dce9f7]">
-                  Campaign live
+                  Buyer-fit workflow
                 </div>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
                 <div className="rounded-[24px] border border-white/10 bg-[#f8fbff] p-4 text-[#0d1b2a] sm:rounded-[28px] sm:p-5">
+                  <div className="mb-4">
+                    <p className="section-kicker">Current shortlist</p>
+                    <p className="mt-2 text-sm leading-6 text-[#5d7188]">
+                      Review the best-fit shows before anything is pitched on your behalf.
+                    </p>
+                  </div>
                   <div className="hidden grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr] gap-3 border-b border-[#0d1b2a]/10 pb-3 text-[11px] uppercase tracking-[0.24em] text-[#5d7188] sm:grid">
-                    <span>Podcast</span>
+                    <span>Show</span>
                     <span>Fit</span>
-                    <span>Status</span>
-                    <span>Date</span>
+                    <span>Stage</span>
+                    <span>Next step</span>
                   </div>
 
                   <div className="mt-4 space-y-3">
@@ -167,7 +181,7 @@ const HeroSection = () => {
                           </span>
                         </div>
                         <div className="mt-3 flex items-center justify-between text-xs uppercase tracking-[0.16em] text-[#5d7188] sm:hidden">
-                          <span>Next date</span>
+                          <span>Next step</span>
                           <span className="text-right text-sm normal-case tracking-normal text-[#30465f]">{row.date}</span>
                         </div>
                         <div className="hidden grid-cols-[1.5fr_0.6fr_0.8fr_0.8fr] items-center gap-3 sm:grid">
@@ -183,31 +197,29 @@ const HeroSection = () => {
 
                 <div className="flex flex-col gap-4">
                   <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
-                    <p className="section-kicker text-[#8cb0dd]">Approved this month</p>
+                    <p className="section-kicker text-[#8cb0dd]">In motion this month</p>
                     <p className="mt-3 font-display text-4xl font-semibold tracking-[-0.05em]">11</p>
                     <p className="mt-2 text-sm leading-6 text-[#c7d9ee]">
-                      Approved shows in motion across founder, finance, and operator categories.
+                      Target shows moving across approval, outreach, booking, and publish stages.
                     </p>
                   </div>
 
                   <div className="rounded-[28px] border border-[#2d6df6]/30 bg-[#132a44] p-5 text-[#f7fafc]">
-                    <p className="section-kicker text-[#8cb0dd]">Portal view</p>
+                    <p className="section-kicker text-[#8cb0dd]">What you see</p>
                     <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em]">
-                      Shortlist, approvals, bookings, and published episodes.
+                      Shortlist, approvals, bookings, and publish tracking.
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[#c7d9ee]/90">
-                      No spreadsheets. No status-chasing. No blind spots.
+                      One place to review the work without chasing updates or guessing what happens next.
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="mt-4 rounded-[28px] border border-white/10 bg-white/5 p-5">
-                <div className="flex flex-wrap items-center gap-3 text-sm text-[#d6e5f5]">
-                  <span className="rounded-full bg-white/10 px-3 py-1 uppercase tracking-[0.22em]">Approval before outreach</span>
-                  <span className="rounded-full bg-white/10 px-3 py-1 uppercase tracking-[0.22em]">Audience-fit targeting</span>
-                  <span className="rounded-full bg-white/10 px-3 py-1 uppercase tracking-[0.22em]">Prep before recording</span>
-                </div>
+                <p className="text-sm leading-7 text-[#d6e5f5]">
+                  Every show is reviewed for buyer fit, approved before outreach, and tracked through publication.
+                </p>
               </div>
             </div>
           </div>
