@@ -1,14 +1,29 @@
 # Get On A Pod — invite-only workspace MVP
 
-This branch turns the existing internal application into an invite-only,
-multi-account MVP without billing or public registration. A platform
-administrator invites a user; the user accepts the email invitation, creates a
-password, signs in, and manages clients inside one private workspace.
+This application is being converted into an invite-only, multi-account MVP
+without billing or public registration. A platform administrator invites a
+user; the user accepts the email invitation, creates a password, signs in, and
+manages clients inside one private workspace.
 
-The implementation is isolated on `feat/invite-only-workspaces` and the pull
-request remains a draft. `main` and production are unchanged. Do not merge or
-deploy it to production until every staging and repository-protection gate in
-this document passes.
+## Current rollout status
+
+Pull request #1 was merged into `main` on 2026-07-21 at commit
+`3f608997522a76207ace8ebf355daf0cf3642865`. Railway automatically deployed
+that frontend to the production GOAP service. The coordinated Supabase release
+was not applied: the required workspace schema and new Edge Functions,
+including `account-context`, are absent from the production project.
+
+The frontend therefore fails closed on every protected route. An existing Auth
+session can be valid while `/admin/*` and `/app/*` display **Access
+unavailable** because account authorization cannot be resolved. This is a
+known frontend/backend version mismatch, not evidence that a user was removed.
+
+Do not deploy one function or one migration to production as a shortcut. Either
+temporarily restore the pre-MVP frontend from commit `b46a737631ee840f2f49270bdfbbe392833e814a`
+or leave protected routes fail-closed until the complete release passes the
+staging procedure below. An empty Railway `staging` environment exists, but it
+has no service, domain, deployment, or copied production configuration. A
+dedicated sanitized Supabase staging project is still required.
 
 ## MVP roles
 
@@ -370,7 +385,7 @@ Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
 
 | Check | Result |
 | --- | --- |
-| No-secret draft-PR workflow definition | Pass; pinned Node/Deno, locked dependencies, no deploy/database step |
+| No-secret PR workflow definition | Pass; pinned Node/Deno, locked dependencies, no deploy/database step |
 | Clean locked install | Pass; Node 22.22.2 and npm 10.9.7 with lifecycle scripts disabled |
 | Production build/static sitemap | Pass; Vite 7.3.6, 3,139 modules, and five public sitemap URLs |
 | Full and production dependency audits | Pass; zero vulnerabilities at `audit-level=low` |
@@ -479,23 +494,24 @@ open pull requests, forks/clones, GitHub caches, CI artifacts, and third-party
 logs as one incident operation. Rewriting Git history does not replace
 credential rotation.
 
-As checked on 2026-07-21, `main` has no GitHub branch protection. This branch
-defines the **No-secret static validation** workflow, which runs on the pull
-request after push but becomes a required check only when repository protection
-is configured. Before merge, protect `main`, require that check and an
-independent approval, require the branch to be current, and block direct and
-force pushes. The workflow supports GitHub merge queues through `merge_group`.
+As checked on 2026-07-21, `main` has no GitHub branch protection. The repository
+defines the **No-secret static validation** workflow, which runs on pull
+requests but becomes a required check only when repository protection is
+configured. Protect `main` before any additional release merge: require that
+check and an independent approval, require the branch to be current, and block
+direct and force pushes. The workflow supports GitHub merge queues through
+`merge_group`.
 
 The root Dockerfile provides an executable frontend container path, but there
 is intentionally no automated Supabase Edge/database rollout executor in this
-branch: the legacy deploy/migration helpers refuse to run. A staging backend
+repository: the legacy deploy/migration helpers refuse to run. A staging backend
 rollout still needs a reviewed executor or operator procedure bound to the exact
 commit, project, backup, phased manifest, and private evidence directory.
 
-## Merge policy
+## Remaining release gates
 
-`main` and production remain unchanged while this branch is under review. Merge
-only after:
+The source merge has already occurred, but the backend release is not approved.
+Make no additional production mutation until:
 
 1. every exposed credential is rotated;
 2. repository history and external logs are reviewed for the exposed values,
@@ -521,8 +537,8 @@ only after:
 12. the final diff receives security, data/RLS, Edge, frontend, and operations
    review;
 13. `main` branch protection and required checks are enabled; and
-14. the required GitHub check passes on the PR (and any merge-group) synthetic
-    merge containing the exact reviewed feature-head SHA.
+14. the required GitHub check passes on any follow-up PR (and any merge-group)
+    synthetic merge containing the exact reviewed head SHA.
 
 Credentials previously committed in repository history or shared through chat
 remain compromised after source cleanup. Rotate them; deleting the visible

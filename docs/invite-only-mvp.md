@@ -1,5 +1,25 @@
 # Invite-only workspace MVP rollout
 
+## Current deployment state
+
+Pull request #1 was merged into `main` on 2026-07-21 at commit
+`3f608997522a76207ace8ebf355daf0cf3642865`. The production Railway integration
+automatically deployed the new frontend, but no Supabase migration or Edge
+Function deployment was part of that integration. Production currently returns
+`404 NOT_FOUND` for `account-context`, `accept-workspace-invite`,
+`manage-workspace-users`, and `workspace-clients`.
+
+Protected application routes intentionally fail closed in this split-release
+state. Do not bypass the account gate or deploy `account-context` by itself: it
+depends on the workspace schema and server-side authorization RPCs. Immediate
+service restoration requires an explicitly approved frontend rollback to
+`b46a737631ee840f2f49270bdfbbe392833e814a`; otherwise keep protected routes
+closed while the complete release is exercised in staging.
+
+The GOAP Railway project now has an empty `staging` environment with no service,
+domain, deployment, or copied production configuration. A separate sanitized
+Supabase staging project and secure deployer/database access remain prerequisites.
+
 ## Release objective
 
 A platform administrator can invite an account, and the invitee can accept the
@@ -7,13 +27,14 @@ email invitation, set a password, sign in, and manage clients inside one private
 workspace. Existing client rows are assigned to the default Get On A Pod
 workspace; other legacy data remains administrator-only.
 
-This release intentionally has:
+The target MVP intentionally has:
 
 - no public account registration;
 - no billing, checkout, paid add-ons, or order management;
 - no user-managed teams or multiple private-workspace members;
 - no tenant access to legacy modules that are not workspace-aware; and
-- no production mutation before staging acceptance.
+- no additional production mutation before staging acceptance and explicit
+  cutover approval.
 
 The platform administrator uses the existing `/admin/*` application. Invited
 workspace accounts use `/app/clients`. Client portal users are separate client
@@ -253,8 +274,8 @@ backup, phased manifest, and private output directory.
     return 410 and `/health` to report only `status: retired`.
 11. Only after acceptance proves containment and every caller is gone, delete
     the 17 retired remote functions, remove the separate video-generator
-    Railway service, and save the final absent-function inventory. Leave
-    `main`/production unchanged until reviewers approve all evidence.
+    Railway service, and save the final absent-function inventory. Make no
+    additional production mutation until reviewers approve all evidence.
 
 If any migration or assertion fails, keep traffic closed and the new account
 endpoints unavailable, investigate against the staging backup, and continue
@@ -263,11 +284,14 @@ service to work around a failed cutover.
 
 ## Evidence runners
 
-Use the checked-in runners only after this branch has a reviewed checkpoint
-commit. They require the exact `feat/invite-only-workspaces` branch and a clean
-worktree including untracked files, then fingerprint the commit and release
-inputs into sanitized NDJSON. Each output path must be absolute, outside the
-repository, have an existing parent, and not already exist.
+Use the checked-in runners only from the preserved, reviewed
+`feat/invite-only-workspaces` worktree at commit
+`ec94301da5dc64de5d7f7c2c79a96a626dc573af`. The runners require that exact
+branch and a clean worktree including untracked files, then fingerprint the
+commit and release inputs into sanitized NDJSON. Its tree is identical to the
+merged `main` tree at `3f608997522a76207ace8ebf355daf0cf3642865`. Each output
+path must be absolute, outside the repository, have an existing parent, and not
+already exist.
 
 `npm run test:staging` is the black-box HTTP runner. It accepts only dedicated
 `ACCEPTANCE_*` variables for the exact staging project ref, a mandatory
@@ -432,7 +456,7 @@ checks the exact two-stage Docker/Railway Node/npm contract, required browser
 build arguments, non-root runtime, and secret-excluding Docker context;
 launches the real production server to verify routes, assets, and headers; and
 scans the full current worktree plus built output for secrets. The scanner
-includes self-tests and suppresses values. The no-secret draft-PR
+includes self-tests and suppresses values. The no-secret PR
 workflow pins Node 22.22.2, npm 10.9.7, Deno 2.5.2, and its Actions by commit,
 then repeats the gates for pull requests and merge queues. Full-repository
 ESLint retains unrelated legacy debt and is not the release check.
