@@ -93,6 +93,7 @@ import { QAReviewSheet } from '@/components/admin/QAReviewSheet'
 import type { QAPodcastInput } from '@/services/qaReview'
 import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
 import { supabase } from '@/lib/supabase'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import { toast } from 'sonner'
 import { getAllAnalytics, type DetailedCacheStats, type TopCachedPodcast, type RecentlyAddedPodcast, type CategoryStats, type AudienceDistribution, type RatingDistribution } from '@/services/podcastAnalytics'
 
@@ -963,6 +964,15 @@ export default function PodcastDatabase() {
       return
     }
 
+    const imageUrlInput = isNewProspectMode
+      ? prospectImageUrl.trim()
+      : selectedProspect?.prospect_image_url?.trim() || ''
+    const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
+    if (imageUrlInput && !normalizedImageUrl) {
+      toast.error('Profile picture must be a valid HTTP or HTTPS URL')
+      return
+    }
+
     setIsExporting(true)
 
     try {
@@ -1030,8 +1040,10 @@ export default function PodcastDatabase() {
           selectedProspect!.prospect_name,
           selectedProspect!.prospect_bio || '',
           podcastsToExport,
-          selectedProspect!.prospect_image_url || undefined
+          normalizedImageUrl || undefined
         )
+        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
+        if (!spreadsheetUrl) throw new Error('Sheet provider returned an invalid URL')
 
         // Delete the duplicate prospect_dashboards record created by the edge function
         if (result.dashboardSlug) {
@@ -1047,14 +1059,14 @@ export default function PodcastDatabase() {
           .from('prospect_dashboards')
           .update({
             spreadsheet_id: result.spreadsheetId,
-            spreadsheet_url: result.spreadsheetUrl,
+            spreadsheet_url: spreadsheetUrl,
             content_ready: true,
           })
           .eq('id', selectedProspectId)
 
         await cachePodcastsForDashboard(selectedProspectId)
 
-        const dashboardUrl = `https://getonapod.com/prospect/${selectedProspect!.slug}`
+        const dashboardUrl = `https://getonapod.com/prospect/${encodeURIComponent(selectedProspect!.slug)}`
         toast.success(`Created sheet for ${selectedProspect?.prospect_name}!`)
         toast.success(dashboardUrl, { duration: 10000 })
         navigator.clipboard.writeText(dashboardUrl).catch(() => {})
@@ -1065,7 +1077,7 @@ export default function PodcastDatabase() {
           prospectName.trim(),
           prospectBio.trim(),
           podcastsToExport,
-          prospectImageUrl.trim() || undefined
+          normalizedImageUrl || undefined
         )
 
         // Auto-publish and cache podcasts
@@ -1086,7 +1098,7 @@ export default function PodcastDatabase() {
           }
         }
 
-        const dashboardUrl = `https://getonapod.com/prospect/${result.dashboardSlug}`
+        const dashboardUrl = `https://getonapod.com/prospect/${encodeURIComponent(result.dashboardSlug || '')}`
         toast.success(`Dashboard live for ${prospectName}!`)
         toast.success(dashboardUrl, { duration: 10000 })
         navigator.clipboard.writeText(dashboardUrl).catch(() => {})
@@ -2633,8 +2645,7 @@ export default function PodcastDatabase() {
                       {isMatchMode && (
                         <TableHead className="w-12">
                           <Checkbox
-                            checked={allVisibleSelected}
-                            indeterminate={someVisibleSelected}
+                            checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
                             onCheckedChange={handleSelectAllVisible}
                             aria-label="Select all on page"
                           />

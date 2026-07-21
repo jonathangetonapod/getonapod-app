@@ -14,7 +14,6 @@ import {
 const METHODS = ['POST'] as const
 const DASHBOARD_FIELDS = [
   'id',
-  'dashboard_slug',
   'name',
   'bio',
   'photo_url',

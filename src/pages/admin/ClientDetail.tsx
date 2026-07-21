@@ -70,7 +70,7 @@ import { getClientCacheStatus, findCachedPodcastsMetadata } from '@/services/pod
 import type { PodcastOutreachAction } from '@/services/podcastCache'
 import { PodcastOutreachSwiper } from '@/components/admin/PodcastOutreachSwiper'
 import { supabase } from '@/lib/supabase'
-import { openExternalUrl } from '@/lib/externalUrl'
+import { openExternalUrl, safeExternalUrl } from '@/lib/externalUrl'
 import { cn } from '@/lib/utils'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -142,7 +142,7 @@ export default function ClientDetail() {
     recording_date: '',
     publish_date: '',
     episode_url: '',
-    status: 'booked' as const,
+    status: 'booked' as 'booked' | 'in_progress' | 'recorded' | 'published' | 'cancelled',
     notes: '',
     prep_sent: false
   })
@@ -152,7 +152,7 @@ export default function ClientDetail() {
     host_name: '',
     podcast_url: '',
     scheduled_date: '',
-    status: 'booked' as const,
+    status: 'booked' as 'booked' | 'in_progress' | 'recorded' | 'published' | 'cancelled',
     notes: '',
     audience_size: null as number | null,
     podcast_description: '',
@@ -168,7 +168,7 @@ export default function ClientDetail() {
     contact_person: '',
     linkedin_url: '',
     website: '',
-    status: 'active' as const,
+    status: 'active' as 'active' | 'paused' | 'churned',
     notes: '',
     bio: '',
     google_sheet_url: '',
@@ -693,9 +693,11 @@ export default function ClientDetail() {
     setCreatingSheet(true)
     try {
       const result = await createClientGoogleSheet(id, client.name)
+      const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
+      if (!spreadsheetUrl) throw new Error('The generated Google Sheet URL is invalid')
 
       // Update local state
-      setEditClientForm(prev => ({ ...prev, google_sheet_url: result.spreadsheetUrl }))
+      setEditClientForm(prev => ({ ...prev, google_sheet_url: spreadsheetUrl }))
 
       // Refresh client data
       queryClient.invalidateQueries({ queryKey: ['client', id] })
@@ -706,7 +708,7 @@ export default function ClientDetail() {
           <div className="flex flex-col gap-2">
             <p>{result.message}</p>
             <a
-              href={result.spreadsheetUrl}
+              href={spreadsheetUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -732,9 +734,14 @@ export default function ClientDetail() {
 
     setSavingMediaKit(true)
     try {
+      const enteredUrl = editMediaKitUrl.trim()
+      const mediaKitUrl = enteredUrl ? safeExternalUrl(enteredUrl) : null
+      if (enteredUrl && !mediaKitUrl) {
+        throw new Error('Media kit URL must use http or https')
+      }
       const { error } = await supabase
         .from('clients')
-        .update({ media_kit_url: editMediaKitUrl.trim() || null })
+        .update({ media_kit_url: mediaKitUrl })
         .eq('id', id)
 
       if (error) throw error
@@ -800,13 +807,17 @@ export default function ClientDetail() {
         throw new Error(data.error || 'Failed to generate media kit')
       }
 
-      // Save the URL to the client record
-      await supabase
-        .from('clients')
-        .update({ media_kit_url: data.docUrl })
-        .eq('id', id)
+      const mediaKitUrl = typeof data.docUrl === 'string' ? safeExternalUrl(data.docUrl) : null
+      if (!mediaKitUrl) throw new Error('The generated media kit URL is invalid')
 
-      setEditMediaKitUrl(data.docUrl)
+      // Save the URL to the client record
+      const { error: saveError } = await supabase
+        .from('clients')
+        .update({ media_kit_url: mediaKitUrl })
+        .eq('id', id)
+      if (saveError) throw saveError
+
+      setEditMediaKitUrl(mediaKitUrl)
       queryClient.invalidateQueries({ queryKey: ['client', id] })
 
       toast({
@@ -814,7 +825,7 @@ export default function ClientDetail() {
         description: 'Opening Google Doc...'
       })
 
-      window.open(data.docUrl, '_blank')
+      openExternalUrl(mediaKitUrl)
     } catch (error) {
       console.error('Error generating media kit:', error)
       toast({
@@ -861,7 +872,10 @@ export default function ClientDetail() {
       setSampleSequence(data.sequence)
       setSequenceExpanded(true)
       if (data.docUrl) {
-        setSequenceDocUrl(data.docUrl)
+        const docUrl = typeof data.docUrl === 'string' ? safeExternalUrl(data.docUrl) : null
+        if (!docUrl) throw new Error('The generated sequence document URL is invalid')
+        setSequenceDocUrl(docUrl)
+        openExternalUrl(docUrl)
       }
 
       toast({
@@ -869,9 +883,6 @@ export default function ClientDetail() {
         description: data.docUrl ? 'Opening Google Doc...' : `Preview outreach sequence for ${firstName} is ready`,
       })
 
-      if (data.docUrl) {
-        window.open(data.docUrl, '_blank')
-      }
     } catch (error) {
       console.error('Error generating sample sequence:', error)
       toast({
@@ -1350,7 +1361,7 @@ export default function ClientDetail() {
       })
       return
     }
-    window.open(`/client/${client.dashboard_slug}`, '_blank')
+    openExternalUrl(`${window.location.origin}/client/${client.dashboard_slug}`)
   }
 
   const deletePodcastFromDashboard = async (podcastId: string, podcastName: string | null) => {
@@ -1899,7 +1910,7 @@ export default function ClientDetail() {
                   <div>
                     <p className="text-sm font-medium">LinkedIn</p>
                     <a
-                      href={client.linkedin_url}
+                      href={safeExternalUrl(client.linkedin_url) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-primary hover:underline"
@@ -1915,7 +1926,7 @@ export default function ClientDetail() {
                   <div>
                     <p className="text-sm font-medium">Website</p>
                     <a
-                      href={client.website}
+                      href={safeExternalUrl(client.website) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-primary hover:underline"
@@ -1925,13 +1936,13 @@ export default function ClientDetail() {
                   </div>
                 </div>
               )}
-              {client.calendar_link && (
+              {client.calendar_link && safeExternalUrl(client.calendar_link) && (
                 <div className="flex items-center gap-3">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Calendar</p>
                     <a
-                      href={client.calendar_link}
+                      href={safeExternalUrl(client.calendar_link) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-primary hover:underline"
@@ -1941,13 +1952,13 @@ export default function ClientDetail() {
                   </div>
                 </div>
               )}
-              {client.google_sheet_url ? (
+              {client.google_sheet_url && safeExternalUrl(client.google_sheet_url) ? (
                 <div className="flex items-center gap-3">
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Google Sheet (Podcast Export)</p>
                     <a
-                      href={client.google_sheet_url}
+                      href={safeExternalUrl(client.google_sheet_url) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-primary hover:underline flex items-center gap-1"
@@ -2038,11 +2049,11 @@ export default function ClientDetail() {
                       )}
                     </Button>
                   </div>
-                  {editMediaKitUrl && (
+                  {editMediaKitUrl && safeExternalUrl(editMediaKitUrl) && (
                     <Button
                       variant="link"
                       className="h-auto p-0 text-xs mt-2"
-                      onClick={() => window.open(editMediaKitUrl, '_blank')}
+                      onClick={() => openExternalUrl(editMediaKitUrl)}
                     >
                       <ExternalLink className="h-3 w-3 mr-1" />
                       Preview Media Kit
@@ -2120,7 +2131,7 @@ export default function ClientDetail() {
                 <Button
                   variant="link"
                   className="h-auto p-0 text-xs"
-                  onClick={() => window.open(sequenceDocUrl, '_blank')}
+                  onClick={() => openExternalUrl(sequenceDocUrl)}
                 >
                   <ExternalLink className="h-3 w-3 mr-1" />
                   Open Client-Facing Google Doc
@@ -3403,9 +3414,9 @@ export default function ClientDetail() {
                       )}
                       <div className="flex items-center gap-2 mt-1">
                         {getStatusBadge(booking.status)}
-                        {booking.episode_url && (
+                        {booking.episode_url && safeExternalUrl(booking.episode_url) && (
                           <a
-                            href={booking.episode_url}
+                            href={safeExternalUrl(booking.episode_url) ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-primary hover:underline inline-flex items-center gap-1"
@@ -3497,9 +3508,9 @@ export default function ClientDetail() {
                         {getStatusBadge(booking.status)}
                       </TableCell>
                       <TableCell>
-                        {booking.episode_url ? (
+                        {booking.episode_url && safeExternalUrl(booking.episode_url) ? (
                           <a
-                            href={booking.episode_url}
+                            href={safeExternalUrl(booking.episode_url) ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
@@ -4161,9 +4172,9 @@ export default function ClientDetail() {
                       <span className="text-sm">Host: {viewingPodcast.host_name}</span>
                     </div>
                   )}
-                  {viewingPodcast.podcast_url && (
+                  {viewingPodcast.podcast_url && safeExternalUrl(viewingPodcast.podcast_url) && (
                     <a
-                      href={viewingPodcast.podcast_url}
+                      href={safeExternalUrl(viewingPodcast.podcast_url) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
@@ -4224,11 +4235,11 @@ export default function ClientDetail() {
                       <span className="ml-2 font-mono">{viewingPodcast.podcast_id}</span>
                     </div>
                   )}
-                  {viewingPodcast.rss_url && (
+                  {viewingPodcast.rss_url && safeExternalUrl(viewingPodcast.rss_url) && (
                     <div className="col-span-full">
                       <span className="text-muted-foreground">RSS Feed:</span>
                       <a
-                        href={viewingPodcast.rss_url}
+                        href={safeExternalUrl(viewingPodcast.rss_url) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="ml-2 text-primary hover:underline break-all"

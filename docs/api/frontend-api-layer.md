@@ -1,5 +1,10 @@
 # Frontend API Layer Documentation
 
+> **Invite-only MVP warning:** this is a historical full-application reference.
+> The root README and `docs/invite-only-mvp.md` are authoritative. Public
+> signup/billing and magic-link portal examples are retired; tenant code may
+> use only the explicitly workspace-aware client API.
+
 ## Overview
 
 The Authority Built frontend uses a structured API layer built on top of **Supabase** as the primary backend service. The architecture includes direct database operations, Supabase Edge Functions, external API integrations, and a React Query-based data fetching strategy.
@@ -1512,17 +1517,19 @@ if (!data.success) {
 
 ### 3. Data Protection
 - Sensitive operations use Edge Functions
-- Session tokens stored in localStorage with expiration checks
+- Opaque portal tokens stored in tab-scoped `sessionStorage`, with fixed-expiry
+  checks and a tested in-memory fallback when browser storage is denied
 - Admin emails cached with TTL to reduce database load
 
 ## Monitoring and Observability
 
 ### 1. Error Tracking (Sentry)
 - `@sentry/react` integration initialized in `/src/lib/sentry.ts`
-- Browser tracing for performance monitoring (100% sample rate)
-- Session replay for debugging (10% normal sessions, 100% error sessions)
-- User context set on login via `setUser()`
-- `captureException()` helper for contextual error reporting
+- Browser default integrations, tracing, and session replay are disabled
+- User context is limited to an opaque application ID
+- Error events are reduced to generic messages, redacted URLs, and stack
+  locations; arbitrary contexts, tags, extras, and breadcrumbs are removed
+- `captureException()` performs privacy-safe error-only reporting
 - Filters out known noisy errors (Stripe race conditions, ad-blocker network errors)
 - Environment and release tracking via `VITE_SENTRY_DSN` and `VITE_APP_VERSION`
 

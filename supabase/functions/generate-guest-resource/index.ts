@@ -29,14 +29,17 @@ serve(async (req) => {
     })
 
     // Get category-specific context
-    const categoryContext = {
+    const categoryContexts = {
       preparation: 'helping podcast guests prepare for their interviews',
       technical_setup: 'technical setup and audio/video quality for podcast recordings',
       best_practices: 'best practices and tips for successful podcast appearances',
       promotion: 'promoting and maximizing the impact of podcast appearances',
       examples: 'real examples and case studies of successful podcast guesting',
       templates: 'templates, scripts, and frameworks for podcast guests',
-    }[category] || 'podcast guesting success'
+    }
+    const categoryContext = typeof category === 'string' && category in categoryContexts
+      ? categoryContexts[category as keyof typeof categoryContexts]
+      : 'podcast guesting success'
 
     const prompt = `You are an expert content creator for Get On A Pod, a premium podcast booking agency. Create a beautifully formatted, professional resource document about: "${topic}"
 
@@ -109,7 +112,11 @@ Generate the beautifully formatted HTML content now:`
     })
 
     // Clean up the generated content - convert special characters to ASCII equivalents
-    let generatedContent = message.content[0].text
+    const generatedBlock = message.content[0]
+    if (!generatedBlock || generatedBlock.type !== 'text') {
+      throw new Error('Claude returned an unexpected resource content block')
+    }
+    let generatedContent = generatedBlock.text
       // Fix already-corrupted UTF-8 sequences (common double-encoding issues)
       .replace(/â€"/g, '-')   // Corrupted em-dash
       .replace(/â€"/g, '-')   // Corrupted en-dash
@@ -163,7 +170,7 @@ Generate the beautifully formatted HTML content now:`
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to generate content',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to generate content',
       }),
       {
         status: 500,

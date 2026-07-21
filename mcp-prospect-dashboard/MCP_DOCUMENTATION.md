@@ -91,7 +91,7 @@ This approach gives you the best of both worlds: speed + intelligence.
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.22.2 and npm 10.9.7
 - Supabase account with podcast database
 - OpenAI API key (for embeddings)
 - Anthropic API key (for Claude)
@@ -101,7 +101,7 @@ This approach gives you the best of both worlds: speed + intelligence.
 1. **Install dependencies:**
 ```bash
 cd mcp-prospect-dashboard
-npm install
+npm ci --ignore-scripts
 ```
 
 2. **Configure environment variables:**

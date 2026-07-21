@@ -35,7 +35,7 @@ export default function ClientsManagement() {
     contact_person: '',
     linkedin_url: '',
     website: '',
-    status: 'active' as const,
+    status: 'active' as 'active' | 'paused' | 'churned',
     notes: ''
   })
 
@@ -102,7 +102,7 @@ export default function ClientsManagement() {
     }
   }
 
-  const clients = clientsData?.clients || []
+  const clients = useMemo(() => clientsData?.clients || [], [clientsData?.clients])
   const allBookings = bookingsData?.bookings || []
 
   // Analytics calculations (must be before early return to follow Rules of Hooks)

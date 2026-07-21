@@ -24,10 +24,13 @@ export interface Client {
   google_sheet_url: string | null
   media_kit_url: string | null
   prospect_dashboard_slug: string | null
+  dashboard_slug?: string | null
+  dashboard_enabled?: boolean
   outreach_webhook_url: string | null
   bison_campaign_id: string | null
   created_at: string
   updated_at: string
+  company?: string | null
   // Portal access fields
   portal_access_enabled?: boolean
   portal_last_login_at?: string | null

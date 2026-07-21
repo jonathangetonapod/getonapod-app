@@ -129,7 +129,8 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       } catch (parseError) {
         console.error('❌ [JSON PARSE ERROR]', parseError)
         console.error('   Failed text:', jsonText)
-        throw new Error(`Failed to parse JSON: ${parseError.message}`)
+        const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+        throw new Error(`Failed to parse JSON: ${parseErrorMessage}`)
       }
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -252,7 +253,8 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       )
     } catch (parseError) {
       console.log('First parse attempt failed, trying manual extraction...')
-      console.log('Parse error:', parseError.message)
+      const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+      console.log('Parse error:', parseErrorMessage)
 
       // Second attempt: Extract array values by splitting on "," pattern
       // Match the array content between "queries": [ and ]
@@ -289,7 +291,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       console.error('Original text:', jsonText)
       return new Response(
         JSON.stringify({
-          error: `Failed to parse JSON: ${parseError.message}`,
+          error: `Failed to parse JSON: ${parseErrorMessage}`,
           raw_response: content.text,
           cleaned_text: jsonText
         }),
@@ -299,7 +301,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
   } catch (error) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

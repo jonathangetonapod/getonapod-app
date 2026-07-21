@@ -226,7 +226,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to fetch outreach podcasts',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to fetch outreach podcasts',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )

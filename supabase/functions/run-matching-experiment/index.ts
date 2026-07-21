@@ -109,7 +109,8 @@ async function scorePodcast(
       return { podcast_id: podcast.podcast_id, score: null }
     }
   } catch (error) {
-    console.warn(`[RunMatchingExperiment] Scoring error for ${podcast.podcast_name?.substring(0, 50)}:`, error.message)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.warn(`[RunMatchingExperiment] Scoring error for ${podcast.podcast_name?.substring(0, 50)}:`, errorMessage)
     return { podcast_id: podcast.podcast_id, score: null }
   }
 }
@@ -312,7 +313,8 @@ serve(async (req) => {
         console.log(`[RunMatchingExperiment] ${prospect.prospect_name}: TP=${tp} FP=${fp} FN=${fn} TN=${tn} (${aiPicks.size} AI picks out of ${scores.filter(s => s.score !== null).length} scored)`)
 
       } catch (err) {
-        console.warn(`[RunMatchingExperiment] Error evaluating ${prospectId}:`, err.message)
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        console.warn(`[RunMatchingExperiment] Error evaluating ${prospectId}:`, errorMessage)
         continue
       }
     }
@@ -388,7 +390,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[RunMatchingExperiment] Error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal error' }),
+      JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) || 'Internal error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

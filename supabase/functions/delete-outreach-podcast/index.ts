@@ -263,7 +263,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to delete podcast from sheet',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to delete podcast from sheet',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )

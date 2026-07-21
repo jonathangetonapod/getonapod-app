@@ -130,11 +130,12 @@ export async function requireAuthenticatedUser(req: Request): Promise<AuthContex
     throw new HttpError(403, 'EMAIL_REQUIRED', 'A verified account email is required')
   }
 
-  // The legacy admin table is the platform-operator allowlist. It is queried
-  // with the service client so a broken/missing RLS policy cannot grant access.
+  // Platform access is bound to the immutable Auth user, its current email,
+  // and an active default-workspace membership. An email change alone can
+  // therefore never promote a tenant into the legacy admin allowlist.
   const { data: platformAdmin, error: adminError } = await admin.rpc(
-    'is_platform_admin_email',
-    { p_email: email },
+    'is_platform_admin_identity',
+    { p_user_id: data.user.id, p_email: email },
   )
 
   if (adminError) {
@@ -296,7 +297,7 @@ export function optionalString(
   return requireString(value, field, { max })
 }
 
-export function inviteRedirectUrl(membershipId: string): string {
+export function inviteRedirectUrl(): string {
   const configured = [Deno.env.get('APP_URL'), Deno.env.get('WEB_URL')]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value))
@@ -315,9 +316,7 @@ export function inviteRedirectUrl(membershipId: string): string {
 
       // Only an environment-configured origin is used. Paths, queries and
       // fragments from configuration or request input never reach the redirect.
-      const redirect = new URL('/accept-invite', parsed.origin)
-      redirect.searchParams.set('membership_id', membershipId)
-      return redirect.toString()
+      return new URL('/accept-invite', parsed.origin).toString()
     } catch {
       // Try the other explicitly configured application URL.
     }

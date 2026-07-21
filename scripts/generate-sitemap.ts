@@ -1,10 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import { writeFileSync } from 'fs'
 import { resolve } from 'path'
-import { config } from 'dotenv'
 
-// Load environment variables from .env.local
-config({ path: resolve(process.cwd(), '.env.local') })
+const mode = process.argv.slice(2)
+if (mode.length !== 1 || !['--static', '--database'].includes(mode[0])) {
+  throw new Error('Choose exactly one sitemap source: --static or --database')
+}
+const USE_DATABASE = mode[0] === '--database'
 
 const SUPABASE_URL =
   process.env.PODCASTS_SUPABASE_URL ||
@@ -17,8 +19,6 @@ const SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
   ''
-const STRICT_DATABASE = process.env.SITEMAP_REQUIRE_DATABASE === 'true'
-
 function resolveBaseUrl(): string {
   try {
     const parsed = new URL(process.env.VITE_APP_URL || 'https://getonapod.com')
@@ -41,7 +41,7 @@ async function generateSitemap() {
   console.log('🗺️  Generating sitemap...')
 
   let posts: BlogPost[] = []
-  if (SUPABASE_URL && SUPABASE_KEY) {
+  if (USE_DATABASE && SUPABASE_URL && SUPABASE_KEY) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
     const { data, error } = await supabase
       .from('blog_posts')
@@ -49,18 +49,14 @@ async function generateSitemap() {
       .eq('status', 'published')
       .order('published_at', { ascending: false })
 
-    if (error) {
-      if (STRICT_DATABASE) throw new Error('Sitemap database query failed')
-      console.warn('⚠️  Blog index unavailable; generating a static-only sitemap')
-    } else {
-      posts = (data || []).filter(
-        (post): post is BlogPost => typeof post?.slug === 'string' && post.slug.length > 0,
-      )
-    }
-  } else if (STRICT_DATABASE) {
+    if (error) throw new Error('Sitemap database query failed')
+    posts = (data || []).filter(
+      (post): post is BlogPost => typeof post?.slug === 'string' && post.slug.length > 0,
+    )
+  } else if (USE_DATABASE) {
     throw new Error('Sitemap database credentials are required in strict mode')
   } else {
-    console.warn('⚠️  No sitemap database credentials; generating static pages only')
+    console.log('Static sitemap mode: database access disabled')
   }
 
   console.log(`📝 Found ${posts.length} published posts`)
@@ -83,7 +79,6 @@ ${staticPages
     <loc>${BASE_URL}${page.url}</loc>
     <changefreq>${page.changefreq}</changefreq>
     <priority>${page.priority}</priority>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
   </url>`
   )
   .join('\n')}
@@ -92,8 +87,7 @@ ${posts
     (post: BlogPost) => `  <url>
     <loc>${BASE_URL}/blog/${encodeURIComponent(post.slug)}</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-    <lastmod>${safeDate(post.updated_at || post.published_at)}</lastmod>
+    <priority>0.7</priority>${safeDate(post.updated_at || post.published_at)}
   </url>`
   )
   .join('\n')}
@@ -111,8 +105,8 @@ ${posts
 function safeDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime())
-    ? new Date().toISOString().split('T')[0]
-    : date.toISOString().split('T')[0]
+    ? ''
+    : `\n    <lastmod>${date.toISOString().split('T')[0]}</lastmod>`
 }
 
 generateSitemap().catch((error) => {

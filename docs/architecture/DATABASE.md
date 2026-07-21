@@ -1,5 +1,10 @@
 # Authority Built Database Architecture
 
+> **Invite-only MVP warning:** this is a historical schema survey. The four
+> `20260720*` migrations, SQL verifier, root README, and
+> `docs/invite-only-mvp.md` define the release boundary. Magic-link and
+> plaintext portal authentication described below are retired.
+
 ## Overview
 
 Authority Built uses Supabase (PostgreSQL) as its primary database with a comprehensive system for managing podcast placements, client relationships, content creation, and sales operations. The database is designed around several core domains:

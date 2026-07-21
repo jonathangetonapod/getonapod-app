@@ -78,7 +78,6 @@ export default function ClientApprovalView() {
 
 interface ClientDashboard {
   id: string
-  dashboard_slug: string
   name: string
   bio: string | null
   photo_url: string | null
@@ -318,8 +317,12 @@ function ClientApprovalViewContent() {
     }
 
     // Otherwise, check localStorage for first-time visitors
-    const tutorialKey = `prospect-tutorial-seen-${dashboard.id}`
-    const hasSeenTutorial = localStorage.getItem(tutorialKey)
+    let hasSeenTutorial: string | null = null
+    try {
+      hasSeenTutorial = window.localStorage.getItem('client-tutorial-seen-v1')
+    } catch {
+      // Continue with an in-memory tutorial when persistent storage is denied.
+    }
     if (!hasSeenTutorial) {
       const timer = setTimeout(() => {
         setShowTutorial(true)
@@ -333,7 +336,11 @@ function ClientApprovalViewContent() {
     setShowTutorial(false)
     setTutorialStep(0)
     if (dashboard) {
-      localStorage.setItem(`prospect-tutorial-seen-${dashboard.id}`, 'true')
+      try {
+        window.localStorage.setItem('client-tutorial-seen-v1', 'true')
+      } catch {
+        // Closing the tutorial must still work in hardened/private browsers.
+      }
     }
   }
 
@@ -341,47 +348,49 @@ function ClientApprovalViewContent() {
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    // Immediately populate analysis cache from podcast data
-    const newCache = new Map(analysisCache)
-    let addedCount = 0
+    setAnalysisCache((current) => {
+      const newCache = new Map(current)
+      let addedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
-        newCache.set(podcast.podcast_id, {
-          clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
-          fit_reasons: podcast.ai_fit_reasons || [],
-          pitch_angles: podcast.ai_pitch_angles || [],
-        })
-        addedCount++
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
+          newCache.set(podcast.podcast_id, {
+            clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
+            fit_reasons: podcast.ai_fit_reasons || [],
+            pitch_angles: podcast.ai_pitch_angles || [],
+          })
+          addedCount++
+        }
+      })
+
+      if (addedCount > 0) console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
+      return addedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
-      setAnalysisCache(newCache)
-    }
   }, [podcasts])
 
   // Populate demographics cache from database-cached data (instant, no API calls)
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    const newCache = new Map(demographicsCache)
-    let addedCount = 0
+    setDemographicsCache((current) => {
+      const newCache = new Map(current)
+      let loadedCount = 0
+      let changedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
-        newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
-        addedCount++
-      } else if (!newCache.has(podcast.podcast_id)) {
-        newCache.set(podcast.podcast_id, null) // Mark as checked but no data
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
+          newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
+          loadedCount++
+          changedCount++
+        } else if (!newCache.has(podcast.podcast_id)) {
+          newCache.set(podcast.podcast_id, null) // Mark as checked but no data
+          changedCount++
+        }
+      })
+
+      if (loadedCount > 0) console.log(`[Cache] Loaded ${loadedCount} demographics from database`)
+      return changedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} demographics from database`)
-      setDemographicsCache(newCache)
-    }
   }, [podcasts])
 
   // Analyze podcast fit when side panel opens
@@ -418,7 +427,7 @@ function ClientApprovalViewContent() {
 
     setIsLoadingDemographics(false)
     setDemographics(null)
-  }, [selectedPodcast])
+  }, [selectedPodcast, demographicsCache])
 
   // Load existing notes when podcast is selected
   useEffect(() => {
@@ -1935,7 +1944,7 @@ function ClientApprovalViewContent() {
                                           tick={{ fontSize: 10, fill: '#64748b' }}
                                           width={50}
                                         />
-                                        <Tooltip
+                                        <RechartsTooltip
                                           formatter={(value: number) => [`${value}%`, 'Audience']}
                                           contentStyle={{
                                             backgroundColor: 'rgba(255,255,255,0.95)',

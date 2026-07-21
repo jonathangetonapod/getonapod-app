@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { createPortalSessionStore } from '@/lib/portalSessionStore'
 import type { Client } from './clients'
 import type { Booking } from './bookings'
 
@@ -70,7 +71,7 @@ export async function logout(sessionToken: string): Promise<void> {
   })
   if (error) throw await toFunctionError(error, 'Failed to invalidate the portal session.')
 
-  // Clear local storage
+  // Clear tab-scoped, in-memory, and legacy persistent storage.
   sessionStorage.clear()
 }
 
@@ -282,50 +283,8 @@ export async function invalidatePodcastFitAnalysis(clientId: string, bookingId: 
   }
 }
 
-/**
- * Session storage helpers
- */
 export const sessionStorage = {
-  save: (session: ClientPortalSession, client: Client) => {
-    localStorage.setItem('client_portal_session', JSON.stringify(session))
-    localStorage.setItem('client_portal_client', JSON.stringify(client))
-  },
-
-  get: (): { session: ClientPortalSession | null, client: Client | null } => {
-    const sessionStr = localStorage.getItem('client_portal_session')
-    const clientStr = localStorage.getItem('client_portal_client')
-
-    if (!sessionStr || !clientStr) return { session: null, client: null }
-    try {
-      const parsedSession = JSON.parse(sessionStr) as Partial<ClientPortalSession>
-      const parsedClient = JSON.parse(clientStr) as Partial<Client>
-      if (
-        typeof parsedSession.session_token !== 'string'
-        || typeof parsedSession.expires_at !== 'string'
-        || typeof parsedSession.client_id !== 'string'
-        || typeof parsedClient.id !== 'string'
-        || typeof parsedClient.name !== 'string'
-        || parsedClient.id !== parsedSession.client_id
-      ) {
-        throw new Error('Stored portal session is malformed')
-      }
-      return {
-        session: parsedSession as ClientPortalSession,
-        client: parsedClient as Client,
-      }
-    } catch {
-      localStorage.removeItem('client_portal_session')
-      localStorage.removeItem('client_portal_client')
-      return { session: null, client: null }
-    }
-  },
-
-  clear: () => {
-    localStorage.removeItem('client_portal_session')
-    localStorage.removeItem('client_portal_client')
-    localStorage.removeItem('podcast-cart')
-  },
-
+  ...createPortalSessionStore<ClientPortalSession, Client>(),
   isExpired: (session: ClientPortalSession): boolean => {
     const expiresAt = new Date(session.expires_at)
     const now = new Date()

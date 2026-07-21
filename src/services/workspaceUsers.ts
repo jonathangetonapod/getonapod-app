@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 
-export type WorkspaceUserStatus = 'invited' | 'active' | 'suspended' | 'revoked'
+export type WorkspaceUserStatus = 'provisioning' | 'invited' | 'active' | 'suspended' | 'revoked'
 export type WorkspaceUserRole = 'owner' | 'admin' | 'member'
 
 export interface ManagedWorkspaceUser {
@@ -16,6 +16,13 @@ export interface ManagedWorkspaceUser {
   invite_expires_at: string | null
   accepted_at: string | null
   suspended_at?: string | null
+  auth_reconciliation_pending: boolean
+  auth_reconciliation_review_after: string | null
+  has_newer_membership: boolean
+  invite_cleanup_blocked: boolean
+  invite_reconciliation_pending: boolean
+  invite_reconciliation_claim_kind: 'deliver' | 'revoke_cleanup' | null
+  invite_reconciliation_review_after: string | null
   workspace?: { id: string; name: string } | null
 }
 
@@ -44,6 +51,12 @@ export const inviteWorkspaceUser = async (input: {
 }) => invoke({ action: 'invite', ...input })
 
 export const updateWorkspaceUserStatus = async (
-  action: 'suspend' | 'reactivate' | 'revoke_pending',
+  action:
+    | 'suspend'
+    | 'reactivate'
+    | 'reconcile_active'
+    | 'reconcile_suspended'
+    | 'revoke_pending'
+    | 'retry_invite',
   membershipId: string,
 ) => invoke({ action, membership_id: membershipId })

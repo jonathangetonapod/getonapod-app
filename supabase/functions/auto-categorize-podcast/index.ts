@@ -122,7 +122,7 @@ IMPORTANT: Reply with ONLY the category name from the list above. Nothing else. 
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
         category: 'Business', // Default fallback even on error
       }),
       {

@@ -10,6 +10,8 @@ import {
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Cache-Control': 'no-store',
+  'Vary': 'Origin',
 }
 
 /**
@@ -245,8 +247,7 @@ serve(async (req) => {
     let { spreadsheetId, clientId, clientName, clientBio } = body
     const { dashboardSlug, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
 
-    console.log('[Get Client Podcasts] Starting for dashboard:', clientId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
-    console.log('[Get Client Podcasts] Client name:', clientName, '| Bio length:', clientBio?.length || 0)
+    console.log('[Get Client Podcasts] Request accepted', cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!

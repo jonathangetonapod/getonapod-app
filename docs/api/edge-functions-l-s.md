@@ -1153,10 +1153,16 @@ const loginResponse = await fetch('/functions/v1/login-with-password', {
   })
 });
 
-const { session_token, expires_at } = await loginResponse.json();
+const { session_token, expires_at, client } = await loginResponse.json();
 
-// Use session for subsequent requests
-localStorage.setItem('session_token', session_token);
+// Keep the bearer tab-scoped. The application portalSessionStore also validates
+// the client/session pair and falls back to memory if browser storage is denied.
+sessionStorage.setItem('client_portal_session', JSON.stringify({
+  session_token,
+  expires_at,
+  client_id: client.id
+}));
+sessionStorage.setItem('client_portal_client', JSON.stringify(client));
 
 // Logout
 await fetch('/functions/v1/logout-portal-session', {
@@ -1166,6 +1172,9 @@ await fetch('/functions/v1/logout-portal-session', {
     sessionToken: session_token
   })
 });
+
+sessionStorage.removeItem('client_portal_session');
+sessionStorage.removeItem('client_portal_client');
 ```
 
 ### Outreach Workflow

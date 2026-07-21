@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom'
 import { getClients } from '@/services/clients'
 import { getBookings, getBookingsByMonth, updateBooking, deleteBooking } from '@/services/bookings'
 import { createCalendarEventFromBooking, openGoogleCalendar } from '@/lib/googleCalendar'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import { toast } from 'sonner'
 
 const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -118,9 +119,27 @@ export default function CalendarDashboard() {
 
   const handleSaveBooking = () => {
     if (editingBooking && editBookingForm.podcast_name) {
+      const podcastUrlInput = editBookingForm.podcast_url.trim()
+      const episodeUrlInput = editBookingForm.episode_url.trim()
+      const podcastUrl = podcastUrlInput ? safeExternalUrl(podcastUrlInput) : null
+      const episodeUrl = episodeUrlInput ? safeExternalUrl(episodeUrlInput) : null
+
+      if (podcastUrlInput && !podcastUrl) {
+        toast.error('Podcast URL must use HTTP or HTTPS')
+        return
+      }
+      if (episodeUrlInput && !episodeUrl) {
+        toast.error('Episode URL must use HTTP or HTTPS')
+        return
+      }
+
       updateBookingMutation.mutate({
         id: editingBooking.id,
-        updates: editBookingForm
+        updates: {
+          ...editBookingForm,
+          podcast_url: podcastUrl,
+          episode_url: episodeUrl,
+        }
       })
     }
   }
@@ -1089,7 +1108,7 @@ export default function CalendarDashboard() {
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Podcast URL</p>
                       <a
-                        href={booking.podcast_url}
+                        href={safeExternalUrl(booking.podcast_url) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline text-sm break-all"
@@ -1146,7 +1165,7 @@ export default function CalendarDashboard() {
                   <div className="pt-2 border-t">
                     <p className="text-sm font-medium text-muted-foreground">Episode URL</p>
                     <a
-                      href={booking.episode_url}
+                      href={safeExternalUrl(booking.episode_url) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-primary hover:underline text-sm break-all"

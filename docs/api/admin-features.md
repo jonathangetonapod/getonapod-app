@@ -1,5 +1,10 @@
 # GOAP Admin Panel - Complete Feature Documentation
 
+> **Invite-only MVP warning:** the root README is authoritative for current
+> administrator routes. Billing/order/premium placement, AI Sales Director,
+> admin video, admin blog, and settings features described below are retired
+> from this release.
+
 ## Overview
 
 The GOAP (Get On A Podcast) Admin Panel is a comprehensive internal management system for GOAP staff to manage clients, bookings, outreach campaigns, and all operational aspects of the podcast placement business.

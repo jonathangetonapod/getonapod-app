@@ -160,14 +160,16 @@ serve(async (req) => {
       console.log('[Send Outreach Webhook] Webhook response:', webhookStatus, webhookResponseBody?.slice(0, 200))
     } catch (webhookError) {
       clearTimeout(timeoutId)
+      const webhookErrorName = webhookError instanceof Error ? webhookError.name : ''
+      const webhookErrorMessage = webhookError instanceof Error ? webhookError.message : String(webhookError)
 
-      if (webhookError.name === 'AbortError') {
+      if (webhookErrorName === 'AbortError') {
         console.error('[Send Outreach Webhook] Webhook timeout after 10 seconds')
         webhookResponseBody = 'Request timeout after 10 seconds'
         webhookStatus = 408
       } else {
         console.error('[Send Outreach Webhook] Webhook error:', webhookError)
-        webhookResponseBody = webhookError.message
+        webhookResponseBody = webhookErrorMessage
         webhookStatus = 0 // Connection failed
       }
     }
@@ -241,7 +243,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       {
         status: 500,

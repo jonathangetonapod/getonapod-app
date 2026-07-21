@@ -16,6 +16,7 @@ const METHODS = ['GET', 'POST'] as const
 
 type MembershipRow = Record<string, unknown> & {
   workspace_id: string
+  email_normalized: string
   status: string
   invite_expires_at: string | null
 }
@@ -52,8 +53,8 @@ serve(async (req) => {
 
     let memberships = (userMemberships ?? []) as unknown as MembershipRow[]
 
-    // Email matching is restricted to unaccepted invitations. Once accepted,
-    // authorization never follows a mutable email address.
+    // Pending invitations are discovered by email; accepted memberships remain
+    // bound to user_id but fail closed if the Auth identity's email changes.
     if (memberships.length === 0) {
       const { data: pendingMemberships, error: pendingError } = await admin
         .from('workspace_memberships')
@@ -67,6 +68,14 @@ serve(async (req) => {
         throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
       }
       memberships = (pendingMemberships ?? []) as unknown as MembershipRow[]
+    }
+
+    if (memberships.some((membership) => membership.email_normalized !== email)) {
+      throw new HttpError(
+        403,
+        'ACCOUNT_IDENTITY_MISMATCH',
+        'The account identity changed and requires administrator review',
+      )
     }
 
     if (memberships.length > 1) {

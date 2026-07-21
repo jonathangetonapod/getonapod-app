@@ -157,7 +157,8 @@ async function scorePodcast(
       return match ? parseInt(match[1], 10) : null
     }
   } catch (error) {
-    console.warn(`[RunExperimentSweep] Scoring error: ${error.message}`)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.warn(`[RunExperimentSweep] Scoring error: ${errorMessage}`)
     return null
   }
 }
@@ -501,7 +502,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[RunExperimentSweep] Error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal error' }),
+      JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) || 'Internal error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

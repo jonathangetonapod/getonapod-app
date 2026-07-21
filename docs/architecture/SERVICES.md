@@ -105,8 +105,9 @@ The application follows a modular architecture with:
 - `getPortalResources(sessionToken)` - Get client's resources
 
 **Session Storage:**
-- `sessionStorage.save(session, client)` - Store session in localStorage
-- `sessionStorage.get()` - Retrieve session from localStorage
+- `sessionStorage.save(session, client)` - Store the opaque session in
+  tab-scoped `sessionStorage`, with an in-memory fallback
+- `sessionStorage.get()` - Retrieve the tab-scoped or in-memory session
 - `sessionStorage.clear()` - Clear stored session
 - `sessionStorage.isExpired(session)` - Check if session expired
 
@@ -396,8 +397,8 @@ const isMobile = useIsMobile()
 **Key Features:**
 - Password-based login (magic links are retired)
 - Admin impersonation capabilities
-- Session persistence in localStorage
-- Auto-refresh before expiry
+- Tab-scoped `sessionStorage` plus a tested in-memory fallback
+- Fixed expiry with automatic logout; no silent token refresh
 - Sentry user tracking integration
 
 **Session Management:**
@@ -580,7 +581,8 @@ VITE_APP_URL=your_app_url
 ### Caching Strategies
 1. **Admin Email Caching** - 1-minute cache for admin authorization
 2. **Podcast Data Caching** - Reduce external API calls
-3. **Session Storage** - localStorage for client portal sessions
+3. **Session Storage** - tab-scoped `sessionStorage` with an in-memory fallback
+   for client portal sessions
 
 ### Code Splitting
 - Route-based code splitting

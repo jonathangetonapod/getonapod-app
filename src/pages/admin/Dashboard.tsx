@@ -10,6 +10,7 @@ import { getClients } from '@/services/clients'
 import { getBookings } from '@/services/bookings'
 import { getOutreachMessages } from '@/services/outreachMessages'
 import { supabase } from '@/lib/supabase'
+import { safeExternalUrl } from '@/lib/externalUrl'
 
 type TimeRange = 7 | 14 | 30 | 60 | 90 | 180
 
@@ -664,7 +665,7 @@ export default function Dashboard() {
                           </div>
                           {booking.episode_url && (
                             <a
-                              href={booking.episode_url}
+                              href={safeExternalUrl(booking.episode_url) ?? undefined}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-primary hover:underline inline-flex items-center gap-1"

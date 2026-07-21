@@ -23,12 +23,216 @@ CREATE TABLE IF NOT EXISTS public.resend_webhook_events (
   received_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Receipt rows are the idempotency record and must never be rewritten to guess
+-- around schema drift. Lock the ledger and accept only the exact authoritative
+-- shape; a prepared target with any mismatch requires manual reconciliation.
+LOCK TABLE public.resend_webhook_events IN ACCESS EXCLUSIVE MODE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class AS relation
+    WHERE relation.oid = 'public.resend_webhook_events'::regclass
+      AND relation.relkind = 'r'
+      AND relation.relpersistence = 'p'
+      AND NOT relation.relispartition
+  ) OR (
+    SELECT count(*)
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'resend_webhook_events'
+  ) <> 5 OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('svix_id', 'text', 'NO', NULL::TEXT),
+      ('event_type', 'text', 'NO', NULL::TEXT),
+      ('resend_email_id', 'text', 'YES', NULL::TEXT),
+      ('event_created_at', 'timestamptz', 'NO', NULL::TEXT),
+      ('received_at', 'timestamptz', 'NO', 'now')
+    ) AS required_column(column_name, udt_name, is_nullable, default_marker)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns AS existing_column
+      WHERE existing_column.table_schema = 'public'
+        AND existing_column.table_name = 'resend_webhook_events'
+        AND existing_column.column_name = required_column.column_name
+        AND existing_column.udt_name = required_column.udt_name
+        AND existing_column.is_nullable = required_column.is_nullable
+        AND CASE
+          WHEN required_column.default_marker IS NULL
+            THEN existing_column.column_default IS NULL
+          ELSE lower(btrim(COALESCE(existing_column.column_default, ''))) =
+            required_column.default_marker || '()'
+        END
+    )
+  ) OR (
+    SELECT count(*)
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+      'public.resend_webhook_events'::regclass
+      AND constraint_definition.contype <> 'n'
+  ) <> 4 OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname = 'resend_webhook_events_pkey'
+      AND constraint_definition.contype = 'p'
+      AND constraint_definition.convalidated
+      AND NOT constraint_definition.condeferrable
+      AND NOT constraint_definition.condeferred
+      AND constraint_definition.conkey = ARRAY[
+        (
+          SELECT attribute.attnum
+          FROM pg_attribute AS attribute
+          WHERE attribute.attrelid = 'public.resend_webhook_events'::regclass
+            AND attribute.attname = 'svix_id'
+            AND NOT attribute.attisdropped
+        )
+      ]::SMALLINT[]
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname =
+        'resend_webhook_events_svix_id_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND lower(replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '')) =
+        'checkchar_lengthsvix_id>=1andchar_lengthsvix_id<=256'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname =
+        'resend_webhook_events_event_type_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND lower(replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '')) =
+        'checkchar_lengthevent_type>=1andchar_lengthevent_type<=128'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname =
+        'resend_webhook_events_resend_email_id_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND lower(replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '')) =
+        'checkresend_email_idisnullorchar_lengthresend_email_id>=1andchar_lengthresend_email_id<=256'
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_index AS index_definition
+    JOIN pg_class AS index_relation
+      ON index_relation.oid = index_definition.indexrelid
+    WHERE index_definition.indrelid =
+        'public.resend_webhook_events'::regclass
+      AND NOT (
+        (
+          index_definition.indexrelid = (
+            SELECT constraint_definition.conindid
+            FROM pg_constraint AS constraint_definition
+            WHERE constraint_definition.conrelid =
+                'public.resend_webhook_events'::regclass
+              AND constraint_definition.conname =
+                'resend_webhook_events_pkey'
+              AND constraint_definition.contype = 'p'
+          )
+          AND index_relation.relname = 'resend_webhook_events_pkey'
+          AND index_relation.relam = (
+            SELECT access_method.oid
+            FROM pg_am AS access_method
+            WHERE access_method.amname = 'btree'
+          )
+          AND index_definition.indisprimary
+          AND index_definition.indisunique
+          AND index_definition.indimmediate
+          AND index_definition.indisvalid
+          AND index_definition.indisready
+          AND index_definition.indislive
+          AND index_definition.indnkeyatts = 1
+          AND index_definition.indnatts = 1
+          AND index_definition.indexprs IS NULL
+          AND index_definition.indpred IS NULL
+          AND index_definition.indoption[0] = 0
+          AND index_definition.indkey[0] = (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.resend_webhook_events'::regclass
+              AND attribute.attname = 'svix_id'
+              AND NOT attribute.attisdropped
+          )
+        )
+        OR (
+          index_relation.relname =
+            'resend_webhook_events_received_at_idx'
+          AND NOT index_definition.indisunique
+          AND NOT index_definition.indisexclusion
+          AND index_relation.relam = (
+            SELECT access_method.oid
+            FROM pg_am AS access_method
+            WHERE access_method.amname = 'btree'
+          )
+          AND index_definition.indimmediate
+          AND index_definition.indisvalid
+          AND index_definition.indisready
+          AND index_definition.indislive
+          AND index_definition.indnkeyatts = 1
+          AND index_definition.indnatts = 1
+          AND index_definition.indexprs IS NULL
+          AND index_definition.indpred IS NULL
+          AND index_definition.indoption[0] = 3
+          AND index_definition.indkey[0] = (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.resend_webhook_events'::regclass
+              AND attribute.attname = 'received_at'
+              AND NOT attribute.attisdropped
+          )
+        )
+      )
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid =
+        'public.resend_webhook_events'::regclass
+      AND NOT trigger_definition.tgisinternal
+  ) THEN
+    RAISE EXCEPTION
+      'Resend webhook receipt ledger schema drift requires manual reconciliation';
+  END IF;
+END;
+$$;
+
 ALTER TABLE public.resend_webhook_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.resend_webhook_events NO FORCE ROW LEVEL SECURITY;
 REVOKE ALL PRIVILEGES ON TABLE public.resend_webhook_events
   FROM PUBLIC, anon, authenticated;
 GRANT ALL PRIVILEGES ON TABLE public.resend_webhook_events TO service_role;
 
-CREATE INDEX IF NOT EXISTS resend_webhook_events_received_at_idx
+DROP INDEX IF EXISTS public.resend_webhook_events_received_at_idx;
+CREATE INDEX resend_webhook_events_received_at_idx
   ON public.resend_webhook_events (received_at DESC);
 
 CREATE OR REPLACE FUNCTION public.process_resend_webhook_event(

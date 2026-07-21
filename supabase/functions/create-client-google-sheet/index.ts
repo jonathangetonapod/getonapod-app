@@ -71,9 +71,14 @@ async function getGoogleAccessToken(): Promise<string> {
     .replace(pemFooter, '')
     .replace(/\s/g, '')
 
-  let binaryDer: Uint8Array
+  let binaryDer: ArrayBuffer
   try {
-    binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0))
+    const decodedKey = atob(pemContents)
+    binaryDer = new ArrayBuffer(decodedKey.length)
+    const keyBytes = new Uint8Array(binaryDer)
+    for (let index = 0; index < decodedKey.length; index += 1) {
+      keyBytes[index] = decodedKey.charCodeAt(index)
+    }
   } catch {
     console.error('[Create Sheet] Failed to decode service-account private key')
     throw new Error('Private key base64 decoding failed — key may be corrupted in env var')

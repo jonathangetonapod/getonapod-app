@@ -216,7 +216,7 @@ async function processMessage(
     return {
       message_id: messageId,
       success: false,
-      error: err.message || 'Unknown error',
+      error: (err instanceof Error ? err.message : String(err)) || 'Unknown error',
     }
   }
 }
@@ -289,7 +289,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       {
         status: 500,

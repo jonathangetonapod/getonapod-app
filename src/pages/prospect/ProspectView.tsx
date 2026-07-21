@@ -70,6 +70,24 @@ import { PricingFAQ } from '@/components/pricing/PricingFAQ'
 import PageSEO from '@/components/seo/PageSEO'
 import { openExternalUrl } from '@/lib/externalUrl'
 
+const PROSPECT_TUTORIAL_STORAGE_KEY = 'prospect-tutorial-seen-v1'
+
+function hasSeenProspectTutorial(): boolean {
+  try {
+    return window.localStorage.getItem(PROSPECT_TUTORIAL_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function markProspectTutorialSeen(): void {
+  try {
+    window.localStorage.setItem(PROSPECT_TUTORIAL_STORAGE_KEY, 'true')
+  } catch {
+    // Private/hardened browser contexts may deny persistent storage.
+  }
+}
+
 export default function ProspectView() {
   return (
     <>
@@ -84,7 +102,6 @@ export default function ProspectView() {
 }
 
 interface ProspectDashboard {
-  slug: string
   prospect_name: string
   prospect_bio: string | null
   prospect_image_url: string | null
@@ -354,9 +371,7 @@ function ProspectViewContent() {
     }
 
     // Otherwise, check localStorage for first-time visitors
-    const tutorialKey = `prospect-tutorial-seen-${dashboard.slug}`
-    const hasSeenTutorial = localStorage.getItem(tutorialKey)
-    if (!hasSeenTutorial) {
+    if (!hasSeenProspectTutorial()) {
       const timer = setTimeout(() => {
         setShowTutorial(true)
       }, 1000)
@@ -368,56 +383,56 @@ function ProspectViewContent() {
   const closeTutorial = () => {
     setShowTutorial(false)
     setTutorialStep(0)
-    if (dashboard) {
-      localStorage.setItem(`prospect-tutorial-seen-${dashboard.slug}`, 'true')
-    }
+    if (dashboard) markProspectTutorialSeen()
   }
 
   // Populate AI analysis cache from database-cached data (instant, no API calls needed)
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    // Immediately populate analysis cache from podcast data
-    const newCache = new Map(analysisCache)
-    let addedCount = 0
+    setAnalysisCache((current) => {
+      const newCache = new Map(current)
+      let addedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
-        newCache.set(podcast.podcast_id, {
-          clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
-          fit_reasons: podcast.ai_fit_reasons || [],
-          pitch_angles: podcast.ai_pitch_angles || [],
-        })
-        addedCount++
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
+          newCache.set(podcast.podcast_id, {
+            clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
+            fit_reasons: podcast.ai_fit_reasons || [],
+            pitch_angles: podcast.ai_pitch_angles || [],
+          })
+          addedCount++
+        }
+      })
+
+      if (addedCount > 0) console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
+      return addedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
-      setAnalysisCache(newCache)
-    }
   }, [podcasts])
 
   // Populate demographics cache from database-cached data (instant, no API calls)
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    const newCache = new Map(demographicsCache)
-    let addedCount = 0
+    setDemographicsCache((current) => {
+      const newCache = new Map(current)
+      let loadedCount = 0
+      let changedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
-        newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
-        addedCount++
-      } else if (!newCache.has(podcast.podcast_id)) {
-        newCache.set(podcast.podcast_id, null) // Mark as checked but no data
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
+          newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
+          loadedCount++
+          changedCount++
+        } else if (!newCache.has(podcast.podcast_id)) {
+          newCache.set(podcast.podcast_id, null) // Mark as checked but no data
+          changedCount++
+        }
+      })
+
+      if (loadedCount > 0) console.log(`[Cache] Loaded ${loadedCount} demographics from database`)
+      return changedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} demographics from database`)
-      setDemographicsCache(newCache)
-    }
   }, [podcasts])
 
   // Analyze podcast fit when side panel opens
@@ -793,7 +808,7 @@ function ProspectViewContent() {
                     variant="heroOutline"
                     size="xl"
                     className="rounded-full px-8 text-base"
-                    onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                    onClick={() => openExternalUrl('https://calendly.com/getonapodjg/30min')}
                   >
                     <Calendar className="mr-2 h-4 w-4" />
                     Talk Through My Shortlist
@@ -1543,7 +1558,7 @@ function ProspectViewContent() {
                       variant="hero"
                       size="xl"
                       className="min-h-[48px] w-full rounded-full text-sm sm:min-h-[56px] sm:w-auto sm:text-base"
-                      onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                      onClick={() => openExternalUrl('https://calendly.com/getonapodjg/30min')}
                     >
                       <Phone className="mr-2 h-4 w-4" />
                       Book a Call
@@ -1552,7 +1567,7 @@ function ProspectViewContent() {
                       variant="outline"
                       size="xl"
                       className="min-h-[48px] w-full rounded-full border-[#0d1b2a]/10 bg-white text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
-                      onClick={() => window.open('/what-to-expect', '_blank')}
+                      onClick={() => openExternalUrl(`${window.location.origin}/what-to-expect`)}
                     >
                       See What to Expect
                     </Button>
@@ -2095,7 +2110,7 @@ function ProspectViewContent() {
                                           tick={{ fontSize: 10, fill: '#64748b' }}
                                           width={50}
                                         />
-                                        <Tooltip
+                                        <RechartsTooltip
                                           formatter={(value: number) => [`${value}%`, 'Audience']}
                                           contentStyle={{
                                             backgroundColor: 'rgba(255,255,255,0.95)',

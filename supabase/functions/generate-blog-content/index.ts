@@ -90,7 +90,11 @@ Generate the HTML content now:`
     })
 
     // Extract generated content
-    const generatedContent = message.content[0].text
+    const generatedBlock = message.content[0]
+    if (!generatedBlock || generatedBlock.type !== 'text') {
+      throw new Error('Claude returned an unexpected blog content block')
+    }
+    const generatedContent = generatedBlock.text
 
     // Generate meta description (extract first 150 chars of intro or create summary)
     const metaDescriptionPrompt = `Based on the following blog post, write a compelling meta description (150-160 characters) that includes the keyword "${keywords || topic}" and encourages clicks from search results:
@@ -111,7 +115,11 @@ Meta description:`
       ],
     })
 
-    const metaDescription = metaMessage.content[0].text.trim()
+    const metaDescriptionBlock = metaMessage.content[0]
+    if (!metaDescriptionBlock || metaDescriptionBlock.type !== 'text') {
+      throw new Error('Claude returned an unexpected meta description block')
+    }
+    const metaDescription = metaDescriptionBlock.text.trim()
 
     // Calculate estimated read time
     const wordCountEstimate = generatedContent.split(/\s+/).length
@@ -141,7 +149,7 @@ Meta description:`
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to generate blog content',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to generate blog content',
       }),
       {
         status: 500,

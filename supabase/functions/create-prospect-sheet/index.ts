@@ -22,6 +22,12 @@ interface PodcastExportData {
   episode_count?: number | null
   itunes_rating?: number | null
   podcast_url?: string | null
+  podcast_image_url?: string | null
+  podcast_email?: string | null
+  rss_feed?: string | null
+  language?: string | null
+  region?: string | null
+  podcast_categories?: Array<{ category_id: string; category_name: string }> | null
   podscan_podcast_id?: string | null
   podcast_id?: string | null
   compatibility_score?: number | null

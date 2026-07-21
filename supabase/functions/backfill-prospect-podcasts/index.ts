@@ -155,7 +155,7 @@ Return this exact JSON structure:
           }
         }
       } catch (err) {
-        console.warn('[ENRICH FALLBACK] Continuing with thin data:', err.message)
+        console.warn('[ENRICH FALLBACK] Continuing with thin data:', err instanceof Error ? err.message : String(err))
       }
     } else if (needsEnrichment && !anthropicKey) {
       console.log('   ⚠️ Skipping enrichment: ANTHROPIC_API_KEY not configured')
@@ -393,7 +393,7 @@ Be selective — better to have 10 highly relevant matches than 50 mediocre ones
           }
         }
       } catch (err) {
-        console.warn('[AI FILTER FALLBACK] Using similarity-based selection:', err.message)
+        console.warn('[AI FILTER FALLBACK] Using similarity-based selection:', err instanceof Error ? err.message : String(err))
         filteredMatches = matches.slice(0, 15)
       }
     }
@@ -510,7 +510,7 @@ Be selective — better to have 10 highly relevant matches than 50 mediocre ones
   } catch (error) {
     console.error('[BACKFILL ERROR]', error)
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal error' }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Internal error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

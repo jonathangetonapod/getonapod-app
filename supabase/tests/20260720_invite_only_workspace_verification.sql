@@ -68,8 +68,43 @@ BEGIN
       NOT ILIKE '%auth.uid() IS NOT NULL%'
     OR pg_get_functiondef('public.is_platform_admin()'::regprocedure)
       NOT ILIKE '%FROM auth.users%'
+    OR pg_get_functiondef('public.is_platform_admin()'::regprocedure)
+      NOT ILIKE '%workspace_memberships%email_normalized%workspaces%is_default%'
   THEN
     RAISE EXCEPTION 'is_platform_admin is not bound to the live Auth user';
+  END IF;
+
+  IF to_regprocedure('public.is_platform_admin_identity(uuid,text)') IS NULL
+    OR has_function_privilege(
+      'authenticated',
+      'public.is_platform_admin_identity(uuid,text)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.is_platform_admin_identity(uuid,text)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.is_platform_admin_identity(uuid,text)',
+      'EXECUTE'
+    )
+    OR pg_get_functiondef(
+      'public.is_platform_admin_identity(uuid,text)'::regprocedure
+    ) NOT ILIKE '%auth.users%admin_users%workspace_memberships%email_normalized%workspaces%is_default%'
+  THEN
+    RAISE EXCEPTION 'platform-admin identity binding is missing or unsafe';
+  END IF;
+
+  IF pg_get_functiondef('public.current_workspace_id()'::regprocedure)
+      NOT ILIKE '%JOIN auth.users%lower(btrim(auth_user.email)) = membership.email_normalized%'
+    OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%JOIN auth.users%lower(btrim(auth_user.email)) = membership.email_normalized%'
+    OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%JOIN auth.users%lower(btrim(auth_user.email)) = membership.email_normalized%'
+  THEN
+    RAISE EXCEPTION 'workspace authorization is not bound to the current Auth identity';
   END IF;
 
   SELECT count(*)
@@ -181,20 +216,62 @@ BEGIN
   SELECT count(*)
   INTO invalid_private_workspace_count
   FROM (
-    SELECT membership.workspace_id
-    FROM public.workspace_memberships AS membership
-    JOIN public.workspaces AS workspace
-      ON workspace.id = membership.workspace_id
+    SELECT workspace.id
+    FROM public.workspaces AS workspace
+    LEFT JOIN public.workspace_memberships AS membership
+      ON membership.workspace_id = workspace.id
     WHERE NOT workspace.is_default
-      AND membership.status IN ('invited', 'active', 'suspended')
-    GROUP BY membership.workspace_id
-    HAVING count(*) > 1
+    GROUP BY workspace.id, workspace.status
+    HAVING count(membership.id) <> 1
+      OR count(membership.id) FILTER (
+        WHERE (
+          membership.status IN ('provisioning', 'invited', 'active')
+          AND workspace.status = 'active'
+        ) OR (
+          membership.status = 'suspended'
+          AND workspace.status = 'suspended'
+        ) OR (
+          membership.status = 'revoked'
+          AND workspace.status = 'archived'
+        )
+      ) <> 1
   ) AS invalid_workspace;
 
   IF invalid_private_workspace_count <> 0 THEN
     RAISE EXCEPTION
-      '% private workspaces have more than one live membership',
+      '% private workspaces lack exactly one lifecycle-matched membership',
       invalid_private_workspace_count;
+  END IF;
+
+  IF to_regprocedure(
+      'public.enforce_private_workspace_lifecycle_pair()'
+    ) IS NULL OR pg_get_functiondef(
+      'public.enforce_private_workspace_lifecycle_pair()'::regprocedure
+    ) NOT ILIKE '%TG_OP%OLD.id%NEW.id%OLD.workspace_id%NEW.workspace_id%LEFT JOIN public.workspace_memberships%count(membership.id)%FILTER%matching_lifecycle_count%membership_count <> 1%matching_lifecycle_count <> 1%private workspace requires exactly one lifecycle-matched membership%'
+    OR EXISTS (
+      SELECT 1
+      FROM (VALUES
+        ('workspaces', 'workspaces_lifecycle_pair_check'),
+        ('workspace_memberships', 'workspace_memberships_lifecycle_pair_check')
+      ) AS required_trigger(table_name, trigger_name)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger AS trigger_definition
+        WHERE trigger_definition.tgrelid = format(
+            'public.%I',
+            required_trigger.table_name
+          )::regclass
+          AND trigger_definition.tgname = required_trigger.trigger_name
+          AND trigger_definition.tgfoid =
+            'public.enforce_private_workspace_lifecycle_pair()'::regprocedure
+          AND trigger_definition.tgtype = 29
+          AND trigger_definition.tgdeferrable
+          AND trigger_definition.tginitdeferred
+          AND trigger_definition.tgenabled <> 'D'
+      )
+    )
+  THEN
+    RAISE EXCEPTION 'private workspace lifecycle pairing is not deferred and enforced';
   END IF;
 
   IF NOT EXISTS (
@@ -244,12 +321,31 @@ BEGIN
   SELECT count(*)
   INTO invalid_constraint_count
   FROM (VALUES
-    ('workspace_memberships_live_user_check'),
-    ('workspace_memberships_active_acceptance_check'),
-    ('workspace_memberships_suspension_check'),
-    ('workspace_memberships_revocation_check'),
-    ('workspace_memberships_invite_expiry_check')
-  ) AS required_constraint(constraint_name)
+    (
+      'workspace_memberships_status_check',
+      '%status%ANY%provisioning%invited%active%suspended%revoked%'
+    ),
+    (
+      'workspace_memberships_live_user_check',
+      '%status%ALL%active%suspended%OR%user_id IS NOT NULL%'
+    ),
+    (
+      'workspace_memberships_active_acceptance_check',
+      '%status%<>%active%OR%accepted_at IS NOT NULL%'
+    ),
+    (
+      'workspace_memberships_suspension_check',
+      '%status%<>%suspended%OR%suspended_at IS NOT NULL%'
+    ),
+    (
+      'workspace_memberships_revocation_check',
+      '%status%<>%revoked%OR%revoked_at IS NOT NULL%'
+    ),
+    (
+      'workspace_memberships_invite_expiry_check',
+      '%status%<>%invited%OR%invite_expires_at IS NOT NULL%AND%invite_expires_at%>%invited_at%'
+    )
+  ) AS required_constraint(constraint_name, definition_pattern)
   WHERE NOT EXISTS (
     SELECT 1
     FROM pg_constraint AS constraint_definition
@@ -257,6 +353,8 @@ BEGIN
       AND constraint_definition.conname = required_constraint.constraint_name
       AND constraint_definition.contype = 'c'
       AND constraint_definition.convalidated
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE required_constraint.definition_pattern
   );
 
   IF invalid_constraint_count <> 0 THEN
@@ -272,7 +370,7 @@ BEGIN
       AND index_relation.relname = 'workspace_memberships_one_live_email_idx'
       AND index_definition.indisunique
       AND pg_get_expr(index_definition.indpred, index_definition.indrelid)
-        ILIKE '%status%invited%active%suspended%'
+        ILIKE '%status%provisioning%invited%active%suspended%'
   ) OR NOT EXISTS (
     SELECT 1
     FROM pg_index AS index_definition
@@ -282,7 +380,7 @@ BEGIN
       AND index_relation.relname = 'workspace_memberships_one_live_user_idx'
       AND index_definition.indisunique
       AND pg_get_expr(index_definition.indpred, index_definition.indrelid)
-        ILIKE '%status%invited%active%suspended%'
+        ILIKE '%status%provisioning%invited%active%suspended%'
   ) THEN
     RAISE EXCEPTION 'global one-live-membership indexes are missing or malformed';
   END IF;
@@ -412,6 +510,13 @@ BEGIN
       AND conname = 'clients_portal_access_email_check'
       AND contype = 'c'
       AND convalidated
+      AND replace(replace(regexp_replace(
+        pg_get_constraintdef(oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '') =
+        'CHECKNOTCOALESCEportal_access_enabled,falseORNULLIFbtrimemail,''''::textISNOTNULL'
   ) OR NOT EXISTS (
     SELECT 1
     FROM pg_index AS index_definition
@@ -419,9 +524,54 @@ BEGIN
       ON index_relation.oid = index_definition.indexrelid
     WHERE index_definition.indrelid = 'public.clients'::regclass
       AND index_relation.relname = 'clients_one_enabled_portal_email_idx'
+      AND index_relation.relam = (
+        SELECT access_method.oid
+        FROM pg_am AS access_method
+        WHERE access_method.amname = 'btree'
+      )
       AND index_definition.indisunique
-      AND pg_get_indexdef(index_definition.indexrelid)
-        ILIKE '%portal_email_normalized%portal_access_enabled%'
+      AND NOT index_definition.indisprimary
+      AND NOT index_definition.indisexclusion
+      AND index_definition.indimmediate
+      AND index_definition.indisvalid
+      AND index_definition.indisready
+      AND index_definition.indislive
+      AND index_definition.indnkeyatts = 1
+      AND index_definition.indnatts = 1
+      AND index_definition.indexprs IS NULL
+      AND index_definition.indpred IS NOT NULL
+      AND index_definition.indoption[0] = 0
+      AND index_definition.indclass[0] = (
+        SELECT operator_class.oid
+        FROM pg_opclass AS operator_class
+        JOIN pg_am AS access_method
+          ON access_method.oid = operator_class.opcmethod
+        WHERE access_method.amname = 'btree'
+          AND operator_class.opcname = 'text_ops'
+          AND operator_class.opcintype = 'text'::regtype
+          AND operator_class.opcdefault
+      )
+      AND index_definition.indcollation[0] = (
+        SELECT attribute.attcollation
+        FROM pg_attribute AS attribute
+        WHERE attribute.attrelid = 'public.clients'::regclass
+          AND attribute.attname = 'portal_email_normalized'
+          AND NOT attribute.attisdropped
+      )
+      AND index_definition.indkey[0] = (
+        SELECT attribute.attnum
+        FROM pg_attribute AS attribute
+        WHERE attribute.attrelid = 'public.clients'::regclass
+          AND attribute.attname = 'portal_email_normalized'
+          AND NOT attribute.attisdropped
+      )
+      AND replace(replace(regexp_replace(
+        pg_get_expr(index_definition.indpred, index_definition.indrelid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '') =
+        'portal_access_enabledANDportal_email_normalizedISNOTNULL'
   ) THEN
     RAISE EXCEPTION 'enabled portal email identity is not normalized and unique';
   END IF;
@@ -445,7 +595,11 @@ BEGIN
       AND constraint_definition.contype = 'f'
       AND constraint_definition.confrelid = 'public.clients'::regclass
       AND constraint_definition.confdeltype = 'c'
+      AND constraint_definition.confupdtype = 'a'
+      AND constraint_definition.confmatchtype = 's'
       AND constraint_definition.convalidated
+      AND NOT constraint_definition.condeferrable
+      AND NOT constraint_definition.condeferred
       AND constraint_definition.conkey = ARRAY[
         (
           SELECT attribute.attnum
@@ -455,6 +609,15 @@ BEGIN
               required_fk.table_name
             )::regclass
             AND attribute.attname = 'client_id'
+            AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+      AND constraint_definition.confkey = ARRAY[
+        (
+          SELECT attribute.attnum
+          FROM pg_attribute AS attribute
+          WHERE attribute.attrelid = 'public.clients'::regclass
+            AND attribute.attname = 'id'
             AND NOT attribute.attisdropped
         )
       ]::SMALLINT[]
@@ -549,10 +712,13 @@ BEGIN
       AND constraint_definition.conname = 'client_portal_credentials_pbkdf2_check'
       AND constraint_definition.contype = 'c'
       AND constraint_definition.convalidated
-      AND pg_get_constraintdef(constraint_definition.oid)
-        ILIKE '%password_verifier%pbkdf2_sha256%22%43%'
-      AND pg_get_constraintdef(constraint_definition.oid)
-        ILIKE '%split_part%100000%1000000%'
+      AND replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '') =
+        'CHECKCASEWHENpassword_verifier~''^pbkdf2_sha256\$[0-9]{6,7}\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=$''::textTHENsplit_partpassword_verifier,''$''::text,2::bigint>=100000ANDsplit_partpassword_verifier,''$''::text,2::bigint<=1000000ELSEfalseEND'
   ) THEN
     RAISE EXCEPTION 'portal credentials are not PBKDF2-only at rest';
   END IF;
@@ -572,8 +738,12 @@ BEGIN
       AND constraint_definition.conname = 'clients_portal_password_retired_check'
       AND constraint_definition.contype = 'c'
       AND constraint_definition.convalidated
-      AND pg_get_constraintdef(constraint_definition.oid)
-        ILIKE '%portal_password IS NULL%'
+      AND replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '') = 'CHECKportal_passwordISNULL'
   ) THEN
     RAISE EXCEPTION 'clients.portal_password retirement is not enforced';
   END IF;
@@ -598,16 +768,62 @@ BEGIN
       AND constraint_definition.conname = 'client_portal_sessions_hashed_token_check'
       AND constraint_definition.contype = 'c'
       AND constraint_definition.convalidated
-      AND pg_get_constraintdef(constraint_definition.oid)
-        ILIKE '%session_token%sha256%43%'
+      AND replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '') =
+        'CHECKsession_token~''^sha256\$[A-Za-z0-9+/]{43}=$''::text'
   ) OR NOT EXISTS (
     SELECT 1
     FROM pg_index AS index_definition
+    JOIN pg_class AS index_relation
+      ON index_relation.oid = index_definition.indexrelid
     WHERE index_definition.indrelid = 'public.client_portal_sessions'::regclass
+      AND index_relation.relname =
+        'client_portal_sessions_token_verifier_uidx'
+      AND index_relation.relam = (
+        SELECT access_method.oid
+        FROM pg_am AS access_method
+        WHERE access_method.amname = 'btree'
+      )
       AND index_definition.indisunique
+      AND NOT index_definition.indisprimary
+      AND NOT index_definition.indisexclusion
+      AND index_definition.indimmediate
       AND index_definition.indisvalid
-      AND pg_get_indexdef(index_definition.indexrelid)
-        ILIKE '%(session_token)%'
+      AND index_definition.indisready
+      AND index_definition.indislive
+      AND index_definition.indnkeyatts = 1
+      AND index_definition.indnatts = 1
+      AND index_definition.indexprs IS NULL
+      AND index_definition.indpred IS NULL
+      AND index_definition.indoption[0] = 0
+      AND index_definition.indclass[0] = (
+        SELECT operator_class.oid
+        FROM pg_opclass AS operator_class
+        JOIN pg_am AS access_method
+          ON access_method.oid = operator_class.opcmethod
+        WHERE access_method.amname = 'btree'
+          AND operator_class.opcname = 'text_ops'
+          AND operator_class.opcintype = 'text'::regtype
+          AND operator_class.opcdefault
+      )
+      AND index_definition.indcollation[0] = (
+        SELECT attribute.attcollation
+        FROM pg_attribute AS attribute
+        WHERE attribute.attrelid = 'public.client_portal_sessions'::regclass
+          AND attribute.attname = 'session_token'
+          AND NOT attribute.attisdropped
+      )
+      AND index_definition.indkey[0] = (
+        SELECT attribute.attnum
+        FROM pg_attribute AS attribute
+        WHERE attribute.attrelid = 'public.client_portal_sessions'::regclass
+          AND attribute.attname = 'session_token'
+          AND NOT attribute.attisdropped
+      )
   ) THEN
     RAISE EXCEPTION 'portal sessions are not unique and hash-only at rest';
   END IF;
@@ -826,7 +1042,7 @@ BEGIN
         ILIKE '%dashboard_slug%'
   ) OR pg_get_functiondef(
     'public.generate_client_dashboard_slug()'::regprocedure
-  ) NOT ILIKE '%auth.role()%substring%gen_random_uuid()%1, 24%'
+  ) NOT ILIKE '%auth.role()%substring%gen_random_uuid()%1, 12%substring%gen_random_uuid()%1, 12%'
     OR has_function_privilege(
       'anon',
       'public.generate_client_dashboard_slug()',
@@ -852,7 +1068,7 @@ BEGIN
         ILIKE '%BEFORE INSERT OR UPDATE OF slug%generate_prospect_dashboard_capability_slug%'
   ) OR pg_get_functiondef(
     'public.generate_prospect_dashboard_capability_slug()'::regprocedure
-  ) NOT ILIKE '%prospect-%substring%gen_random_uuid()%1, 24%'
+  ) NOT ILIKE '%prospect-%substring%gen_random_uuid()%1, 12%substring%gen_random_uuid()%1, 12%'
     OR has_function_privilege(
       'anon',
       'public.generate_prospect_dashboard_capability_slug()',
@@ -870,44 +1086,72 @@ BEGIN
   SELECT count(*)
   INTO missing_workspace_policy_count
   FROM (VALUES
-    ('workspaces', 'workspaces_authenticated_select', 'can_access_workspace'),
-    ('workspace_memberships', 'workspace_memberships_authenticated_select', 'auth.uid'),
-    ('workspace_audit_log', 'workspace_audit_log_authenticated_select', 'is_platform_admin')
-  ) AS required_policy(table_name, policy_name, expression_marker)
+    (
+      'workspaces',
+      'workspaces_authenticated_select',
+      'PERMISSIVE',
+      'can_access_workspace',
+      'is_platform_admin'
+    ),
+    (
+      'workspaces',
+      'workspaces_authenticated_select_isolation',
+      'RESTRICTIVE',
+      'can_access_workspace',
+      'is_platform_admin'
+    ),
+    (
+      'workspace_memberships',
+      'workspace_memberships_authenticated_select',
+      'PERMISSIVE',
+      'auth.uid',
+      'is_platform_admin'
+    ),
+    (
+      'workspace_memberships',
+      'workspace_memberships_authenticated_select_isolation',
+      'RESTRICTIVE',
+      'auth.uid',
+      'is_platform_admin'
+    ),
+    (
+      'workspace_audit_log',
+      'workspace_audit_log_authenticated_select',
+      'PERMISSIVE',
+      'is_platform_admin',
+      'is_platform_admin'
+    ),
+    (
+      'workspace_audit_log',
+      'workspace_audit_log_authenticated_select_isolation',
+      'RESTRICTIVE',
+      'is_platform_admin',
+      'is_platform_admin'
+    )
+  ) AS required_policy(
+    table_name,
+    policy_name,
+    policy_mode,
+    access_marker,
+    admin_marker
+  )
   WHERE NOT EXISTS (
     SELECT 1
     FROM pg_policies AS policy
     WHERE policy.schemaname = 'public'
       AND policy.tablename = required_policy.table_name
       AND policy.policyname = required_policy.policy_name
-      AND policy.permissive = 'PERMISSIVE'
+      AND policy.permissive = required_policy.policy_mode
       AND policy.cmd = 'SELECT'
       AND policy.roles = ARRAY['authenticated'::name]
-      AND COALESCE(policy.qual, '') ILIKE '%' || required_policy.expression_marker || '%'
+      AND COALESCE(policy.qual, '') ILIKE '%' || required_policy.access_marker || '%'
+      AND COALESCE(policy.qual, '') ILIKE '%' || required_policy.admin_marker || '%'
   );
 
   IF missing_workspace_policy_count <> 0 THEN
     RAISE EXCEPTION
       '% workspace metadata SELECT policies are missing or malformed',
       missing_workspace_policy_count;
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_policies AS policy
-    WHERE policy.schemaname = 'public'
-      AND policy.tablename = 'workspaces'
-      AND policy.policyname = 'workspaces_authenticated_select'
-      AND COALESCE(policy.qual, '') ILIKE '%is_platform_admin%'
-  ) OR NOT EXISTS (
-    SELECT 1
-    FROM pg_policies AS policy
-    WHERE policy.schemaname = 'public'
-      AND policy.tablename = 'workspace_memberships'
-      AND policy.policyname = 'workspace_memberships_authenticated_select'
-      AND COALESCE(policy.qual, '') ILIKE '%is_platform_admin%'
-  ) THEN
-    RAISE EXCEPTION 'platform-admin workspace metadata access is missing';
   END IF;
 
   SELECT count(*)
@@ -1000,17 +1244,16 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM pg_trigger AS trigger_definition
-    JOIN pg_proc AS trigger_function
-      ON trigger_function.oid = trigger_definition.tgfoid
     WHERE trigger_definition.tgrelid = 'public.workspace_memberships'::regclass
       AND trigger_definition.tgname = 'workspace_memberships_enforce_private_single_live'
       AND trigger_definition.tgenabled <> 'D'
-      AND (trigger_definition.tgtype & 1) = 1
-      AND (trigger_definition.tgtype & 2) = 2
-      AND (trigger_definition.tgtype & 4) = 4
-      AND (trigger_definition.tgtype & 16) = 16
-      AND trigger_function.proname = 'enforce_private_workspace_single_live_member'
-  ) THEN
+      AND trigger_definition.tgtype = 31
+      AND trigger_definition.tgfoid =
+        'public.enforce_private_workspace_single_live_member()'::regprocedure
+  ) OR pg_get_functiondef(
+    'public.enforce_private_workspace_single_live_member()'::regprocedure
+  ) NOT ILIKE '%TG_OP%OLD.workspace_id%NEW.workspace_id%FOR UPDATE%existing_membership.workspace_id = target_workspace_id%existing_membership.id <> NEW.id%private workspaces support exactly one membership%'
+  THEN
     RAISE EXCEPTION 'private-workspace single-member trigger is missing or disabled';
   END IF;
 
@@ -1059,6 +1302,7 @@ BEGIN
       'workspaces',
       'workspace_memberships',
       'workspace_audit_log',
+      'workspace_auth_lifecycle_claims',
       'clients',
       'bookings',
       'client_portal_credentials',
@@ -1242,10 +1486,24 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1
+    FROM pg_class AS relation
+    WHERE relation.oid = 'public.resend_webhook_events'::regclass
+      AND relation.relkind = 'r'
+      AND relation.relpersistence = 'p'
+      AND NOT relation.relispartition
+  ) THEN
+    RAISE EXCEPTION 'Resend webhook receipt ledger is not durable and ordinary';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
     FROM pg_constraint AS constraint_definition
     WHERE constraint_definition.conrelid = 'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname = 'resend_webhook_events_pkey'
       AND constraint_definition.contype = 'p'
       AND constraint_definition.convalidated
+      AND NOT constraint_definition.condeferrable
+      AND NOT constraint_definition.condeferred
       AND constraint_definition.conkey = ARRAY[
         (
           SELECT attribute.attnum
@@ -1260,6 +1518,7 @@ BEGIN
     FROM pg_class AS relation
     WHERE relation.oid = 'public.resend_webhook_events'::regclass
       AND relation.relrowsecurity
+      AND NOT relation.relforcerowsecurity
   ) THEN
     RAISE EXCEPTION 'Resend webhook receipt ledger PK or RLS is missing';
   END IF;
@@ -1267,28 +1526,171 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM (VALUES
-      ('svix_id', 'text', 'NO'),
-      ('event_type', 'text', 'NO'),
-      ('resend_email_id', 'text', 'YES'),
-      ('event_created_at', 'timestamp with time zone', 'NO'),
-      ('received_at', 'timestamp with time zone', 'NO')
-    ) AS required_column(column_name, data_type, is_nullable)
+      ('svix_id', 'text', 'NO', NULL::TEXT),
+      ('event_type', 'text', 'NO', NULL::TEXT),
+      ('resend_email_id', 'text', 'YES', NULL::TEXT),
+      ('event_created_at', 'timestamptz', 'NO', NULL::TEXT),
+      ('received_at', 'timestamptz', 'NO', 'now')
+    ) AS required_column(column_name, udt_name, is_nullable, default_marker)
     LEFT JOIN information_schema.columns AS actual_column
       ON actual_column.table_schema = 'public'
       AND actual_column.table_name = 'resend_webhook_events'
       AND actual_column.column_name = required_column.column_name
-      AND actual_column.data_type = required_column.data_type
+      AND actual_column.udt_name = required_column.udt_name
       AND actual_column.is_nullable = required_column.is_nullable
+      AND CASE
+        WHEN required_column.default_marker IS NULL
+          THEN actual_column.column_default IS NULL
+        ELSE lower(btrim(COALESCE(actual_column.column_default, ''))) =
+          required_column.default_marker || '()'
+      END
     WHERE actual_column.column_name IS NULL
-  ) OR NOT EXISTS (
-    SELECT 1
+  ) OR (
+    SELECT count(*)
     FROM information_schema.columns AS actual_column
     WHERE actual_column.table_schema = 'public'
       AND actual_column.table_name = 'resend_webhook_events'
-      AND actual_column.column_name = 'received_at'
-      AND actual_column.column_default ILIKE '%now()%'
+  ) <> 5 OR (
+    SELECT count(*)
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+      'public.resend_webhook_events'::regclass
+      AND constraint_definition.contype <> 'n'
+  ) <> 4 OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname =
+        'resend_webhook_events_svix_id_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND lower(replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '')) =
+        'checkchar_lengthsvix_id>=1andchar_lengthsvix_id<=256'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname =
+        'resend_webhook_events_event_type_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND lower(replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '')) =
+        'checkchar_lengthevent_type>=1andchar_lengthevent_type<=128'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname =
+        'resend_webhook_events_resend_email_id_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND lower(replace(replace(regexp_replace(
+        pg_get_constraintdef(constraint_definition.oid),
+        '[[:space:]]',
+        '',
+        'g'
+      ), '(', ''), ')', '')) =
+        'checkresend_email_idisnullorchar_lengthresend_email_id>=1andchar_lengthresend_email_id<=256'
   ) THEN
     RAISE EXCEPTION 'Resend webhook receipt ledger columns are malformed';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index AS index_definition
+    JOIN pg_class AS index_relation
+      ON index_relation.oid = index_definition.indexrelid
+    WHERE index_definition.indrelid =
+        'public.resend_webhook_events'::regclass
+      AND index_relation.relname = 'resend_webhook_events_received_at_idx'
+      AND index_relation.relam = (
+        SELECT access_method.oid
+        FROM pg_am AS access_method
+        WHERE access_method.amname = 'btree'
+      )
+      AND index_definition.indisvalid
+      AND index_definition.indisready
+      AND index_definition.indislive
+      AND NOT index_definition.indisunique
+      AND NOT index_definition.indisexclusion
+      AND index_definition.indimmediate
+      AND index_definition.indnkeyatts = 1
+      AND index_definition.indnatts = 1
+      AND index_definition.indexprs IS NULL
+      AND index_definition.indpred IS NULL
+      AND index_definition.indoption[0] = 3
+      AND index_definition.indkey[0] = (
+        SELECT attribute.attnum
+        FROM pg_attribute AS attribute
+        WHERE attribute.attrelid = 'public.resend_webhook_events'::regclass
+          AND attribute.attname = 'received_at'
+          AND NOT attribute.attisdropped
+      )
+  ) THEN
+    RAISE EXCEPTION 'Resend webhook receipt ledger index is malformed';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM pg_index AS index_definition
+    WHERE index_definition.indrelid =
+      'public.resend_webhook_events'::regclass
+  ) <> 2 OR EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid =
+        'public.resend_webhook_events'::regclass
+      AND NOT trigger_definition.tgisinternal
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    JOIN pg_index AS index_definition
+      ON index_definition.indexrelid = constraint_definition.conindid
+    JOIN pg_class AS index_relation
+      ON index_relation.oid = index_definition.indexrelid
+    WHERE constraint_definition.conrelid =
+        'public.resend_webhook_events'::regclass
+      AND constraint_definition.conname = 'resend_webhook_events_pkey'
+      AND index_relation.relname = 'resend_webhook_events_pkey'
+      AND index_relation.relam = (
+        SELECT access_method.oid
+        FROM pg_am AS access_method
+        WHERE access_method.amname = 'btree'
+      )
+      AND index_definition.indisprimary
+      AND index_definition.indisunique
+      AND NOT index_definition.indisexclusion
+      AND index_definition.indimmediate
+      AND index_definition.indisvalid
+      AND index_definition.indisready
+      AND index_definition.indislive
+      AND index_definition.indnkeyatts = 1
+      AND index_definition.indnatts = 1
+      AND index_definition.indexprs IS NULL
+      AND index_definition.indpred IS NULL
+      AND index_definition.indoption[0] = 0
+      AND index_definition.indkey[0] = (
+        SELECT attribute.attnum
+        FROM pg_attribute AS attribute
+        WHERE attribute.attrelid = 'public.resend_webhook_events'::regclass
+          AND attribute.attname = 'svix_id'
+          AND NOT attribute.attisdropped
+      )
+  ) THEN
+    RAISE EXCEPTION 'Resend webhook receipt ledger has hidden write semantics';
   END IF;
 
   IF EXISTS (
@@ -1447,6 +1849,453 @@ BEGIN
     RAISE EXCEPTION 'accept_workspace_invite EXECUTE grants are incorrect';
   END IF;
 
+  IF to_regprocedure(
+      'public.begin_workspace_invite(text,text,text,text,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.finalize_workspace_invite(uuid,uuid,uuid,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.finalize_workspace_invite(uuid,uuid,uuid)'
+    ) IS NOT NULL
+    OR to_regprocedure(
+      'public.finalize_workspace_invite(uuid,uuid)'
+    ) IS NOT NULL
+    OR to_regprocedure(
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.find_workspace_invite_auth_user(uuid,uuid)'
+    ) IS NOT NULL
+    OR to_regprocedure(
+      'public.revoke_workspace_invite(uuid,uuid,uuid)'
+    ) IS NULL
+    OR has_function_privilege(
+      'authenticated',
+      'public.begin_workspace_invite(text,text,text,text,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.begin_workspace_invite(text,text,text,text,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.begin_workspace_invite(text,text,text,text,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.finalize_workspace_invite(uuid,uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.finalize_workspace_invite(uuid,uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.finalize_workspace_invite(uuid,uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.revoke_workspace_invite(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.revoke_workspace_invite(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.revoke_workspace_invite(uuid,uuid,uuid)',
+      'EXECUTE'
+    )
+  THEN
+    RAISE EXCEPTION 'workspace invite provisioning RPC grants are incorrect';
+  END IF;
+
+  -- Keep the app-only candidate equality branch inside the contradictory-
+  -- ownership precheck itself. The broader marker assertion below also sees
+  -- the final candidate query and cannot distinguish that unsafe placement.
+  IF pg_get_functiondef(
+      'public.begin_workspace_invite(text,text,text,text,uuid)'::regprocedure
+    ) NOT ILIKE '%is_platform_admin_identity%workspace_memberships%email_normalized = normalized_email%ORDER BY existing_membership.id%FOR UPDATE%status IN (%''provisioning''%workspace_invite_delivery_claims%claimed_membership.email_normalized = normalized_email%INSERT INTO public.workspaces%INSERT INTO public.workspace_memberships%''provisioning''%workspace.membership.provisioning_started%RETURN jsonb_build_object%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%is_platform_admin_identity%FOR UPDATE%membership.status <> ''provisioning''%workspace_invite_delivery_claims%lock_token IS DISTINCT FROM p_lock_token%workspace invite delivery is busy%lock_token = p_lock_token%claim_kind <> ''deliver''%IF FOUND THEN%RETURN membership;%INSERT INTO public.workspace_invite_delivery_claims%review_after%interval ''15 minutes''%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)'::regprocedure
+    ) ILIKE '%existing_claim.review_after > now()%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_invite_delivery(uuid,uuid,uuid)'::regprocedure
+    ) ILIKE '%ON CONFLICT%'
+    OR pg_get_functiondef(
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%same_email_membership.email_normalized = membership.email_normalized%ORDER BY same_email_membership.id%FOR UPDATE%SELECT claim.lock_token, claim.claim_kind, claim.acquired_at%existing_lock_token IS DISTINCT FROM p_lock_token%RETURN false%claim_kind = ''revoke_cleanup''%newer_membership.email_normalized = membership.email_normalized%newer_membership.created_at >= membership.created_at%workspace_invite_delivery_claims AS other_claim%JOIN public.workspace_memberships AS other_membership%other_membership.id <> membership.id%historical workspace invitation is superseded%auth.users%auth_user.id = membership.user_id%OR auth_user.raw_user_meta_data%OR auth_user.raw_app_meta_data%claim_kind = ''deliver''%lower(btrim(auth_user.email)) = membership.email_normalized%auth_user.invited_at IS NOT NULL%auth_user.created_at >= claim_acquired_at%Auth cleanup is incomplete%DELETE FROM public.workspace_invite_delivery_claims%lock_token = p_lock_token%RETURN true%'
+    OR pg_get_functiondef(
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)'::regprocedure
+    ) ILIKE '%claim_acquired_at - interval%'
+    OR pg_get_functiondef(
+      'public.release_workspace_invite_delivery_claim(uuid,uuid)'::regprocedure
+    ) ILIKE '%auth_user.created_at >= membership.created_at%'
+    OR pg_get_functiondef(
+      'public.finalize_workspace_invite(uuid,uuid,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%is_platform_admin_identity%FOR UPDATE%membership.status = ''invited''%membership.user_id = p_auth_user_id%membership.status <> ''provisioning''%workspace_invite_delivery_claims%delivery_lock_token IS DISTINCT FROM p_lock_token%delivery_claim_kind <> ''deliver''%encrypted_password%raw_app_meta_data%workspace_id%raw_app_meta_data%workspace_membership_id%auth_user.id = p_auth_user_id%auth_workspace_id IS NULL%auth_membership_id IS NULL%Auth identity is not ready%auth_email IS DISTINCT FROM membership.email_normalized%auth_workspace_id IS DISTINCT FROM membership.workspace_id%auth_membership_id IS DISTINCT FROM membership.id%auth_invited_at IS NULL%auth_created_at < membership.created_at%auth_confirmed_at IS NOT NULL%auth_last_sign_in_at IS NOT NULL%auth_has_password%is_platform_admin_email(auth_email)%status = ''invited''%invited_at = auth_invited_at%invite_expires_at = auth_invited_at%workspace.membership.invited%DELETE FROM public.workspace_invite_delivery_claims%claim.lock_token = p_lock_token%'
+    OR pg_get_functiondef(
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%is_platform_admin_identity%same_email_membership.email_normalized = membership.email_normalized%ORDER BY same_email_membership.id%FOR UPDATE%SELECT claim.lock_token, claim.claim_kind%existing_lock_token IS DISTINCT FROM p_lock_token%existing_claim_kind = ''revoke_cleanup''%newer_membership.email_normalized = membership.email_normalized%newer_membership.created_at >= membership.created_at%workspace_invite_delivery_claims AS other_claim%other_membership.id <> membership.id%historical workspace invitation is superseded%raw_app_meta_data%workspace_membership_id%<> membership.id%raw_app_meta_data%workspace_id%<> membership.workspace_id%bound_membership.user_id = auth_user.id%unsafe: contradictory ownership%array_agg(auth_user.id%auth_user.id = membership.user_id%raw_user_meta_data%workspace_membership_id%raw_user_meta_data%workspace_id%membership.workspace_id%auth_user.invited_at IS NOT NULL%auth_user.created_at >= membership.created_at%raw_app_meta_data%workspace_membership_id%raw_app_meta_data%workspace_id%membership.workspace_id%cardinality(candidate_user_ids) <> 1%Auth identity is ambiguous%is_platform_admin_email(candidate_emails[1])%'
+    OR pg_get_functiondef(
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%WHERE (%auth_user.id = membership.user_id%OR auth_user.raw_user_meta_data ->> ''workspace_membership_id'' = membership.id::text%OR (%auth_user.raw_app_meta_data ->> ''workspace_membership_id'' = membership.id::text%AND auth_user.raw_app_meta_data ->> ''workspace_id'' = membership.workspace_id::text%))%AND (%auth_user.raw_app_meta_data ->> ''workspace_membership_id'' IS NOT NULL%<> membership.id::text%OR (%auth_user.raw_app_meta_data ->> ''workspace_id'' IS NOT NULL%<> membership.workspace_id::text%OR EXISTS (%bound_membership.user_id = auth_user.id%'
+    OR pg_get_functiondef(
+      'public.find_workspace_invite_auth_user(uuid,uuid,uuid)'::regprocedure
+    ) ILIKE '%LIMIT 1%'
+    OR pg_get_functiondef(
+      'public.revoke_workspace_invite(uuid,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%is_platform_admin_identity%WHERE existing_membership.id = p_membership_id;%same_email_membership.email_normalized = membership.email_normalized%ORDER BY same_email_membership.id%FOR UPDATE%WHERE existing_membership.id = p_membership_id%FOR UPDATE%membership.status = ''revoked''%newer_membership.email_normalized = membership.email_normalized%newer_membership.created_at >= membership.created_at%workspace_invite_delivery_claims AS other_claim%other_membership.id <> membership.id%historical workspace invitation is superseded%workspace_invite_delivery_claims%FOR UPDATE%lock_token IS DISTINCT FROM p_lock_token%claim_kind <> ''revoke_cleanup''%IF FOUND THEN%membership.status <> ''revoked''%RETURN membership%membership.status NOT IN (''provisioning'', ''invited'', ''revoked'')%status = ''revoked''%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%workspace.membership.revoked%INSERT INTO public.workspace_invite_delivery_claims%''revoke_cleanup''%review_after%interval ''15 minutes''%'
+    OR pg_get_functiondef(
+      'public.revoke_workspace_invite(uuid,uuid,uuid)'::regprocedure
+    ) ILIKE '%ON CONFLICT%'
+    OR pg_get_functiondef(
+      'public.accept_workspace_invite(uuid,uuid,text)'::regprocedure
+    ) NOT ILIKE '%encrypted_password%password setup is required%membership.status <> ''invited''%'
+  THEN
+    RAISE EXCEPTION 'workspace invitation provisioning is not fail-closed and auditable';
+  END IF;
+
+  -- Static Edge regression requirement: manage-workspace-users must evaluate
+  -- inviteRedirectUrl() before claimInviteDelivery(), then pass that already
+  -- validated value to inviteUserByEmail(). A missing/invalid redirect after
+  -- provisioning must create no delivery claim and retry_invite must remain
+  -- available. Provider fallback fixtures must prove an unmarked same-email
+  -- Auth row created before claim.acquired_at is excluded and one created at
+  -- or after claim.acquired_at is included only for claim_kind = 'deliver'.
+  -- Revoke-cleanup fixtures must also prove that any newer membership B
+  -- (regardless of status), or any other same-email membership with a claim,
+  -- permanently supersedes A. Even when B's Auth user matches A solely through
+  -- A's exact trusted app-metadata membership+workspace markers, B's membership
+  -- binding is contradictory ownership and must fail before candidate selection.
+
+  IF to_regclass('public.workspace_invite_delivery_claims') IS NULL
+    OR NOT (
+      SELECT relation.relrowsecurity
+        AND NOT relation.relforcerowsecurity
+        AND relation.relkind = 'r'
+        AND relation.relpersistence = 'p'
+        AND NOT relation.relispartition
+      FROM pg_class AS relation
+      WHERE relation.oid = 'public.workspace_invite_delivery_claims'::regclass
+    )
+    OR has_table_privilege('anon', 'public.workspace_invite_delivery_claims', 'SELECT')
+    OR has_table_privilege('authenticated', 'public.workspace_invite_delivery_claims', 'SELECT')
+    OR has_table_privilege('service_role', 'public.workspace_invite_delivery_claims', 'SELECT')
+    OR has_table_privilege('service_role', 'public.workspace_invite_delivery_claims', 'INSERT')
+    OR has_table_privilege('service_role', 'public.workspace_invite_delivery_claims', 'UPDATE')
+    OR has_table_privilege('service_role', 'public.workspace_invite_delivery_claims', 'DELETE')
+    OR EXISTS (
+      SELECT 1
+      FROM (VALUES
+        ('membership_id', 'uuid', NULL::TEXT),
+        ('lock_token', 'uuid', NULL::TEXT),
+        ('claim_kind', 'text', NULL::TEXT),
+        ('actor_user_id', 'uuid', NULL::TEXT),
+        ('acquired_at', 'timestamptz', 'now'),
+        ('review_after', 'timestamptz', NULL::TEXT)
+      ) AS required_column(column_name, udt_name, default_marker)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns AS existing_column
+        WHERE existing_column.table_schema = 'public'
+          AND existing_column.table_name = 'workspace_invite_delivery_claims'
+          AND existing_column.column_name = required_column.column_name
+          AND existing_column.udt_name = required_column.udt_name
+          AND existing_column.is_nullable = 'NO'
+          AND CASE
+            WHEN required_column.default_marker IS NULL
+              THEN existing_column.column_default IS NULL
+            ELSE lower(btrim(COALESCE(existing_column.column_default, ''))) =
+              required_column.default_marker || '()'
+          END
+      )
+    )
+    OR (
+      SELECT count(*)
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_invite_delivery_claims'
+    ) <> 6
+    OR (
+      SELECT count(*)
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+        'public.workspace_invite_delivery_claims'::regclass
+        AND constraint_definition.contype <> 'n'
+    ) <> 5
+    OR (
+      SELECT count(*)
+      FROM pg_index AS index_definition
+      WHERE index_definition.indrelid =
+        'public.workspace_invite_delivery_claims'::regclass
+    ) <> 3
+    OR EXISTS (
+      SELECT 1
+      FROM pg_trigger AS trigger_definition
+      WHERE trigger_definition.tgrelid =
+          'public.workspace_invite_delivery_claims'::regclass
+        AND NOT trigger_definition.tgisinternal
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_invite_delivery_claims'::regclass
+        AND constraint_definition.conname =
+          'workspace_invite_delivery_claims_pkey'
+        AND constraint_definition.contype = 'p'
+        AND constraint_definition.convalidated
+        AND NOT constraint_definition.condeferrable
+        AND NOT constraint_definition.condeferred
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_invite_delivery_claims'::regclass
+              AND attribute.attname = 'membership_id'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_invite_delivery_claims'::regclass
+        AND constraint_definition.conname =
+          'workspace_invite_delivery_claims_membership_id_fkey'
+        AND constraint_definition.confrelid =
+          'public.workspace_memberships'::regclass
+        AND constraint_definition.contype = 'f'
+        AND constraint_definition.confdeltype = 'r'
+        AND constraint_definition.confupdtype = 'a'
+        AND constraint_definition.confmatchtype = 's'
+        AND constraint_definition.convalidated
+        AND NOT constraint_definition.condeferrable
+        AND NOT constraint_definition.condeferred
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_invite_delivery_claims'::regclass
+              AND attribute.attname = 'membership_id'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+        AND constraint_definition.confkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid = 'public.workspace_memberships'::regclass
+              AND attribute.attname = 'id'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_invite_delivery_claims'::regclass
+        AND constraint_definition.conname =
+          'workspace_invite_delivery_claims_lock_token_key'
+        AND constraint_definition.contype = 'u'
+        AND constraint_definition.convalidated
+        AND NOT constraint_definition.condeferrable
+        AND NOT constraint_definition.condeferred
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_invite_delivery_claims'::regclass
+              AND attribute.attname = 'lock_token'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspace_invite_delivery_claims'::regclass
+        AND conname = 'workspace_invite_delivery_claims_claim_kind_check'
+        AND contype = 'c'
+        AND convalidated
+        AND replace(replace(regexp_replace(
+          pg_get_constraintdef(oid),
+          '[[:space:]]',
+          '',
+          'g'
+        ), '(', ''), ')', '') =
+          'CHECKclaim_kind=ANYARRAY[''deliver''::text,''revoke_cleanup''::text]'
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspace_invite_delivery_claims'::regclass
+        AND conname = 'workspace_invite_delivery_claims_review_check'
+        AND contype = 'c'
+        AND convalidated
+        AND replace(replace(regexp_replace(
+          pg_get_constraintdef(oid),
+          '[[:space:]]',
+          '',
+          'g'
+        ), '(', ''), ')', '') = 'CHECKreview_after>acquired_at'
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM (VALUES
+        (
+          'workspace_invite_delivery_claims_pkey',
+          'membership_id',
+          true,
+          true
+        ),
+        (
+          'workspace_invite_delivery_claims_lock_token_key',
+          'lock_token',
+          true,
+          false
+        ),
+        (
+          'workspace_invite_delivery_claims_review_idx',
+          'review_after',
+          false,
+          false
+        )
+      ) AS required_index(index_name, column_name, is_unique, is_primary)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM pg_index AS index_definition
+        JOIN pg_class AS index_relation
+          ON index_relation.oid = index_definition.indexrelid
+        WHERE index_definition.indrelid =
+            'public.workspace_invite_delivery_claims'::regclass
+          AND index_relation.relname = required_index.index_name
+          AND index_relation.relam = (
+            SELECT access_method.oid
+            FROM pg_am AS access_method
+            WHERE access_method.amname = 'btree'
+          )
+          AND index_definition.indisunique = required_index.is_unique
+          AND index_definition.indisprimary = required_index.is_primary
+          AND NOT index_definition.indisexclusion
+          AND index_definition.indimmediate
+          AND index_definition.indisvalid
+          AND index_definition.indisready
+          AND index_definition.indislive
+          AND index_definition.indnkeyatts = 1
+          AND index_definition.indnatts = 1
+          AND index_definition.indexprs IS NULL
+          AND index_definition.indpred IS NULL
+          AND index_definition.indoption[0] = 0
+          AND index_definition.indclass[0] = (
+            SELECT operator_class.oid
+            FROM pg_opclass AS operator_class
+            JOIN pg_am AS access_method
+              ON access_method.oid = operator_class.opcmethod
+            JOIN pg_attribute AS attribute
+              ON attribute.attrelid =
+                'public.workspace_invite_delivery_claims'::regclass
+              AND attribute.attname = required_index.column_name
+              AND NOT attribute.attisdropped
+            WHERE access_method.amname = 'btree'
+              AND operator_class.opcdefault
+              AND operator_class.opcintype = attribute.atttypid
+          )
+          AND index_definition.indcollation[0] = (
+            SELECT attribute.attcollation
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_invite_delivery_claims'::regclass
+              AND attribute.attname = required_index.column_name
+              AND NOT attribute.attisdropped
+          )
+          AND index_definition.indkey[0] = (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_invite_delivery_claims'::regclass
+              AND attribute.attname = required_index.column_name
+              AND NOT attribute.attisdropped
+          )
+      )
+    )
+  THEN
+    RAISE EXCEPTION 'workspace invite delivery claims are not service-function-only';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.workspace_invite_delivery_claims) THEN
+    RAISE EXCEPTION 'an unresolved workspace invite delivery claim remains';
+  END IF;
+
   IF has_function_privilege(
     'authenticated',
     'public.transition_workspace_membership(uuid,text,uuid)',
@@ -1463,9 +2312,486 @@ BEGIN
     RAISE EXCEPTION 'transition_workspace_membership EXECUTE grants are incorrect';
   END IF;
 
+  IF to_regclass('public.workspace_auth_lifecycle_claims') IS NULL
+    OR NOT (
+      SELECT relation.relrowsecurity
+        AND NOT relation.relforcerowsecurity
+        AND relation.relkind = 'r'
+        AND relation.relpersistence = 'p'
+        AND NOT relation.relispartition
+      FROM pg_class AS relation
+      WHERE relation.oid = 'public.workspace_auth_lifecycle_claims'::regclass
+    )
+    OR has_table_privilege('anon', 'public.workspace_auth_lifecycle_claims', 'SELECT')
+    OR has_table_privilege('authenticated', 'public.workspace_auth_lifecycle_claims', 'SELECT')
+    OR has_table_privilege('service_role', 'public.workspace_auth_lifecycle_claims', 'SELECT')
+    OR has_table_privilege('service_role', 'public.workspace_auth_lifecycle_claims', 'INSERT')
+    OR has_table_privilege('service_role', 'public.workspace_auth_lifecycle_claims', 'UPDATE')
+    OR has_table_privilege('service_role', 'public.workspace_auth_lifecycle_claims', 'DELETE')
+    OR EXISTS (
+      SELECT 1
+      FROM (VALUES
+        ('membership_id', 'uuid', NULL::TEXT),
+        ('lock_token', 'uuid', NULL::TEXT),
+        ('action', 'text', NULL::TEXT),
+        ('desired_status', 'text', NULL::TEXT),
+        ('actor_user_id', 'uuid', NULL::TEXT),
+        ('acquired_at', 'timestamptz', 'now'),
+        ('review_after', 'timestamptz', NULL::TEXT)
+      ) AS required_column(column_name, udt_name, default_marker)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns AS existing_column
+        WHERE existing_column.table_schema = 'public'
+          AND existing_column.table_name = 'workspace_auth_lifecycle_claims'
+          AND existing_column.column_name = required_column.column_name
+          AND existing_column.udt_name = required_column.udt_name
+          AND existing_column.is_nullable = 'NO'
+          AND CASE
+            WHEN required_column.default_marker IS NULL
+              THEN existing_column.column_default IS NULL
+            ELSE lower(btrim(COALESCE(existing_column.column_default, ''))) =
+              required_column.default_marker || '()'
+          END
+      )
+    )
+    OR (
+      SELECT count(*)
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_auth_lifecycle_claims'
+    ) <> 7
+    OR (
+      SELECT count(*)
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_auth_lifecycle_claims'::regclass
+        AND constraint_definition.contype <> 'n'
+    ) <> 7
+    OR (
+      SELECT count(*)
+      FROM pg_index AS index_definition
+      WHERE index_definition.indrelid =
+        'public.workspace_auth_lifecycle_claims'::regclass
+    ) <> 3
+    OR EXISTS (
+      SELECT 1
+      FROM pg_trigger AS trigger_definition
+      WHERE trigger_definition.tgrelid =
+          'public.workspace_auth_lifecycle_claims'::regclass
+        AND NOT trigger_definition.tgisinternal
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'workspace_auth_lifecycle_claims'
+        AND column_name = 'expires_at'
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_auth_lifecycle_claims'::regclass
+        AND constraint_definition.conname =
+          'workspace_auth_lifecycle_claims_pkey'
+        AND constraint_definition.contype = 'p'
+        AND constraint_definition.convalidated
+        AND NOT constraint_definition.condeferrable
+        AND NOT constraint_definition.condeferred
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_auth_lifecycle_claims'::regclass
+              AND attribute.attname = 'membership_id'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_auth_lifecycle_claims'::regclass
+        AND constraint_definition.conname =
+          'workspace_auth_lifecycle_claims_membership_id_fkey'
+        AND constraint_definition.contype = 'f'
+        AND constraint_definition.confrelid =
+          'public.workspace_memberships'::regclass
+        AND constraint_definition.confdeltype = 'r'
+        AND constraint_definition.confupdtype = 'a'
+        AND constraint_definition.confmatchtype = 's'
+        AND constraint_definition.convalidated
+        AND NOT constraint_definition.condeferrable
+        AND NOT constraint_definition.condeferred
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_auth_lifecycle_claims'::regclass
+              AND attribute.attname = 'membership_id'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+        AND constraint_definition.confkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid = 'public.workspace_memberships'::regclass
+              AND attribute.attname = 'id'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_auth_lifecycle_claims'::regclass
+        AND constraint_definition.conname =
+          'workspace_auth_lifecycle_claims_lock_token_key'
+        AND constraint_definition.contype = 'u'
+        AND constraint_definition.convalidated
+        AND NOT constraint_definition.condeferrable
+        AND NOT constraint_definition.condeferred
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_auth_lifecycle_claims'::regclass
+              AND attribute.attname = 'lock_token'
+              AND NOT attribute.attisdropped
+          )
+        ]::SMALLINT[]
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspace_auth_lifecycle_claims'::regclass
+        AND conname = 'workspace_auth_lifecycle_claims_action_check'
+        AND contype = 'c'
+        AND convalidated
+        AND replace(replace(regexp_replace(
+          pg_get_constraintdef(oid),
+          '[[:space:]]',
+          '',
+          'g'
+        ), '(', ''), ')', '') =
+          'CHECKaction=ANYARRAY[''suspend''::text,''reactivate''::text,''reconcile_active''::text,''reconcile_suspended''::text]'
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspace_auth_lifecycle_claims'::regclass
+        AND conname = 'workspace_auth_lifecycle_claims_desired_status_check'
+        AND contype = 'c'
+        AND convalidated
+        AND replace(replace(regexp_replace(
+          pg_get_constraintdef(oid),
+          '[[:space:]]',
+          '',
+          'g'
+        ), '(', ''), ')', '') =
+          'CHECKdesired_status=ANYARRAY[''active''::text,''suspended''::text]'
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspace_auth_lifecycle_claims'::regclass
+        AND conname = 'workspace_auth_lifecycle_claims_action_status_check'
+        AND contype = 'c'
+        AND convalidated
+        AND replace(replace(regexp_replace(
+          pg_get_constraintdef(oid),
+          '[[:space:]]',
+          '',
+          'g'
+        ), '(', ''), ')', '') =
+          'CHECKaction=ANYARRAY[''suspend''::text,''reconcile_suspended''::text]ANDdesired_status=''suspended''::textORaction=ANYARRAY[''reactivate''::text,''reconcile_active''::text]ANDdesired_status=''active''::text'
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspace_auth_lifecycle_claims'::regclass
+        AND conname = 'workspace_auth_lifecycle_claims_review_check'
+        AND contype = 'c'
+        AND convalidated
+        AND replace(replace(regexp_replace(
+          pg_get_constraintdef(oid),
+          '[[:space:]]',
+          '',
+          'g'
+        ), '(', ''), ')', '') = 'CHECKreview_after>acquired_at'
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM (VALUES
+        (
+          'workspace_auth_lifecycle_claims_pkey',
+          'membership_id',
+          true,
+          true
+        ),
+        (
+          'workspace_auth_lifecycle_claims_lock_token_key',
+          'lock_token',
+          true,
+          false
+        ),
+        (
+          'workspace_auth_lifecycle_claims_review_idx',
+          'review_after',
+          false,
+          false
+        )
+      ) AS required_index(index_name, column_name, is_unique, is_primary)
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM pg_index AS index_definition
+        JOIN pg_class AS index_relation
+          ON index_relation.oid = index_definition.indexrelid
+        WHERE index_definition.indrelid =
+            'public.workspace_auth_lifecycle_claims'::regclass
+          AND index_relation.relname = required_index.index_name
+          AND index_relation.relam = (
+            SELECT access_method.oid
+            FROM pg_am AS access_method
+            WHERE access_method.amname = 'btree'
+          )
+          AND index_definition.indisunique = required_index.is_unique
+          AND index_definition.indisprimary = required_index.is_primary
+          AND NOT index_definition.indisexclusion
+          AND index_definition.indimmediate
+          AND index_definition.indisvalid
+          AND index_definition.indisready
+          AND index_definition.indislive
+          AND index_definition.indnkeyatts = 1
+          AND index_definition.indnatts = 1
+          AND index_definition.indexprs IS NULL
+          AND index_definition.indpred IS NULL
+          AND index_definition.indoption[0] = 0
+          AND index_definition.indclass[0] = (
+            SELECT operator_class.oid
+            FROM pg_opclass AS operator_class
+            JOIN pg_am AS access_method
+              ON access_method.oid = operator_class.opcmethod
+            JOIN pg_attribute AS attribute
+              ON attribute.attrelid =
+                'public.workspace_auth_lifecycle_claims'::regclass
+              AND attribute.attname = required_index.column_name
+              AND NOT attribute.attisdropped
+            WHERE access_method.amname = 'btree'
+              AND operator_class.opcdefault
+              AND operator_class.opcintype = attribute.atttypid
+          )
+          AND index_definition.indcollation[0] = (
+            SELECT attribute.attcollation
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_auth_lifecycle_claims'::regclass
+              AND attribute.attname = required_index.column_name
+              AND NOT attribute.attisdropped
+          )
+          AND index_definition.indkey[0] = (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid =
+                'public.workspace_auth_lifecycle_claims'::regclass
+              AND attribute.attname = required_index.column_name
+              AND NOT attribute.attisdropped
+          )
+      )
+    )
+  THEN
+    RAISE EXCEPTION 'workspace Auth lifecycle claims are not service-function-only';
+  END IF;
+
+  IF to_regprocedure(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.list_workspace_auth_lifecycle_pending()'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.list_workspace_invite_cleanup_conflicts()'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.list_workspace_invite_reconciliation_pending()'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.release_workspace_auth_lifecycle_claim(uuid,uuid)'
+    ) IS NOT NULL
+    OR has_function_privilege(
+      'authenticated',
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.list_workspace_auth_lifecycle_pending()',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.list_workspace_auth_lifecycle_pending()',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.list_workspace_auth_lifecycle_pending()',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.list_workspace_invite_cleanup_conflicts()',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.list_workspace_invite_cleanup_conflicts()',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.list_workspace_invite_cleanup_conflicts()',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.list_workspace_invite_reconciliation_pending()',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.list_workspace_invite_reconciliation_pending()',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.list_workspace_invite_reconciliation_pending()',
+      'EXECUTE'
+    )
+  THEN
+    RAISE EXCEPTION 'workspace Auth lifecycle claim EXECUTE grants are incorrect';
+  END IF;
+
+  IF pg_get_functiondef(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%p_action NOT IN (%''suspend''%''reactivate''%''reconcile_active''%''reconcile_suspended''%FOR UPDATE%workspace_auth_lifecycle_claims%lock_token IS DISTINCT FROM p_lock_token%workspace Auth lifecycle is busy%existing_claim.action IS DISTINCT FROM p_action%existing_claim.desired_status IS DISTINCT FROM desired_status%existing_claim.actor_user_id IS DISTINCT FROM p_actor_user_id%IF FOUND THEN%membership.status IS DISTINCT FROM desired_status%RETURN membership%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) ILIKE '%existing_claim.review_after > now()%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) ILIKE '%ON CONFLICT%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%p_action IN (''reactivate'', ''reconcile_active'')%auth_email IS DISTINCT FROM membership.email_normalized%identity mismatch requires manual review%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%p_action = ''suspend'' AND membership.status <> ''active''%p_action = ''reactivate'' AND membership.status <> ''suspended''%p_action = ''reconcile_active'' AND membership.status <> ''active''%status no longer matches active reconciliation%p_action = ''reconcile_suspended'' AND membership.status <> ''suspended''%status no longer matches suspended reconciliation%INSERT INTO public.workspace_auth_lifecycle_claims%action%desired_status%IF p_action = ''suspend'' THEN%transition_workspace_membership%ELSIF p_action = ''reactivate'' THEN%transition_workspace_membership%'
+    OR pg_get_functiondef(
+      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%FROM public.workspaces AS workspace%workspace.id = membership.workspace_id%NOT workspace.is_default%workspace.status = CASE membership.status%WHEN ''provisioning'' THEN ''active''%WHEN ''invited'' THEN ''active''%WHEN ''active'' THEN ''active''%WHEN ''suspended'' THEN ''suspended''%WHEN ''revoked'' THEN ''archived''%NOT EXISTS%other_membership.workspace_id = membership.workspace_id%other_membership.id <> membership.id%FOR SHARE%private workspace lifecycle does not match its membership%SELECT claim.*%workspace_auth_lifecycle_claims%'
+    OR pg_get_functiondef(
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%is_platform_admin_identity%md5(p_lock_token::text)%workspace_memberships%FOR UPDATE%workspace_auth_lifecycle_claims%FOR UPDATE%IF NOT FOUND THEN%workspace_audit_log%workspace.membership.auth_reconciled%audit.request_id = completion_request_id%audit.metadata = jsonb_build_object(%''action'', p_action%''desired_status'', desired_status%RETURN membership%claim is required%existing_claim.lock_token IS DISTINCT FROM p_lock_token%existing_claim.action IS DISTINCT FROM p_action%existing_claim.desired_status IS DISTINCT FROM desired_status%existing_claim.actor_user_id IS DISTINCT FROM p_actor_user_id%membership.status IS DISTINCT FROM desired_status%INSERT INTO public.workspace_audit_log%''workspace.membership.auth_reconciled''%jsonb_build_object(%''action'', existing_claim.action%''desired_status'', existing_claim.desired_status%completion_request_id%DELETE FROM public.workspace_auth_lifecycle_claims%claim.lock_token = p_lock_token%IF NOT FOUND THEN%claim was lost%RETURN membership%'
+    OR pg_get_functiondef(
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) NOT ILIKE '%FROM public.workspaces AS workspace%workspace.id = membership.workspace_id%NOT workspace.is_default%workspace.status = CASE membership.status%WHEN ''provisioning'' THEN ''active''%WHEN ''invited'' THEN ''active''%WHEN ''active'' THEN ''active''%WHEN ''suspended'' THEN ''suspended''%WHEN ''revoked'' THEN ''archived''%NOT EXISTS%other_membership.workspace_id = membership.workspace_id%other_membership.id <> membership.id%FOR SHARE%private workspace lifecycle does not match its membership%SELECT claim.*%workspace_auth_lifecycle_claims%'
+    OR pg_get_functiondef(
+      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+    ) ILIKE '%jsonb_build_object(%p_lock_token%'
+    OR pg_get_function_result(
+      'public.list_workspace_auth_lifecycle_pending()'::regprocedure
+    ) NOT ILIKE '%membership_id uuid%review_after timestamp with time zone%'
+    OR pg_get_functiondef(
+      'public.list_workspace_auth_lifecycle_pending()'::regprocedure
+    ) NOT ILIKE '%auth.role() <> ''service_role''%SELECT claim.membership_id, claim.review_after%workspace_auth_lifecycle_claims%'
+    OR pg_get_functiondef(
+      'public.list_workspace_auth_lifecycle_pending()'::regprocedure
+    ) ILIKE '%lock_token%'
+    OR pg_get_functiondef(
+      'public.list_workspace_auth_lifecycle_pending()'::regprocedure
+    ) ILIKE '%actor_user_id%'
+    OR pg_get_function_result(
+      'public.list_workspace_invite_cleanup_conflicts()'::regprocedure
+    ) NOT ILIKE '%membership_id uuid%has_newer_membership boolean%'
+    OR pg_get_functiondef(
+      'public.list_workspace_invite_cleanup_conflicts()'::regprocedure
+    ) NOT ILIKE '%auth.role() <> ''service_role''%historical_membership.status = ''revoked''%newer_membership.created_at >= historical_membership.created_at%workspace_invite_delivery_claims AS other_claim%other_membership.id <> historical_membership.id%'
+    OR pg_get_functiondef(
+      'public.list_workspace_invite_cleanup_conflicts()'::regprocedure
+    ) ILIKE '%lock_token%'
+    OR pg_get_functiondef(
+      'public.list_workspace_invite_cleanup_conflicts()'::regprocedure
+    ) ILIKE '%actor_user_id%'
+    OR pg_get_function_result(
+      'public.list_workspace_invite_reconciliation_pending()'::regprocedure
+    ) NOT ILIKE '%membership_id uuid%claim_kind text%review_after timestamp with time zone%'
+    OR pg_get_functiondef(
+      'public.list_workspace_invite_reconciliation_pending()'::regprocedure
+    ) NOT ILIKE '%auth.role() <> ''service_role''%SELECT claim.membership_id, claim.claim_kind, claim.review_after%workspace_invite_delivery_claims%'
+    OR pg_get_functiondef(
+      'public.list_workspace_invite_reconciliation_pending()'::regprocedure
+    ) ILIKE '%lock_token%'
+    OR pg_get_functiondef(
+      'public.list_workspace_invite_reconciliation_pending()'::regprocedure
+    ) ILIKE '%actor_user_id%'
+  THEN
+    RAISE EXCEPTION 'workspace Auth lifecycle claim serialization is unsafe';
+  END IF;
+
+  -- Static Edge/UI regression requirement: reconcile_active and
+  -- reconcile_suspended must be sent unchanged end to end; neither may alias
+  -- suspend/reactivate. Claim projections may expose only pending state,
+  -- review_after, and invite claim_kind (never lock_token or actor_user_id),
+  -- and the UI must disable all lifecycle/invite actions while pending.
+  -- Staging must hold a stale reconcile dialog across a
+  -- concurrent transition and prove the locked claim rejects it without
+  -- changing membership/workspace state. It must also prove a fresh normal
+  -- action against an already-desired state is rejected, while a same-token
+  -- lost-response retry returns the original claim/completion exactly once.
+
+  IF EXISTS (SELECT 1 FROM public.workspace_auth_lifecycle_claims) THEN
+    RAISE EXCEPTION 'an unresolved workspace Auth lifecycle claim remains';
+  END IF;
+
   IF pg_get_functiondef(
     'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-  ) NOT ILIKE '%p_action IS NULL%p_action NOT IN (''suspend'', ''reactivate'', ''revoke_pending'')%'
+  ) NOT ILIKE '%p_action IS NULL%p_action NOT IN (''suspend'', ''reactivate'')%'
     OR pg_get_functiondef(
       'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
     ) NOT ILIKE '%p_action = ''suspend''%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%audit_action := ''workspace.membership.suspended''%ELSIF p_action = ''reactivate''%'
@@ -1477,20 +2803,32 @@ BEGIN
     ) NOT ILIKE '%ELSIF p_action = ''reactivate''%RETURNING * INTO membership;%IF NOT FOUND THEN%workspace account transition failed%UPDATE public.workspaces%'
     OR pg_get_functiondef(
       'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) NOT ILIKE '%status = ''revoked''%RETURNING * INTO membership;%IF NOT FOUND THEN%workspace account transition failed%UPDATE public.workspaces%'
+    ) NOT ILIKE '%bound_auth_email%IF NOT FOUND THEN%Auth identity is missing%admin_users%bound_auth_email%platform administrators cannot be changed here%'
     OR pg_get_functiondef(
       'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) ILIKE '%audit_action := ''workspace.membership.revoked''%END IF;%IF NOT FOUND THEN%workspace account transition failed%'
+    ) ILIKE '%bound_auth_email IS DISTINCT FROM membership.email_normalized%'
+    OR pg_get_functiondef(
+      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
+    ) ILIKE '%revoke_pending%'
+    OR pg_get_functiondef(
+      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
+    ) ILIKE '%workspace_invite_delivery_claims%'
+    OR pg_get_functiondef(
+      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
+    ) ILIKE '%workspace.membership.revoked%'
+    OR pg_get_functiondef(
+      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
+    ) ILIKE '%status = ''revoked''%'
   THEN
-    RAISE EXCEPTION 'workspace lifecycle transition or portal revocation is unsafe';
+    RAISE EXCEPTION 'workspace lifecycle transition exposes an unsafe revocation path';
   END IF;
 
   -- Staging fixture requirement: use a real non-admin Auth user in an active
   -- private workspace with zero client_portal_sessions/client_portal_tokens.
   -- As service_role, suspend then reactivate that membership and assert both
-  -- returned membership/workspace states plus their audit actions. Separately
-  -- revoke_pending an invited private-workspace membership with zero artifacts
-  -- and assert revoked membership, archived workspace, and revocation audit.
+  -- returned membership/workspace states plus their audit actions. Pending
+  -- invitation revocation must be tested only through revoke_workspace_invite,
+  -- including its durable revoke_cleanup claim and verified Auth deletion.
 
   IF EXISTS (
     SELECT 1
@@ -1500,6 +2838,12 @@ BEGIN
     JOIN public.workspaces AS workspace
       ON workspace.id = client.workspace_id
     WHERE workspace.status <> 'active'
+      OR EXISTS (
+        SELECT 1
+        FROM public.workspace_memberships AS membership
+        WHERE membership.workspace_id = workspace.id
+          AND membership.status IN ('suspended', 'revoked')
+      )
   ) OR EXISTS (
     SELECT 1
     FROM public.client_portal_tokens AS token
@@ -1508,6 +2852,12 @@ BEGIN
     JOIN public.workspaces AS workspace
       ON workspace.id = client.workspace_id
     WHERE workspace.status <> 'active'
+      OR EXISTS (
+        SELECT 1
+        FROM public.workspace_memberships AS membership
+        WHERE membership.workspace_id = workspace.id
+          AND membership.status IN ('suspended', 'revoked')
+      )
   ) THEN
     RAISE EXCEPTION 'a non-active workspace retains client portal sessions or tokens';
   END IF;
@@ -1551,10 +2901,19 @@ BEGIN
   ) NOT ILIKE '%p_action IS NULL%FROM public.workspace_memberships%membership.status = ''active''%membership.role IN (''owner'', ''admin'')%FOR SHARE%FROM public.workspaces%workspace.status = ''active''%FOR SHARE%'
     OR pg_get_functiondef(
       'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)'::regprocedure
+    ) NOT ILIKE '%JOIN auth.users%lower(btrim(auth_user.email)) = membership.email_normalized%'
+    OR pg_get_functiondef(
+      'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)'::regprocedure
     ) ILIKE '%FOR SHARE OF membership, workspace%'
     OR pg_get_functiondef(
       'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)'::regprocedure
     ) NOT ILIKE '%jsonb_object_keys%workspace_audit_log%workspace.client.created%workspace_audit_log%workspace.client.updated%workspace_audit_log%workspace.client.deleted%'
+    OR pg_get_functiondef(
+      'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)'::regprocedure
+    ) NOT ILIKE '%normalized_linkedin%''^https?://[^[:space:][:cntrl:]]+$''%'
+    OR pg_get_functiondef(
+      'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)'::regprocedure
+    ) NOT ILIKE '%normalized_website%''^https?://[^[:space:][:cntrl:]]+$''%'
     OR pg_get_functiondef(
       'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)'::regprocedure
     ) ILIKE '%portal\_%' ESCAPE '\'

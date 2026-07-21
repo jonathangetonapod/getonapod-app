@@ -1,5 +1,10 @@
 # Authority Built - Pages Architecture
 
+> **Invite-only MVP warning:** the root README is authoritative for current
+> routes. Billing/checkout and the AI Sales Director, admin videos, admin blog,
+> customers/orders/analytics, premium placements, and settings surfaces are
+> retired or redirected in this release.
+
 This document provides a comprehensive overview of all pages in the Authority Built application, their routes, functionality, data flows, and user access controls.
 
 ## Application Overview

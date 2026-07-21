@@ -5,9 +5,10 @@ multi-account MVP without billing or public registration. A platform
 administrator invites a user; the user accepts the email invitation, creates a
 password, signs in, and manages clients inside one private workspace.
 
-The implementation is isolated on `feat/invite-only-workspaces`. Do not merge
-or deploy it to production until the staging migration, SQL verifier, and
-two-account isolation matrix pass.
+The implementation is isolated on `feat/invite-only-workspaces` and the pull
+request remains a draft. `main` and production are unchanged. Do not merge or
+deploy it to production until every staging and repository-protection gate in
+this document passes.
 
 ## MVP roles
 
@@ -30,7 +31,7 @@ tenant access to every legacy operational module are deliberately out of scope.
 | `/accept-invite` | Supabase email-invite completion |
 | `/app/clients` | Authenticated workspace client CRUD |
 | `/admin/users` | Platform administrator invitation/lifecycle console |
-| `/admin/*` | Platform administrator only |
+| `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
 | `/portal/login` | Separate client portal login |
 | `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
 | `/prospect/:slug`, `/client/:slug` | Enabled capability dashboards; `noindex, nofollow` |
@@ -42,10 +43,31 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
 
 ## Security boundaries
 
-- Supabase public email signup and anonymous Auth are disabled. Only a platform
-  administrator can create a workspace invitation.
-- The server derives platform-admin status from the `admin_users` allowlist and
-  the current Auth email. Browser metadata is not an authority.
+- The checked-in Supabase configuration disables public email signup and
+  anonymous Auth, and the product exposes no signup UI. Hosted Auth must be
+  verified to match before release; only a platform administrator may create a
+  workspace invitation.
+- The server derives platform-admin status from the immutable Auth user ID, its
+  current email, the `admin_users` allowlist, and an active default-workspace
+  membership. Browser metadata or an email change alone is not an authority.
+- Tenant authorization requires both the accepted Auth user ID and its bound
+  membership email. A direct Auth email change fails closed. Suspension still
+  uses the immutable user ID; reactivation requires administrator identity
+  review.
+- Invitations use a database-first two-phase flow. The service creates an
+  active private workspace with a `provisioning` owner membership, attempts
+  Supabase Auth delivery under a durable database claim, writes a service-owned
+  Auth metadata marker, and only then advances the membership to `invited`. A
+  known matching identity is invalidated before delivery becomes retryable;
+  unresolved provider or identity ambiguity retains the claim and requires
+  operator review. Invite acceptance also requires a password.
+- Suspend/reactivate uses a separate durable service-only lifecycle claim. The
+  database transition commits first and remains authoritative while Auth is
+  reconciled. A different request token can never steal a claim automatically;
+  `review_after` is only a 15-minute operator-review marker. Status-preserving
+  `reconcile_active` and `reconcile_suspended` actions verify Auth without
+  reversing a newer database state, and successful reconciliation is audited
+  before the exact claim is removed.
 - Workspace users never query the full `clients` row. `workspace-clients`
   calls a service-only transactional RPC that returns a narrow projection and
   rechecks active membership and workspace state.
@@ -69,7 +91,8 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
 
 ## Local development
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 22.22.2, npm 10.9.7, and Deno 2.5.2. Node and npm match
+`package.json`; all three exact versions match pull-request CI.
 
 ```bash
 npm ci
@@ -105,17 +128,28 @@ The excluded legacy Clay/Bison handlers require `CLAY_WEBHOOK_SECRET` and
 `CAMPAIGN_WEBHOOK_SECRET` only in their separate operator environment; do not
 configure them in the tenant MVP environment.
 
-`npm run build` generates a static-only sitemap when database variables are
-absent, so a clean checkout remains reproducible. Release builds that must
-include published blog URLs should set `SITEMAP_REQUIRE_DATABASE=true` and
-provide a staging-safe Supabase URL/key; strict mode fails closed if the query
-is unavailable.
+`npm run build` always uses the deterministic static sitemap and an isolated
+Vite environment that does not load the repository's ignored dotenv files. It
+does not contact Supabase. Generate a sitemap containing published blog URLs
+only as a separate, explicit operation with `npm run sitemap:database` and
+review the resulting file before committing or deploying it.
+
+Railway is configured to build the root `Dockerfile`, not the obsolete
+Nixpacks plan. Both build and runtime stages pin Node 22.22.2 and npm 10.9.7,
+install from the reviewed lockfile with lifecycle scripts disabled, and run the
+application as the unprivileged `node` user. The Docker build refuses to run
+without `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_APP_URL` build
+arguments. Supply only reviewed browser-safe values; Docker build arguments are
+not a place for service-role or provider credentials.
 
 ## Database rollout
 
 Use a dedicated staging project. Do not point local acceptance testing at
 production and do not replay the repository's entire historical migration
-directory blindly.
+directory blindly. The legacy `scripts/deploy-edge-functions.sh` and
+`scripts/run-migration.cjs` helpers are intentionally retired and fail closed;
+they do not implement this release's target, commit, backup, manifest, or
+evidence controls.
 
 Use a coordinated maintenance window; do not run the SQL while historical
 portal functions can still mint credentials or sessions:
@@ -161,8 +195,8 @@ Important cutover effects:
   credentials are deleted and affected portals are disabled; an operator must
   set a new password and securely reissue access before those clients sign in.
 - Legacy client-portal magic-link tokens are deleted and cannot be redeemed.
-- Existing data remains in the default workspace; verify row counts and
-  ownership before promotion.
+- Existing client rows are assigned to the default workspace; other legacy data
+  remains administrator-only. Verify row counts and ownership before promotion.
 
 Deploy the new account/client functions and every changed guarded function from
 this branch as one reviewed, explicit allowlist. Do not bulk-deploy the entire
@@ -203,17 +237,40 @@ callback. A Supabase invite email is a bearer credential: anyone with the full
 link can establish the invited Auth session, so it must not be forwarded or
 logged.
 
+Migration 1 is intentionally still a numbered, pre-release migration on this
+branch. Apply the complete current file to a fresh dedicated staging baseline,
+or replay staging from its pre-MVP backup; do not assume that an older draft of
+the same migration has been upgraded in place.
+
 ## Verification
 
 Static checks:
 
 ```bash
-npm run build
-npm audit --omit=dev
-npx tsc --noEmit -p tsconfig.app.json
-npm run lint
+npm run check:static
+npm audit --audit-level=high
+npm audit --omit=dev --audit-level=high
 git diff --check
+git diff --check origin/main...HEAD
 ```
+
+`check:static` runs the release-shape verifier, parses all four release
+migrations plus the SQL verifier with a PostgreSQL grammar parser, runs both
+TypeScript checks and the zero-warning MVP lint scope, exercises the URL,
+telemetry, session-storage, retired-helper, and evidence-path tests, checks all
+89 Edge entrypoints against the frozen Deno lock, validates the database-runner
+shell, performs a clean install/build and both audits for the nested MCP server,
+tests the dependency-free retired video-service tombstone with malformed and
+oversized bodies, checks the exact Docker/Railway runtime contract and secret-
+excluding build context, performs an isolated static build, launches the real
+`npm start` server to test routes/assets/security headers, and scans the full
+current worktree and built output for secrets. The secret scanner also runs
+positive and negative self-tests and suppresses values in its output.
+
+The pull-request workflow pins Node 22.22.2, npm 10.9.7, Deno 2.5.2, and the
+GitHub Actions by immutable commit. It runs for pull requests and merge queues
+without application secrets. If Deno is not on the local `PATH`, set `DENO_BIN`
+to the 2.5.2 executable.
 
 ### Executable staging evidence
 
@@ -221,8 +278,9 @@ Run staging evidence only from a reviewed, clean commit on
 `feat/invite-only-workspaces`. Both runners refuse a dirty/untracked worktree,
 an unexpected branch, an uncommitted release input, a reused evidence path, or
 an explicitly identified production target. Evidence paths must be absolute,
-must have an existing parent outside this repository, and should point to a
-private release-artifact directory.
+must have an existing current-user-owned parent that is not group/world
+writable, and must be outside every linked worktree, the Git directory, and the
+shared Git metadata directory.
 
 The HTTP runner reads only dedicated `ACCEPTANCE_*` process variables. It does
 not load `.env.local`, accept a service-role key, or write raw responses. Supply
@@ -255,9 +313,18 @@ Resend signature/body limits, exercises suspend/reactivate plus portal-session
 revocation, and removes its fixtures in `finally`. Its NDJSON contains only
 fixed test labels, statuses, HTTP status codes, and source fingerprints—never
 emails, UUIDs, tokens, URLs, request bodies, or response bodies. Exit `1` means
-refused/failed; exit `2` means the automated checks passed but the manual invite
-and signed Resend replay/provider gates are still incomplete. The runner never
-turns those manual gates into an automatic pass.
+refused/failed; exit `2` means the runner's automated HTTP checks passed while
+the separately reviewed external release gates recorded in the NDJSON remain
+incomplete. Those records cover the database verifier, commit-bound deployment
+inventory, hosted Auth, invite delivery fault injection and the backend
+password gate, durable-claim recovery, UI/legacy-admin checks, audit and portal
+races, the live Storage API boundary, capability links, provider side
+effects/decommissioning, credential rotation, historical telemetry review, and
+signed Resend behavior. The runner
+never turns those external gates into an automatic pass. Administrator
+credentials are mandatory; omitting them is a configuration refusal, and any
+incomplete record outside the exact checked-in allowlist converts the run to a
+failure.
 
 After the four migrations have been applied to the same staging release, run
 the database verifier using `PG*` environment variables. Prefer a project-
@@ -270,7 +337,7 @@ export PGHOST='<staging-database-host>'
 export PGPORT='5432'
 export PGDATABASE='postgres'
 export PGUSER='<staging-database-user>'
-export PGSSLMODE='require'
+export PGSSLMODE='verify-full'
 export STAGING_DB_EXPECTED_PGHOST='<staging-database-host>'
 export STAGING_DB_PRODUCTION_PGHOSTS='<production-database-host[,another-host]>'
 export STAGING_DB_EVIDENCE_PATH='/absolute/private/path/database-verifier.ndjson'
@@ -288,30 +355,38 @@ files, and an exact committed snapshot of the SQL. Raw stdout/stderr live only
 in a mode-700 temporary directory and are deleted on exit. The private evidence
 directory must be owned by the current user and not group/world-writable. The
 retained mode-600 NDJSON and `.sha256` files contain only the release
-commit/input digest and pass/fail/exit metadata.
+commit/input digest, a domain-separated SHA-256 fingerprint of the canonical
+host/port/database/user target, and pass/fail/exit metadata.
 
-The repository still contains legacy TypeScript/lint debt; compare results with
-`main` and require this branch to add no failures. Full lint and TypeScript are
-not currently green because of inherited legacy findings, so focused changed-
-file checks and the recorded baseline are required. The production build and
-production-dependency audit must pass. SQL syntax and Edge entrypoints are
-checked separately, but catalog tests and real staging requests remain
-mandatory.
+The app and staging TypeScript checks are green. The repository still contains
+legacy full-repository ESLint debt outside the zero-warning MVP scope; compare
+that non-gating baseline with `main` if it is changed. The production build,
+production-dependency audit, release secret scan, and all-entrypoint Deno check
+must pass. A local PostgreSQL parser catches SQL grammar errors, but only the
+catalog verifier against the actual staging schema can validate definitions,
+ACLs, RLS, and data invariants.
 
 Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
 
 | Check | Result |
 | --- | --- |
-| Production build/static sitemap | Pass; five public sitemap URLs |
-| Production dependency audit | Pass; zero vulnerabilities |
-| Release-critical Edge type check | Pass; 18 entrypoints |
-| Focused changed-file ESLint | Pass |
+| No-secret draft-PR workflow definition | Pass; pinned Node/Deno, locked dependencies, no deploy/database step |
+| Clean locked install | Pass; Node 22.22.2 and npm 10.9.7 with lifecycle scripts disabled |
+| Production build/static sitemap | Pass; Vite 7.3.6, 3,139 modules, and five public sitemap URLs |
+| Full and production dependency audits | Pass; zero vulnerabilities at `audit-level=low` |
+| Nested MCP clean install/build/audits | Pass; MCP SDK 1.29.0 and zero full/production vulnerabilities |
+| Docker/Railway deployment contract | Pass; exact two-stage Node/npm toolchain, required browser build arguments, non-root runtime, and secret-excluding context |
+| Release/Edge manifest shape | Pass; 89 changed functions = 87 deployed, including 17 tombstones, plus 2 tenant-environment exclusions; 94 Edge TypeScript files |
+| Edge semantic type check | Pass; all 89 entrypoints on Deno 2.5.2 with frozen `deno.lock` |
+| Edge TypeScript inventory/syntax check | Pass; 94 function/shared TypeScript files |
+| App TypeScript | Pass; zero diagnostics |
 | Staging HTTP runner type check | Pass |
+| Focused MVP ESLint | Pass; zero warnings |
+| Sensitive URL/telemetry tests | Pass |
+| Release secret scan | Pass; 579 full-current-tree files including ignored dotenv/build files, built output, 23 positive and 3 negative scanner self-tests; values suppressed |
 | Staging runners with missing environment | Pass; refuse before network/artifact creation |
 | Database verifier shell syntax | Pass |
-| SQL parse | Pass; four migrations plus verifier |
-| App TypeScript baseline | 22 diagnostics vs. 33 on `main` |
-| Full ESLint baseline | 250 errors/25 warnings vs. 374/38 on `main` |
+| Local SQL grammar parse | Pass; four migrations plus verifier |
 | Patch whitespace check | Pass |
 
 These are static results, not deployment approval. A live database was not
@@ -324,8 +399,20 @@ accounts:
 - each account sees only its own client list;
 - guessed/direct client UUID reads and every cross-account write fail;
 - hidden/internal client fields cannot be changed through tenant APIs;
-- suspend denies Auth access immediately and revokes that workspace's client
-  portal sessions/tokens; reactivate restores only workspace access;
+- live Storage API tests prove Alice, Bob, and anonymous users cannot insert,
+  update, or delete objects; any existing administrator write path remains
+  administrator-only; and intended public reads are neither widened nor broken;
+- suspend denies workspace APIs immediately and transactionally revokes that
+  workspace's client portal sessions/tokens; successful reconciliation also
+  bans the Auth identity, while an uncertain provider result retains the claim;
+  reactivate restores only workspace access after reconciliation;
+- provider success/error/timeout fault injection leaves no usable orphan invite;
+  `provisioning` can be retried/revoked, and activation is denied before
+  backend-observed password setup;
+- the originating same-token Auth reconciliation retry is idempotent; once that
+  token is lost, the pending UI remains locked until an operator reconciles the
+  provider/database state and removes only the reviewed exact claim, after which
+  a fresh status-preserving Verify action may run;
 - expired/revoked invitations cannot be accepted;
 - a stored portal session verifier cannot be used as a bearer token;
 - changing a portal email disables access and the old password cannot
@@ -337,7 +424,10 @@ accounts:
 - duplicate/out-of-order Resend events do not double-count engagement, regress
   delivery status, or skip hard-bounce/complaint/provider suppression; a
   provider-suppressed event must not increment bounce counts or alter bounce
-  timestamps.
+  timestamps;
+- historical Sentry/hosting logs are reviewed for leaked invite, recovery, or
+  capability URLs; affected sessions/links are revoked and retained telemetry
+  is purged under the incident process.
 
 The detailed rollout and acceptance matrix is in
 [`docs/invite-only-mvp.md`](docs/invite-only-mvp.md).
@@ -353,10 +443,8 @@ The detailed rollout and acceptance matrix is in
 - The client portal is intentionally minimal and separate from workspace Auth.
 - The frontend build still emits a large single-chunk warning; route-level code
   splitting is post-MVP performance work.
-- `npm audit --omit=dev` is clean. The full development audit retains the Vite
-  5/esbuild dev-server advisory because its fix requires a breaking Vite major
-  upgrade; the dev server binds to loopback by default and must never serve
-  production or an untrusted network. Plan the Vite upgrade after MVP.
+- Both the full and production dependency audits are currently clean. Keep the
+  exact lockfile and rerun both audits on the reviewed merge commit.
 - `create-outreach-message` and `campaign-reply-webhook` are excluded from the
   tenant MVP deploy. Their shared webhook secrets, caller-supplied client IDs,
   and non-atomic duplicate checks are not a tenant boundary. Keep them disabled
@@ -364,11 +452,45 @@ The detailed rollout and acceptance matrix is in
   provider-event keys, and one transactional ingestion RPC. If the legacy
   administrator still needs them, run them only in an isolated operator
   environment with separate secrets and acceptance evidence.
+- `mcp-prospect-dashboard` remains trusted, local, stdio-only operator tooling.
+  It holds a service-role credential and is not a tenant API; never expose it
+  over HTTP or include it in the tenant deployment.
 - The Resend receipt ledger has no automatic retention job yet. Monitor its
   growth and add a service-only purge whose retention window exceeds the
   provider retry/replay horizon before production volume grows.
-- Production hosting must add and verify CSP/HSTS/frame/content-type/referrer
-  response headers; React meta tags are not an HTTP-header substitute.
+- The checked-in production server sets no-referrer, nosniff, frame denial, and
+  a restricted permissions policy on every response, plus no-store/noindex for
+  private application routes. Production hosting must preserve and verify those
+  headers and add environment-specific CSP and HSTS at the hosting/CDN boundary.
+
+## Credential incident and repository controls
+
+The current-tree secret scan is green, but that does not make previously
+exposed credentials safe. Review found non-placeholder Podscan and BridgeKit
+credentials in repository history. OpenAI, Podscan, Jotform, and Clay webhook
+credentials were also shared through chat. Treat every affected value as
+compromised: revoke/rotate it first, review provider and Supabase logs, and
+replace it only in server-side secret storage. Keep exact incident locations in
+the private response record rather than advertising them in public docs.
+
+No history rewrite has been performed. If the repository owner chooses to
+remove the historical blobs, coordinate `git filter-repo`, force-push timing,
+open pull requests, forks/clones, GitHub caches, CI artifacts, and third-party
+logs as one incident operation. Rewriting Git history does not replace
+credential rotation.
+
+As checked on 2026-07-21, `main` has no GitHub branch protection. This branch
+defines the **No-secret static validation** workflow, which runs on the pull
+request after push but becomes a required check only when repository protection
+is configured. Before merge, protect `main`, require that check and an
+independent approval, require the branch to be current, and block direct and
+force pushes. The workflow supports GitHub merge queues through `merge_group`.
+
+The root Dockerfile provides an executable frontend container path, but there
+is intentionally no automated Supabase Edge/database rollout executor in this
+branch: the legacy deploy/migration helpers refuse to run. A staging backend
+rollout still needs a reviewed executor or operator procedure bound to the exact
+commit, project, backup, phased manifest, and private evidence directory.
 
 ## Merge policy
 
@@ -376,15 +498,31 @@ The detailed rollout and acceptance matrix is in
 only after:
 
 1. every exposed credential is rotated;
-2. staging backup/schema review succeeds;
-3. all four migrations and the verifier pass;
-4. the two-account isolation matrix passes over REST, Edge Functions, and
-   modified URLs;
-5. all 17 retired function tombstones return 410 in their configured gateway
+2. repository history and external logs are reviewed for the exposed values,
+   with history remediation coordinated before any force-push;
+3. staging backup/schema review succeeds;
+4. a commit-bound staging deployment inventory proves the exact frontend,
+   migrations, and Edge manifest were deployed;
+5. all four migrations and the database verifier pass;
+6. hosted Auth configuration and the uninvited-account denial are verified;
+7. the complete two-account isolation matrix passes over browser navigation,
+   REST, Edge Functions, storage, and modified URLs;
+8. all 17 retired function tombstones return 410 in their configured gateway
    context, their remote inventory is removed after caller cleanup, and retired
-   Stripe and Railway/HeyGen integrations are unregistered or removed;
-6. build/static checks show no regression; and
-7. the final diff receives security, data/RLS, and frontend review.
+   Stripe plus the separate retired video-generator Railway service and HeyGen
+   integration are unregistered or removed; both
+   excluded tenant handlers are absent and their callers are unregistered;
+9. invite/provider and lifecycle fault/concurrency tests, durable-claim manual
+   recovery, signed Resend replay/provider evidence, capability redistribution,
+   and telemetry incident review are recorded;
+10. every other external/manual gate enumerated by the staging runner is
+    complete, with no unexpected incomplete record;
+11. build/static checks show no regression;
+12. the final diff receives security, data/RLS, Edge, frontend, and operations
+   review;
+13. `main` branch protection and required checks are enabled; and
+14. the required GitHub check passes on the PR (and any merge-group) synthetic
+    merge containing the exact reviewed feature-head SHA.
 
 Credentials previously committed in repository history or shared through chat
 remain compromised after source cleanup. Rotate them; deleting the visible

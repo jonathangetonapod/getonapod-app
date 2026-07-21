@@ -142,13 +142,7 @@ readonly canonical_expected_host="${STAGING_DB_EXPECTED_PGHOST,,}"
 (( 10#${PGPORT} >= 1 && 10#${PGPORT} <= 65535 )) || refuse
 [[ "${PGDATABASE}" =~ ^[A-Za-z0-9_.-]+$ ]] || refuse
 [[ "${PGUSER}" =~ ^[A-Za-z0-9_.-]+$ ]] || refuse
-case "${PGSSLMODE}" in
-  require|verify-ca|verify-full)
-    ;;
-  *)
-    refuse
-    ;;
-esac
+[[ "${PGSSLMODE}" == 'verify-full' ]] || refuse
 PGCONNECT_TIMEOUT="${PGCONNECT_TIMEOUT:-15}"
 [[ "${PGCONNECT_TIMEOUT}" =~ ^[0-9]{1,2}$ ]] || refuse
 (( 10#${PGCONNECT_TIMEOUT} >= 1 && 10#${PGCONNECT_TIMEOUT} <= 60 )) || refuse
@@ -228,6 +222,12 @@ done <<< "${worktree_inventory}"
 
 readonly expected_confirmation="RUN_SQL_VERIFIER_ON_${canonical_pg_host}:${PGPORT}/${PGDATABASE}?user=${PGUSER}@${release_commit}"
 [[ "${STAGING_DB_CONFIRM}" == "${expected_confirmation}" ]] || refuse
+target_sha256="$({
+  printf '%s\0' 'goap-staging-database-target-v1'
+  printf '%s' "${canonical_pg_host}:${PGPORT}/${PGDATABASE}?user=${PGUSER}"
+} | sha256sum | cut -d' ' -f1)" || refuse
+readonly target_sha256
+[[ "${target_sha256}" =~ ^[0-9a-f]{64}$ ]] || refuse
 
 raw_dir="$(mktemp -d --tmpdir="${evidence_parent}" '.goap-db-raw.XXXXXXXX')" || refuse
 chmod 0700 -- "${raw_dir}"
@@ -286,9 +286,10 @@ fi
 jq -cn \
   --arg commit "${release_commit}" \
   --arg digest "${release_inputs_sha256}" \
+  --arg target "${target_sha256}" \
   --arg status "${verifier_status}" \
   --argjson exit_code "${verifier_exit}" \
-  '{release_commit:$commit,release_inputs_sha256:$digest,status:$status,exit_code:$exit_code}' \
+  '{release_commit:$commit,release_inputs_sha256:$digest,target_sha256:$target,status:$status,exit_code:$exit_code}' \
   > "${evidence_tmp}"
 
 evidence_sha256="$(sha256sum -- "${evidence_tmp}" | cut -d' ' -f1)" || refuse

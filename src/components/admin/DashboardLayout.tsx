@@ -133,7 +133,12 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
   // Load nav order from localStorage
   useEffect(() => {
-    const savedOrder = localStorage.getItem(STORAGE_KEY)
+    let savedOrder: string | null = null
+    try {
+      savedOrder = window.localStorage.getItem(STORAGE_KEY)
+    } catch {
+      // The default navigation order remains usable when storage is denied.
+    }
     if (savedOrder) {
       try {
         const orderIds = JSON.parse(savedOrder) as string[]
@@ -156,7 +161,11 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   // Save nav order to localStorage
   const saveNavOrder = (items: NavItem[]) => {
     const orderIds = items.map(item => item.id)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(orderIds))
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(orderIds))
+    } catch {
+      // Dragging still updates this tab even if persistence is unavailable.
+    }
   }
 
   const sensors = useSensors(

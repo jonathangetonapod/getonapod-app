@@ -7,7 +7,7 @@ import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -173,7 +173,7 @@ const WorkspaceClients = () => {
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>{editing ? 'Edit client' : 'Add client'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? 'Edit client' : 'Add client'}</DialogTitle><DialogDescription>{editing ? 'Update this client inside your private workspace.' : 'Create a client visible only inside your private workspace.'}</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); saveMutation.mutate() }}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-name">Client name</Label><Input id="client-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
@@ -191,8 +191,7 @@ const WorkspaceClients = () => {
 
       <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open) setDeleting(null) }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Remove client?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">This permanently removes {deleting?.name} and may remove connected records. This action cannot be undone.</p>
+          <DialogHeader><DialogTitle>Remove client?</DialogTitle><DialogDescription>This permanently removes {deleting?.name} and may remove connected records. This action cannot be undone.</DialogDescription></DialogHeader>
           <DialogFooter><Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleting && deleteMutation.mutate(deleting)}>{deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Remove client</Button></DialogFooter>
         </DialogContent>
       </Dialog>

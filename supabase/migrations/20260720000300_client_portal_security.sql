@@ -19,30 +19,24 @@ ALTER TABLE public.clients
       END
     ) STORED;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'public.clients'::regclass
-      AND conname = 'clients_portal_access_email_check'
-  ) THEN
-    ALTER TABLE public.clients
-      ADD CONSTRAINT clients_portal_access_email_check
-      CHECK (
-        NOT COALESCE(portal_access_enabled, false)
-        OR NULLIF(btrim(email), '') IS NOT NULL
-      ) NOT VALID;
-  END IF;
-END;
-$$;
+ALTER TABLE public.clients
+  DROP CONSTRAINT IF EXISTS clients_portal_access_email_check;
+ALTER TABLE public.clients
+  ADD CONSTRAINT clients_portal_access_email_check
+  CHECK (
+    NOT COALESCE(portal_access_enabled, false)
+    OR NULLIF(btrim(email), '') IS NOT NULL
+  ) NOT VALID;
 
 ALTER TABLE public.clients
   VALIDATE CONSTRAINT clients_portal_access_email_check;
 
 -- Email is only a global identity for enabled legacy portal accounts. Regular
 -- workspace client records may share an email while their portal is disabled.
-CREATE UNIQUE INDEX IF NOT EXISTS clients_one_enabled_portal_email_idx
+ALTER TABLE public.clients
+  DROP CONSTRAINT IF EXISTS clients_one_enabled_portal_email_idx;
+DROP INDEX IF EXISTS public.clients_one_enabled_portal_email_idx;
+CREATE UNIQUE INDEX clients_one_enabled_portal_email_idx
   ON public.clients (portal_email_normalized)
   WHERE portal_access_enabled
     AND portal_email_normalized IS NOT NULL;
@@ -62,38 +56,18 @@ BEGIN
       ('client_portal_activity_log', 'client_portal_activity_log_client_id_fkey')
     ) AS required_relation(table_name, constraint_name)
   LOOP
-    IF NOT EXISTS (
-      SELECT 1
-      FROM pg_constraint AS constraint_definition
-      WHERE constraint_definition.conrelid = format(
-          'public.%I',
-          portal_relation.table_name
-        )::regclass
-        AND constraint_definition.conname = portal_relation.constraint_name
-        AND constraint_definition.contype = 'f'
-        AND constraint_definition.confrelid = 'public.clients'::regclass
-        AND constraint_definition.confdeltype = 'c'
-        AND constraint_definition.conkey = ARRAY[
-          (
-            SELECT attribute.attnum
-            FROM pg_attribute AS attribute
-            WHERE attribute.attrelid = format(
-                'public.%I',
-                portal_relation.table_name
-              )::regclass
-              AND attribute.attname = 'client_id'
-              AND NOT attribute.attisdropped
-          )
-        ]::SMALLINT[]
-    ) THEN
-      EXECUTE format(
-        'ALTER TABLE public.%I ADD CONSTRAINT %I '
-        'FOREIGN KEY (client_id) REFERENCES public.clients(id) '
-        'ON DELETE CASCADE NOT VALID',
-        portal_relation.table_name,
-        portal_relation.constraint_name
-      );
-    END IF;
+    EXECUTE format(
+      'ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I',
+      portal_relation.table_name,
+      portal_relation.constraint_name
+    );
+    EXECUTE format(
+      'ALTER TABLE public.%I ADD CONSTRAINT %I '
+      'FOREIGN KEY (client_id) REFERENCES public.clients(id) '
+      'ON DELETE CASCADE NOT VALID',
+      portal_relation.table_name,
+      portal_relation.constraint_name
+    );
   END LOOP;
 END;
 $$;
@@ -144,6 +118,12 @@ USING public.clients AS client
 WHERE session.client_id = client.id
   AND client.portal_access_enabled IS NOT TRUE;
 
+DELETE FROM public.client_portal_sessions AS session
+USING public.clients AS client, public.workspaces AS workspace
+WHERE session.client_id = client.id
+  AND workspace.id = client.workspace_id
+  AND workspace.status IN ('suspended', 'archived');
+
 -- Magic-link authentication is retired in the invite-only MVP. Remove any
 -- remaining token, including tokens for enabled clients, before deploying the
 -- same-name 410 Edge tombstones.
@@ -163,23 +143,17 @@ ALTER TABLE public.client_portal_sessions
 -- Hash-only validation and logout require a verifier to identify exactly one
 -- session. Reconcile prepared databases where the historical UNIQUE constraint
 -- may have drifted or never been created.
-CREATE UNIQUE INDEX IF NOT EXISTS client_portal_sessions_token_verifier_uidx
+ALTER TABLE public.client_portal_sessions
+  DROP CONSTRAINT IF EXISTS client_portal_sessions_token_verifier_uidx;
+DROP INDEX IF EXISTS public.client_portal_sessions_token_verifier_uidx;
+CREATE UNIQUE INDEX client_portal_sessions_token_verifier_uidx
   ON public.client_portal_sessions (session_token);
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'public.client_portal_sessions'::regclass
-      AND conname = 'client_portal_sessions_hashed_token_check'
-  ) THEN
-    ALTER TABLE public.client_portal_sessions
-      ADD CONSTRAINT client_portal_sessions_hashed_token_check
-      CHECK (session_token ~ '^sha256\$[A-Za-z0-9+/]{43}=$') NOT VALID;
-  END IF;
-END;
-$$;
+ALTER TABLE public.client_portal_sessions
+  DROP CONSTRAINT IF EXISTS client_portal_sessions_hashed_token_check;
+ALTER TABLE public.client_portal_sessions
+  ADD CONSTRAINT client_portal_sessions_hashed_token_check
+  CHECK (session_token ~ '^sha256\$[A-Za-z0-9+/]{43}=$') NOT VALID;
 
 ALTER TABLE public.client_portal_sessions
   VALIDATE CONSTRAINT client_portal_sessions_hashed_token_check;
@@ -285,6 +259,17 @@ CREATE TABLE IF NOT EXISTS public.client_portal_credentials (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.client_portal_credentials
+  DROP CONSTRAINT IF EXISTS client_portal_credentials_client_id_fkey;
+ALTER TABLE public.client_portal_credentials
+  ADD CONSTRAINT client_portal_credentials_client_id_fkey
+  FOREIGN KEY (client_id)
+  REFERENCES public.clients(id)
+  ON DELETE CASCADE
+  NOT VALID;
+ALTER TABLE public.client_portal_credentials
+  VALIDATE CONSTRAINT client_portal_credentials_client_id_fkey;
+
 ALTER TABLE public.client_portal_credentials ENABLE ROW LEVEL SECURITY;
 REVOKE ALL PRIVILEGES ON TABLE public.client_portal_credentials
   FROM PUBLIC, anon, authenticated;
@@ -342,28 +327,19 @@ WHERE CASE
   ELSE true
 END;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'public.client_portal_credentials'::regclass
-      AND conname = 'client_portal_credentials_pbkdf2_check'
-  ) THEN
-    ALTER TABLE public.client_portal_credentials
-      ADD CONSTRAINT client_portal_credentials_pbkdf2_check
-      CHECK (
-        CASE
-          WHEN password_verifier ~
-            '^pbkdf2_sha256\$[0-9]{6,7}\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=$'
-            THEN split_part(password_verifier, '$', 2)::BIGINT
-              BETWEEN 100000 AND 1000000
-          ELSE false
-        END
-      ) NOT VALID;
-  END IF;
-END;
-$$;
+ALTER TABLE public.client_portal_credentials
+  DROP CONSTRAINT IF EXISTS client_portal_credentials_pbkdf2_check;
+ALTER TABLE public.client_portal_credentials
+  ADD CONSTRAINT client_portal_credentials_pbkdf2_check
+  CHECK (
+    CASE
+      WHEN password_verifier ~
+        '^pbkdf2_sha256\$[0-9]{6,7}\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{43}=$'
+        THEN split_part(password_verifier, '$', 2)::BIGINT
+          BETWEEN 100000 AND 1000000
+      ELSE false
+    END
+  ) NOT VALID;
 
 ALTER TABLE public.client_portal_credentials
   VALIDATE CONSTRAINT client_portal_credentials_pbkdf2_check;
@@ -376,20 +352,11 @@ SET
   portal_password = NULL
 WHERE portal_password IS NOT NULL;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'public.clients'::regclass
-      AND conname = 'clients_portal_password_retired_check'
-  ) THEN
-    ALTER TABLE public.clients
-      ADD CONSTRAINT clients_portal_password_retired_check
-      CHECK (portal_password IS NULL) NOT VALID;
-  END IF;
-END;
-$$;
+ALTER TABLE public.clients
+  DROP CONSTRAINT IF EXISTS clients_portal_password_retired_check;
+ALTER TABLE public.clients
+  ADD CONSTRAINT clients_portal_password_retired_check
+  CHECK (portal_password IS NULL) NOT VALID;
 
 ALTER TABLE public.clients
   VALIDATE CONSTRAINT clients_portal_password_retired_check;
@@ -436,8 +403,11 @@ BEGIN
       slug_base := 'client';
     END IF;
 
+    -- Each UUID contributes only its first 48 fully random bits, avoiding the
+    -- fixed version/variant nibbles while producing a 96-bit suffix.
     NEW.dashboard_slug := slug_base || '-' ||
-      substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 24);
+      substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12) ||
+      substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12);
   END IF;
 
   RETURN NEW;
@@ -465,7 +435,9 @@ SET dashboard_slug = COALESCE(
       ''
     ),
     'client'
-  ) || '-' || substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 24)
+  ) || '-' ||
+    substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12) ||
+    substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12)
 WHERE client.dashboard_slug IS NOT NULL;
 
 -- Reconcile drifted databases where dashboard_slug was added before its
@@ -487,7 +459,8 @@ BEGIN
     OR NEW.slug !~ '^prospect-[0-9a-f]{24}$'
   THEN
     NEW.slug := 'prospect-' ||
-      substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 24);
+      substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12) ||
+      substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12);
   END IF;
   RETURN NEW;
 END;
@@ -508,11 +481,9 @@ AS
 SELECT
   dashboard.id,
   dashboard.slug AS old_slug,
-  'prospect-' || substring(
-    replace(gen_random_uuid()::TEXT, '-', ''),
-    1,
-    24
-  ) AS new_slug
+  'prospect-' ||
+    substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12) ||
+    substring(replace(gen_random_uuid()::TEXT, '-', ''), 1, 12) AS new_slug
 FROM public.prospect_dashboards AS dashboard;
 
 UPDATE public.prospect_dashboards AS dashboard

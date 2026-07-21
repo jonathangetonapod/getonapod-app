@@ -243,7 +243,8 @@ Return ONLY valid JSON, no markdown code blocks or other text.`
           }
           console.log('[Analyze Podcast Fit] Created fallback response from partial data')
         } else {
-          throw new Error(`Failed to parse analysis: ${parseError.message}`)
+          const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+          throw new Error(`Failed to parse analysis: ${parseErrorMessage}`)
         }
       }
     }
@@ -284,7 +285,7 @@ Return ONLY valid JSON, no markdown code blocks or other text.`
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to analyze podcast fit',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to analyze podcast fit',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )

@@ -195,7 +195,7 @@ serve(async (req) => {
         updated_replies: 0,
         skipped_replies: 0,
         success: false,
-        error_message: error.message || 'Internal server error',
+        error_message: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       })
     } catch (historyError) {
       console.error('[Sync Replies] Could not save error to history:', historyError)
@@ -204,7 +204,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       {
         status: 500,

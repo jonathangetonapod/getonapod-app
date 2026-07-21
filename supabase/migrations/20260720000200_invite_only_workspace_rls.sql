@@ -41,6 +41,18 @@ CREATE POLICY workspaces_authenticated_select
     OR public.can_access_workspace(id)
   );
 
+DROP POLICY IF EXISTS workspaces_authenticated_select_isolation
+  ON public.workspaces;
+CREATE POLICY workspaces_authenticated_select_isolation
+  ON public.workspaces
+  AS RESTRICTIVE
+  FOR SELECT
+  TO authenticated
+  USING (
+    public.is_platform_admin()
+    OR public.can_access_workspace(id)
+  );
+
 DROP POLICY IF EXISTS workspace_memberships_authenticated_select
   ON public.workspace_memberships;
 CREATE POLICY workspace_memberships_authenticated_select
@@ -53,11 +65,32 @@ CREATE POLICY workspace_memberships_authenticated_select
     OR user_id = auth.uid()
   );
 
+DROP POLICY IF EXISTS workspace_memberships_authenticated_select_isolation
+  ON public.workspace_memberships;
+CREATE POLICY workspace_memberships_authenticated_select_isolation
+  ON public.workspace_memberships
+  AS RESTRICTIVE
+  FOR SELECT
+  TO authenticated
+  USING (
+    public.is_platform_admin()
+    OR user_id = auth.uid()
+  );
+
 DROP POLICY IF EXISTS workspace_audit_log_authenticated_select
   ON public.workspace_audit_log;
 CREATE POLICY workspace_audit_log_authenticated_select
   ON public.workspace_audit_log
   AS PERMISSIVE
+  FOR SELECT
+  TO authenticated
+  USING (public.is_platform_admin());
+
+DROP POLICY IF EXISTS workspace_audit_log_authenticated_select_isolation
+  ON public.workspace_audit_log;
+CREATE POLICY workspace_audit_log_authenticated_select_isolation
+  ON public.workspace_audit_log
+  AS RESTRICTIVE
   FOR SELECT
   TO authenticated
   USING (public.is_platform_admin());
@@ -328,6 +361,9 @@ BEGIN
   SELECT membership.id
   INTO authorized_membership_id
   FROM public.workspace_memberships AS membership
+  JOIN auth.users AS auth_user
+    ON auth_user.id = membership.user_id
+    AND lower(btrim(auth_user.email)) = membership.email_normalized
   WHERE membership.workspace_id = p_workspace_id
     AND membership.user_id = p_actor_user_id
     AND membership.status = 'active'
@@ -418,6 +454,14 @@ BEGIN
       OR char_length(COALESCE(normalized_contact, '')) > 200
       OR char_length(COALESCE(normalized_linkedin, '')) > 2048
       OR char_length(COALESCE(normalized_website, '')) > 2048
+      OR (
+        normalized_linkedin IS NOT NULL
+        AND normalized_linkedin !~* '^https?://[^[:space:][:cntrl:]]+$'
+      )
+      OR (
+        normalized_website IS NOT NULL
+        AND normalized_website !~* '^https?://[^[:space:][:cntrl:]]+$'
+      )
       OR char_length(COALESCE(normalized_notes, '')) > 10000
       OR normalized_status NOT IN ('active', 'paused', 'churned')
     THEN
@@ -620,6 +664,7 @@ BEGIN
         'workspaces',
         'workspace_memberships',
         'workspace_audit_log',
+        'workspace_auth_lifecycle_claims',
         'clients',
         'bookings'
       )

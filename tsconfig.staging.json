@@ -9,5 +9,8 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["scripts/staging-acceptance.ts"]
+  "include": [
+    "scripts/staging-acceptance.ts",
+    "scripts/test-staging-evidence-path.ts"
+  ]
 }

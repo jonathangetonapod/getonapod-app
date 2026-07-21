@@ -143,7 +143,7 @@ Write a concise, natural reply to the most recent message. Rules:
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       {
         status: 500,

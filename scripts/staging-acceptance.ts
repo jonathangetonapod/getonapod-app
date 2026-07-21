@@ -8,10 +8,13 @@ import {
   openSync,
   readFileSync,
   realpathSync,
+  statSync,
   writeSync,
 } from 'node:fs'
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+const MODULE_PATH = fileURLToPath(import.meta.url)
 
 /*
  * This is an intentionally black-box staging runner. It never reads .env files
@@ -34,7 +37,7 @@ interface AcceptanceConfig {
   evidencePath: string
   alice: AccountCredentials
   bob: AccountCredentials
-  admin: AccountCredentials | null
+  admin: AccountCredentials
 }
 
 interface ReleaseIntegrity {
@@ -144,6 +147,29 @@ const ACCEPTANCE_ENV_ALLOWLIST = new Set([
   'ACCEPTANCE_SUPABASE_ANON_KEY',
   'ACCEPTANCE_SUPABASE_URL',
 ])
+const EXPECTED_EXTERNAL_INCOMPLETE_GATES = new Map([
+  ['manual.staging_backup_and_inventory', 'STAGING_BACKUP_EVIDENCE_REQUIRED'],
+  ['manual.database_verifier', 'DATABASE_VERIFIER_EVIDENCE_REQUIRED'],
+  ['manual.deployment_identity_inventory', 'COMMIT_BOUND_DEPLOYMENT_EVIDENCE_REQUIRED'],
+  ['manual.hosted_auth_configuration', 'HOSTED_AUTH_CONFIGURATION_EVIDENCE_REQUIRED'],
+  ['manual.invite_lifecycle', 'MANUAL_INVITE_EVIDENCE_REQUIRED'],
+  ['manual.invite_provider_faults_and_password_gate', 'INVITE_FAULT_INJECTION_EVIDENCE_REQUIRED'],
+  ['manual.lifecycle_claim_recovery', 'LIFECYCLE_RECOVERY_EVIDENCE_REQUIRED'],
+  ['manual.uninvited_account_denial', 'UNINVITED_ACCOUNT_EVIDENCE_REQUIRED'],
+  ['manual.browser_routes_and_admin_legacy', 'MANUAL_UI_EVIDENCE_REQUIRED'],
+  ['manual.workspace_audit_event', 'MANUAL_AUDIT_EVIDENCE_REQUIRED'],
+  ['manual.storage_boundary', 'MANUAL_STORAGE_BOUNDARY_EVIDENCE_REQUIRED'],
+  ['manual.portal_legacy_verifier_and_races', 'MANUAL_PORTAL_CONCURRENCY_EVIDENCE_REQUIRED'],
+  ['manual.auth_email_change_suspension', 'MANUAL_IDENTITY_CHANGE_EVIDENCE_REQUIRED'],
+  ['manual.capability_links_and_headers', 'MANUAL_CAPABILITY_EVIDENCE_REQUIRED'],
+  ['manual.tombstone_provider_side_effects', 'MANUAL_TOMBSTONE_SIDE_EFFECT_EVIDENCE_REQUIRED'],
+  ['manual.excluded_ingestion_caller_absence', 'MANUAL_INGESTION_INVENTORY_EVIDENCE_REQUIRED'],
+  ['manual.provider_decommission', 'PROVIDER_DECOMMISSION_EVIDENCE_REQUIRED'],
+  ['manual.credential_rotation', 'CREDENTIAL_ROTATION_EVIDENCE_REQUIRED'],
+  ['manual.telemetry_incident_review', 'TELEMETRY_INCIDENT_REVIEW_REQUIRED'],
+  ['resend.signed_replay_and_ordering', 'SIGNED_RESEND_REPLAY_NOT_RUN'],
+  ['resend.provider_account_configuration', 'MANUAL_PROVIDER_EVIDENCE_REQUIRED'],
+])
 const SAFE_CLIENT_KEYS = new Set([
   'id',
   'workspace_id',
@@ -226,6 +252,7 @@ class Harness {
   failures = 0
   incompleteGates = 0
   passes = 0
+  private readonly incompleteGateKeys = new Set<string>()
 
   constructor(evidence: EvidenceWriter) {
     this.evidence = evidence
@@ -281,7 +308,28 @@ class Harness {
 
   incomplete(test: string, code: string): void {
     this.incompleteGates += 1
+    this.incompleteGateKeys.add(`${test}\0${code}`)
     this.record(test, 'incomplete', { code, releaseGate: 'incomplete' })
+  }
+
+  enforceExpectedIncompleteGates(expected: ReadonlyMap<string, string>): void {
+    const expectedKeys = new Set(
+      [...expected.entries()].map(([test, code]) => `${test}\0${code}`),
+    )
+    const exactMatch = this.incompleteGates === expected.size
+      && expectedKeys.size === this.incompleteGateKeys.size
+      && [...expectedKeys].every((key) => this.incompleteGateKeys.has(key))
+
+    if (!exactMatch) {
+      this.failures += 1
+      this.record('run.incomplete_gate_set', 'fail', {
+        code: 'UNEXPECTED_INCOMPLETE_GATE_SET',
+      })
+      return
+    }
+
+    this.passes += 1
+    this.record('run.incomplete_gate_set', 'pass', { releaseGate: 'complete' })
   }
 
   summary(): void {
@@ -313,13 +361,6 @@ function requiredEnvironment(name: string, preserveWhitespace = false): string {
   const normalized = preserveWhitespace ? value : value.trim()
   if (normalized.length === 0) throw new ConfigurationFailure()
   return normalized
-}
-
-function optionalEnvironment(name: string, preserveWhitespace = false): string | null {
-  const value = process.env[name]
-  if (value === undefined || value.length === 0) return null
-  const normalized = preserveWhitespace ? value : value.trim()
-  return normalized.length > 0 ? normalized : null
 }
 
 function validateBrowserKey(key: string): void {
@@ -357,12 +398,64 @@ function repositoryRoot(): string {
   return realpathSync(fileURLToPath(new URL('..', import.meta.url)))
 }
 
-function validateEvidencePath(path: string): string {
+export function validateEvidencePath(path: string): string {
   if (!isAbsolute(path)) throw new ConfigurationFailure()
   const repoRoot = repositoryRoot()
-  const evidenceParent = realpathSync(dirname(path))
-  if (pathIsWithin(repoRoot, evidenceParent)) throw new ConfigurationFailure()
-  return path
+  const evidenceName = basename(path)
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.ndjson$/.test(evidenceName)) {
+    throw new ConfigurationFailure()
+  }
+
+  let evidenceParent: string
+  try {
+    evidenceParent = realpathSync(dirname(path))
+    const parentStat = statSync(evidenceParent)
+    const currentUid = process.getuid?.()
+    if (
+      !parentStat.isDirectory()
+      || currentUid === undefined
+      || parentStat.uid !== currentUid
+      || (parentStat.mode & 0o022) !== 0
+    ) {
+      throw new ConfigurationFailure()
+    }
+  } catch (error) {
+    if (error instanceof ConfigurationFailure) throw error
+    throw new ConfigurationFailure()
+  }
+
+  const canonicalPath = resolve(evidenceParent, evidenceName)
+  try {
+    lstatSync(canonicalPath)
+    throw new ConfigurationFailure()
+  } catch (error) {
+    if (error instanceof ConfigurationFailure) throw error
+    if (!asRecord(error) || asRecord(error)?.code !== 'ENOENT') {
+      throw new ConfigurationFailure()
+    }
+  }
+
+  try {
+    const prohibitedRoots = new Set([
+      repoRoot,
+      realpathSync(gitOutput(repoRoot, ['rev-parse', '--path-format=absolute', '--git-common-dir'])),
+      realpathSync(gitOutput(repoRoot, ['rev-parse', '--path-format=absolute', '--git-dir'])),
+    ])
+    const inventory = gitOutput(repoRoot, ['worktree', 'list', '--porcelain'])
+    for (const line of inventory.split(/\r?\n/u)) {
+      if (line.startsWith('worktree ')) {
+        prohibitedRoots.add(realpathSync(line.slice('worktree '.length)))
+      }
+    }
+    if ([...prohibitedRoots].some((root) => pathIsWithin(root, evidenceParent))) {
+      throw new ConfigurationFailure()
+    }
+  } catch (error) {
+    if (error instanceof ConfigurationFailure) throw error
+    throw new ConfigurationFailure()
+  }
+
+  return canonicalPath
 }
 
 function gitOutput(repoRoot: string, args: string[]): string {
@@ -506,13 +599,11 @@ function readConfiguration(): AcceptanceConfig {
   }
   if (alice.email === bob.email) throw new ConfigurationFailure()
 
-  const adminEmail = optionalEnvironment('ACCEPTANCE_ADMIN_EMAIL')
-  const adminPassword = optionalEnvironment('ACCEPTANCE_ADMIN_PASSWORD', true)
-  if ((adminEmail === null) !== (adminPassword === null)) throw new ConfigurationFailure()
-  const admin = adminEmail && adminPassword
-    ? { email: validateEmail(adminEmail), password: adminPassword }
-    : null
-  if (admin && (admin.email === alice.email || admin.email === bob.email)) {
+  const admin: AccountCredentials = {
+    email: validateEmail(requiredEnvironment('ACCEPTANCE_ADMIN_EMAIL')),
+    password: requiredEnvironment('ACCEPTANCE_ADMIN_PASSWORD', true),
+  }
+  if (admin.email === alice.email || admin.email === bob.email) {
     throw new ConfigurationFailure()
   }
 
@@ -1156,13 +1247,10 @@ async function main(): Promise<number> {
     assertSafe(alice.workspaceId !== bob.workspaceId, 'TENANT_WORKSPACES_NOT_DISTINCT')
     assertSafe(alice.membershipId !== bob.membershipId, 'TENANT_MEMBERSHIPS_NOT_DISTINCT')
 
-    if (config.admin) {
-      admin = await harness.must('auth.admin_platform_context', async () => {
-        return await loadAdminSession(config, config.admin as AccountCredentials)
-      })
-    } else {
-      harness.incomplete('auth.admin_platform_context', 'ADMIN_CREDENTIALS_NOT_SUPPLIED')
-    }
+    admin = await harness.must('auth.admin_platform_context', async () => {
+      return await loadAdminSession(config, config.admin)
+    })
+    const activeAdmin = admin
 
     await harness.must('fixtures.disposable_empty_workspaces', async () => {
       const [aliceRows, bobRows] = await Promise.all([
@@ -1361,17 +1449,13 @@ async function main(): Promise<number> {
       assertSafe(clientSnapshot(currentBob) === originalBobSnapshot, 'BOB_CLIENT_CHANGED_AFTER_ATTACKS')
     })
 
-    const excludedProbeToken = admin?.accessToken ?? alice.accessToken
+    const excludedProbeToken = activeAdmin.accessToken
     const unauthenticatedTombstones = new Set(manifest.unauthenticated_tombstone_probes)
     for (const functionName of manifest.retired_http_410_functions) {
       const isPublicProbe = unauthenticatedTombstones.has(functionName)
-      if (!isPublicProbe && !admin) {
-        harness.incomplete(`tombstone.${functionName}`, 'ADMIN_TOMBSTONE_PROBE_NOT_RUN')
-        continue
-      }
       await harness.check(`tombstone.${functionName}`, async () => {
         const result = await callFunction(config, functionName, {
-          token: isPublicProbe ? undefined : (admin as AdminSession).accessToken,
+          token: isPublicProbe ? undefined : activeAdmin.accessToken,
           rawBody: '{not-valid-json',
         })
         expectStatus(result, 410, 'TOMBSTONE_NOT_ACTIVE')
@@ -1427,10 +1511,9 @@ async function main(): Promise<number> {
       expectStatus(result, 413, 'RESEND_STREAM_LIMIT_NOT_ENFORCED')
     })
 
-    if (admin) {
-      await harness.check('admin.portal_suspend_reactivate_lifecycle', async () => {
+    await harness.check('admin.portal_suspend_reactivate_lifecycle', async () => {
         const listResult = await callFunction(config, 'manage-workspace-users', {
-          token: (admin as AdminSession).accessToken,
+          token: activeAdmin.accessToken,
           jsonBody: { action: 'list' },
         })
         expectStatus(listResult, 200, 'ADMIN_MEMBERSHIP_LIST_FAILED')
@@ -1448,7 +1531,7 @@ async function main(): Promise<number> {
         const portalPassword = `${randomBytes(32).toString('base64url')}!Aa1`
         alicePortalPasswordTouched = true
         const passwordSet = await callFunction(config, 'manage-client-portal-password', {
-          token: (admin as AdminSession).accessToken,
+          token: activeAdmin.accessToken,
           jsonBody: {
             action: 'set',
             client_id: (aliceClient as WorkspaceClientRow).id,
@@ -1461,7 +1544,7 @@ async function main(): Promise<number> {
         alicePortalAccessTouched = true
         await setPortalAccess(
           config,
-          admin as AdminSession,
+          activeAdmin,
           (aliceClient as WorkspaceClientRow).id,
           true,
         )
@@ -1495,7 +1578,7 @@ async function main(): Promise<number> {
         )
         const adminWorkspaceClients = await callRest(
           config,
-          (admin as AdminSession).accessToken,
+          activeAdmin.accessToken,
           'clients',
           {
             query: {
@@ -1513,11 +1596,26 @@ async function main(): Promise<number> {
         )
 
         aliceLifecycleTouched = true
-        const suspend = await callFunction(config, 'manage-workspace-users', {
-          token: (admin as AdminSession).accessToken,
+        const duplicateSuspensions = await Promise.all([
+          callFunction(config, 'manage-workspace-users', {
+            token: activeAdmin.accessToken,
+            jsonBody: { action: 'suspend', membership_id: (alice as AuthSession).membershipId },
+          }),
+          callFunction(config, 'manage-workspace-users', {
+            token: activeAdmin.accessToken,
+            jsonBody: { action: 'suspend', membership_id: (alice as AuthSession).membershipId },
+          }),
+        ])
+        assertSafe(
+          duplicateSuspensions.some((result) => result.status === 200)
+            && duplicateSuspensions.every((result) => result.status === 200 || result.status === 409),
+          'ALICE_DUPLICATE_SUSPEND_FAILED',
+        )
+        const confirmedSuspension = await callFunction(config, 'manage-workspace-users', {
+          token: activeAdmin.accessToken,
           jsonBody: { action: 'suspend', membership_id: (alice as AuthSession).membershipId },
         })
-        expectStatus(suspend, 200, 'ALICE_SUSPEND_FAILED')
+        expectStatus(confirmedSuspension, 200, 'ALICE_SUSPEND_RECONCILIATION_FAILED')
 
         const suspendedWorkspaceCall = await callFunction(config, 'workspace-clients', {
           token: (alice as AuthSession).accessToken,
@@ -1537,11 +1635,26 @@ async function main(): Promise<number> {
         })
         expectStatus(invalidatedPortal, 401, 'SUSPENDED_PORTAL_TOKEN_STILL_VALID')
 
-        const reactivate = await callFunction(config, 'manage-workspace-users', {
-          token: (admin as AdminSession).accessToken,
+        const duplicateReactivations = await Promise.all([
+          callFunction(config, 'manage-workspace-users', {
+            token: activeAdmin.accessToken,
+            jsonBody: { action: 'reactivate', membership_id: (alice as AuthSession).membershipId },
+          }),
+          callFunction(config, 'manage-workspace-users', {
+            token: activeAdmin.accessToken,
+            jsonBody: { action: 'reactivate', membership_id: (alice as AuthSession).membershipId },
+          }),
+        ])
+        assertSafe(
+          duplicateReactivations.some((result) => result.status === 200)
+            && duplicateReactivations.every((result) => result.status === 200 || result.status === 409),
+          'ALICE_DUPLICATE_REACTIVATE_FAILED',
+        )
+        const confirmedReactivation = await callFunction(config, 'manage-workspace-users', {
+          token: activeAdmin.accessToken,
           jsonBody: { action: 'reactivate', membership_id: (alice as AuthSession).membershipId },
         })
-        expectStatus(reactivate, 200, 'ALICE_REACTIVATE_FAILED')
+        expectStatus(confirmedReactivation, 200, 'ALICE_REACTIVATE_RECONCILIATION_FAILED')
         alice = await retryTenantSignIn(config, alice as AuthSession)
         aliceLifecycleTouched = false
         await listWorkspaceClients(config, alice)
@@ -1561,23 +1674,16 @@ async function main(): Promise<number> {
         )
         expectStatus(crudAfterReactivation, 200, 'CRUD_AFTER_REACTIVATION_FAILED')
         aliceClient = parseWorkspaceClient(asRecord(crudAfterReactivation.json)?.client)
-      })
-    } else {
-      harness.incomplete(
-        'admin.portal_suspend_reactivate_lifecycle',
-        'ADMIN_LIFECYCLE_NOT_RUN',
-      )
-    }
+    })
   } catch {
     fatal = true
   } finally {
     if (
-      config.admin
-      && admin
+      admin
       && (aliceLifecycleTouched || alicePortalAccessTouched || alicePortalPasswordTouched)
     ) {
       await harness.check('cleanup.admin_session_refresh', async () => {
-        admin = await loadAdminSession(config, config.admin as AccountCredentials)
+        admin = await loadAdminSession(config, config.admin)
       })
     }
 
@@ -1666,9 +1772,10 @@ async function main(): Promise<number> {
       )
     })
 
-    harness.incomplete('manual.invite_link_acceptance', 'MANUAL_INVITE_EVIDENCE_REQUIRED')
-    harness.incomplete('resend.signed_replay_and_ordering', 'SIGNED_RESEND_REPLAY_NOT_RUN')
-    harness.incomplete('resend.provider_account_configuration', 'MANUAL_PROVIDER_EVIDENCE_REQUIRED')
+    for (const [test, code] of EXPECTED_EXTERNAL_INCOMPLETE_GATES) {
+      harness.incomplete(test, code)
+    }
+    harness.enforceExpectedIncompleteGates(EXPECTED_EXTERNAL_INCOMPLETE_GATES)
     if (fatal && harness.failures === 0) harness.failures += 1
     harness.summary()
     evidence.close()
@@ -1682,14 +1789,16 @@ async function main(): Promise<number> {
   return 2
 }
 
-try {
-  process.exitCode = await main()
-} catch (error) {
-  const code = error instanceof ConfigurationFailure
-    ? 'CONFIGURATION_REFUSED'
-    : error instanceof SafeFailure
-      ? error.code
-      : 'UNEXPECTED_BOOTSTRAP_FAILURE'
-  process.stderr.write(`Staging acceptance refused: ${code}\n`)
-  process.exitCode = 1
+if (resolve(process.argv[1] ?? '') === MODULE_PATH) {
+  try {
+    process.exitCode = await main()
+  } catch (error) {
+    const code = error instanceof ConfigurationFailure
+      ? 'CONFIGURATION_REFUSED'
+      : error instanceof SafeFailure
+        ? error.code
+        : 'UNEXPECTED_BOOTSTRAP_FAILURE'
+    process.stderr.write(`Staging acceptance refused: ${code}\n`)
+    process.exitCode = 1
+  }
 }

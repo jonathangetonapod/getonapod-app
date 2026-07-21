@@ -1,0 +1,72 @@
+name: PR static validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-static-${{ github.event.pull_request.number || github.event.merge_group.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  static-validation:
+    name: No-secret static validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      PODCASTS_SUPABASE_URL: ""
+      PODCASTS_SUPABASE_SERVICE_ROLE_KEY: ""
+      SUPABASE_URL: ""
+      SUPABASE_SERVICE_ROLE_KEY: ""
+      VITE_SUPABASE_URL: ""
+      VITE_SUPABASE_ANON_KEY: ""
+      VITE_APP_URL: ""
+      VITE_SENTRY_DSN: ""
+      SENTRY_AUTH_TOKEN: ""
+
+    steps:
+      - name: Check out the pull request merge
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.2
+
+      - name: Set up pinned npm
+        run: |
+          npm install --global npm@10.9.7 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = '10.9.7'
+
+      - name: Set up pinned Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282
+        with:
+          deno-version: v2.5.2
+
+      - name: Check patch whitespace
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: git diff --check "${PR_BASE_SHA}...HEAD"
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run static release checks
+        env:
+          INVITE_ONLY_EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: npm run check:static
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit all locked dependencies
+        run: npm audit --audit-level=high

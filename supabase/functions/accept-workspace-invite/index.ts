@@ -42,6 +42,9 @@ serve(async (req) => {
       if (message.includes('email')) {
         throw new HttpError(403, 'INVITE_EMAIL_MISMATCH', 'This invitation belongs to another account')
       }
+      if (message.includes('password')) {
+        throw new HttpError(409, 'PASSWORD_SETUP_REQUIRED', 'Create a password before accepting this invitation')
+      }
       if (message.includes('not found')) {
         throw new HttpError(404, 'INVITE_NOT_FOUND', 'Invitation not found')
       }

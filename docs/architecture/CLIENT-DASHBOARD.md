@@ -1,5 +1,10 @@
 # Client Dashboard System Architecture
 
+> **Invite-only MVP warning:** the magic-link flow described below is retired
+> and its same-name functions return HTTP 410. The supported portal uses the
+> hash-only password/session flow documented in the root README and
+> `docs/invite-only-mvp.md`; historical examples are not deployment guidance.
+
 ## Overview
 
 The Client Dashboard system in Authority Built provides a comprehensive portal for clients to manage their podcast booking journey. It consists of two main interfaces: a **Public Client Approval View** for reviewing podcast opportunities and a **Secure Client Portal** for managing bookings, viewing analytics, and accessing resources.
@@ -72,7 +77,8 @@ Client Credentials → Validation → Session Creation → Dashboard Access
 **Context**: `src/contexts/ClientPortalContext.tsx`
 
 **Features:**
-- **Automatic session restore** from localStorage on page load
+- **Automatic session restore** from tab-scoped `sessionStorage` on page load,
+  with an in-memory fallback when browser storage is unavailable
 - **Session validation** with backend on restore
 - **Auto-logout** when session expires (24-hour default)
 - **Impersonation support** for admin testing

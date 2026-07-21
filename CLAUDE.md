@@ -6,7 +6,7 @@ Podcast placement platform for a booking agency (Get On A Pod / Authority Built)
 
 ## 2. Tech Stack
 
-- **Framework:** React 18 + Vite 5 (SWC plugin)
+- **Framework:** React 18 + Vite 7 (SWC plugin)
 - **Language:** TypeScript 5.8 (loose — `noImplicitAny: false`, `strictNullChecks: false`)
 - **Styling:** Tailwind CSS 3.4 + `tailwindcss-animate` + `@tailwindcss/typography`
 - **Components:** shadcn/ui (Radix primitives in `src/components/ui/`)

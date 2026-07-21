@@ -69,6 +69,11 @@ const clearSensitiveAccountStorage = () => {
   } catch {
     // Storage can be unavailable in hardened/private browser contexts.
   }
+  try {
+    window.sessionStorage.removeItem('podcast-finder-state')
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -243,6 +248,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+// The hook intentionally shares the context module with its provider.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (context === undefined) {

@@ -4,8 +4,8 @@
 
 A platform administrator can invite an account, and the invitee can accept the
 email invitation, set a password, sign in, and manage clients inside one private
-workspace. Existing Get On A Pod administrator data remains available in the
-default workspace.
+workspace. Existing client rows are assigned to the default Get On A Pod
+workspace; other legacy data remains administrator-only.
 
 This release intentionally has:
 
@@ -23,15 +23,50 @@ records and use `/portal/*`; they are not workspace accounts.
 
 | State | Meaning | Server behavior |
 | --- | --- | --- |
+| `provisioning` | An active private workspace exists, but its owner membership has not completed invite delivery/finalization | No tenant access; administrator may retry or revoke after any required reconciliation |
 | `invited` | A 24-hour Supabase invitation and pending membership exist | Invite completion only |
-| `active` | The invitation was accepted and the private workspace is active | Workspace client CRUD allowed |
-| `suspended` | A platform administrator disabled the account | Auth user is banned; membership/workspace access denied; client portal sessions/tokens for the workspace are revoked |
-| `revoked` | A pending invitation was withdrawn or expired and cleaned up | Invite cannot be accepted; private workspace is archived |
+| `active` | The invitation was accepted and the owner membership is active | Workspace client CRUD allowed |
+| `suspended` | A platform administrator disabled database access | Membership/workspace access is denied and portal artifacts are revoked immediately; Auth ban reconciliation may remain pending under a durable claim |
+| `revoked` | A pending database invitation was withdrawn or expired | Invite cannot be accepted and the private workspace is archived; exact marked-identity cleanup may remain pending under a durable claim |
 
-Platform-administrator status is derived server-side by joining the current
-Supabase Auth email to `admin_users`. Lifecycle actions also verify that the
-membership's bound Auth user still has the expected email, so a renamed or
-reused Auth identity is never banned/deleted automatically.
+Platform-administrator status is derived server-side from the immutable Auth
+user ID, its current email, the `admin_users` allowlist, and an active
+default-workspace membership. Accepted tenant authorization requires the Auth
+user ID and bound membership email to agree, so a direct Auth email change
+fails closed. An administrator can still suspend that immutable user ID, but
+reactivation is refused until the identity mismatch is reviewed and explicitly
+reconciled.
+
+Invitation creation is database-first and two-phase. One transaction creates
+the private workspace and `provisioning` membership. A durable, service-only
+delivery claim serializes the external provider call; Supabase Auth receives
+the membership marker, the service writes a service-owned, non-user-editable
+`app_metadata` marker, and a second transaction binds that Auth user and
+advances the membership to `invited`. A provider error is never evidence of
+delivery: a known matching
+identity is deleted before the claim is released, while unresolved provider or
+identity ambiguity retains the claim for operator review rather than risking a
+second delivery or deleting the wrong Auth account.
+Acceptance requires the bound Auth identity, unexpired database invitation, and
+a backend-observed password verifier.
+
+Suspend/reactivate uses a separate durable service-only lifecycle claim. The
+database transition commits before Auth ban/unban reconciliation and remains
+authoritative after an interrupted request. Same-token retries are idempotent.
+A different token never takes over either kind of claim automatically;
+`review_after` is only a 15-minute signal for an operator to investigate.
+`reconcile_active` and `reconcile_suspended` are distinct status-preserving
+actions: they cannot replay an earlier transition over a newer database state.
+Successful Auth reconciliation and its desired state are written to the audit
+log before the token-bound claim is removed. The administrator UI disables all
+conflicting lifecycle/invite actions while the service-only safe projection
+reports a pending claim.
+
+Historical same-email invitation cleanup is also fail-closed. Any newer
+membership permanently supersedes an older revoked invitation, and another
+unresolved delivery/cleanup claim blocks historical cleanup. Provider deletion
+requires the exact trusted membership/metadata identity binding; an email match
+alone is never enough to delete an Auth user.
 
 A full Supabase email invitation URL is a bearer authenticator. The membership
 UUID is bound to the invited Auth identity after the link establishes that
@@ -116,14 +151,17 @@ Billing, checkout, premium placement administration, customers, orders,
 analytics, AI Sales Director, admin video generation, admin blog management,
 admin settings, and the legacy docs route are not part of the MVP. Routes
 redirect to supported pages. Charge/order/video Edge entrypoints and the
-standalone video service are HTTP 410 tombstones.
+standalone video's `/api/*` routes are HTTP 410 tombstones. Its side-effect-free
+`/health` remains 200 with `status: retired` only so Railway can activate the
+safe tombstone revision before the service is removed.
 
 The orphan `get-client-portfolio` service-role reader is also an HTTP 410
 tombstone. The supported replacement is the narrower
 `public-client-dashboard` capability endpoint.
 
 Before production promotion, remove the Stripe webhook from Stripe and remove
-the Railway/HeyGen service and its stored secrets. Deploying a frontend redirect
+the separate retired video-generator Railway service, HeyGen integration, and
+their stored secrets. Deploying a frontend redirect
 alone does not retire an external integration.
 
 ## Staging prerequisites
@@ -141,10 +179,29 @@ alone does not retire an external integration.
    expiry 86,400 seconds, and an exact allowlist of staging callback URLs.
 7. Rotate every credential exposed in chat or repository history before using
    the environment. Source cleanup does not revoke a credential.
+8. Review Sentry, hosting, proxy, and support logs for captured invite, recovery,
+   or capability URLs. Revoke affected sessions/links and purge retained
+   telemetry under the incident process.
+9. Apply the current migration files to a fresh staging baseline or restore the
+   pre-MVP backup first. The branch has edited its still-unreleased numbered
+   migration; an older draft is not an in-place upgrade path.
+10. Protect `main`: require the no-secret static validation check, a reviewer,
+    an up-to-date branch/merge queue, and block direct and force pushes.
 
 ## Deployment order
 
 Treat this as a coordinated, fail-closed cutover:
+
+The legacy `scripts/deploy-edge-functions.sh` and
+`scripts/run-migration.cjs` helpers are intentionally retired and must not be
+used for this rollout. They do not bind the target, reviewed commit, backup,
+phased manifest, or evidence path.
+
+The root Dockerfile provides an executable frontend container path, but there
+is no automated Supabase Edge/database rollout executor in this branch. The
+operator procedure or future backend executor must bind every action and
+evidence record to the exact reviewed commit, dedicated staging project,
+backup, phased manifest, and private output directory.
 
 1. Back up and inspect the target schema. Record the remote Edge Function,
    schedule, webhook, row-count, and client ownership inventory as release
@@ -185,12 +242,19 @@ Treat this as a coordinated, fail-closed cutover:
    Delete any pre-existing remote copies of the two excluded handlers from the
    tenant project; deploy omission alone does not remove them.
 8. Remove every caller, schedule, webhook, or provider workflow that uses any
-   of the 17 retired function names; delete those remote functions only after
-   containment is proved, and save the final inventory.
-9. Unregister the Stripe webhook and remove the Railway/HeyGen service and
-   associated secrets.
-10. Run the complete acceptance matrix, then leave `main`/production unchanged
-    until reviewers approve the evidence.
+   of the 17 retired function names, but retain the HTTP 410 tombstones through
+   the complete acceptance matrix so their gateway behavior and lack of side
+   effects can be proved.
+9. Unregister the Stripe webhook and HeyGen integration and remove their
+   provider secrets. Keep the separate retired video-generator Railway service
+   running its safe tombstone through acceptance.
+10. Run the complete acceptance matrix while all 17 Edge tombstones and the
+    video-generator tombstone remain deployed; require its `/api` routes to
+    return 410 and `/health` to report only `status: retired`.
+11. Only after acceptance proves containment and every caller is gone, delete
+    the 17 retired remote functions, remove the separate video-generator
+    Railway service, and save the final absent-function inventory. Leave
+    `main`/production unchanged until reviewers approve all evidence.
 
 If any migration or assertion fails, keep traffic closed and the new account
 endpoints unavailable, investigate against the staging backup, and continue
@@ -215,14 +279,22 @@ accepts a service-role key.
 It creates tagged synthetic clients, tests real and modified cross-tenant UUIDs
 over Edge and REST, probes all manifest tombstones and excluded functions,
 checks the Resend signature/body limit, exercises suspension/portal revocation,
-and performs owner cleanup in `finally`. Exit `2` means automated checks passed
-but the manual invite-link and signed Resend replay/provider gates remain
-incomplete; it is not release approval. Exact variable names and a safe command
-template are in the root README.
+and performs owner cleanup in `finally`. Exit `2` means the automated HTTP
+subset passed while the checked-in external release-gate allowlist remains
+incomplete; it is not release approval. That allowlist explicitly records the
+database verifier, commit-bound deployment inventory, hosted Auth,
+invite delivery fault injection and backend password enforcement,
+durable-claim recovery, UI/legacy-admin checks, audit and portal races, identity
+changes, the live Storage API boundary, capability links, provider side
+effects/decommissioning, credential rotation, historical telemetry review, and
+signed Resend behavior.
+Administrator credentials are required, and any unexpected incomplete record
+converts the run to a failure. Exact variable names and a safe command template
+are in the root README.
 
 Run `scripts/staging-database-verifier.sh` after the four migrations. Provide
 the connection only through `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
-`PGPASSWORD`, and an encrypted `PGSSLMODE`, plus
+`PGPASSWORD`, and `PGSSLMODE=verify-full`, plus
 `STAGING_DB_EXPECTED_PGHOST`, mandatory
 `STAGING_DB_PRODUCTION_PGHOSTS`, the exact dynamic `STAGING_DB_CONFIRM`, and
 `STAGING_DB_EVIDENCE_PATH`. The confirmation is bound to the canonical host,
@@ -232,9 +304,12 @@ the current user, not group/world-writable, and outside every linked worktree
 and Git metadata directory. The wrapper refuses service/host-address overrides,
 runs only the recorded commit's verifier blob in one serializable read-only
 transaction with `ON_ERROR_STOP`, bounds runtime, deletes raw SQL stdout/stderr,
-and atomically publishes mode-600 NDJSON plus its SHA-256. Never pass a
-connection URL or password as a command-line argument or enter a password in
-shell history.
+and publishes mode-600 NDJSON plus its SHA-256 as one required integrity pair.
+The pair is invalid if either file is missing. The evidence includes
+a domain-separated SHA-256 fingerprint of the canonical
+host/port/database/user target without retaining the connection coordinates.
+Never pass a connection URL or password as a command-line argument or enter a
+password in shell history.
 
 Configure the Resend webhook for only `email.sent`, `email.delivered`,
 `email.delivery_delayed`, `email.failed`, `email.bounced`,
@@ -250,18 +325,50 @@ The supported membership writers use normal `READ COMMITTED` transactions. Do
 not introduce direct `REPEATABLE READ` membership writers without a database-
 native private-member slot/index design.
 
+## Durable claim recovery
+
+The invite-delivery and suspend/reactivate claims deliberately have no timeout
+takeover. Never clear one merely because `review_after` has passed.
+
+For a reviewed recovery:
+
+1. Quiesce lifecycle/invite actions for the exact membership and confirm the
+   originating Edge invocation is no longer running.
+2. Record the claim, membership/workspace state, audit events, bound Auth ID and
+   email, Auth invitation marker, and Auth ban state in private incident
+   evidence. Do not copy invite URLs or tokens.
+3. Treat the database state as authoritative. For a suspended membership,
+   ensure Auth is banned; for an active membership, verify the identity still
+   matches before unbanning. For a `provisioning` invite, delete any matching
+   marked Auth identity before making delivery retryable. Never delete an
+   unrelated email-only Auth account.
+4. In one controlled database-owner transaction, lock the exact membership and
+   claim row, verify the recorded token/state have not changed, and delete only
+   that claim. Do not grant direct claim-table access to `service_role`.
+5. Use **Retry** or **Verify Auth** in the administrator UI, rerun the database
+   verifier, and attach the sanitized result to the release evidence.
+
+If identity, provider-delivery, or invocation state is ambiguous, leave the
+claim in place and escalate; availability is preferable to issuing or deleting
+the wrong Auth identity.
+
 ## Acceptance matrix
 
 Use a platform administrator plus two fresh invited accounts, Alice and Bob.
-Use synthetic clients and no live provider credentials.
+Use synthetic clients and only dedicated staging/test provider configuration;
+never use production credentials.
 
 | Test | Expected result |
 | --- | --- |
 | Anonymous visitor opens `/app/clients` | Redirected to `/login` |
 | Uninvited Auth account signs in | No workspace context; access denied |
-| Administrator invites Alice | One private workspace/pending owner membership; 24-hour email invite |
+| Administrator starts Alice's invite | One private workspace and one `provisioning` owner membership; no tenant access yet |
+| Invite provider succeeds and service marker finalizes | Membership becomes `invited`; expiry is anchored to the provider invitation time |
+| Two administrators retry the same provisioning invite concurrently | One delivery claim wins; no second provider call can delete or replace the winner's Auth identity |
+| Provider success/error/timeout is injected at each delivery boundary | No usable orphan link; known-safe cleanup makes Retry available, ambiguous cleanup leaves a review claim |
 | Authenticated Bob submits Alice's membership UUID without Alice's invite-established session | Rejected |
-| Alice accepts her own invite and sets a password | Membership/workspace become active; `/app/clients` opens |
+| Alice tries acceptance before password setup | Backend rejects activation even if the frontend flow is bypassed |
+| Alice accepts her own invite after setting a password | Membership becomes active; the already-active private workspace now permits `/app/clients` |
 | Alice creates a client | Narrow response; row is owned by Alice's workspace; audit event exists |
 | Administrator invites/activates Bob | Bob receives a different workspace |
 | Alice and Bob list clients | Each receives only their own rows |
@@ -269,10 +376,13 @@ Use synthetic clients and no live provider credentials.
 | Alice updates/deletes Bob's client UUID | No row changes; no false success |
 | Alice queries full `clients`, `bookings`, credentials, sessions, or audit tables | Denied |
 | Alice attempts to write workspace/dashboard/portal/outreach/internal fields | Rejected |
+| Alice, Bob, anonymous, and administrator sessions exercise the live Storage API with staging-only fixtures | Tenant/anonymous insert, update, and delete are denied; any existing administrator write path remains administrator-only; private reads remain denied and intended public reads are unchanged |
 | Administrator views the global client list/detail | Workspace name is visible for every record |
-| Administrator suspends Alice | Auth requests denied; workspace suspended; its portal sessions/tokens deleted |
+| Administrator suspends Alice | Workspace APIs are denied and portal sessions/tokens are deleted immediately; Auth is banned after successful provider reconciliation, or the claim remains for review |
 | Administrator reactivates Alice | Alice's workspace CRUD returns; old portal bearer sessions do not revive |
-| Administrator revokes a pending invite | Auth invite/membership no longer usable; identity mismatch is manual-review, not deletion |
+| Suspend/reactivate response is lost or Auth update fails | Database status remains authoritative; same-token retry is idempotent, but a lost token locks the UI until reviewed provider/database reconciliation and exact manual claim removal; only then may a fresh status-preserving Verify run |
+| A different request reaches a stale lifecycle/delivery claim | Request is busy; no automatic timeout takeover occurs |
+| Administrator revokes a provisioning/invited record | Database capability is revoked first; matching marked Auth identity is deleted; unrelated identity mismatch is manual review |
 | Existing administrator uses legacy app | Default-workspace records remain available |
 | Anonymous caller invokes privileged operational function | Denied before service-role/provider side effects |
 | Client portal uses a pre-cutover plaintext password | Access remains disabled; operator must set a replacement password and reissue access |
@@ -293,6 +403,7 @@ Use synthetic clients and no live provider credentials.
 | Older `sent`/`delivered` Resend event arrives after terminal status | Delivery status does not regress |
 | `email.suppressed` arrives for a recipient | Address is suppressed; bounce count and first/last bounce timestamps do not change |
 | Signed unsupported Resend event arrives without `email_id` | One ignored receipt is ledgered; no email state changes |
+| Sentry/hosting history contains an Auth or capability URL | Incident evidence is recorded; affected link/session is revoked and retained telemetry is purged |
 
 Repeat isolation tests over browser navigation, Supabase REST, Edge Functions,
 and manually modified UUIDs/URLs. Navigation visibility is not authorization.
@@ -302,17 +413,29 @@ and manually modified UUIDs/URLs. Navigation visibility is not authorization.
 Run at minimum:
 
 ```bash
-npm run build
-npm audit --omit=dev
-npx tsc --noEmit -p tsconfig.app.json
-npm run lint
+npm run check:static
+npm audit --audit-level=high
+npm audit --omit=dev --audit-level=high
 git diff --check
+git diff --check origin/main...HEAD
 ```
 
-Also parse all changed SQL, bundle/type-check every Edge entrypoint, scan tracked
-content and built output for secrets/browser service keys, and run the package
-security audit. Existing legacy TypeScript/lint findings must be compared with
-`main`; this branch may not add regressions.
+`check:static` verifies the exact manifest/release shape; parses all four
+migrations and the verifier with a PostgreSQL grammar parser; checks app and
+staging TypeScript; enforces zero warnings on the MVP lint scope; tests
+sensitive URLs, telemetry, session storage, retired helpers, and staging-path
+containment; semantically checks all 89 Edge entrypoints with Deno 2.5.2 and a
+frozen `deno.lock`; checks the database-runner shell; performs an isolated
+static build; clean-installs, builds, and audits the nested MCP server; exercises
+the dependency-free retired video tombstone with malformed/oversized requests;
+checks the exact two-stage Docker/Railway Node/npm contract, required browser
+build arguments, non-root runtime, and secret-excluding Docker context;
+launches the real production server to verify routes, assets, and headers; and
+scans the full current worktree plus built output for secrets. The scanner
+includes self-tests and suppresses values. The no-secret draft-PR
+workflow pins Node 22.22.2, npm 10.9.7, Deno 2.5.2, and its Actions by commit,
+then repeats the gates for pull requests and merge queues. Full-repository
+ESLint retains unrelated legacy debt and is not the release check.
 
 Static checks do not prove RLS. The release remains blocked until the SQL
 verifier and two-account staging matrix pass.
@@ -332,6 +455,9 @@ verifier and two-account staging matrix pass.
   explicit workspace/client mapping, unique provider-event keys, and one
   transactional ingestion RPC. Any temporary legacy use belongs in an isolated
   operator environment with separate secrets and its own acceptance evidence.
+- `mcp-prospect-dashboard` remains trusted stdio-only operator tooling with a
+  service-role credential. It is not a tenant API and must not be exposed over
+  HTTP or included in the tenant deployment.
 - The Resend receipt ledger has no automatic retention job. Monitor growth and
   add a service-only purge whose retention period exceeds the provider's
   maximum retry/replay horizon before production volume grows.
@@ -339,22 +465,53 @@ verifier and two-account staging matrix pass.
   before exposing portal operations reporting.
 - Route-level code splitting and bundle-size reduction are post-MVP performance
   work.
-- The production-dependency audit is clean. Vite 5 retains a development-server
-  advisory whose automated fix requires a breaking major upgrade; local Vite is
-  loopback-bound by default and is never the production server.
-- Add and verify production CSP/HSTS/frame/content-type/referrer response
-  headers at the hosting/CDN boundary.
+- Both the full and production dependency audits are clean with Vite 7.3.6.
+  Rerun both against the exact reviewed merge commit.
+- The checked-in production server emits no-referrer, nosniff, frame denial,
+  and restricted permissions headers, plus no-store/noindex on private routes.
+  Preserve and verify them in hosting, and add environment-specific CSP/HSTS at
+  the hosting/CDN boundary.
+- The release secret scanner checks the current tree/build, not Git history,
+  chat, or third-party logs. Rotate exposed credentials and complete coordinated
+  history/log remediation separately.
+
+## Known credential incident
+
+The current-tree scan passes, but repository-history review found
+non-placeholder Podscan and BridgeKit credentials. OpenAI, Podscan, Jotform,
+and Clay webhook credentials were also shared through chat. Do not reuse them.
+Revoke/rotate first, then review provider, Supabase, CI, hosting, Sentry, and
+support logs without copying secret values into evidence. Keep exact historical
+locations only in the private incident record, not tracked public docs.
+
+No history rewrite has been performed. Any cleanup must be coordinated across
+GitHub, open branches/PRs, forks/clones, caches, artifacts, and third-party
+logs; a rewrite never substitutes for credential rotation.
 
 ## Merge gate
 
 Merge `feat/invite-only-workspaces` into `main` only when:
 
 - compromised credentials are rotated;
+- repository history and telemetry/hosting logs are reviewed and remediated;
+- a commit-bound staging deployment inventory proves the exact migrations,
+  Edge manifest, and frontend under review;
 - staging migration backup/review and the SQL verifier pass;
-- the complete two-account matrix passes;
+- hosted Auth configuration and uninvited-account denial are verified;
+- the complete two-account browser/REST/Edge/storage matrix passes;
+- invite and lifecycle provider fault/concurrency injection, durable-claim
+  manual recovery, and signed Resend replay/provider evidence pass;
 - replacement capability links are inventoried and redistribution is approved;
 - all 17 retired functions have completed the tombstone, caller cleanup, and
   remote-deletion inventory sequence;
+- both excluded tenant handlers are remotely absent and their callers removed;
 - external Stripe/video integrations are unregistered;
+- every external/manual gate enumerated by the staging runner is complete, with
+  no unexpected incomplete record;
 - build/static/dependency checks are accepted; and
-- data/RLS, Edge/security, and frontend reviewers approve the final diff.
+- data/RLS, Edge/security, frontend, and operations reviewers approve the final
+  diff;
+- `main` has required review/check protection and blocks direct/force pushes;
+  and
+- the required GitHub check passes on the PR (and any merge-group) synthetic
+  merge containing the exact reviewed feature-head SHA.

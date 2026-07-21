@@ -11,6 +11,8 @@ const METHODS = ['POST'] as const
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Cache-Control': 'no-store',
+  'Vary': 'Origin',
 }
 
 function normalizeDashboardSlug(value: unknown): string | null {

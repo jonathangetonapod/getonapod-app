@@ -11,6 +11,8 @@ import {
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Cache-Control': 'no-store',
+  'Vary': 'Origin',
 }
 
 /**
@@ -319,8 +321,7 @@ serve(async (req) => {
       prospectBio = dashboard.prospect_bio || ''
     }
 
-    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
-    console.log('[Get Prospect Podcasts] Prospect name:', prospectName, '| Bio length:', prospectBio?.length || 0)
+    console.log('[Get Prospect Podcasts] Request accepted', cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
 
     // FAST PATH: For cacheOnly mode, try to skip Google Sheets and return cached data directly
     if (cacheOnly && prospectDashboardId) {

@@ -90,7 +90,10 @@ serve(async (req) => {
     console.error('[Delete Reply] Error:', error)
 
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal server error' }),
+      JSON.stringify({
+        success: false,
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

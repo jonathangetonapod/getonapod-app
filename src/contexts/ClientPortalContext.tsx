@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { Client } from '@/services/clients'
 import {
   type ClientPortalSession,
@@ -23,6 +23,40 @@ interface ClientPortalContextType {
 }
 
 const ClientPortalContext = createContext<ClientPortalContextType | undefined>(undefined)
+const IMPERSONATION_STORAGE_KEY = 'admin-impersonating-client'
+
+function clearLegacyStoredImpersonation(): void {
+  try {
+    window.localStorage.removeItem(IMPERSONATION_STORAGE_KEY)
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+}
+
+function clearStoredImpersonation(): void {
+  try {
+    window.sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY)
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+  clearLegacyStoredImpersonation()
+}
+
+function readStoredImpersonation(): string | null {
+  try {
+    return window.sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function saveStoredImpersonation(client: Client): void {
+  try {
+    window.sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, JSON.stringify(client))
+  } catch {
+    // In-memory impersonation remains available for the current page.
+  }
+}
 
 export const ClientPortalProvider = ({ children }: { children: React.ReactNode }) => {
   const { isPlatformAdmin, loading: authLoading } = useAuth()
@@ -39,14 +73,14 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     }
 
     const requestId = ++requestGeneration.current
-    // Restore session from localStorage on mount
+    // Restore the tab-scoped session (or the in-memory fallback) on mount.
     const restoreSession = async () => {
       setLoading(true)
 
       // Impersonation is tab-scoped and only restorable while the current
       // Supabase account is still a live platform administrator.
-      localStorage.removeItem('admin-impersonating-client')
-      const impersonatingData = window.sessionStorage.getItem('admin-impersonating-client')
+      clearLegacyStoredImpersonation()
+      const impersonatingData = readStoredImpersonation()
       if (impersonatingData && isPlatformAdmin) {
         try {
           const impersonatedClient = JSON.parse(impersonatingData)
@@ -60,10 +94,10 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
           return
         } catch (error) {
           console.error('[ClientPortal] Failed to restore impersonation:', error)
-          window.sessionStorage.removeItem('admin-impersonating-client')
+          clearStoredImpersonation()
         }
       } else {
-        window.sessionStorage.removeItem('admin-impersonating-client')
+        clearStoredImpersonation()
         setIsImpersonating(false)
       }
 
@@ -121,34 +155,11 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     }
   }, [authLoading, isPlatformAdmin])
 
-  // Auto-refresh session before expiry (23 hours)
-  useEffect(() => {
-    if (!session) return
-
-    const expiresAt = new Date(session.expires_at)
-    const now = new Date()
-    const timeUntilExpiry = expiresAt.getTime() - now.getTime()
-
-    // If less than 1 hour until expiry, show warning
-    if (timeUntilExpiry < 60 * 60 * 1000 && timeUntilExpiry > 0) {
-      console.warn('[ClientPortal] Session expiring soon')
-      // Could show toast notification here
-    }
-
-    // Set timeout to clear session when it expires
-    const timeoutId = setTimeout(() => {
-      console.log('[ClientPortal] Session expired, logging out')
-      logout()
-    }, timeUntilExpiry)
-
-    return () => clearTimeout(timeoutId)
-  }, [session])
-
   const loginWithPassword = async (email: string, password: string) => {
     const requestId = ++requestGeneration.current
     // Clear any existing session first to avoid race conditions
     portalSessionStorage.clear()
-    window.sessionStorage.removeItem('admin-impersonating-client')
+    clearStoredImpersonation()
     queryClient.clear()
     setSentryUser(null)
     setSession(null)
@@ -160,7 +171,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
       const { session: newSession, client: newClient } = await apiLoginWithPassword(email, password)
       if (requestId !== requestGeneration.current) return
 
-      // Store in localStorage
+      // Keep the bearer tab-scoped; the store also clears legacy localStorage.
       portalSessionStorage.save(newSession, newClient)
 
       // Update state
@@ -181,7 +192,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
     }
   }
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     requestGeneration.current += 1
     if (session) {
       try {
@@ -194,7 +205,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
 
     // Clear state and storage
     portalSessionStorage.clear()
-    window.sessionStorage.removeItem('admin-impersonating-client')
+    clearStoredImpersonation()
     queryClient.clear()
     setSession(null)
     setClient(null)
@@ -202,7 +213,22 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
 
     // Clear user from Sentry
     setSentryUser(null)
-  }
+  }, [session])
+
+  // Clear the local and server-side session when its fixed expiry is reached.
+  useEffect(() => {
+    if (!session) return
+
+    const timeUntilExpiry = new Date(session.expires_at).getTime() - Date.now()
+    if (timeUntilExpiry < 60 * 60 * 1000 && timeUntilExpiry > 0) {
+      console.warn('[ClientPortal] Session expiring soon')
+    }
+
+    const timeoutId = setTimeout(() => {
+      void logout()
+    }, Math.max(0, timeUntilExpiry))
+    return () => clearTimeout(timeoutId)
+  }, [logout, session])
 
   const impersonateClient = (clientToImpersonate: Client) => {
     if (!isPlatformAdmin) throw new Error('Platform administrator access is required')
@@ -219,7 +245,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
       email: clientToImpersonate.email,
       photo_url: clientToImpersonate.photo_url,
     } as Client
-    window.sessionStorage.setItem('admin-impersonating-client', JSON.stringify(safeClient))
+    saveStoredImpersonation(safeClient)
 
     // Set state
     setClient(safeClient)
@@ -231,7 +257,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
   const exitImpersonation = () => {
     requestGeneration.current += 1
     // Clear impersonation data
-    window.sessionStorage.removeItem('admin-impersonating-client')
+    clearStoredImpersonation()
     queryClient.clear()
 
     // Clear state
@@ -259,6 +285,8 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
   )
 }
 
+// The hook intentionally shares the context module with its provider.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useClientPortal = () => {
   const context = useContext(ClientPortalContext)
   if (context === undefined) {
