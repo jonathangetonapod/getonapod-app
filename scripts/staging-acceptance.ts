@@ -130,6 +130,7 @@ const RELEASE_INPUT_PATHS = [
   'supabase/migrations/20260720000200_invite_only_workspace_rls.sql',
   'supabase/migrations/20260720000300_client_portal_security.sql',
   'supabase/migrations/20260720000400_resend_webhook_idempotency.sql',
+  'supabase/migrations/20260720000500_client_prospect_link_normalization.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
 ] as const
 const ACCEPTANCE_ENV_ALLOWLIST = new Set([

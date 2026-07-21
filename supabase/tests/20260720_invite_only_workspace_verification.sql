@@ -19,6 +19,7 @@ DECLARE
   missing_workspace_policy_count BIGINT;
   missing_gate_count BIGINT;
   unsafe_view_count BIGINT;
+  lifecycle_pair_definition TEXT;
   resend_function_definition TEXT;
   resend_suppressed_upsert_definition TEXT;
   null_action_rejected BOOLEAN := false;
@@ -243,11 +244,23 @@ BEGIN
       invalid_private_workspace_count;
   END IF;
 
-  IF to_regprocedure(
-      'public.enforce_private_workspace_lifecycle_pair()'
-    ) IS NULL OR pg_get_functiondef(
-      'public.enforce_private_workspace_lifecycle_pair()'::regprocedure
-    ) NOT ILIKE '%TG_OP%OLD.id%NEW.id%OLD.workspace_id%NEW.workspace_id%LEFT JOIN public.workspace_memberships%count(membership.id)%FILTER%matching_lifecycle_count%membership_count <> 1%matching_lifecycle_count <> 1%private workspace requires exactly one lifecycle-matched membership%'
+  SELECT pg_get_functiondef(
+    to_regprocedure('public.enforce_private_workspace_lifecycle_pair()')
+  )
+  INTO lifecycle_pair_definition;
+
+  IF lifecycle_pair_definition IS NULL
+    OR lifecycle_pair_definition NOT ILIKE '%TG_OP%'
+    OR lifecycle_pair_definition NOT ILIKE '%OLD.id%'
+    OR lifecycle_pair_definition NOT ILIKE '%NEW.id%'
+    OR lifecycle_pair_definition NOT ILIKE '%OLD.workspace_id%'
+    OR lifecycle_pair_definition NOT ILIKE '%NEW.workspace_id%'
+    OR lifecycle_pair_definition NOT ILIKE '%LEFT JOIN public.workspace_memberships%'
+    OR lifecycle_pair_definition NOT ILIKE '%count(membership.id)%'
+    OR lifecycle_pair_definition NOT ILIKE '%FILTER%matching_lifecycle_count%'
+    OR lifecycle_pair_definition NOT ILIKE '%membership_count <> 1%'
+    OR lifecycle_pair_definition NOT ILIKE '%matching_lifecycle_count <> 1%'
+    OR lifecycle_pair_definition NOT ILIKE '%private workspace requires exactly one lifecycle-matched membership%'
     OR EXISTS (
       SELECT 1
       FROM (VALUES
@@ -973,7 +986,9 @@ BEGIN
   -- a strong-looking suffix was actually rotated. Release source review must
   -- additionally require migration 003 to update every non-NULL client slug,
   -- select every prospect dashboard into its rotation map without a filter,
-  -- and rewrite client-to-prospect references from that same map.
+  -- and rewrite real client-to-prospect references from that same map.
+  -- Migration 005 canonicalizes the historical empty-string representation of
+  -- "no linked prospect" and prevents weak values from returning.
 
   SELECT count(*)
   INTO invalid_slug_count
@@ -1005,6 +1020,70 @@ BEGIN
     RAISE EXCEPTION
       '% client-to-prospect slug references retain a weak legacy format',
       invalid_slug_count;
+  END IF;
+
+  IF to_regprocedure(
+      'public.normalize_client_prospect_dashboard_slug()'
+    ) IS NULL
+    OR pg_get_functiondef(
+      'public.normalize_client_prospect_dashboard_slug()'::regprocedure
+    ) NOT ILIKE '%NEW.prospect_dashboard_slug := NULLIF%btrim(NEW.prospect_dashboard_slug)%'
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger AS trigger_definition
+      WHERE trigger_definition.tgrelid = 'public.clients'::regclass
+        AND trigger_definition.tgname =
+          'clients_normalize_prospect_dashboard_slug'
+        AND NOT trigger_definition.tgisinternal
+        AND trigger_definition.tgenabled = 'O'
+        AND trigger_definition.tgfoid =
+          'public.normalize_client_prospect_dashboard_slug()'::regprocedure
+        AND pg_get_triggerdef(trigger_definition.oid)
+          ILIKE '%BEFORE INSERT OR UPDATE OF prospect_dashboard_slug ON public.clients%'
+    ) OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid = 'public.clients'::regclass
+        AND constraint_definition.conname =
+          'clients_prospect_dashboard_slug_capability_check'
+        AND constraint_definition.contype = 'c'
+        AND constraint_definition.convalidated
+        AND pg_get_constraintdef(constraint_definition.oid)
+          ILIKE '%prospect_dashboard_slug IS NULL%'
+        AND pg_get_constraintdef(constraint_definition.oid)
+          LIKE '%^prospect-[0-9a-f]{24}$%'
+    ) OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid = 'public.clients'::regclass
+        AND constraint_definition.confrelid =
+          'public.prospect_dashboards'::regclass
+        AND constraint_definition.conname =
+          'clients_prospect_dashboard_slug_fkey'
+        AND constraint_definition.contype = 'f'
+        AND constraint_definition.convalidated
+        AND constraint_definition.confupdtype = 'c'
+        AND constraint_definition.confdeltype = 'n'
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid = 'public.clients'::regclass
+              AND attribute.attname = 'prospect_dashboard_slug'
+          )
+        ]::SMALLINT[]
+        AND constraint_definition.confkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid = 'public.prospect_dashboards'::regclass
+              AND attribute.attname = 'slug'
+          )
+        ]::SMALLINT[]
+    )
+  THEN
+    RAISE EXCEPTION
+      'client-to-prospect capability references are not durably normalized';
   END IF;
 
   IF NOT EXISTS (
