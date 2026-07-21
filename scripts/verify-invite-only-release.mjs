@@ -99,6 +99,7 @@ const EXPECTED_EXPLICIT_JWT_FUNCTIONS = Object.freeze([
 
 const FUNCTION_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/
+const EXPECTED_RELEASE_BASE_COMMIT = 'b46a737631ee840f2f49270bdfbbe392833e814a'
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message)
@@ -148,17 +149,17 @@ function gitBuffer(arguments_) {
   })
 }
 
-function assertCommitIsAncestor(commit) {
+function assertCommitIsAncestor(ancestor, descendant, message) {
   const result = spawnSync(
     'git',
-    ['merge-base', '--is-ancestor', commit, 'HEAD'],
+    ['merge-base', '--is-ancestor', ancestor, descendant],
     {
       cwd: REPOSITORY_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
-  invariant(result.status === 0, 'manifest base_commit must be an ancestor of HEAD')
+  invariant(result.status === 0, message)
 }
 
 function parseTomlAssignments(source) {
@@ -471,10 +472,18 @@ function main() {
     'manifest base_commit must be a lowercase 40-character commit SHA',
   )
   invariant(
+    manifest.base_commit === EXPECTED_RELEASE_BASE_COMMIT,
+    `manifest base_commit must remain the canonical release baseline ${EXPECTED_RELEASE_BASE_COMMIT}`,
+  )
+  invariant(
     gitText(['cat-file', '-t', manifest.base_commit]) === 'commit',
     'manifest base_commit is not available as a commit',
   )
-  assertCommitIsAncestor(manifest.base_commit)
+  assertCommitIsAncestor(
+    manifest.base_commit,
+    'HEAD',
+    'manifest base_commit must be an ancestor of HEAD',
+  )
 
   const expectedBase = process.env.INVITE_ONLY_EXPECTED_BASE_SHA?.trim()
   if (process.env.CI === 'true') {
@@ -483,8 +492,18 @@ function main() {
   if (expectedBase) {
     invariant(COMMIT_PATTERN.test(expectedBase), 'expected PR base must be a commit SHA')
     invariant(
-      manifest.base_commit === expectedBase,
-      'manifest base_commit must equal the pull request base SHA',
+      gitText(['cat-file', '-t', expectedBase]) === 'commit',
+      'pull request base SHA is not available as a commit',
+    )
+    assertCommitIsAncestor(
+      manifest.base_commit,
+      expectedBase,
+      'manifest base_commit must be an ancestor of the pull request base SHA',
+    )
+    assertCommitIsAncestor(
+      expectedBase,
+      'HEAD',
+      'pull request base SHA must be an ancestor of HEAD',
     )
   }
 
