@@ -28,6 +28,8 @@ SET
 WHERE password_change_required IS NULL
    OR workspace_access_not_before_epoch IS NULL;
 
+SET CONSTRAINTS public.workspace_memberships_lifecycle_pair_check IMMEDIATE;
+
 ALTER TABLE public.workspace_memberships
   ALTER COLUMN provisioning_method SET DEFAULT 'email_invite',
   ALTER COLUMN provisioning_method SET NOT NULL,
