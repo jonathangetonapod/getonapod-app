@@ -77,6 +77,40 @@ interface WorkspaceClientRow extends JsonRecord {
   updated_at: string
 }
 
+interface WorkspaceGuestResourceRow extends JsonRecord {
+  id: string
+  workspace_id: string
+  title: string
+  description: string
+  content: string | null
+  category: 'preparation' | 'technical_setup' | 'best_practices' | 'promotion' | 'examples' | 'templates'
+  type: 'article' | 'video' | 'download' | 'link'
+  url: string | null
+  file_url: string | null
+  featured: boolean
+  display_order: number
+  status: 'draft' | 'published' | 'archived'
+  visibility: 'all_clients' | 'selected_clients'
+  client_ids: string[]
+  created_at: string
+  updated_at: string
+}
+
+interface WorkspaceGuestResourcePayload {
+  title: string
+  description: string
+  content: string
+  category: 'preparation'
+  type: 'article'
+  url: null
+  file_url: null
+  featured: boolean
+  display_order: number
+  status: 'published'
+  visibility: 'selected_clients'
+  client_ids: string[]
+}
+
 interface ClientPayload {
   name: string
   email: string
@@ -133,6 +167,7 @@ const RELEASE_INPUT_PATHS = [
   'supabase/migrations/20260720000500_client_prospect_link_normalization.sql',
   'supabase/migrations/20260720000600_trigger_function_privileges.sql',
   'supabase/migrations/20260721000100_manual_workspace_accounts.sql',
+  'supabase/migrations/20260721000200_workspace_guest_resources.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
 ] as const
 const ACCEPTANCE_ENV_ALLOWLIST = new Set([
@@ -191,6 +226,38 @@ const SAFE_CLIENT_KEYS = new Set([
   'status',
   'notes',
   'created_at',
+  'updated_at',
+])
+const SAFE_WORKSPACE_RESOURCE_KEYS = new Set([
+  'id',
+  'workspace_id',
+  'title',
+  'description',
+  'content',
+  'category',
+  'type',
+  'url',
+  'file_url',
+  'featured',
+  'display_order',
+  'status',
+  'visibility',
+  'client_ids',
+  'created_at',
+  'updated_at',
+])
+const SAFE_PORTAL_RESOURCE_KEYS = new Set([
+  'id',
+  'title',
+  'description',
+  'content',
+  'category',
+  'type',
+  'url',
+  'file_url',
+  'featured',
+  'display_order',
+  'published_at',
   'updated_at',
 ])
 
@@ -1027,6 +1094,167 @@ function findClient(clients: WorkspaceClientRow[], clientId: string): WorkspaceC
   return clients.find((client) => client.id === clientId) ?? null
 }
 
+function parseWorkspaceGuestResource(value: unknown): WorkspaceGuestResourceRow {
+  const row = asRecord(value)
+  assertSafe(row, 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(
+    Object.keys(row).every((key) => SAFE_WORKSPACE_RESOURCE_KEYS.has(key)),
+    'RESOURCE_RESPONSE_NOT_NARROW',
+  )
+  assertSafe(typeof row.id === 'string' && UUID_PATTERN.test(row.id), 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(
+    typeof row.workspace_id === 'string' && UUID_PATTERN.test(row.workspace_id),
+    'RESOURCE_RESPONSE_INVALID',
+  )
+  assertSafe(typeof row.title === 'string' && row.title.length > 0, 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(typeof row.description === 'string' && row.description.length > 0, 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(row.content === null || typeof row.content === 'string', 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(
+    ['preparation', 'technical_setup', 'best_practices', 'promotion', 'examples', 'templates']
+      .includes(String(row.category)),
+    'RESOURCE_RESPONSE_INVALID',
+  )
+  assertSafe(['article', 'video', 'download', 'link'].includes(String(row.type)), 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(row.url === null || typeof row.url === 'string', 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(row.file_url === null || typeof row.file_url === 'string', 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(typeof row.featured === 'boolean', 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(Number.isSafeInteger(row.display_order), 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(['draft', 'published', 'archived'].includes(String(row.status)), 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(['all_clients', 'selected_clients'].includes(String(row.visibility)), 'RESOURCE_RESPONSE_INVALID')
+  assertSafe(
+    Array.isArray(row.client_ids)
+      && row.client_ids.every((clientId) => typeof clientId === 'string' && UUID_PATTERN.test(clientId)),
+    'RESOURCE_RESPONSE_INVALID',
+  )
+  assertSafe(typeof row.created_at === 'string' && typeof row.updated_at === 'string', 'RESOURCE_RESPONSE_INVALID')
+  return row as WorkspaceGuestResourceRow
+}
+
+async function listWorkspaceGuestResources(
+  config: AcceptanceConfig,
+  session: AuthSession | AdminSession,
+  workspaceId: string,
+): Promise<WorkspaceGuestResourceRow[]> {
+  const result = await callFunction(config, 'workspace-guest-resources', {
+    token: session.accessToken,
+    jsonBody: { action: 'list', workspace_id: workspaceId },
+  })
+  expectStatus(result, 200, 'WORKSPACE_RESOURCE_LIST_FAILED')
+  const response = asRecord(result.json)
+  assertSafe(Array.isArray(response?.resources), 'WORKSPACE_RESOURCE_LIST_INVALID')
+  return response.resources.map(parseWorkspaceGuestResource)
+}
+
+async function createWorkspaceGuestResource(
+  config: AcceptanceConfig,
+  session: AuthSession,
+  payload: WorkspaceGuestResourcePayload,
+): Promise<WorkspaceGuestResourceRow> {
+  const result = await callFunction(config, 'workspace-guest-resources', {
+    token: session.accessToken,
+    jsonBody: {
+      action: 'create',
+      workspace_id: session.workspaceId,
+      resource: payload,
+    },
+  })
+  expectStatus(result, 201, 'WORKSPACE_RESOURCE_CREATE_FAILED')
+  const resource = parseWorkspaceGuestResource(asRecord(result.json)?.resource)
+  assertSafe(resource.workspace_id === session.workspaceId, 'RESOURCE_WORKSPACE_MISMATCH')
+  return resource
+}
+
+async function deleteWorkspaceGuestResource(
+  config: AcceptanceConfig,
+  session: AuthSession,
+  resourceId: string,
+): Promise<void> {
+  const result = await callFunction(config, 'workspace-guest-resources', {
+    token: session.accessToken,
+    jsonBody: {
+      action: 'delete',
+      workspace_id: session.workspaceId,
+      resource_id: resourceId,
+    },
+  })
+  expectStatus(result, 200, 'WORKSPACE_RESOURCE_DELETE_FAILED')
+  assertSafe(asRecord(result.json)?.success === true, 'WORKSPACE_RESOURCE_DELETE_INVALID')
+}
+
+function syntheticResourcePayload(
+  runId: string,
+  clientId: string,
+): WorkspaceGuestResourcePayload {
+  return {
+    title: `GOAP acceptance resource ${runId}`,
+    description: `Workspace resource acceptance fixture ${runId}`,
+    content: `<p>Workspace resource acceptance fixture ${runId}</p>`,
+    category: 'preparation',
+    type: 'article',
+    url: null,
+    file_url: null,
+    featured: false,
+    display_order: 999_999,
+    status: 'published',
+    visibility: 'selected_clients',
+    client_ids: [clientId],
+  }
+}
+
+function assertPortalGuestResource(value: unknown): JsonRecord {
+  const row = asRecord(value)
+  assertSafe(row, 'PORTAL_RESOURCE_RESPONSE_INVALID')
+  assertSafe(
+    Object.keys(row).every((key) => SAFE_PORTAL_RESOURCE_KEYS.has(key)),
+    'PORTAL_RESOURCE_RESPONSE_NOT_NARROW',
+  )
+  assertSafe(typeof row.id === 'string' && UUID_PATTERN.test(row.id), 'PORTAL_RESOURCE_RESPONSE_INVALID')
+  assertSafe(typeof row.title === 'string' && typeof row.description === 'string', 'PORTAL_RESOURCE_RESPONSE_INVALID')
+  assertSafe(row.content === null || typeof row.content === 'string', 'PORTAL_RESOURCE_RESPONSE_INVALID')
+  assertSafe(typeof row.published_at === 'string' && typeof row.updated_at === 'string', 'PORTAL_RESOURCE_RESPONSE_INVALID')
+  return row
+}
+
+async function listPortalGuestResources(
+  config: AcceptanceConfig,
+  clientId: string,
+  sessionToken: string,
+): Promise<JsonRecord[]> {
+  const resources: JsonRecord[] = []
+  let expectedTotal: number | null = null
+
+  while (expectedTotal === null || resources.length < expectedTotal) {
+    const offset = resources.length
+    const result = await callFunction(config, 'get-guest-resources', {
+      jsonBody: { clientId, sessionToken, limit: 100, offset },
+    })
+    expectStatus(result, 200, 'PORTAL_RESOURCE_LIST_FAILED')
+    const body = asRecord(result.json)
+    assertSafe(body?.success === true, 'PORTAL_RESOURCE_LIST_INVALID')
+    assertSafe(Array.isArray(body.resources), 'PORTAL_RESOURCE_LIST_INVALID')
+    assertSafe(
+      typeof body.total === 'number'
+        && Number.isSafeInteger(body.total)
+        && body.total >= 0
+        && body.total <= 1_000,
+      'PORTAL_RESOURCE_LIST_INVALID',
+    )
+    assertSafe(body.limit === 100 && body.offset === offset, 'PORTAL_RESOURCE_PAGE_INVALID')
+    assertSafe(expectedTotal === null || body.total === expectedTotal, 'PORTAL_RESOURCE_TOTAL_CHANGED')
+    assertSafe(body.resources.length <= 100, 'PORTAL_RESOURCE_PAGE_INVALID')
+    assertSafe(body.resources.length > 0 || resources.length >= body.total, 'PORTAL_RESOURCE_PAGE_STALLED')
+    expectedTotal = body.total
+    resources.push(...body.resources.map(assertPortalGuestResource))
+    assertSafe(resources.length <= expectedTotal, 'PORTAL_RESOURCE_PAGE_OVERFLOW')
+  }
+
+  assertSafe(
+    new Set(resources.map((resource) => resource.id)).size === resources.length,
+    'PORTAL_RESOURCE_DUPLICATE_PAGE',
+  )
+  return resources
+}
+
 function mutateUuid(uuid: string): string {
   const replacement = uuid.endsWith('0') ? '1' : '0'
   const mutated = `${uuid.slice(0, -1)}${replacement}`
@@ -1226,6 +1454,8 @@ async function main(): Promise<number> {
   let admin: AdminSession | null = null
   let aliceClient: WorkspaceClientRow | null = null
   let bobClient: WorkspaceClientRow | null = null
+  let aliceResource: WorkspaceGuestResourceRow | null = null
+  const aliceResourceCleanupTitles = new Set<string>()
   let aliceCreateMayHaveSucceeded = false
   let bobCreateMayHaveSucceeded = false
   let alicePortalPasswordTouched = false
@@ -1292,6 +1522,131 @@ async function main(): Promise<number> {
     bobClient = await harness.must('fixtures.bob_client_create', async () => {
       bobCreateMayHaveSucceeded = true
       return await createWorkspaceClient(config, bob as AuthSession, bobPayload)
+    })
+
+    const aliceResourcePayload = syntheticResourcePayload(
+      config.runId,
+      (aliceClient as WorkspaceClientRow).id,
+    )
+    aliceResourceCleanupTitles.add(aliceResourcePayload.title)
+    aliceResource = await harness.must('fixtures.alice_guest_resource_create', async () => {
+      return await createWorkspaceGuestResource(
+        config,
+        alice as AuthSession,
+        aliceResourcePayload,
+      )
+    })
+
+    await harness.check('guest_resources.unicode_code_point_contract', async () => {
+      const unicodeTitle = '😀'.repeat(150)
+      aliceResourceCleanupTitles.add(unicodeTitle)
+      const result = await callFunction(config, 'workspace-guest-resources', {
+        token: (alice as AuthSession).accessToken,
+        jsonBody: {
+          action: 'update',
+          workspace_id: (alice as AuthSession).workspaceId,
+          resource_id: (aliceResource as WorkspaceGuestResourceRow).id,
+          resource: { ...aliceResourcePayload, title: unicodeTitle },
+        },
+      })
+      expectStatus(result, 200, 'RESOURCE_UNICODE_TITLE_REJECTED')
+      const updated = parseWorkspaceGuestResource(asRecord(result.json)?.resource)
+      assertSafe(updated.title === unicodeTitle, 'RESOURCE_UNICODE_TITLE_MISMATCH')
+      aliceResource = updated
+    })
+
+    await harness.check('guest_resources.workspace_isolation', async () => {
+      const [aliceResources, bobResources] = await Promise.all([
+        listWorkspaceGuestResources(config, alice as AuthSession, (alice as AuthSession).workspaceId),
+        listWorkspaceGuestResources(config, bob as AuthSession, (bob as AuthSession).workspaceId),
+      ])
+      assertSafe(
+        aliceResources.some((resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id),
+        'ALICE_RESOURCE_NOT_LISTED',
+      )
+      assertSafe(
+        !bobResources.some((resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id),
+        'ALICE_RESOURCE_LEAKED_TO_BOB',
+      )
+    })
+
+    await harness.check('guest_resources.wrong_workspace_denial', async () => {
+      const result = await callFunction(config, 'workspace-guest-resources', {
+        token: (alice as AuthSession).accessToken,
+        jsonBody: { action: 'list', workspace_id: (bob as AuthSession).workspaceId },
+      })
+      expectStatus(result, 403, 'RESOURCE_WRONG_WORKSPACE_NOT_DENIED')
+    })
+
+    await harness.check('guest_resources.cross_workspace_resource_denial', async () => {
+      const result = await callFunction(config, 'workspace-guest-resources', {
+        token: (bob as AuthSession).accessToken,
+        jsonBody: {
+          action: 'update',
+          workspace_id: (bob as AuthSession).workspaceId,
+          resource_id: (aliceResource as WorkspaceGuestResourceRow).id,
+          resource: syntheticResourcePayload(
+            config.runId,
+            (bobClient as WorkspaceClientRow).id,
+          ),
+        },
+      })
+      expectStatus(result, 404, 'CROSS_WORKSPACE_RESOURCE_UPDATE_NOT_DENIED')
+    })
+
+    await harness.check('guest_resources.cross_workspace_assignment_denial', async () => {
+      const probePayload = syntheticResourcePayload(
+        `${config.runId}-cross-client`,
+        (bobClient as WorkspaceClientRow).id,
+      )
+      aliceResourceCleanupTitles.add(probePayload.title)
+      const result = await callFunction(config, 'workspace-guest-resources', {
+        token: (alice as AuthSession).accessToken,
+        jsonBody: {
+          action: 'create',
+          workspace_id: (alice as AuthSession).workspaceId,
+          resource: probePayload,
+        },
+      })
+      if (result.status === 201) {
+        const leaked = parseWorkspaceGuestResource(asRecord(result.json)?.resource)
+        await deleteWorkspaceGuestResource(config, alice as AuthSession, leaked.id)
+        aliceResourceCleanupTitles.delete(probePayload.title)
+      }
+      if (result.status === 400) aliceResourceCleanupTitles.delete(probePayload.title)
+      expectStatus(result, 400, 'CROSS_WORKSPACE_RESOURCE_ASSIGNMENT_NOT_DENIED')
+    })
+
+    await harness.check('guest_resources.admin_preview_read_only', async () => {
+      const preview = await listWorkspaceGuestResources(
+        config,
+        activeAdmin,
+        (alice as AuthSession).workspaceId,
+      )
+      assertSafe(
+        preview.some((resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id),
+        'ADMIN_RESOURCE_PREVIEW_MISSING',
+      )
+      const probePayload = syntheticResourcePayload(
+        `${config.runId}-admin-preview`,
+        (aliceClient as WorkspaceClientRow).id,
+      )
+      aliceResourceCleanupTitles.add(probePayload.title)
+      const mutation = await callFunction(config, 'workspace-guest-resources', {
+        token: activeAdmin.accessToken,
+        jsonBody: {
+          action: 'create',
+          workspace_id: (alice as AuthSession).workspaceId,
+          resource: probePayload,
+        },
+      })
+      if (mutation.status === 201) {
+        const leaked = parseWorkspaceGuestResource(asRecord(mutation.json)?.resource)
+        await deleteWorkspaceGuestResource(config, alice as AuthSession, leaked.id)
+        aliceResourceCleanupTitles.delete(probePayload.title)
+      }
+      if (mutation.status === 403) aliceResourceCleanupTitles.delete(probePayload.title)
+      expectStatus(mutation, 403, 'ADMIN_RESOURCE_PREVIEW_MUTATION_NOT_DENIED')
     })
 
     const originalBobSnapshot = clientSnapshot(bobClient)
@@ -1581,6 +1936,26 @@ async function main(): Promise<number> {
         })
         expectStatus(portalValidation, 200, 'PORTAL_SESSION_VALIDATION_FAILED')
 
+        const portalRows = await listPortalGuestResources(
+          config,
+          (aliceClient as WorkspaceClientRow).id,
+          portalToken,
+        )
+        assertSafe(
+          portalRows.some((resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id),
+          'SELECTED_CLIENT_RESOURCE_NOT_VISIBLE',
+        )
+
+        const wrongClientPortalResources = await callFunction(config, 'get-guest-resources', {
+          jsonBody: {
+            clientId: (bobClient as WorkspaceClientRow).id,
+            sessionToken: portalToken,
+            limit: 100,
+            offset: 0,
+          },
+        })
+        expectStatus(wrongClientPortalResources, 401, 'PORTAL_SESSION_CROSSED_CLIENT_BOUNDARY')
+
         const preSuspendClients = await listWorkspaceClients(config, alice as AuthSession)
         assertSafe(
           preSuspendClients.length === 1
@@ -1641,6 +2016,15 @@ async function main(): Promise<number> {
           'SUSPENDED_WORKSPACE_CALL_NOT_DENIED',
           suspendedWorkspaceCall.status,
         )
+        const suspendedResourceCall = await callFunction(config, 'workspace-guest-resources', {
+          token: (alice as AuthSession).accessToken,
+          jsonBody: { action: 'list', workspace_id: (alice as AuthSession).workspaceId },
+        })
+        assertSafe(
+          suspendedResourceCall.status === 401 || suspendedResourceCall.status === 403,
+          'SUSPENDED_RESOURCE_CALL_NOT_DENIED',
+          suspendedResourceCall.status,
+        )
         assertSafe(
           await attemptPasswordSignIn(config, alice as AuthSession) === null,
           'SUSPENDED_AUTH_SIGN_IN_NOT_DENIED',
@@ -1649,6 +2033,15 @@ async function main(): Promise<number> {
           jsonBody: { sessionToken: portalToken },
         })
         expectStatus(invalidatedPortal, 401, 'SUSPENDED_PORTAL_TOKEN_STILL_VALID')
+        const suspendedPortalResources = await callFunction(config, 'get-guest-resources', {
+          jsonBody: {
+            clientId: (aliceClient as WorkspaceClientRow).id,
+            sessionToken: portalToken,
+            limit: 100,
+            offset: 0,
+          },
+        })
+        expectStatus(suspendedPortalResources, 401, 'SUSPENDED_PORTAL_RESOURCE_TOKEN_STILL_VALID')
 
         const duplicateReactivations = await Promise.all([
           callFunction(config, 'manage-workspace-users', {
@@ -1673,6 +2066,17 @@ async function main(): Promise<number> {
         alice = await retryTenantSignIn(config, alice as AuthSession)
         aliceLifecycleTouched = false
         await listWorkspaceClients(config, alice)
+        const resourcesAfterReactivation = await listWorkspaceGuestResources(
+          config,
+          alice,
+          alice.workspaceId,
+        )
+        assertSafe(
+          resourcesAfterReactivation.some(
+            (resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id,
+          ),
+          'RESOURCE_AFTER_REACTIVATION_MISSING',
+        )
 
         const stillInvalidPortal = await callFunction(config, 'validate-portal-session', {
           jsonBody: { sessionToken: portalToken },
@@ -1733,6 +2137,37 @@ async function main(): Promise<number> {
         })
         expectStatus(result, 200, 'CLEANUP_PORTAL_CLEAR_FAILED')
         alicePortalPasswordTouched = false
+      })
+    }
+
+    if (alice && aliceResourceCleanupTitles.size > 0) {
+      await harness.check('cleanup.alice_guest_resources', async () => {
+        if (aliceLifecycleTouched) throw new SafeFailure('CLEANUP_ALICE_STATE_UNRESOLVED')
+        const currentAlice = await loadTenantSession(config, alice as AuthSession)
+        alice = currentAlice
+        const resources = await listWorkspaceGuestResources(
+          config,
+          currentAlice,
+          currentAlice.workspaceId,
+        )
+        for (const title of aliceResourceCleanupTitles) {
+          const matches = resources.filter((resource) => resource.title === title)
+          assertSafe(matches.length <= 1, 'CLEANUP_ALICE_RESOURCE_AMBIGUOUS')
+          if (matches[0]) {
+            await deleteWorkspaceGuestResource(config, currentAlice, matches[0].id)
+          }
+        }
+        const remaining = await listWorkspaceGuestResources(
+          config,
+          currentAlice,
+          currentAlice.workspaceId,
+        )
+        assertSafe(
+          !remaining.some((resource) => aliceResourceCleanupTitles.has(resource.title)),
+          'CLEANUP_ALICE_RESOURCE_REMAINS',
+        )
+        aliceResourceCleanupTitles.clear()
+        aliceResource = null
       })
     }
 

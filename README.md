@@ -7,29 +7,24 @@ password. Each user signs in and manages clients inside one private workspace.
 
 ## Current rollout status
 
-Pull request #1 was merged into `main` on 2026-07-21 at commit
-`3f608997522a76207ace8ebf355daf0cf3642865`. Railway automatically deployed
-that frontend to the production GOAP service. The coordinated production
-Supabase cutover and the subsequent manual-workspace-account backend rollout
-were completed on 2026-07-21. The corrected forward migration is recorded at
-`4cbb3be4355af628d06cda914c2c57eb67c607d8`; the hardened catalog verifier and
-deployed backend source are recorded at
-`bc763431a298be26a93b2aa16de846991f8aebb1`.
+The invite-only account lifecycle, manual account provisioning, tenant Clients
+module, and read-only administrator workspace preview are deployed. The
+workspace-customizable Guest Resources backend was added on 2026-07-22:
+migration `20260721000200_workspace_guest_resources.sql` is the eighth
+production migration, and the exact `workspace-guest-resources` v1 and
+`get-guest-resources` v14 Edge revisions are active. The reviewed frontend is
+still local and has not been pushed to `main` or deployed by Railway, so the
+live tenant navigation continues to expose Clients only.
 
-Production now has all seven release migrations, a passing catalog verifier,
-and an exact inventory of 89 active Edge Functions: 75 with JWT verification
-enabled and the exact 14 reviewed public/tombstone handlers with it disabled.
-The manual-account migration and its six changed/new JWT-verified functions are
-deployed. Their production CORS preflights and anonymous-denial probes pass,
-and the six approved legacy shutdown targets remain absent. The separate video
-service is a credential-free 410 tombstone, and obsolete Stripe Edge secrets
-were removed.
+The privileged-browser-key containment gate is complete. Railway now supplies
+the project publishable key, Cloudflare was purged, and the recursive live
+browser-asset credential scan passed. The exposed legacy service-role key
+remains compromised: inventorying its non-browser consumers, reviewing the
+exposure window, and safely rotating it are separate incident work. Do not
+disable it before retained Edge and external consumers are migrated.
 
-The administrator workspace selector now opens the same Clients experience a
-workspace owner uses, with a persistent administrator-preview banner and all
-write controls disabled. It remains a URL-scoped preview rather than Auth
-impersonation. Signed-in end-to-end browser acceptance still requires human
-confirmation. Credentials exposed through chat still require rotation.
+Credentials previously exposed through chat also still require provider-side
+rotation.
 
 The sanitized cutover evidence and remaining gates are recorded in
 [`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md).
@@ -38,9 +33,9 @@ The sanitized cutover evidence and remaining gates are recorded in
 
 | Role | Supported access |
 | --- | --- |
-| Platform administrator | Existing internal `/admin/*` application, email invitations, manual account creation, account suspension/reactivation, and a safe read-only preview of the tenant Clients experience for each private workspace |
-| Workspace user | `/app/clients`; create, list, edit, and delete only clients owned by the user's private workspace |
-| Client portal user | Separate `/portal/*` login and minimal bookings/resources view for a client record; this is not a SaaS workspace account |
+| Platform administrator | Existing internal `/admin/*` application, account provisioning/lifecycle, and safe read-only previews of each private workspace's Clients and Guest Resources modules |
+| Workspace user | `/app/clients` and `/app/guest-resources`; manage only the authenticated user's workspace data and choose which published resources each downstream client sees |
+| Client portal user | Separate `/portal/*` login and client-specific bookings/resources view; this is not a SaaS workspace account |
 | Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
 
 Each invited account owns one private workspace. User-managed teams, multiple
@@ -55,8 +50,10 @@ tenant access to every legacy operational module are deliberately out of scope.
 | `/accept-invite` | Supabase email-invite completion |
 | `/change-password` | Mandatory first-sign-in password replacement for manually created accounts |
 | `/app/clients` | Authenticated workspace client CRUD |
+| `/app/guest-resources` | Authenticated workspace resource customization, lifecycle, ordering, and client audience management |
 | `/admin/users` | Platform administrator invitation/lifecycle console |
 | `/admin/workspaces/:workspaceId/clients` | Platform administrator read-only preview of the same Clients experience for one explicitly selected private workspace |
+| `/admin/workspaces/:workspaceId/guest-resources` | Platform administrator read-only preview of that workspace's resource catalog and audience assignments |
 | `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
 | `/portal/login` | Separate client portal login |
 | `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
@@ -107,7 +104,7 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   Edge hard lifetime; revisit the invariant before self-hosting or increasing
   worker limits.
 - The administrator workspace selector is an explicit URL-scoped, read-only
-  preview that reuses the tenant Clients layout and page. It does not
+  preview that reuses the tenant Clients and Guest Resources layout/pages. It does not
   impersonate the tenant, mutate the administrator's Auth context, enable
   client mutations, or silently fall back to another workspace.
 - Suspend/reactivate uses a separate durable service-only lifecycle claim. The
@@ -122,6 +119,21 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   rechecks active membership and workspace state.
 - Direct base-table access to `clients` and `bookings` is platform-admin-only.
   RLS and server checks both enforce the workspace boundary.
+- Private workspace resources live in `workspace_guest_resources` with a
+  required `workspace_id`; selected-client assignments use same-workspace
+  composite foreign keys. Workspace mutations run through one service-only,
+  audited transaction. The global `guest_resources` catalog is only the GOAP
+  public/default catalog and seed source; existing workspace snapshots are not
+  overwritten by later template edits.
+- The portal never accepts a workspace ID. It revalidates the exact hashed
+  client session, derives the client's active workspace, and returns a narrow
+  DTO containing only published all-client or explicitly assigned resources.
+  Published articles require visible text; video/link/download resources
+  require a safe action target.
+- Resource bodies use canonical editor HTML capped at 100,000 characters and
+  are rendered through a restrictive sanitizer. Scripts, styles, forms,
+  images, embeds, event handlers, and unsafe URLs are removed at the client
+  display boundary.
 - Client portal password verifiers are PBKDF2-HMAC-SHA256 values with a
   600,000-iteration work factor in the
   service-role-only `client_portal_credentials` table. The retired
@@ -155,7 +167,7 @@ Only browser-safe values belong in `.env.local`:
 
 ```dotenv
 VITE_SUPABASE_URL=https://your-staging-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-staging-anon-key
+VITE_SUPABASE_ANON_KEY=<publishable-key-or-legacy-JWT-with-role-anon>
 VITE_APP_URL=http://localhost:8080
 ```
 
@@ -198,20 +210,38 @@ without `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_APP_URL` build
 arguments. Supply only reviewed browser-safe values; Docker build arguments are
 not a place for service-role or provider credentials.
 
+The Docker build validates that the Supabase browser key is either an
+`sb_publishable_...` key or a legacy JWT whose role is exactly `anon`, then
+scans the completed `dist` bundle. `npm start` repeats the bundle scan before
+opening a listening socket. To inspect the already deployed site without
+printing any discovered value, run:
+
+```bash
+npm run verify:production-browser
+```
+
+That read-only network check recursively scans referenced JavaScript assets and
+validates the public Supabase configuration. It passed after the 2026-07-22
+publishable-key rebuild and Cloudflare purge and remains a required regression
+gate for every frontend deployment.
+
 ## Database rollout
 
 The original six-version production cutover and the seventh manual-account
-forward migration were completed on 2026-07-21. The procedure below is retained
-for recovery and future environments. The operator explicitly accepted
-proceeding without a dedicated staging backend or restore rehearsal; do not
-generalize that exception to later releases.
+forward migration were completed on 2026-07-21. The workspace Guest Resources
+migration was applied as the eighth production migration on 2026-07-22. The
+historical procedure below is retained for recovery and fresh environments.
+The operator explicitly accepted proceeding without a dedicated staging
+backend or restore rehearsal for the earlier release; do not generalize that
+exception to future releases.
 
 For future acceptance, use a dedicated staging project. Do not point synthetic
 acceptance tests at production and do not replay the repository's entire
 historical migration directory blindly. It contains many historical or
-noncanonical files; only the six coordinated 20260720 versions and the
-20260721000100 forward migration are authoritative for this release and
-recorded in the production migration ledger. The legacy
+noncanonical files; the six coordinated 20260720 versions and
+`20260721000100_manual_workspace_accounts.sql` are the historical 2026-07-21
+production unit. The 2026-07-22 increment adds
+`20260721000200_workspace_guest_resources.sql`. The legacy
 `scripts/deploy-edge-functions.sh` and `scripts/run-migration.cjs` helpers are
 intentionally retired and fail closed; they do not implement this release's
 target, commit, backup, manifest, or evidence controls.
@@ -258,6 +288,42 @@ strong, non-orphaned capability references. Migration 6 removes residual
 browser-role execution grants from trigger-only functions. Migration 7 adds
 manual workspace-account credential state, durable claims, first-password
 replacement, revocation cleanup, and the supporting service-only routines.
+Migration 8 adds independent private-workspace resource catalogs, same-workspace
+client assignments, service-only audited operations, portal visibility rules,
+catalog quotas, canonical content/URL constraints, and snapshot seeding.
+
+The incremental Guest Resources backend order was completed separately from
+the historical cutover above:
+
+1. The browser `service_role` exposure was contained with the project
+   publishable key; Cloudflare was purged and the recursive live-asset verifier
+   passed.
+2. A checksummed private backup and target inventory were captured outside the
+   repository before mutation.
+3. Only `20260721000200_workspace_guest_resources.sql` was applied as migration
+   8.
+4. The committed catalog verifier passed against production over
+   `verify-full` TLS using the Supabase Root 2021 CA, inside a serializable,
+   read-only transaction. Its SHA-256 is
+   `53f59f3593eb3753729d37422fc3e6965ef3a1e38abdce73cba51bc509704137`.
+5. `get-guest-resources` v14 is active with gateway JWT verification disabled
+   for its opaque portal-session contract; `workspace-guest-resources` v1 is
+   active with gateway JWT verification enabled. The exact production
+   inventory is 90 active functions: 75 JWT-verified and 15 reviewed
+   public/custom-auth functions. CORS, fail-closed, and default-client narrow
+   portal projection probes passed.
+6. The reviewed frontend still must be pushed directly to `main`, allowed to
+   deploy through Railway, and rechecked with the live asset verifier. No
+   private workspace currently exists in production, so signed-in tenant,
+   read-only administrator-preview, and private-client audience acceptance
+   must follow creation of a controlled private workspace.
+
+`scripts/run-workspace-guest-resources-behavior.sh` is for an explicitly
+confirmed non-production local/staging database only. Its SQL opens one
+transaction and ends with `ROLLBACK`; `check:static` grammar-parses it but does
+not execute it. The synthetic PostgreSQL 18 behavior smoke passed against a
+partial local Supabase-shaped schema. It is supporting evidence only and does
+not substitute for production catalog or signed-in acceptance evidence.
 
 Important cutover effects:
 
@@ -312,10 +378,10 @@ expiry, and allows only the exact production `/accept-invite` and
 hold. A Supabase invite email is a bearer credential: anyone with the full link
 can establish the invited Auth session, so it must not be forwarded or logged.
 
-Production records the exact seven-version release unit in its migration
-ledger. Apply those complete current files to a fresh dedicated staging
-baseline, or replay staging from its pre-MVP backup; do not assume that an
-older draft of a release migration has been upgraded in place.
+The production migration ledger now records all eight coordinated versions.
+Apply those complete current files to a fresh dedicated staging baseline, or
+replay staging from its pre-MVP backup; do not assume that an older draft of a
+release migration has been upgraded in place.
 
 ## Verification
 
@@ -329,15 +395,15 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` runs the release-shape verifier, parses all seven release
-migrations and the SQL verifier with a PostgreSQL grammar parser, runs both
+`check:static` runs the release-shape verifier, parses all eight release
+migrations and both SQL verification files with a PostgreSQL grammar parser, runs both
 TypeScript checks, the zero-warning
 MVP lint scope, and focused workspace UI tests, exercises the URL, telemetry,
-session-storage, retired-helper, and evidence-path tests, checks all 91 Edge
-entrypoints and shared Edge unit tests against the frozen Deno lock,
+session-storage, retired-helper, and evidence-path tests, checks all 92 Edge
+entrypoints and 105 Edge TypeScript files plus shared Edge unit tests against the frozen Deno lock,
 validates the database-runner shell, performs a clean install/build and both
 audits for the nested MCP server,
-tests the dependency-free retired video-service tombstone with malformed and
+tests the Guest Resources Edge contract, the dependency-free retired video-service tombstone with malformed and
 oversized bodies, checks the exact Docker/Railway runtime contract and secret-
 excluding build context, performs an isolated static build, launches the real
 `npm start` server to test routes/assets/security headers, and scans the full
@@ -384,8 +450,10 @@ npm run typecheck:staging
 npm run test:staging
 ```
 
-The runner creates tagged synthetic clients, attacks the tenant boundary over
-Edge Functions and REST, checks exact tombstone/exclusion behavior, probes the
+The runner creates tagged synthetic clients plus a selected-client resource,
+attacks the Clients and Guest Resources boundaries over Edge Functions/REST,
+checks read-only admin resource preview and exact portal-session visibility,
+checks exact tombstone/exclusion behavior, probes the
 Resend signature/body limits, exercises suspend/reactivate plus portal-session
 revocation, and removes its fixtures in `finally`. Its NDJSON contains only
 fixed test labels, statuses, HTTP status codes, and source fingerprints—never
@@ -407,8 +475,9 @@ incomplete record outside the exact checked-in allowlist converts the run to a
 failure.
 
 For a fresh environment, run the database verifier only after the historical
-six migrations and `20260721000100_manual_workspace_accounts.sql` have been
-applied to the same release. Use `PG*` environment variables and prefer a
+six migrations, `20260721000100_manual_workspace_accounts.sql`, and
+`20260721000200_workspace_guest_resources.sql` have been applied to the same
+release. Use `PG*` environment variables and prefer a
 project-specific direct database hostname rather than a hostname shared by
 production and staging. Hostnames with a trailing dot are refused. Never put
 the connection URL or password on the command line or type a password into
@@ -440,7 +509,9 @@ retained mode-600 NDJSON and `.sha256` files contain only the release
 commit/input digest, a domain-separated SHA-256 fingerprint of the canonical
 host/port/database/user target, and pass/fail/exit metadata.
 
-The app and staging TypeScript checks are green. The repository still contains
+These are local/static checks. They do not execute either database runner and
+do not run `npm run verify:production-browser`; the latter is a separate
+read-only live-network incident gate. The app and staging TypeScript checks are green. The repository still contains
 legacy full-repository ESLint debt outside the zero-warning MVP scope; compare
 that non-gating baseline with `main` if it is changed. The production build,
 production-dependency audit, release secret scan, and all-entrypoint Deno check
@@ -448,7 +519,7 @@ must pass. A local PostgreSQL parser catches SQL grammar errors, but only the
 catalog verifier against the actual staging schema can validate definitions,
 ACLs, RLS, and data invariants.
 
-Latest release evidence (2026-07-21; production backend at clean deployment
+Historical prior-release evidence (2026-07-21; production backend at clean deployment
 source head `bc763431a298be26a93b2aa16de846991f8aebb1`):
 
 | Check | Result |
@@ -524,9 +595,11 @@ The detailed rollout and acceptance matrix is in
 
 ## Known MVP limitations
 
-- Only client CRUD is tenant-enabled. Podcast operations, outreach, reporting,
-  and other legacy modules remain platform-admin-only until they receive an
-  explicit `workspace_id` model and isolation tests.
+- The deployed tenant frontend currently exposes Clients only. The reviewed
+  local frontend adds Guest Resources, and its production backend is already
+  active; Podcast operations, outreach, reporting, and every other legacy
+  module remain platform-admin-only until they receive an explicit
+  `workspace_id` model and isolation tests.
 - The platform administrator's private-workspace preview reuses the real
   tenant Clients experience, including its layout and client states, but is
   intentionally read-only: write controls are disabled and no mutation dialog
@@ -570,13 +643,25 @@ The detailed rollout and acceptance matrix is in
 
 ## Credential incident and repository controls
 
-The current-tree secret scan is green, but that does not make previously
-exposed credentials safe. Review found non-placeholder Podscan and BridgeKit
-credentials in repository history. OpenAI, Podscan, Jotform, and Clay webhook
-credentials were also shared through chat. Treat every affected value as
-compromised: revoke/rotate it first, review provider and Supabase logs, and
-replace it only in server-side secret storage. Keep exact incident locations in
-the private response record rather than advertising them in public docs.
+The browser-key containment step completed on 2026-07-22: Railway now uses the
+project publishable key, a clean rebuild was deployed, Cloudflare was purged,
+and `npm run verify:production-browser` passed across the live referenced asset
+graph. Do not reproduce or use the formerly exposed privileged value; it
+remains compromised even though it is no longer shipped to browsers.
+
+Long-term incident work remains open. Audit Supabase/API/hosting logs for the
+exposure window and inventory every Edge, server, webhook, database, and
+external consumer of the legacy service-role key. Disable/rotate that key only
+after retained consumers are migrated; revoking it earlier can break
+production services.
+
+The current-tree secret scan is green, but that also does not make previously
+exposed provider credentials safe. Review found non-placeholder Podscan and
+BridgeKit credentials in repository history. OpenAI, Podscan, Jotform, and Clay
+webhook credentials were also shared through chat. Treat every affected value
+as compromised: revoke/rotate it, review provider, Supabase, CI, hosting, Sentry,
+and support logs, and replace it only in server-side secret storage. Keep exact
+incident locations in the private response record rather than public docs.
 
 No history rewrite has been performed. If the repository owner chooses to
 remove the historical blobs, coordinate `git filter-repo`, force-push timing,
@@ -585,12 +670,12 @@ logs as one incident operation. Rewriting Git history does not replace
 credential rotation.
 
 As checked on 2026-07-21, `main` has no GitHub branch protection. The repository
-defines the **No-secret static validation** workflow, which runs on pull
-requests but becomes a required check only when repository protection is
-configured. Protect `main` before any additional release merge: require that
-check and an independent approval, require the branch to be current, and block
-direct and force pushes. The workflow supports GitHub merge queues through
-`merge_group`.
+defines the **No-secret static validation** workflow for pull requests and
+merge queues, but the repository owner explicitly selected a reviewed
+direct-`main` workflow for this production increment. That accepted repository-
+control risk does not waive the local static suite, exact-diff review, or live
+post-deployment checks. Branch protection remains a future hardening option,
+not a prerequisite for this operator-approved cutover.
 
 The root Dockerfile provides an executable frontend container path, but there
 is intentionally no automated Supabase Edge/database rollout executor in this
@@ -600,28 +685,24 @@ commit, project, backup, phased manifest, and private evidence directory.
 
 ## Remaining release gates
 
-The historical production cutover and the manual-account backend rollout are
-complete. The remaining gates are signed-in browser/provider acceptance and
-credential incident work, not another database or Edge deployment. The release
-contract remains in
-[`docs/manual-workspace-accounts.md`](docs/manual-workspace-accounts.md).
+The account/Clients rollout and Guest Resources backend rollout are complete.
+The remaining feature-release work is:
 
-Before declaring the manual-account and workspace-preview release accepted:
+1. review the final verifier/documentation delta and run the complete static
+   release suite against the exact commit;
+2. push the reviewed commit directly to `main` and allow Railway to deploy the
+   Guest Resources frontend;
+3. rerun the recursive live browser-asset scan and production route/header
+   checks, including real 404/no-store responses for retired asset paths; and
+4. provision one controlled private workspace, then complete signed-in tenant
+   customization, read-only administrator preview, selected-client portal
+   visibility, draft/archive denial, and malformed/stale access acceptance.
 
-1. rotate the exposed OpenAI, Podscan, Jotform, and Clay credentials and review
-   provider/application logs;
-2. confirm in a signed-in browser that production exposes the deployed manual
-   account action and the reviewed frontend;
-3. exercise create → one-time handoff → temporary sign-in → forced password
-   replacement → fresh sign-in → isolated client CRUD → logout;
-4. test duplicate/concurrent creation, password rotation, expired credentials,
-   provider timeouts, session revocation, and two-account cross-tenant denial;
-5. complete the signed-in administrator browser smoke test for workspace
-   switching, malformed/stale workspace URLs, back/reload behavior, and logout;
-6. obtain independent database-security, Edge-saga, frontend, and release-ops
-   approval on the exact commit and require a fresh green CI result; and
-7. decide when to delete the credential-free Railway video tombstone project
-   and the 17 Edge tombstones after caller quietness is proved.
+Separate incident and operations work remains: inventory and rotate the legacy
+service-role key safely, rotate the other exposed provider credentials and
+review logs, complete two-workspace isolation with disposable accounts, and
+decide when to delete the credential-free Railway video tombstone project and
+17 Edge tombstones after caller quietness is proved.
 
 Credentials previously committed in repository history or shared through chat
 remain compromised after source cleanup. Rotate them; deleting the visible

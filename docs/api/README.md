@@ -5,7 +5,7 @@
 > magic-link portal auth, AI Sales Director, and several admin modules are
 > retired or 410 tombstones. Use the root `README.md` and
 > `docs/invite-only-mvp.md` as the release contract. The exact 17 tombstones,
-> 87-function deploy allowlist, and two tenant exclusions are recorded in
+> 90-function deploy allowlist, and two tenant exclusions are recorded in
 > `docs/invite-only-edge-manifest.json`; any conflicting example below is
 > historical. No provider credential may be placed in a `VITE_` variable.
 
@@ -89,6 +89,7 @@ Authority Built supports multiple authentication systems:
 **Order management, validation functions, and shared utilities**
 - 📦 **Order Management**: `update-order-status` is retired
 - ✅ **Validation**: `validate-portal-session`; `verify-portal-token` is retired
+- 🗂️ **Workspace resources**: `workspace-guest-resources` provides audited tenant CRUD and read-only platform preview
 - 📧 **Email Templates**: Workspace invitation and operational emails
 - 🗄️ **Podcast Cache**: Central caching system (60-80% API savings)
 
@@ -218,12 +219,12 @@ Monitoring:   Sentry (error tracking + session replay)
 | `get-pipeline-analytics` | POST | Monthly pipeline metrics | Service |
 | `get-customer-analytics` | Any | Retired tombstone | HTTP 410 |
 
-### Public Content
+### Public and Portal Content
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
 | `get-blog-posts` | POST | Blog listing + single post | None |
 | `get-testimonials` | POST | Testimonial feed | None |
-| `get-guest-resources` | POST | Guest resource listing | None |
+| `get-guest-resources` | POST | Workspace/client-visible resource listing | Portal session or platform admin |
 | `get-prospect-dashboard` | POST | Secure public prospect page data | None |
 
 ### Podcast Data

@@ -72,4 +72,18 @@ describe('WorkspaceSwitcher', () => {
     expect(await screen.findByRole('combobox', { name: 'Select a client workspace to view' })).toHaveTextContent('Bravo')
     expect(screen.queryByText('View client workspace')).not.toBeInTheDocument()
   })
+
+  it('preserves the guest resources module when switching workspaces from its preview', async () => {
+    renderSwitcher({
+      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/guest-resources',
+      presentation: 'toolbar',
+    })
+
+    const trigger = await screen.findByRole('combobox', { name: 'Select a client workspace to view' })
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByText('Acme'))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
+      '/admin/workspaces/11111111-1111-4111-8111-111111111111/guest-resources',
+    ))
+  })
 })

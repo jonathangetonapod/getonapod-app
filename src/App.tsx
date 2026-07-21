@@ -38,7 +38,9 @@ import ClientApprovalView from "./pages/client/ClientApprovalView";
 import AcceptInvite from "./pages/admin/AcceptInvite";
 import WorkspaceUsers from "./pages/admin/WorkspaceUsers";
 import WorkspaceClients from "./pages/app/WorkspaceClients";
+import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
+import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
 import ChangeInitialPassword from "./pages/account/ChangeInitialPassword";
 
 const KeyedProspectView = () => {
@@ -80,6 +82,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <WorkspaceClients />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/guest-resources"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceGuestResources />
                 </ProtectedRoute>
               }
             />
@@ -223,6 +233,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceClients />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/workspaces/:workspaceId/guest-resources"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceGuestResources />
                 </PlatformAdminRoute>
               }
             />

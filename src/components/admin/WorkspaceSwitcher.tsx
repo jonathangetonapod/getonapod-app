@@ -27,6 +27,9 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
   const [open, setOpen] = useState(false)
   const routeMatch = matchPath('/admin/workspaces/:workspaceId/*', location.pathname)
   const selectedId = routeMatch?.params.workspaceId || ''
+  const selectedModule = location.pathname.endsWith('/guest-resources')
+    ? 'guest-resources'
+    : 'clients'
 
   const workspacesQuery = useQuery({
     queryKey: ['platform', user?.id || 'unknown', 'workspaces'],
@@ -84,7 +87,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
                     value={`${workspace.name} ${workspace.slug}`}
                     onSelect={() => {
                       setOpen(false)
-                      navigate(`/admin/workspaces/${workspace.id}/clients`)
+                      navigate(`/admin/workspaces/${workspace.id}/${selectedModule}`)
                     }}
                   >
                     <Check className={cn('mr-2 h-4 w-4', selectedId === workspace.id ? 'opacity-100' : 'opacity-0')} />

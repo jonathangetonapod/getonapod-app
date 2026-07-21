@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { GuestResourceEditor } from '@/components/GuestResourceEditor'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -29,12 +29,15 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { hasMeaningfulGuestResourceContent } from '@/lib/guestResourceContent'
 import {
   getGuestResources,
   createGuestResource,
   updateGuestResource,
   deleteGuestResource,
   type GuestResource,
+  type GuestResourceCreateInput,
+  type GuestResourceUpdateInput,
   type ResourceType,
   type ResourceCategory,
 } from '@/services/guestResources'
@@ -55,11 +58,23 @@ const typeInfo = {
   link: { label: 'External Link', icon: ExternalLink },
 }
 
+interface GuestResourceFormData {
+  title: string
+  description: string
+  content: string
+  category: ResourceCategory
+  type: ResourceType
+  url: string
+  file_url: string
+  featured: boolean
+  display_order: number
+}
+
 export default function GuestResourcesManagement() {
   const [editingResource, setEditingResource] = useState<GuestResource | null>(null)
   const [deletingResource, setDeletingResource] = useState<GuestResource | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<GuestResourceFormData>({
     title: '',
     description: '',
     content: '',
@@ -72,6 +87,8 @@ export default function GuestResourcesManagement() {
   })
 
   const queryClient = useQueryClient()
+  const resourceUrlRequired = formData.type === 'video' || formData.type === 'link'
+  const fileUrlRequired = formData.type === 'download'
 
   // Fetch resources
   const { data: resources, isLoading } = useQuery({
@@ -88,14 +105,14 @@ export default function GuestResourcesManagement() {
       setShowCreateDialog(false)
       resetForm()
     },
-    onError: (error: any) => {
-      toast.error(`Failed to create resource: ${error.message}`)
+    onError: (error: unknown) => {
+      toast.error(`Failed to create resource: ${error instanceof Error ? error.message : 'Unknown error'}`)
     },
   })
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: any }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: GuestResourceUpdateInput }) =>
       updateGuestResource(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-guest-resources'] })
@@ -103,8 +120,8 @@ export default function GuestResourcesManagement() {
       setEditingResource(null)
       resetForm()
     },
-    onError: (error: any) => {
-      toast.error(`Failed to update resource: ${error.message}`)
+    onError: (error: unknown) => {
+      toast.error(`Failed to update resource: ${error instanceof Error ? error.message : 'Unknown error'}`)
     },
   })
 
@@ -116,8 +133,8 @@ export default function GuestResourcesManagement() {
       toast.success('Resource deleted successfully')
       setDeletingResource(null)
     },
-    onError: (error: any) => {
-      toast.error(`Failed to delete resource: ${error.message}`)
+    onError: (error: unknown) => {
+      toast.error(`Failed to delete resource: ${error instanceof Error ? error.message : 'Unknown error'}`)
     },
   })
 
@@ -156,29 +173,75 @@ export default function GuestResourcesManagement() {
   }
 
   const handleSave = () => {
-    if (!formData.title || !formData.description) {
+    const title = formData.title.trim()
+    const description = formData.description.trim()
+    const content = formData.content.trim()
+
+    if (!title || !description) {
       toast.error('Title and description are required')
+      return
+    }
+    if (title.length > 200) {
+      toast.error('Title must be 200 characters or fewer')
+      return
+    }
+    if (description.length > 2_000) {
+      toast.error('Description must be 2,000 characters or fewer')
+      return
+    }
+    if (content.length > 100_000) {
+      toast.error('Content must be 100,000 characters or fewer')
+      return
+    }
+    if (formData.type === 'article' && !hasMeaningfulGuestResourceContent(content)) {
+      toast.error('Article templates require meaningful content')
+      return
+    }
+    if (
+      !Number.isSafeInteger(formData.display_order)
+      || formData.display_order < 0
+      || formData.display_order > 1_000_000
+    ) {
+      toast.error('Display order must be an integer between 0 and 1,000,000')
       return
     }
 
     const resourceUrlInput = formData.url.trim()
     const fileUrlInput = formData.file_url.trim()
+    if (resourceUrlInput.length > 2_048 || fileUrlInput.length > 2_048) {
+      toast.error('Resource URLs must be 2,048 characters or fewer')
+      return
+    }
     const resourceUrl = resourceUrlInput ? safeExternalUrl(resourceUrlInput) : null
     const fileUrl = fileUrlInput ? safeExternalUrl(fileUrlInput) : null
 
     if (resourceUrlInput && !resourceUrl) {
-      toast.error('Resource URL must use HTTP or HTTPS')
+      toast.error('Resource URL must be a safe HTTP or HTTPS URL without credentials')
       return
     }
     if (fileUrlInput && !fileUrl) {
-      toast.error('File URL must use HTTP or HTTPS')
+      toast.error('File URL must be a safe HTTP or HTTPS URL without credentials')
+      return
+    }
+    if (resourceUrlRequired && !resourceUrl) {
+      toast.error('Video and link templates require a resource URL')
+      return
+    }
+    if (fileUrlRequired && !fileUrl) {
+      toast.error('Download templates require a file URL')
       return
     }
 
-    const normalizedFormData = {
-      ...formData,
-      url: resourceUrl || '',
-      file_url: fileUrl || '',
+    const normalizedFormData: GuestResourceCreateInput = {
+      title,
+      description,
+      content: content || null,
+      category: formData.category,
+      type: formData.type,
+      url: resourceUrl,
+      file_url: fileUrl,
+      featured: formData.featured,
+      display_order: formData.display_order,
     }
 
     if (editingResource) {
@@ -217,9 +280,9 @@ export default function GuestResourcesManagement() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Guest Resources</h1>
+            <h1 className="text-3xl font-bold">Platform Resource Templates</h1>
             <p className="text-muted-foreground mt-2">
-              Manage educational content for podcast guests
+              Manage GOAP's public/default catalog and the starter content copied into new private workspaces. Existing workspace copies are never overwritten.
             </p>
           </div>
           <Button onClick={handleCreate}>
@@ -277,6 +340,7 @@ export default function GuestResourcesManagement() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(resource)}
+                            aria-label={`Edit ${resource.title}`}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -284,6 +348,7 @@ export default function GuestResourcesManagement() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleDelete(resource)}
+                            aria-label={`Delete ${resource.title}`}
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -329,6 +394,9 @@ export default function GuestResourcesManagement() {
             <DialogTitle>
               {editingResource ? 'Edit Resource' : 'Create New Resource'}
             </DialogTitle>
+            <DialogDescription>
+              Manage a public/default template without changing existing workspace copies.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -336,6 +404,7 @@ export default function GuestResourcesManagement() {
               <Label htmlFor="title">Title *</Label>
               <Input
                 id="title"
+                maxLength={200}
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="Enter resource title"
@@ -346,6 +415,7 @@ export default function GuestResourcesManagement() {
               <Label htmlFor="description">Description *</Label>
               <Textarea
                 id="description"
+                maxLength={2000}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Brief description of the resource"
@@ -362,7 +432,7 @@ export default function GuestResourcesManagement() {
                     setFormData({ ...formData, category: value })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Category">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -380,10 +450,14 @@ export default function GuestResourcesManagement() {
                 <Select
                   value={formData.type}
                   onValueChange={(value: ResourceType) =>
-                    setFormData({ ...formData, type: value })
+                    setFormData({
+                      ...formData,
+                      type: value,
+                      content: value === 'article' ? formData.content : '',
+                    })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -399,22 +473,27 @@ export default function GuestResourcesManagement() {
 
             {formData.type === 'article' && (
               <div className="space-y-2">
-                <Label>Content</Label>
+                <Label>Content *</Label>
                 <GuestResourceEditor
                   content={formData.content}
                   onChange={(content) => setFormData({ ...formData, content })}
                   category={formData.category}
                   placeholder="Write your content or paste from Google Docs..."
                 />
+                <p className="text-xs text-muted-foreground">
+                  {formData.content.length.toLocaleString()} / 100,000 characters
+                </p>
               </div>
             )}
 
             {(formData.type === 'video' || formData.type === 'link') && (
               <div className="space-y-2">
-                <Label htmlFor="url">URL</Label>
+                <Label htmlFor="url">URL{resourceUrlRequired ? ' *' : ''}</Label>
                 <Input
                   id="url"
                   type="url"
+                  required={resourceUrlRequired}
+                  maxLength={2048}
                   value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                   placeholder="https://..."
@@ -424,10 +503,12 @@ export default function GuestResourcesManagement() {
 
             {formData.type === 'download' && (
               <div className="space-y-2">
-                <Label htmlFor="file_url">File URL</Label>
+                <Label htmlFor="file_url">File URL{fileUrlRequired ? ' *' : ''}</Label>
                 <Input
                   id="file_url"
                   type="url"
+                  required={fileUrlRequired}
+                  maxLength={2048}
                   value={formData.file_url}
                   onChange={(e) => setFormData({ ...formData, file_url: e.target.value })}
                   placeholder="https://..."
@@ -441,9 +522,12 @@ export default function GuestResourcesManagement() {
                 <Input
                   id="display_order"
                   type="number"
+                  min={0}
+                  max={1000000}
+                  step={1}
                   value={formData.display_order}
                   onChange={(e) =>
-                    setFormData({ ...formData, display_order: parseInt(e.target.value) || 0 })
+                    setFormData({ ...formData, display_order: Number(e.target.value) })
                   }
                 />
               </div>
@@ -453,7 +537,7 @@ export default function GuestResourcesManagement() {
                   id="featured"
                   checked={formData.featured}
                   onCheckedChange={(checked) =>
-                    setFormData({ ...formData, featured: checked as boolean })
+                    setFormData({ ...formData, featured: checked === true })
                   }
                 />
                 <Label htmlFor="featured" className="cursor-pointer">
@@ -492,11 +576,11 @@ export default function GuestResourcesManagement() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Resource</DialogTitle>
+            <DialogDescription>
+              This permanently deletes the platform template and cannot be undone.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete this resource? This action cannot be undone.
-            </p>
             {deletingResource && (
               <div className="p-3 bg-muted rounded-lg">
                 <p className="font-medium">{deletingResource.title}</p>

@@ -256,17 +256,47 @@ The former `/admin/blog` and `/admin/videos` applications are removed from the
 invite-only MVP. Their old URLs redirect to `/admin/dashboard`; their deleted
 editors and video workers are not supported admin features.
 
-### Guest Resources (`/admin/guest-resources`)
-- **Resource Library**: Downloadable guides, templates, media kits
-- **File Management**: Upload and organize resource files
-- **Access Control**: Public vs client-only resources
-- **Usage Analytics**: Track resource download metrics
+### Guest Resources
 
-**Key Features:**
-- Multi-format content management
-- Publication workflows
-- SEO optimization tools
-- Analytics integration
+Guest Resources now has separate platform-template, tenant-management, administrator-preview, and client-portal surfaces. All workspaces share one PostgreSQL database; private resources are isolated by `workspace_id`, not by separate databases.
+
+#### Platform template catalog (`/admin/guest-resources`)
+
+- Manages the legacy/default-workspace `guest_resources` catalog.
+- Supports article, video, download, and external-link resource types, categories, featured state, and display order.
+- Supplies the one-time template snapshot cloned into each private workspace. Changes to this catalog do not overwrite or live-sync an existing workspace's customized resources.
+
+#### Workspace manager (`/app/guest-resources`)
+
+- Workspace owners/admins manage resources for their own workspace.
+- Supports draft, published, and archived states.
+- Publishes to all workspace clients or to an explicit selected-client list.
+- Supports safe rich-text article content and safe external HTTP(S) resource/file URLs.
+- Keeps resource data and selected-client assignments scoped to the same `workspace_id`.
+
+#### Platform-admin workspace preview (`/admin/workspaces/:workspaceId/guest-resources`)
+
+- Renders the same workspace Guest Resources layout and selected workspace data.
+- Shows resource details and client assignments for operational review.
+- Is read-only: create, edit, and delete controls are disabled, and the service RPC rejects platform-admin mutations.
+- Does not replace or alter the administrator's current session.
+
+#### Client portal (`/portal/resources`)
+
+- Loads through the protected client portal route.
+- For a private workspace, shows only published resources visible to the authenticated client: resources marked for all clients plus resources explicitly assigned to that client. Default-workspace clients retain the platform catalog.
+- Returns a client-facing projection without workspace IDs, assignment lists, publication controls, actor metadata, or template provenance.
+
+The current Guest Resources feature stores external URLs; it does not upload, organize, or host files. It also does not provide workspace resource/download analytics or Guest Resources SEO tooling.
+
+**Key files:**
+
+- `/src/pages/app/WorkspaceGuestResources.tsx`
+- `/src/pages/admin/AdminWorkspaceGuestResources.tsx`
+- `/src/pages/admin/GuestResourcesManagement.tsx`
+- `/src/pages/portal/Resources.tsx`
+- `/src/services/workspaceGuestResources.ts`
+- `/src/services/guestResources.ts`
 
 ---
 
@@ -785,6 +815,13 @@ Each publication entry displays:
 - `PUT /api/admin/clients/{id}` - Update client
 - `DELETE /api/admin/clients/{id}` - Delete client
 - `PUT /api/admin/clients/{id}/portal-access` - Toggle portal access
+
+#### Guest Resources Edge Functions
+
+- `POST /functions/v1/workspace-guest-resources` - Authenticated workspace action API. Accepts `list`, `create`, `update`, and `delete`; the requested `workspace_id` and current account role are revalidated server-side. Private workspace owners/admins may mutate, while platform administrators are limited to `list` for the read-only preview.
+- `POST /functions/v1/get-guest-resources` - Portal projection API. Validates the supplied client/session pair (or an explicit authenticated platform-admin client preview), derives the client's workspace server-side, and applies published/all-client/selected-client visibility for private workspaces while preserving the default-workspace platform catalog.
+
+Both routes are Supabase Edge Functions consumed through `supabase.functions.invoke(...)`; browser code does not directly read or mutate the private workspace Guest Resources tables.
 
 #### Booking Management
 - `GET /api/admin/bookings` - List all bookings

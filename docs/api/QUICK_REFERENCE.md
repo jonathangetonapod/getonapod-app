@@ -54,6 +54,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 |----------|--------|---------|------|
 | `/create-client-account` | POST | Full onboarding | `{name, email, bio, ...}` |
 | `/create-client-google-sheet` | POST | Create spreadsheet | `{clientId, clientName}` |
+| `/workspace-guest-resources` | POST | Tenant resource CRUD | `{action, workspace_id, resource_id?, resource?}`; authenticated workspace owner/admin, list-only platform preview |
 
 ### 🎯 Prospect Management
 | Endpoint | Method | Purpose | Body |
@@ -109,12 +110,12 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | `/get-pipeline-analytics` | POST | Monthly pipeline metrics | `{month?, year?}` |
 | `/get-customer-analytics` | Any | Retired tombstone | HTTP 410 |
 
-### 🌐 Public Content
+### 🌐 Public and Portal Content
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
 | `/get-blog-posts` | POST | Blog listing + single post | `{slug?} or {search?, page?, page_size?}` |
 | `/get-testimonials` | POST | Testimonial feed | `{featured_only?, active_only?, limit?}` |
-| `/get-guest-resources` | POST | Guest resource listing | `{category?, type?, featured_only?, limit?}` |
+| `/get-guest-resources` | POST | Client-visible workspace resources | `{clientId, sessionToken?, category?, type?, featured_only?, limit?, offset?}`; portal session or platform-admin impersonation |
 | `/get-prospect-dashboard` | POST | Public prospect page data | `{slug}` |
 
 ### 🎙️ Podcast Data

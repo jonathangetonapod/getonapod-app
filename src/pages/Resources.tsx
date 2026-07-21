@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import DOMPurify from 'dompurify'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import Navbar from '@/components/Navbar'
@@ -26,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { getGuestResources, type GuestResource, type ResourceCategory } from '@/services/guestResources'
 import PageSEO from '@/components/seo/PageSEO'
 import { openExternalUrl } from '@/lib/externalUrl'
+import { sanitizePortalResourceContent } from '@/lib/portalResourceContent'
 
 const categoryInfo: Record<
   ResourceCategory,
@@ -84,7 +84,7 @@ function getResourceActionLabel(resource: GuestResource) {
 }
 
 function sanitizeContent(content: string) {
-  return DOMPurify.sanitize(
+  return sanitizePortalResourceContent(
     content
       .replace(/â€"/g, '-')
       .replace(/â€™/g, "'")

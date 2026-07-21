@@ -1,16 +1,18 @@
 # Production cutover record — 2026-07-21
 
 This is the sanitized handoff record for the invite-only workspace backend
-cutover. It contains no credentials, user data, capability URLs, or private
-backup locations.
+cutover. The original 2026-07-21 evidence is preserved, followed by the
+2026-07-22 Guest Resources increment. It contains no credentials, user data,
+capability URLs, or private backup locations.
 
 ## Decision
 
 The production backend cutover is complete and safe to retain. The backend
 source/configuration head used for the final deploy and inventory check was
 `b2655c36f46042d4ace56236fbd373272205e207`. Subsequent audit/documentation
-fixes belong in the same follow-up pull request; merge its final head only after
-the fresh pull-request check passes.
+changes superseded that historical source head. For the 2026-07-22 increment,
+the repository owner approved a reviewed direct-`main` frontend workflow; the
+older follow-up-branch/pull-request instruction is no longer operative.
 
 The product is **not yet approved for real invitations**. Custom SMTP, one
 signed-in administrator browser smoke test, one complete invitation lifecycle,
@@ -60,6 +62,39 @@ two-account isolation acceptance, and exposed-credential rotation remain open.
   found no concrete tenant-isolation or privilege-escalation blocker in the
   deployed backend.
 
+## Guest Resources production increment — 2026-07-22
+
+- Railway's privileged browser value was replaced by the project's publishable
+  key. A clean bundle was deployed, Cloudflare was purged, and the recursive
+  live browser-asset credential scan passed. The exposed legacy service-role
+  key remains compromised; consumer migration, exposure-window review, and
+  safe rotation remain separate incident work.
+- Before database mutation, an access-restricted, checksummed private backup
+  captured roles, public/Auth schema and data, Storage schema and data,
+  migration ledger, Edge source/inventory, and schedule/hook inventory. The
+  backup is retained outside the repository; no location or secret is recorded
+  here.
+- Only `20260721000200_workspace_guest_resources.sql` was applied. Production
+  now records it as coordinated migration 8.
+- The exact committed catalog verifier passed over `verify-full` TLS using the
+  Supabase Root 2021 CA, inside a serializable read-only transaction. Its
+  SHA-256 is
+  `53f59f3593eb3753729d37422fc3e6965ef3a1e38abdce73cba51bc509704137`.
+- `get-guest-resources` v14 is active with `verify_jwt=false`, as required for
+  the opaque client-portal session contract. `workspace-guest-resources` v1 is
+  active with `verify_jwt=true`.
+- The exact remote inventory is 90 active functions: 75 with gateway JWT
+  verification enabled and 15 reviewed public/custom-auth handlers with it
+  disabled. There are no missing, unexpected, or inactive functions.
+- Production-origin OPTIONS/CORS checks and unauthenticated fail-closed probes
+  passed. The default-workspace client portal RPC returned its expected narrow
+  projection.
+- The reviewed Guest Resources frontend has not yet been pushed to `main` or
+  deployed by Railway. Production currently has no private workspace, so
+  signed-in private-tenant management, read-only administrator preview, and
+  private-client audience acceptance cannot run until a controlled workspace
+  is provisioned.
+
 ## Production data effects
 
 - Two legacy portal sessions were invalidated.
@@ -75,31 +110,38 @@ restored.
 
 ## Open launch gates
 
-1. Rotate the OpenAI, Podscan, Jotform, and Clay credentials exposed through
-   chat, then review provider and application logs. Do not copy replacement
-   values into tracked files, chat, or evidence.
+1. Inventory retained consumers of the exposed legacy service-role key, review
+   the exposure window, migrate those consumers, and rotate the key safely.
+   Separately rotate the OpenAI, Podscan, Jotform, and Clay credentials exposed
+   through chat, then review provider and application logs. Do not copy
+   replacement values into tracked files, chat, or evidence.
 2. Configure and verify custom SMTP and the production invitation email. Do
    not use the Invite user action before this is complete.
 3. Run a signed-in administrator smoke test for dashboard, users, global
    clients, legacy records, and logout.
-4. Complete one real invitation from delivery through password creation,
-   acceptance, login, isolated client CRUD, logout, suspension, and
-   reactivation. Complete the two-account cross-tenant denial matrix.
-5. Confirm provider-side removal of the external Stripe webhook and every
+4. Push the reviewed Guest Resources frontend directly to `main`, allow Railway
+   to deploy it, and rerun the live asset plus route/header checks.
+5. Provision one controlled private workspace and complete invitation/password
+   creation, acceptance, login, isolated client and resource management,
+   read-only administrator preview, selected-client portal visibility, logout,
+   suspension, and reactivation. Add a second disposable workspace for the
+   complete cross-tenant denial matrix.
+6. Confirm provider-side removal of the external Stripe webhook and every
    obsolete caller/schedule. Retain the 410 tombstones until that evidence is
    complete.
-6. Decide whether to delete the credential-free Railway video tombstone
+7. Decide whether to delete the credential-free Railway video tombstone
    project after its audit/caller-observation value is no longer needed.
-7. Push the follow-up branch, refresh pull request #2, require a new CI result
-   for the final head, and merge only the reviewed commit.
-8. Add branch protection/required checks to `main`, or explicitly accept that
-   repository-control risk before merge.
+8. Branch protection and required checks remain recommended future repository
+   hardening; their absence was explicitly accepted for this direct-`main`
+   increment and is not a release-branch prerequisite.
 
 ## Operating constraints
 
 - There are 86 historical/noncanonical files in `supabase/migrations`. Only
-  the six coordinated 20260720 versions are authoritative for this cutover.
-  Never run an unreviewed full-directory `supabase db push`.
+  the six coordinated 20260720 versions are authoritative for the original
+  cutover; the manual-account seventh migration and Guest Resources eighth
+  migration are the two approved forward increments. Never run an unreviewed
+  full-directory `supabase db push`.
 - Deploy Edge Functions only from the explicit phased manifest. Never bulk
   deploy the whole function directory; the two excluded legacy handler source
   directories remain intentionally non-deployed.

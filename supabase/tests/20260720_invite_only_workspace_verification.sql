@@ -932,6 +932,8 @@ BEGIN
         ILIKE '%portal_access_enabled%'
       AND pg_get_triggerdef(trigger_definition.oid)
         ILIKE '%email%'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%workspace_id%'
   ) OR NOT EXISTS (
     SELECT 1
     FROM pg_proc AS function_definition
@@ -948,6 +950,18 @@ BEGIN
   ) OR pg_get_functiondef(
     'public.revoke_client_portal_access_artifacts()'::regprocedure
   ) NOT ILIKE '%OLD.email%IS DISTINCT FROM%NEW.email%DELETE FROM public.client_portal_credentials%NEW.portal_access_enabled := false%NEW.portal_password := NULL%NEW.password_set_at := NULL%NEW.password_set_by := NULL%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%ELSIF%OLD.portal_access_enabled%NEW.portal_access_enabled%'
+    OR pg_get_functiondef(
+      'public.revoke_client_portal_access_artifacts()'::regprocedure
+    ) NOT ILIKE '%workspace_changed BOOLEAN :=%NEW.workspace_id IS DISTINCT FROM OLD.workspace_id%'
+    OR pg_get_functiondef(
+      'public.revoke_client_portal_access_artifacts()'::regprocedure
+    ) NOT ILIKE '%IF workspace_changed THEN%DELETE FROM public.workspace_guest_resource_clients%WHERE client_id = OLD.id%AND workspace_id = OLD.workspace_id%END IF%'
+    OR pg_get_functiondef(
+      'public.revoke_client_portal_access_artifacts()'::regprocedure
+    ) NOT ILIKE '%NEW.portal_last_login_at := NULL%'
+    OR pg_get_functiondef(
+      'public.revoke_client_portal_access_artifacts()'::regprocedure
+    ) NOT ILIKE '%NEW.portal_invitation_sent_at := NULL%'
     OR EXISTS (
       SELECT 1
       FROM pg_trigger AS trigger_definition
@@ -1412,6 +1426,9 @@ BEGIN
       'workspace_audit_log',
       'workspace_auth_lifecycle_claims',
       'workspace_account_credential_claims',
+      'workspace_guest_resources',
+      'workspace_guest_resource_clients',
+      'workspace_guest_resource_quota_counters',
       'clients',
       'bookings',
       'client_portal_credentials',
@@ -3621,6 +3638,1226 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Tenant guest-resource catalog, authorization, and portal-containment
+-- verification. This block is intentionally read-only so the staging verifier
+-- can execute it under default_transaction_read_only=on.
+DO $workspace_guest_resource_verification$
+DECLARE
+  management_signature CONSTANT TEXT :=
+    'public.workspace_guest_resource_operation_v1(text,uuid,uuid,jsonb,uuid,bigint)';
+  portal_signature CONSTANT TEXT :=
+    'public.portal_guest_resources_for_client_v1(uuid,text,text,text,boolean,integer,integer)';
+  clone_signature CONSTANT TEXT :=
+    'public.clone_workspace_guest_resource_templates(uuid,uuid)';
+  meaningful_content_signature CONSTANT TEXT :=
+    'public.guest_resource_content_has_meaningful_text(text)';
+  normalized_text_signature CONSTANT TEXT :=
+    'public.guest_resource_text_is_normalized_nonempty(text,integer)';
+  safe_url_signature CONSTANT TEXT :=
+    'public.guest_resource_http_url_is_safe(text)';
+  management_definition TEXT;
+  portal_definition TEXT;
+  clone_definition TEXT;
+  meaningful_content_definition TEXT;
+  normalized_text_definition TEXT;
+  safe_url_definition TEXT;
+  resource_guard_definition TEXT;
+  portal_revoke_definition TEXT;
+  global_quota_definition TEXT;
+  workspace_quota_definition TEXT;
+  seed_definition TEXT;
+BEGIN
+  IF to_regclass('public.workspace_guest_resources') IS NULL
+    OR to_regclass('public.workspace_guest_resource_clients') IS NULL
+    OR to_regclass('public.workspace_guest_resource_quota_counters') IS NULL
+  THEN
+    RAISE EXCEPTION 'workspace guest resource relations are missing';
+  END IF;
+
+  IF EXISTS (
+    SELECT required.column_name
+    FROM (VALUES
+      ('id', 'uuid', 'NO'),
+      ('workspace_id', 'uuid', 'NO'),
+      ('title', 'text', 'NO'),
+      ('description', 'text', 'NO'),
+      ('content', 'text', 'YES'),
+      ('category', 'resource_category', 'NO'),
+      ('type', 'resource_type', 'NO'),
+      ('url', 'text', 'YES'),
+      ('file_url', 'text', 'YES'),
+      ('featured', 'bool', 'NO'),
+      ('display_order', 'int4', 'NO'),
+      ('status', 'text', 'NO'),
+      ('published_at', 'timestamptz', 'YES'),
+      ('visibility', 'text', 'NO'),
+      ('source_template_id', 'uuid', 'YES'),
+      ('created_by', 'uuid', 'YES'),
+      ('updated_by', 'uuid', 'YES'),
+      ('created_at', 'timestamptz', 'NO'),
+      ('updated_at', 'timestamptz', 'NO')
+    ) AS required(column_name, udt_name, is_nullable)
+    LEFT JOIN information_schema.columns AS actual
+      ON actual.table_schema = 'public'
+      AND actual.table_name = 'workspace_guest_resources'
+      AND actual.column_name = required.column_name
+      AND actual.udt_name = required.udt_name
+      AND actual.is_nullable = required.is_nullable
+    WHERE actual.column_name IS NULL
+  ) OR EXISTS (
+    SELECT required.column_name
+    FROM (VALUES
+      ('workspace_id', 'uuid', 'NO'),
+      ('resource_id', 'uuid', 'NO'),
+      ('client_id', 'uuid', 'NO'),
+      ('created_by', 'uuid', 'YES'),
+      ('created_at', 'timestamptz', 'NO')
+    ) AS required(column_name, udt_name, is_nullable)
+    LEFT JOIN information_schema.columns AS actual
+      ON actual.table_schema = 'public'
+      AND actual.table_name = 'workspace_guest_resource_clients'
+      AND actual.column_name = required.column_name
+      AND actual.udt_name = required.udt_name
+      AND actual.is_nullable = required.is_nullable
+    WHERE actual.column_name IS NULL
+  ) OR EXISTS (
+    SELECT required.column_name
+    FROM (VALUES
+      ('workspace_id', 'uuid', 'NO'),
+      ('resource_count', 'int4', 'NO'),
+      ('content_char_count', 'int8', 'NO')
+    ) AS required(column_name, udt_name, is_nullable)
+    LEFT JOIN information_schema.columns AS actual
+      ON actual.table_schema = 'public'
+      AND actual.table_name = 'workspace_guest_resource_quota_counters'
+      AND actual.column_name = required.column_name
+      AND actual.udt_name = required.udt_name
+      AND actual.is_nullable = required.is_nullable
+    WHERE actual.column_name IS NULL
+  ) THEN
+    RAISE EXCEPTION 'workspace guest resource relation shape is malformed';
+  END IF;
+
+  IF EXISTS (
+    SELECT required.column_name
+    FROM (VALUES
+      ('featured', 'NO', 'false'),
+      ('display_order', 'NO', '0'),
+      ('created_at', 'NO', 'now'),
+      ('updated_at', 'NO', 'now')
+    ) AS required(column_name, is_nullable, default_marker)
+    LEFT JOIN information_schema.columns AS actual
+      ON actual.table_schema = 'public'
+      AND actual.table_name = 'guest_resources'
+      AND actual.column_name = required.column_name
+      AND actual.is_nullable = required.is_nullable
+      AND COALESCE(actual.column_default, '') ILIKE
+        '%' || required.default_marker || '%'
+    WHERE actual.column_name IS NULL
+  ) THEN
+    RAISE EXCEPTION 'global guest resource defaults or nullability are unsafe';
+  END IF;
+
+  IF EXISTS (
+    SELECT required.constraint_name
+    FROM (VALUES
+      ('guest_resources_workspace_catalog_title_check', '%guest_resource_text_is_normalized_nonempty(title, 200)%'),
+      ('guest_resources_workspace_catalog_description_check', '%guest_resource_text_is_normalized_nonempty(description, 2000)%'),
+      ('guest_resources_workspace_catalog_content_check', '%content is null%btrim(content)%char_length(content)%>= 1%char_length(content)%<= 100000%blockquote%pre%hr%right%content, 1%'),
+      ('guest_resources_workspace_catalog_article_content_check', '%type%article%guest_resource_content_has_meaningful_text(content)%false%'),
+      ('guest_resources_workspace_catalog_url_check', '%guest_resource_http_url_is_safe(url)%'),
+      ('guest_resources_workspace_catalog_file_url_check', '%guest_resource_http_url_is_safe(file_url)%'),
+      ('guest_resources_workspace_catalog_display_order_check', '%display_order%>= 0%display_order%<= 1000000%'),
+      ('guest_resources_workspace_catalog_action_target_check', '%video%link%url is not null%download%file_url is not null%')
+    ) AS required(constraint_name, definition_pattern)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid = 'public.guest_resources'::regclass
+        AND constraint_definition.conname = required.constraint_name
+        AND constraint_definition.contype = 'c'
+        AND constraint_definition.convalidated
+        AND pg_get_constraintdef(constraint_definition.oid)
+          ILIKE required.definition_pattern
+    )
+  ) OR EXISTS (
+    SELECT 1
+    FROM public.guest_resources AS resource
+    WHERE NOT public.guest_resource_text_is_normalized_nonempty(
+        resource.title,
+        200
+      )
+      OR NOT public.guest_resource_text_is_normalized_nonempty(
+        resource.description,
+        2000
+      )
+      OR (
+        resource.content IS NOT NULL
+        AND (
+          resource.content <> btrim(resource.content)
+          OR char_length(resource.content) NOT BETWEEN 1 AND 100000
+          OR resource.content !~*
+            '^<(p|h[1-6]|ul|ol|blockquote|pre|hr)([[:space:]>])'
+          OR right(resource.content, 1) <> '>'
+        )
+      )
+      OR resource.featured IS NULL
+      OR resource.display_order NOT BETWEEN 0 AND 1000000
+      OR resource.created_at IS NULL
+      OR resource.updated_at IS NULL
+      OR (
+        resource.type = 'article'
+        AND NOT COALESCE(
+          public.guest_resource_content_has_meaningful_text(resource.content),
+          false
+        )
+      )
+      OR (resource.type IN ('video', 'link') AND resource.url IS NULL)
+      OR (resource.type = 'download' AND resource.file_url IS NULL)
+      OR (
+        resource.url IS NOT NULL
+        AND NOT public.guest_resource_http_url_is_safe(resource.url)
+      )
+      OR (
+        resource.file_url IS NOT NULL
+        AND NOT public.guest_resource_http_url_is_safe(resource.file_url)
+      )
+  ) OR (SELECT count(*) FROM public.guest_resources) > 1000
+    OR (
+      SELECT COALESCE(sum(char_length(COALESCE(content, ''))), 0)
+      FROM public.guest_resources
+    ) > 5000000
+    OR to_regprocedure(
+      'public.workspace_guest_resource_markdown_to_html(text)'
+    ) IS NOT NULL
+  THEN
+    RAISE EXCEPTION 'global guest resource portal contract is not enforced';
+  END IF;
+
+  IF EXISTS (
+    SELECT required.constraint_name
+    FROM (VALUES
+      ('workspace_guest_resources_title_check', '%guest_resource_text_is_normalized_nonempty(title, 200)%'),
+      ('workspace_guest_resources_description_check', '%guest_resource_text_is_normalized_nonempty(description, 2000)%'),
+      ('workspace_guest_resources_content_check', '%content is null%btrim(content)%char_length(content)%>= 1%char_length(content)%<= 100000%blockquote%pre%hr%right%content, 1%'),
+      ('workspace_guest_resources_url_check', '%guest_resource_http_url_is_safe(url)%'),
+      ('workspace_guest_resources_file_url_check', '%guest_resource_http_url_is_safe(file_url)%'),
+      ('workspace_guest_resources_display_order_check', '%display_order%>= 0%display_order%<= 1000000%'),
+      ('workspace_guest_resources_status_check', '%draft%published%archived%'),
+      ('workspace_guest_resources_published_at_check', '%published%published_at is not null%'),
+      ('workspace_guest_resources_visibility_check', '%all_clients%selected_clients%'),
+      ('workspace_guest_resources_action_target_check', '%status%published%video%link%url is not null%download%file_url is not null%'),
+      ('workspace_guest_resources_published_article_content_check', '%status%published%type%article%guest_resource_content_has_meaningful_text(content)%false%')
+    ) AS required(constraint_name, definition_pattern)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid =
+          'public.workspace_guest_resources'::regclass
+        AND constraint_definition.conname = required.constraint_name
+        AND constraint_definition.contype = 'c'
+        AND constraint_definition.convalidated
+        AND pg_get_constraintdef(constraint_definition.oid)
+          ILIKE required.definition_pattern
+    )
+  ) THEN
+    RAISE EXCEPTION 'workspace guest resource checks are missing or weak';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resources'::regclass
+      AND constraint_definition.contype = 'f'
+      AND constraint_definition.confrelid = 'public.guest_resources'::regclass
+      AND constraint_definition.confdeltype = 'n'
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%FOREIGN KEY (source_template_id)%ON DELETE SET NULL%'
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resources'::regclass
+      AND constraint_definition.contype = 'f'
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ~* 'FOREIGN KEY \((created_by|updated_by)\)'
+  ) THEN
+    RAISE EXCEPTION 'resource provenance deletion or durable actor identity is unsafe';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resource_clients'::regclass
+      AND constraint_definition.contype = 'f'
+      AND constraint_definition.confrelid =
+        'public.workspace_guest_resources'::regclass
+      AND constraint_definition.confdeltype = 'c'
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%FOREIGN KEY (resource_id, workspace_id)%REFERENCES%workspace_guest_resources(id, workspace_id)%ON DELETE CASCADE%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resource_clients'::regclass
+      AND constraint_definition.contype = 'f'
+      AND constraint_definition.confrelid = 'public.clients'::regclass
+      AND constraint_definition.confdeltype = 'c'
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%FOREIGN KEY (client_id, workspace_id)%REFERENCES%clients(id, workspace_id)%ON DELETE CASCADE%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resource_clients'::regclass
+      AND constraint_definition.contype = 'f'
+      AND constraint_definition.confrelid = 'auth.users'::regclass
+      AND constraint_definition.confdeltype = 'n'
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%FOREIGN KEY (created_by)%ON DELETE SET NULL%'
+  ) THEN
+    RAISE EXCEPTION 'same-workspace assignment foreign keys are malformed';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index AS index_definition
+    WHERE index_definition.indrelid =
+        'public.workspace_guest_resources'::regclass
+      AND index_definition.indisunique
+      AND index_definition.indisvalid
+      AND pg_get_indexdef(index_definition.indexrelid)
+        ILIKE '%(workspace_id, source_template_id)%WHERE (source_template_id IS NOT NULL)%'
+  ) THEN
+    RAISE EXCEPTION 'template clone idempotency index is missing';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resource_quota_counters'::regclass
+      AND constraint_definition.contype = 'p'
+      AND constraint_definition.convalidated
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%PRIMARY KEY (workspace_id)%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resource_quota_counters'::regclass
+      AND constraint_definition.conname =
+        'workspace_guest_resource_quota_count_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%resource_count%>= 0%resource_count%<= 1000%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid =
+        'public.workspace_guest_resource_quota_counters'::regclass
+      AND constraint_definition.conname =
+        'workspace_guest_resource_quota_content_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%content_char_count%>= 0%content_char_count%<= 5000000%'
+  ) THEN
+    RAISE EXCEPTION 'workspace guest resource quota catalog is malformed';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('workspace_guest_resources'),
+      ('workspace_guest_resource_clients'),
+      ('workspace_guest_resource_quota_counters')
+    ) AS required(table_name)
+    LEFT JOIN pg_class AS relation
+      ON relation.oid = format('public.%I', required.table_name)::regclass
+    WHERE NOT relation.relrowsecurity
+      OR NOT relation.relforcerowsecurity
+  ) OR EXISTS (
+    SELECT 1
+    FROM (VALUES ('anon'), ('authenticated')) AS browser_role(role_name)
+    CROSS JOIN (VALUES
+      ('workspace_guest_resources'),
+      ('workspace_guest_resource_clients'),
+      ('workspace_guest_resource_quota_counters')
+    ) AS required(table_name)
+    CROSS JOIN (VALUES
+      ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'),
+      ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
+    ) AS privilege(privilege_name)
+    WHERE has_table_privilege(
+      browser_role.role_name,
+      format('public.%I', required.table_name),
+      privilege.privilege_name
+    )
+  ) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('workspace_guest_resources'),
+      ('workspace_guest_resource_clients')
+    ) AS required(table_name)
+    CROSS JOIN (VALUES
+      ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')
+    ) AS privilege(privilege_name)
+    WHERE NOT has_table_privilege(
+      'service_role',
+      format('public.%I', required.table_name),
+      privilege.privilege_name
+    )
+  ) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'),
+      ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
+    ) AS privilege(privilege_name)
+    WHERE has_table_privilege(
+      'service_role',
+      'public.workspace_guest_resource_quota_counters',
+      privilege.privilege_name
+    )
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'public'
+      AND policy.tablename = 'workspace_guest_resource_quota_counters'
+  ) OR (
+    SELECT count(*)
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'public'
+      AND policy.tablename IN (
+        'workspace_guest_resources',
+        'workspace_guest_resource_clients'
+      )
+      AND policy.cmd = 'ALL'
+      AND policy.roles = ARRAY['service_role'::name]
+      AND COALESCE(policy.qual, '') ILIKE '%true%'
+      AND COALESCE(policy.with_check, '') ILIKE '%true%'
+  ) <> 2 THEN
+    RAISE EXCEPTION 'workspace guest resource RLS, grants, or policies are unsafe';
+  END IF;
+
+  IF to_regprocedure(management_signature) IS NULL
+    OR to_regprocedure(portal_signature) IS NULL
+    OR to_regprocedure(clone_signature) IS NULL
+    OR to_regprocedure(meaningful_content_signature) IS NULL
+    OR to_regprocedure(normalized_text_signature) IS NULL
+    OR to_regprocedure(safe_url_signature) IS NULL
+    OR to_regprocedure(
+      'public.adjust_global_guest_resource_quota()'
+    ) IS NULL
+    OR to_regprocedure(
+      'public.adjust_workspace_guest_resource_quota()'
+    ) IS NULL
+  THEN
+    RAISE EXCEPTION 'workspace guest resource function signatures are missing';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc AS function_definition
+    WHERE function_definition.oid =
+        to_regprocedure(meaningful_content_signature)
+      AND function_definition.prorettype = 'boolean'::regtype
+      AND function_definition.proisstrict
+      AND function_definition.provolatile = 'i'
+      AND function_definition.proparallel = 's'
+      AND NOT function_definition.prosecdef
+      AND EXISTS (
+        SELECT 1
+        FROM unnest(
+          COALESCE(function_definition.proconfig, ARRAY[]::TEXT[])
+        ) AS setting(value)
+        WHERE setting.value IN ('search_path=', 'search_path=""')
+      )
+  ) OR has_function_privilege(
+    'anon', meaningful_content_signature, 'EXECUTE'
+  ) OR NOT has_function_privilege(
+    'authenticated', meaningful_content_signature, 'EXECUTE'
+  ) OR NOT has_function_privilege(
+    'service_role', meaningful_content_signature, 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'meaningful article-content helper contract is unsafe';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc AS function_definition
+    WHERE function_definition.oid = to_regprocedure(normalized_text_signature)
+      AND function_definition.prorettype = 'boolean'::regtype
+      AND function_definition.proisstrict
+      AND function_definition.provolatile = 'i'
+      AND function_definition.proparallel = 's'
+      AND NOT function_definition.prosecdef
+      AND EXISTS (
+        SELECT 1
+        FROM unnest(
+          COALESCE(function_definition.proconfig, ARRAY[]::TEXT[])
+        ) AS setting(value)
+        WHERE setting.value IN ('search_path=', 'search_path=""')
+      )
+  ) OR has_function_privilege('anon', normalized_text_signature, 'EXECUTE')
+    OR NOT has_function_privilege(
+      'authenticated', normalized_text_signature, 'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role', normalized_text_signature, 'EXECUTE'
+    )
+  THEN
+    RAISE EXCEPTION 'guest resource normalized text helper contract is unsafe';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc AS function_definition
+    WHERE function_definition.oid = to_regprocedure(safe_url_signature)
+      AND function_definition.prorettype = 'boolean'::regtype
+      AND function_definition.proisstrict
+      AND function_definition.provolatile = 'i'
+      AND function_definition.proparallel = 's'
+      AND NOT function_definition.prosecdef
+      AND EXISTS (
+        SELECT 1
+        FROM unnest(
+          COALESCE(function_definition.proconfig, ARRAY[]::TEXT[])
+        ) AS setting(value)
+        WHERE setting.value IN ('search_path=', 'search_path=""')
+      )
+  ) OR has_function_privilege('anon', safe_url_signature, 'EXECUTE')
+    OR NOT has_function_privilege(
+      'authenticated', safe_url_signature, 'EXECUTE'
+    )
+    OR NOT has_function_privilege('service_role', safe_url_signature, 'EXECUTE')
+  THEN
+    RAISE EXCEPTION 'guest resource HTTP URL helper contract is unsafe';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES (management_signature), (portal_signature)) AS api(signature)
+    JOIN pg_proc AS function_definition
+      ON function_definition.oid = to_regprocedure(api.signature)
+    WHERE NOT function_definition.prosecdef
+      OR function_definition.prorettype <> 'jsonb'::regtype
+      OR NOT EXISTS (
+        SELECT 1
+        FROM unnest(
+          COALESCE(function_definition.proconfig, ARRAY[]::TEXT[])
+        ) AS setting(value)
+        WHERE setting.value IN ('search_path=', 'search_path=""')
+      )
+      OR NOT has_function_privilege(
+        'service_role', function_definition.oid, 'EXECUTE'
+      )
+      OR has_function_privilege('anon', function_definition.oid, 'EXECUTE')
+      OR has_function_privilege(
+        'authenticated', function_definition.oid, 'EXECUTE'
+      )
+  ) OR has_function_privilege(
+    'service_role', clone_signature, 'EXECUTE'
+  ) OR has_function_privilege(
+    'anon', clone_signature, 'EXECUTE'
+  ) OR has_function_privilege(
+    'authenticated', clone_signature, 'EXECUTE'
+  ) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('public.adjust_global_guest_resource_quota()'),
+      ('public.adjust_workspace_guest_resource_quota()')
+    ) AS quota_function(signature)
+    JOIN pg_proc AS function_definition
+      ON function_definition.oid = to_regprocedure(quota_function.signature)
+    WHERE NOT function_definition.prosecdef
+      OR NOT EXISTS (
+        SELECT 1
+        FROM unnest(
+          COALESCE(function_definition.proconfig, ARRAY[]::TEXT[])
+        ) AS setting(value)
+        WHERE setting.value IN ('search_path=', 'search_path=""')
+      )
+      OR has_function_privilege(
+        'service_role', function_definition.oid, 'EXECUTE'
+      )
+      OR has_function_privilege('anon', function_definition.oid, 'EXECUTE')
+      OR has_function_privilege(
+        'authenticated', function_definition.oid, 'EXECUTE'
+      )
+  ) THEN
+    RAISE EXCEPTION 'workspace guest resource function ACL or security is unsafe';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc AS function_definition
+    WHERE function_definition.oid = to_regprocedure(management_signature)
+      AND function_definition.proargnames = ARRAY[
+        'p_action',
+        'p_workspace_id',
+        'p_resource_id',
+        'p_payload',
+        'p_actor_user_id',
+        'p_token_issued_at'
+      ]::TEXT[]
+      AND function_definition.pronargdefaults = 0
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_proc AS function_definition
+    WHERE function_definition.oid = to_regprocedure(portal_signature)
+      AND function_definition.proargnames = ARRAY[
+        'p_client_id',
+        'p_session_token_hash',
+        'p_category',
+        'p_type',
+        'p_featured_only',
+        'p_limit',
+        'p_offset'
+      ]::TEXT[]
+      AND function_definition.pronargdefaults = 6
+  ) THEN
+    RAISE EXCEPTION 'workspace guest resource API argument contract drifted';
+  END IF;
+
+  management_definition := pg_get_functiondef(
+    to_regprocedure(management_signature)
+  );
+  portal_definition := pg_get_functiondef(to_regprocedure(portal_signature));
+  clone_definition := pg_get_functiondef(to_regprocedure(clone_signature));
+  meaningful_content_definition := pg_get_functiondef(
+    to_regprocedure(meaningful_content_signature)
+  );
+  normalized_text_definition := pg_get_functiondef(
+    to_regprocedure(normalized_text_signature)
+  );
+  safe_url_definition := pg_get_functiondef(
+    to_regprocedure(safe_url_signature)
+  );
+  resource_guard_definition := pg_get_functiondef(
+    'public.guard_workspace_guest_resource_row()'::regprocedure
+  );
+  portal_revoke_definition := pg_get_functiondef(
+    'public.revoke_client_portal_access_artifacts()'::regprocedure
+  );
+  global_quota_definition := pg_get_functiondef(
+    'public.adjust_global_guest_resource_quota()'::regprocedure
+  );
+  workspace_quota_definition := pg_get_functiondef(
+    'public.adjust_workspace_guest_resource_quota()'::regprocedure
+  );
+  seed_definition := pg_get_functiondef(
+    'public.seed_workspace_guest_resources_after_insert()'::regprocedure
+  );
+
+  IF meaningful_content_definition
+      NOT ILIKE '%p_content ~*%<!--|<(script|style|template|svg|math|iframe%'
+    OR meaningful_content_definition
+      NOT ILIKE '%annotation-xml|desc|foreignobject|mi|mn|mo|ms|mtext|selectedcontent)([[:space:]/>%'
+    OR meaningful_content_definition
+      NOT ILIKE '%chr(160)%chr(5760)%chr(8192)%chr(8202)%chr(8232)%chr(8233)%chr(8239)%chr(8287)%chr(12288)%chr(65279)%])%'
+    OR meaningful_content_definition
+      NOT LIKE '%&(nbsp|shy)(;|$|(?=[^[:alnum:]=]))%''g''%'
+    OR meaningful_content_definition
+      NOT LIKE '%&(Tab|NewLine|ZeroWidthSpace|zwnj|zwj|NoBreak|ApplyFunction|af|InvisibleTimes|it|InvisibleComma|ic|lrm|rlm%'
+    OR meaningful_content_definition
+      NOT LIKE '%ensp|emsp|emsp13|emsp14|numsp|puncsp|thinsp|ThinSpace|hairsp|VeryThinSpace|MediumSpace|ThickSpace%'
+    OR meaningful_content_definition
+      NOT LIKE '%NegativeMediumSpace|NegativeThickSpace|NegativeThinSpace|NegativeVeryThinSpace|NonBreakingSpace);%''g''%'
+    OR meaningful_content_definition
+      NOT ILIKE '%&#0*([1-9]|[12][0-9]|3[0-2]%127|129|141|143|144|157%'
+    OR meaningful_content_definition
+      NOT ILIKE '%153[6-9]|154[01]%1757%1807%219[23]%2274%69821|69837%'
+    OR meaningful_content_definition
+      NOT ILIKE '%(;|$|(?=[^0-9]))%'
+    OR meaningful_content_definition
+      NOT ILIKE '%&#x0*([1-9a-f]|1[0-9a-f]|20|7f|81|8d|8f|90|9d%'
+    OR meaningful_content_definition
+      NOT ILIKE '%60[0-5]%6dd%70f%89[01]%8e2%fff[0-9a-b]%110bd|110cd%'
+    OR meaningful_content_definition
+      NOT ILIKE '%(;|$|(?=[^0-9a-f]))%'
+    OR meaningful_content_definition NOT ILIKE '%translate%repeat('' '', 36)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(1)%chr(8)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(14)%chr(31)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(127)%chr(159)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(160)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(173)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8203)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8204)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8205)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8206)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8207)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8288)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8292)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(847)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(1564)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(6155)%chr(6159)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8234)%chr(8238)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(8293)%chr(8303)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(1536)%chr(1541)%'
+    OR meaningful_content_definition
+      NOT ILIKE '%chr(1757)%chr(1807)%chr(2192)%chr(2193)%chr(2274)%'
+    OR meaningful_content_definition NOT ILIKE '%10240%2800%'
+    OR meaningful_content_definition NOT ILIKE '%chr(10240)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(65024)%chr(65039)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(65520)%chr(65531)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(69821)%chr(69837)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(917504)%chr(921599)%'
+    OR meaningful_content_definition NOT ILIKE '%chr(65279)%'
+    OR meaningful_content_definition NOT ILIKE '%COLLATE "C"%'
+    OR meaningful_content_definition
+      NOT ILIKE '%regexp_replace%<([^<>%AS value%FROM actual_whitespace_removed%'
+    OR meaningful_content_definition
+      NOT ILIKE '%strpos(tags_removed.value, ''<'') = 0%'
+    OR meaningful_content_definition
+      NOT ILIKE '%NULLIF%regexp_replace(tags_removed.value, ''[[:space:]]+''%IS NOT NULL%'
+    OR meaningful_content_definition ILIKE '%''<[^>]*>''%'
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#32;&#x20;&#9;&Tab;&NewLine;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&nbsp&shy</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#5760;&#8192;&#8202;&#8232;&#8233;&#8239;&#8287;&#12288;&#65279;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#x1680;&#x2000;&#x200A;&#x2028;&#x2029;&#x202F;&#x205F;&#x3000;&#xFEFF;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#8203;&#8204;&#8205;&#x200B;&#x200C;&#x200D;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&ZeroWidthSpace;&zwnj;&zwj;&NoBreak;&ApplyFunction;&af;'
+        || '&InvisibleTimes;&it;&InvisibleComma;&ic;&shy;&lrm;&rlm;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&ensp;&emsp;&emsp13;&emsp14;&numsp;&puncsp;&thinsp;&ThinSpace;'
+        || '&hairsp;&VeryThinSpace;&MediumSpace;&ThickSpace;'
+        || '&NegativeMediumSpace;&NegativeThickSpace;&NegativeThinSpace;'
+        || '&NegativeVeryThinSpace;&NonBreakingSpace;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#1;&#31;&#127;&#129;&#141;&#143;&#144;&#157;'
+        || '&#x1;&#x1F;&#x7F;&#x81;&#x8D;&#x8F;&#x90;&#x9D;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>' || chr(1) || chr(31) || chr(127) || chr(159) || '</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#1536;&#1541;&#1757;&#1807;&#2192;&#2193;&#2274;'
+        || '&#65529;&#65531;&#69821;&#69837;'
+        || '&#x600;&#x605;&#x6DD;&#x70F;&#x890;&#x891;&#x8E2;'
+        || '&#xFFF9;&#xFFFB;&#x110BD;&#x110CD;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>' || chr(1536) || chr(1541) || chr(1757) || chr(1807)
+        || chr(2192) || chr(2193) || chr(2274) || chr(65529)
+        || chr(65531) || chr(69821) || chr(69837) || '</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#173;&#8206;&#8207;&#8288;&#8289;&#8290;&#8291;&#8292;'
+        || '&#xAD;&#x200E;&#x200F;&#x2060;&#x2061;&#x2062;&#x2063;&#x2064;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>' || chr(173) || chr(8206) || chr(8207) || chr(8288)
+        || chr(8289) || chr(8290) || chr(8291) || chr(8292) || '</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#847;&#6155;&#6159;&#65024;&#65039;&#917760;&#917999;'
+        || '&#x34F;&#x180B;&#x180F;&#xFE00;&#xFE0F;&#xE0100;&#xE01EF;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>' || chr(847) || chr(6155) || chr(6159) || chr(65024)
+        || chr(65039) || chr(917760) || chr(917999) || '</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#x061C;&#x180E;&#x202A;&#x2069;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>' || chr(1564) || chr(6158) || chr(8234) || chr(8297) || '</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>&#10240;&#x2800;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>' || chr(10240) || '</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>&Tab&NewLine&#32&#x20</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>&NBSP;&tab;&newline;&ZEROWIDTHSPACE;</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>&nbspx;&shy=;&thinspace;&HairSpace;</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>&#0;&#128;&#133;&#x80;&#x85;&#xD800;</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>&itinerary;&#320;</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>&nnbsp;</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p title=">"> </p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p title=''>''></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p title=">Visible</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p><script>Visible bait</script><style>Visible bait</style>'
+        || '<template><strong>Visible bait</strong></template></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p><svg><desc>Visible bait</desc></svg>'
+        || '<math><mtext>Visible bait</mtext></math>'
+        || '<iframe>Visible bait</iframe><audio>Visible bait</audio>'
+        || '<annotation-xml>Visible bait</annotation-xml>'
+        || '<foreignObject>Visible bait</foreignObject>'
+        || '<selectedcontent>Visible bait</selectedcontent></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p><!-- Visible bait > --></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p><svg><text data-x="</svg>">Visible bait</text></svg></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>Visible article copy<script>hidden</script></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p>Visible article copy<!-- hidden --></p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p title="<script>">Visible article copy</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p title="<!--">Visible article copy</p>'
+    )
+    OR public.guest_resource_content_has_meaningful_text(
+      '<p><svg' || chr(160) || '>Visible article copy</svg></p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p><script_foo>Visible article copy</script_foo></p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p title=">">Visible article copy</p>'
+    )
+    OR NOT public.guest_resource_content_has_meaningful_text(
+      '<p>Visible article copy</p>'
+    )
+  THEN
+    RAISE EXCEPTION 'meaningful article-content normalization drifted';
+  END IF;
+
+  IF normalized_text_definition NOT ILIKE '%btrim%chr(9)%chr(13)%chr(32)%'
+    OR normalized_text_definition NOT ILIKE '%chr(160)%'
+    OR normalized_text_definition NOT ILIKE '%chr(5760)%'
+    OR normalized_text_definition NOT ILIKE '%chr(8192)%chr(8202)%'
+    OR normalized_text_definition NOT ILIKE '%chr(8232)%chr(8233)%'
+    OR normalized_text_definition NOT ILIKE '%chr(8239)%chr(8287)%'
+    OR normalized_text_definition NOT ILIKE '%chr(12288)%chr(65279)%'
+    OR normalized_text_definition
+      NOT ILIKE '%char_length(p_value) BETWEEN 1 AND p_max_length%normalized.value <> ''''%normalized.value = p_value%'
+    OR public.guest_resource_text_is_normalized_nonempty(chr(160), 200)
+    OR public.guest_resource_text_is_normalized_nonempty(chr(65279), 2000)
+    OR public.guest_resource_text_is_normalized_nonempty(
+      chr(160) || 'Visible title',
+      200
+    )
+    OR public.guest_resource_text_is_normalized_nonempty(
+      'Visible description' || chr(65279),
+      2000
+    )
+    OR NOT public.guest_resource_text_is_normalized_nonempty(
+      'Visible title',
+      200
+    )
+    OR NOT public.guest_resource_text_is_normalized_nonempty(
+      'Visible description',
+      2000
+    )
+  THEN
+    RAISE EXCEPTION 'guest resource normalized text semantics drifted';
+  END IF;
+
+  IF safe_url_definition
+      NOT ILIKE '%char_length(p_url) NOT BETWEEN 1 AND 2048%https?://%'
+    OR safe_url_definition
+      NOT ILIKE '%NULLIF(authority, '''') IS NULL%strpos(authority, ''@'') > 0%'
+    OR safe_url_definition NOT ILIKE '%parsed_address := host_name::inet%'
+    OR safe_url_definition
+      NOT ILIKE '%family(parsed_address) <> 6%family(parsed_address) <> 4%'
+    OR safe_url_definition
+      NOT ILIKE '%char_length(host_name) > 253%[a-z0-9-]{0,61}%'
+    OR safe_url_definition NOT ILIKE '%port_text::integer > 65535%'
+    OR public.guest_resource_http_url_is_safe('https://%')
+    OR public.guest_resource_http_url_is_safe('https://[')
+    OR public.guest_resource_http_url_is_safe(
+      'https://user:password@example.com/path'
+    )
+    OR NOT public.guest_resource_http_url_is_safe(
+      'https://example.com/resources/guide?version=1#start'
+    )
+    OR NOT public.guest_resource_http_url_is_safe(
+      'http://localhost:8080/resources/file'
+    )
+    OR NOT public.guest_resource_http_url_is_safe(
+      'https://[::1]:8443/resources/file'
+    )
+  THEN
+    RAISE EXCEPTION 'guest resource HTTP URL normalization drifted';
+  END IF;
+
+  IF management_definition
+      NOT ILIKE '%normalized_action NOT IN (%''list''%''create''%''update''%''delete''%'
+    OR management_definition
+      NOT ILIKE '%auth.users%admin_users%workspace_memberships%email_normalized%'
+    OR management_definition
+      NOT ILIKE '%membership.role IN (''owner'', ''admin'')%'
+    OR management_definition
+      NOT ILIKE '%p_token_issued_at >= membership.workspace_access_not_before_epoch%'
+    OR management_definition
+      NOT ILIKE '%workspace_status <> ''active''%normalized_action <> ''list''%'
+    OR management_definition
+      NOT ILIKE '%platform administrator preview is read-only%'
+    OR management_definition
+      NOT ILIKE '%p_payload ?& expected_payload_keys%jsonb_object_keys(p_payload)%'
+    OR management_definition
+      NOT ILIKE '%guest_resource_text_is_normalized_nonempty(%normalized_title%200%'
+    OR management_definition
+      NOT ILIKE '%guest_resource_text_is_normalized_nonempty(%normalized_description%2000%'
+    OR management_definition
+      NOT ILIKE '%char_length(COALESCE(normalized_content, '''')) > 100000%'
+    OR management_definition
+      NOT ILIKE '%normalized_content !~*%blockquote%pre%hr%'
+    OR management_definition
+      NOT ILIKE '%jsonb_array_length(p_payload -> ''client_ids'') > 500%'
+    OR management_definition
+      NOT ILIKE '%normalized_visibility = ''selected_clients''%cardinality(normalized_client_ids) = 0%'
+    OR management_definition
+      NOT ILIKE '%normalized_status = ''published''%video%link%normalized_url IS NULL%download%normalized_file_url IS NULL%'
+    OR management_definition
+      NOT ILIKE '%normalized_status = ''published''%p_payload ->> ''type'' = ''article''%guest_resource_content_has_meaningful_text%normalized_content%false%'
+    OR management_definition
+      NOT ILIKE '%client.workspace_id = p_workspace_id%client.id = ANY(normalized_client_ids)%'
+    OR management_definition
+      NOT ILIKE '%DELETE FROM public.workspace_guest_resource_clients%INSERT INTO public.workspace_guest_resource_clients%'
+    OR management_definition
+      NOT ILIKE '%source_template_id%NULL%target_resource.source_template_id%'
+    OR management_definition NOT ILIKE '%workspace.guest_resource.created%'
+    OR management_definition NOT ILIKE '%workspace.guest_resource.updated%'
+    OR management_definition NOT ILIKE '%workspace.guest_resource.deleted%'
+    OR management_definition NOT ILIKE '%RETURN ''null''::JSONB%'
+    OR management_definition
+      NOT ILIKE '%guest_resource_http_url_is_safe(normalized_url)%'
+    OR management_definition
+      NOT ILIKE '%guest_resource_http_url_is_safe(normalized_file_url)%'
+  THEN
+    RAISE EXCEPTION 'workspace guest resource management authorization or mutation contract is malformed';
+  END IF;
+
+  IF strpos(
+      portal_definition,
+      'p_session_token_hash !~ ''^sha256\$[A-Za-z0-9+/]{43}=$'''
+    ) = 0
+    OR portal_definition
+      NOT ILIKE '%FROM public.client_portal_sessions AS portal_session%portal_session.client_id = p_client_id%portal_session.session_token = p_session_token_hash%portal_session.expires_at > clock_timestamp()%'
+    OR portal_definition
+      NOT ILIKE '%FOR SHARE OF portal_session, client, workspace%'
+    OR portal_definition
+      NOT ILIKE '%client.portal_access_enabled%workspace.status = ''active''%'
+    OR portal_definition
+      NOT ILIKE '%IF workspace_is_default THEN%FROM public.guest_resources AS resource%'
+    OR portal_definition
+      NOT ILIKE '%FROM public.workspace_guest_resources AS resource%resource.status = ''published''%'
+    OR portal_definition
+      NOT ILIKE '%resource.visibility = ''all_clients''%public.workspace_guest_resource_clients%assignment.client_id = p_client_id%'
+    OR portal_definition NOT ILIKE '%NULLIF(resource.content, '''') AS content%'
+    OR portal_definition NOT ILIKE '%''resources''%''total''%'
+    OR portal_definition NOT ILIKE '%ORDER BY featured DESC, display_order, title, id%'
+    OR portal_definition NOT ILIKE '%paged_resource AS MATERIALIZED%resource_page AS%'
+    OR (
+      SELECT count(*)
+      FROM regexp_matches(
+        portal_definition,
+        'guest_resource_content_has_meaningful_text[[:space:]]*\([[:space:]]*resource\.content',
+        'gi'
+      )
+    ) <> 2
+    OR (
+      SELECT count(*)
+      FROM regexp_matches(
+        portal_definition,
+        'visible_resource AS MATERIALIZED \((.*?)\),[[:space:]]*paged_resource',
+        'gis'
+      ) AS visible_capture(parts)
+    ) <> 2
+    OR EXISTS (
+      SELECT 1
+      FROM regexp_matches(
+        portal_definition,
+        'visible_resource AS MATERIALIZED \((.*?)\),[[:space:]]*paged_resource',
+        'gis'
+      ) AS visible_capture(parts)
+      WHERE (visible_capture.parts)[1] ~*
+        'resource\.(content|description|url|file_url|published_at|updated_at)'
+    )
+    OR portal_definition ILIKE '%''workspace_id'',%'
+    OR portal_definition ILIKE '%''status'',%'
+    OR portal_definition ILIKE '%''visibility'',%'
+    OR portal_definition ILIKE '%''client_ids'',%'
+    OR portal_definition ILIKE '%''source_template_id'',%'
+    OR portal_definition ILIKE '%''created_by'',%'
+    OR portal_definition ILIKE '%''updated_by'',%'
+  THEN
+    RAISE EXCEPTION 'portal guest resource containment or projection is malformed';
+  END IF;
+
+  IF clone_definition NOT ILIKE '%IF workspace_is_default THEN%RETURN 0%'
+    OR clone_definition
+      NOT ILIKE '%FROM public.guest_resources AS template%ON CONFLICT (workspace_id, source_template_id)%DO NOTHING%'
+    OR clone_definition NOT ILIKE '%NULLIF(template.content, '''')%'
+    OR clone_definition NOT ILIKE '%5000000%workspace seed quotas%'
+    OR clone_definition NOT ILIKE '%template.content <> btrim(template.content)%blockquote%pre%hr%'
+    OR clone_definition
+      NOT ILIKE '%guest_resource_text_is_normalized_nonempty(%template.title%200%'
+    OR clone_definition
+      NOT ILIKE '%guest_resource_text_is_normalized_nonempty(%template.description%2000%'
+    OR clone_definition NOT ILIKE '%template.type IN (''video'', ''link'')%template.url IS NULL%'
+    OR clone_definition NOT ILIKE '%template.type = ''download''%template.file_url IS NULL%'
+    OR clone_definition
+      NOT ILIKE '%template.type = ''article''%guest_resource_content_has_meaningful_text(template.content)%false%'
+    OR clone_definition
+      NOT ILIKE '%guest_resource_http_url_is_safe(btrim(template.url))%'
+    OR clone_definition
+      NOT ILIKE '%guest_resource_http_url_is_safe(%btrim(template.file_url)%'
+    OR clone_definition NOT ILIKE '%status%visibility%'
+    OR clone_definition NOT ILIKE '%''published''%''all_clients''%'
+    OR clone_definition
+      NOT ILIKE '%workspace.guest_resources.templates_cloned%template_ids%'
+    OR EXISTS (
+      SELECT 1
+      FROM pg_trigger AS trigger_definition
+      WHERE trigger_definition.tgrelid = 'public.guest_resources'::regclass
+        AND NOT trigger_definition.tgisinternal
+        AND pg_get_triggerdef(trigger_definition.oid)
+          ILIKE '%workspace_guest_resource%'
+    )
+  THEN
+    RAISE EXCEPTION 'template cloning is not idempotent and snapshot-independent';
+  END IF;
+
+  IF resource_guard_definition
+      NOT ILIKE '%OLD.source_template_id IS NOT NULL%NEW.source_template_id IS NULL%'
+    OR resource_guard_definition
+      NOT ILIKE '%to_jsonb(NEW) - ''source_template_id''%to_jsonb(OLD) - ''source_template_id''%'
+    OR resource_guard_definition
+      NOT ILIKE '%NEW.source_template_id IS DISTINCT FROM OLD.source_template_id%NOT source_provenance_cleared%'
+    OR resource_guard_definition
+      NOT ILIKE '%NEW.workspace_id IS DISTINCT FROM OLD.workspace_id%'
+    OR resource_guard_definition
+      NOT ILIKE '%workspace.is_default%workspace guest resources require a private workspace%'
+    OR resource_guard_definition
+      NOT ILIKE '%NEW.created_by IS DISTINCT FROM OLD.created_by%'
+    OR resource_guard_definition
+      NOT ILIKE '%IF TG_OP = ''UPDATE'' AND NOT source_provenance_cleared THEN%NEW.updated_at := now()%'
+  THEN
+    RAISE EXCEPTION 'resource ownership, provenance clearing, or actor guard is malformed';
+  END IF;
+
+  IF portal_revoke_definition
+      NOT ILIKE '%NEW.workspace_id IS DISTINCT FROM OLD.workspace_id%'
+    OR portal_revoke_definition
+      NOT ILIKE '%DELETE FROM public.client_portal_credentials%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%'
+    OR portal_revoke_definition
+      NOT ILIKE '%NEW.portal_access_enabled := false%NEW.password_set_at := NULL%NEW.password_set_by := NULL%'
+    OR portal_revoke_definition
+      NOT ILIKE '%DELETE FROM public.workspace_guest_resource_clients%OLD.workspace_id%'
+  THEN
+    RAISE EXCEPTION 'client transfer does not revoke portal identity and assignments';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid = 'public.workspaces'::regclass
+      AND trigger_definition.tgname = 'workspaces_seed_guest_resources'
+      AND NOT trigger_definition.tgisinternal
+      AND trigger_definition.tgenabled <> 'D'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%AFTER INSERT%seed_workspace_guest_resources_after_insert%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid = 'public.workspace_guest_resources'::regclass
+      AND trigger_definition.tgname = 'workspace_guest_resources_guard_row'
+      AND NOT trigger_definition.tgisinternal
+      AND trigger_definition.tgenabled <> 'D'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%BEFORE INSERT OR UPDATE%guard_workspace_guest_resource_row%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid = 'public.clients'::regclass
+      AND trigger_definition.tgname = 'clients_revoke_portal_access_artifacts'
+      AND NOT trigger_definition.tgisinternal
+      AND trigger_definition.tgenabled <> 'D'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%BEFORE UPDATE OF%'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%portal_access_enabled%'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%email%'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%workspace_id%'
+  ) THEN
+    RAISE EXCEPTION 'guest resource seed, guard, or client-transfer trigger is missing';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid = 'public.guest_resources'::regclass
+      AND trigger_definition.tgname =
+        'guest_resources_adjust_workspace_quota'
+      AND NOT trigger_definition.tgisinternal
+      AND trigger_definition.tgenabled <> 'D'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%AFTER INSERT OR DELETE OR UPDATE OF content%adjust_global_guest_resource_quota%'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger AS trigger_definition
+    WHERE trigger_definition.tgrelid =
+        'public.workspace_guest_resources'::regclass
+      AND trigger_definition.tgname =
+        'workspace_guest_resources_adjust_quota'
+      AND NOT trigger_definition.tgisinternal
+      AND trigger_definition.tgenabled <> 'D'
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%AFTER INSERT OR DELETE OR UPDATE OF content%adjust_workspace_guest_resource_quota%'
+  ) OR global_quota_definition
+      NOT ILIKE '%resource_delta%content_delta%UPDATE public.workspace_guest_resource_quota_counters%resource_count + resource_delta BETWEEN 0 AND 1000%content_char_count + content_delta BETWEEN 0 AND 5000000%FOR UPDATE%'
+    OR workspace_quota_definition
+      NOT ILIKE '%resource_delta%content_delta%UPDATE public.workspace_guest_resource_quota_counters%resource_count + resource_delta BETWEEN 0 AND 1000%content_char_count + content_delta BETWEEN 0 AND 5000000%FOR UPDATE%'
+    OR seed_definition
+      NOT ILIKE '%INSERT INTO public.workspace_guest_resource_quota_counters%ON CONFLICT (workspace_id) DO NOTHING%clone_workspace_guest_resource_templates%'
+  THEN
+    RAISE EXCEPTION 'atomic guest resource quota enforcement is missing';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.workspaces AS workspace
+    LEFT JOIN public.workspace_guest_resource_quota_counters AS quota
+      ON quota.workspace_id = workspace.id
+    LEFT JOIN LATERAL (
+      SELECT
+        count(*)::INTEGER AS resource_count,
+        COALESCE(
+          sum(char_length(COALESCE(resource.content, ''))),
+          0
+        )::BIGINT AS content_char_count
+      FROM public.workspace_guest_resources AS resource
+      WHERE resource.workspace_id = workspace.id
+    ) AS private_total ON true
+    WHERE quota.workspace_id IS NULL
+      OR quota.resource_count <> CASE
+        WHEN workspace.is_default
+          THEN (SELECT count(*)::INTEGER FROM public.guest_resources)
+        ELSE private_total.resource_count
+      END
+      OR quota.content_char_count <> CASE
+        WHEN workspace.is_default THEN (
+          SELECT COALESCE(
+            sum(char_length(COALESCE(resource.content, ''))),
+            0
+          )::BIGINT
+          FROM public.guest_resources AS resource
+        )
+        ELSE private_total.content_char_count
+      END
+      OR quota.resource_count NOT BETWEEN 0 AND 1000
+      OR quota.content_char_count NOT BETWEEN 0 AND 5000000
+  ) THEN
+    RAISE EXCEPTION 'guest resource quota counters drifted from catalog data';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.workspace_guest_resources AS resource
+    JOIN public.workspaces AS workspace
+      ON workspace.id = resource.workspace_id
+    WHERE workspace.is_default
+      OR (resource.status = 'published') <> (resource.published_at IS NOT NULL)
+      OR NOT public.guest_resource_text_is_normalized_nonempty(
+        resource.title,
+        200
+      )
+      OR NOT public.guest_resource_text_is_normalized_nonempty(
+        resource.description,
+        2000
+      )
+      OR (
+        resource.content IS NOT NULL
+        AND (
+          resource.content <> btrim(resource.content)
+          OR char_length(resource.content) NOT BETWEEN 1 AND 100000
+          OR resource.content !~*
+            '^<(p|h[1-6]|ul|ol|blockquote|pre|hr)([[:space:]>])'
+          OR right(resource.content, 1) <> '>'
+        )
+      )
+      OR (
+        resource.status = 'published'
+        AND (
+          (resource.type IN ('video', 'link') AND resource.url IS NULL)
+          OR (resource.type = 'download' AND resource.file_url IS NULL)
+          OR (
+            resource.type = 'article'
+            AND NOT COALESCE(
+              public.guest_resource_content_has_meaningful_text(
+                resource.content
+              ),
+              false
+            )
+          )
+        )
+      )
+      OR (
+        resource.url IS NOT NULL
+        AND NOT public.guest_resource_http_url_is_safe(resource.url)
+      )
+      OR (
+        resource.file_url IS NOT NULL
+        AND NOT public.guest_resource_http_url_is_safe(resource.file_url)
+      )
+  ) OR EXISTS (
+    SELECT 1
+    FROM public.workspace_guest_resource_clients AS assignment
+    JOIN public.workspace_guest_resources AS resource
+      ON resource.id = assignment.resource_id
+    JOIN public.clients AS client
+      ON client.id = assignment.client_id
+    WHERE assignment.workspace_id <> resource.workspace_id
+      OR assignment.workspace_id <> client.workspace_id
+      OR resource.visibility = 'all_clients'
+  ) THEN
+    RAISE EXCEPTION 'stored workspace guest resource ownership or visibility is invalid';
+  END IF;
+
+END;
+$workspace_guest_resource_verification$;
 
 SELECT
   workspace.id,

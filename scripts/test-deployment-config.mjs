@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { validatePublicSupabaseConfig } from './validate-public-supabase-config.mjs'
 
 const dockerfile = readFileSync('Dockerfile', 'utf8')
 const dockerignore = readFileSync('.dockerignore', 'utf8')
@@ -31,6 +32,10 @@ assert.match(dockerfile, /ARG VITE_APP_URL/u)
 assert.match(dockerfile, /test -n "\$\{VITE_SUPABASE_URL\}"/u)
 assert.match(dockerfile, /test -n "\$\{VITE_SUPABASE_ANON_KEY\}"/u)
 assert.match(dockerfile, /test -n "\$\{VITE_APP_URL\}"/u)
+assert.match(dockerfile, /node scripts\/validate-public-supabase-config\.mjs/u)
+assert.match(dockerfile, /node scripts\/validate-browser-bundle\.mjs dist/u)
+assert.match(dockerfile, /COPY --chown=node:node scripts\/scan-release-secrets\.mjs/u)
+assert.match(dockerfile, /COPY --chown=node:node scripts\/validate-browser-bundle\.mjs/u)
 assert.match(dockerfile, /^USER node$/mu)
 assert.match(dockerfile, /^CMD \["npm", "start"\]$/mu)
 
@@ -45,6 +50,33 @@ assert.match(localNodeInstaller, /hmac\.compare_digest\(actual_sha256, ARCHIVE_S
 assert.match(localNodeInstaller, /tar\.extractall\(extract_dir, filter="data"\)/u)
 assert.match(localNodeRunner, /node_version.*v22\.22\.2/su)
 assert.match(localNodeRunner, /npm_version.*10\.9\.7/su)
+
+const encodeJwtPart = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+const makeSupabaseJwt = (role, ref = 'projectref') => [
+  encodeJwtPart({ alg: 'HS256', typ: 'JWT' }),
+  encodeJwtPart({ role, ref, exp: 4_102_444_800 }),
+  's'.repeat(43),
+].join('.')
+const publicUrl = 'https://projectref.supabase.co'
+
+assert.equal(validatePublicSupabaseConfig({ url: publicUrl, key: makeSupabaseJwt('anon') }), true)
+assert.equal(validatePublicSupabaseConfig({ url: publicUrl, key: `sb_publishable_${'p'.repeat(32)}` }), true)
+assert.throws(
+  () => validatePublicSupabaseConfig({ url: publicUrl, key: makeSupabaseJwt('service_role') }),
+  /legacy browser key must have the anon role/u,
+)
+assert.throws(
+  () => validatePublicSupabaseConfig({ url: publicUrl, key: makeSupabaseJwt('anon', 'anotherproject') }),
+  /belongs to a different project/u,
+)
+assert.throws(
+  () => validatePublicSupabaseConfig({ url: publicUrl, key: 'not-a-public-key' }),
+  /must be publishable or legacy anon/u,
+)
+assert.throws(
+  () => validatePublicSupabaseConfig({ url: 'http://projectref.supabase.co', key: makeSupabaseJwt('anon') }),
+  /credential-free HTTPS/u,
+)
 
 for (const ignoredPath of [
   '.git',

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Eye, LogOut, Users } from 'lucide-react'
+import { ArrowLeft, BookOpen, Eye, LogOut, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
@@ -11,6 +11,7 @@ export interface WorkspacePreviewConfig {
   viewerEmail: string
   viewerRole: 'owner' | 'admin' | 'member'
   clientsHref: string
+  guestResourcesHref: string
   exitHref: string
 }
 
@@ -26,6 +27,7 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
   const viewerEmail = preview?.viewerEmail || user?.email
   const viewerRole = preview?.viewerRole || membership?.role
   const clientsHref = preview?.clientsHref || '/app/clients'
+  const guestResourcesHref = preview?.guestResourcesHref || '/app/guest-resources'
 
   const handleSignOut = async () => {
     try {
@@ -46,7 +48,7 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
               <div className="min-w-0">
                 <p className="font-semibold">Admin preview · Read only</p>
                 <p id="admin-preview-context" className="text-sm text-muted-foreground">
-                  Viewing exactly what {viewerEmail} sees in {workspaceName}. Controls are visible but disabled; you remain signed in as {user?.email || 'a platform administrator'}.
+                  Viewing the workspace layout and data for {viewerEmail} in {workspaceName}. Mutation controls are visible but disabled; you remain signed in as {user?.email || 'a platform administrator'}.
                 </p>
               </div>
             </div>
@@ -68,6 +70,9 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
           <nav className="order-last w-full sm:order-none sm:w-auto sm:flex-1">
             <Button variant="ghost" asChild>
               <Link to={clientsHref}><Users className="mr-2 h-4 w-4" />Clients</Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link to={guestResourcesHref}><BookOpen className="mr-2 h-4 w-4" />Guest Resources</Link>
             </Button>
           </nav>
           {viewerRole && <Badge variant="outline" className="capitalize">{viewerRole}</Badge>}

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const self = path.resolve(fileURLToPath(import.meta.url))
@@ -135,7 +135,7 @@ function addBrowserEnvFindings(findings, source) {
   }
 }
 
-function findingsFor(source) {
+export function findingsFor(source) {
   const findings = new Set()
 
   const literalPatterns = [
@@ -306,5 +306,8 @@ function runRepositoryScan() {
   }
 }
 
-if (process.argv.includes('--self-test')) runSelfTests()
-else if (runSelfTests()) runRepositoryScan()
+const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : ''
+if (invokedPath === import.meta.url) {
+  if (process.argv.includes('--self-test')) runSelfTests()
+  else if (runSelfTests()) runRepositoryScan()
+}

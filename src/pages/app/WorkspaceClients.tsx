@@ -178,6 +178,7 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
         viewerEmail: previewQuery.data?.viewer.email || 'Workspace owner',
         viewerRole: previewQuery.data?.viewer.role || 'owner',
         clientsHref: `/admin/workspaces/${previewWorkspaceId}/clients`,
+        guestResourcesHref: `/admin/workspaces/${previewWorkspaceId}/guest-resources`,
         exitHref: '/admin/users',
       }
     : undefined

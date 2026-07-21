@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import DOMPurify from 'dompurify'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PortalLayout } from '@/components/portal/PortalLayout'
+import { useAuth } from '@/contexts/AuthContext'
+import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -27,8 +28,9 @@ import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react'
-import { getGuestResources, type GuestResource, type ResourceCategory } from '@/services/guestResources'
+import { getPortalGuestResources, type PortalGuestResource, type ResourceCategory } from '@/services/guestResources'
 import { openExternalUrl } from '@/lib/externalUrl'
+import { sanitizePortalResourceContent } from '@/lib/portalResourceContent'
 
 const categoryInfo = {
   preparation: {
@@ -71,15 +73,39 @@ const typeInfo = {
 }
 
 export default function PortalResources() {
+  const { isPlatformAdmin } = useAuth()
+  const { client, session, isImpersonating } = useClientPortal()
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
-  const [viewingResource, setViewingResource] = useState<GuestResource | null>(null)
+  const [viewingResource, setViewingResource] = useState<PortalGuestResource | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const platformAdminImpersonation = isImpersonating && isPlatformAdmin
+  const sessionIdentity = platformAdminImpersonation
+    ? 'platform-admin-impersonation'
+    : session
+      ? `${session.client_id}:${session.expires_at}`
+      : 'missing-session'
 
-  // Fetch resources
+  useEffect(() => {
+    setViewingResource(null)
+  }, [client?.id, sessionIdentity])
+
   const { data: resources, isLoading, error, refetch } = useQuery({
-    queryKey: ['guest-resources'],
-    queryFn: () => getGuestResources(),
+    queryKey: ['portal', client?.id || 'missing-client', 'guest-resources', sessionIdentity],
+    queryFn: () => {
+      if (!client) throw new Error('Portal client access is required.')
+      if (session && session.client_id !== client.id) {
+        throw new Error('Portal session does not match the requested client.')
+      }
+      return getPortalGuestResources({
+        clientId: client.id,
+        sessionToken: session?.session_token,
+        platformAdminImpersonation,
+      })
+    },
+    enabled: Boolean(client && (session || platformAdminImpersonation)),
+    retry: false,
+    gcTime: 0,
   })
 
   // Filter resources
@@ -97,11 +123,11 @@ export default function PortalResources() {
   const featuredResources = filteredResources.filter(r => r.featured)
   const regularResources = filteredResources.filter(r => !r.featured)
 
-  const handleViewResource = (resource: GuestResource) => {
+  const handleViewResource = (resource: PortalGuestResource) => {
     setViewingResource(resource)
   }
 
-  const handleResourceAction = (resource: GuestResource) => {
+  const handleResourceAction = (resource: PortalGuestResource) => {
     if (resource.type === 'video' && resource.url) {
       openExternalUrl(resource.url)
     } else if (resource.type === 'download' && resource.file_url) {
@@ -113,14 +139,23 @@ export default function PortalResources() {
     }
   }
 
-  const ResourceCard = ({ resource }: { resource: GuestResource }) => {
+  const ResourceCard = ({ resource }: { resource: PortalGuestResource }) => {
     const CategoryIcon = categoryInfo[resource.category].icon
     const TypeIcon = typeInfo[resource.type].icon
 
     return (
       <Card
-        className="hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
+        className="hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         onClick={() => handleResourceAction(resource)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            handleResourceAction(resource)
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`${typeInfo[resource.type].label}: ${resource.title}`}
       >
         <CardHeader>
           <div className="flex items-start justify-between gap-2">
@@ -149,7 +184,7 @@ export default function PortalResources() {
           <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              {new Date(resource.created_at).toLocaleDateString()}
+              {new Date(resource.published_at).toLocaleDateString()}
             </span>
             <span className="font-medium text-primary">
               {resource.type === 'article' ? 'Read More' :
@@ -163,14 +198,23 @@ export default function PortalResources() {
     )
   }
 
-  const ResourceListItem = ({ resource }: { resource: GuestResource }) => {
+  const ResourceListItem = ({ resource }: { resource: PortalGuestResource }) => {
     const CategoryIcon = categoryInfo[resource.category].icon
     const TypeIcon = typeInfo[resource.type].icon
 
     return (
       <Card
-        className="hover:shadow-md transition-shadow cursor-pointer"
+        className="hover:shadow-md transition-shadow cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         onClick={() => handleResourceAction(resource)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            handleResourceAction(resource)
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`${typeInfo[resource.type].label}: ${resource.title}`}
       >
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
@@ -247,6 +291,7 @@ export default function PortalResources() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
+                  aria-label="Search guest resources"
                   placeholder="Search resources..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -254,7 +299,7 @@ export default function PortalResources() {
                 />
               </div>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]" aria-label="Filter guest resources by category">
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
@@ -271,6 +316,8 @@ export default function PortalResources() {
                   variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('grid')}
+                  aria-label="Show resources in a grid"
+                  aria-pressed={viewMode === 'grid'}
                 >
                   <Grid3x3 className="h-4 w-4" />
                 </Button>
@@ -278,6 +325,8 @@ export default function PortalResources() {
                   variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                   size="sm"
                   onClick={() => setViewMode('list')}
+                  aria-label="Show resources in a list"
+                  aria-pressed={viewMode === 'list'}
                 >
                   <List className="h-4 w-4" />
                 </Button>
@@ -338,7 +387,9 @@ export default function PortalResources() {
               <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No resources found</h3>
               <p className="text-muted-foreground">
-                Try adjusting your search or filters
+                {(resources || []).length === 0
+                  ? 'No guest resources have been shared with you yet.'
+                  : 'Try adjusting your search or filters.'}
               </p>
             </CardContent>
           </Card>
@@ -370,7 +421,9 @@ export default function PortalResources() {
                     </>
                   )}
                 </div>
-                <p className="text-muted-foreground">{viewingResource?.description}</p>
+                <DialogDescription className="text-muted-foreground">
+                  {viewingResource?.description}
+                </DialogDescription>
               </div>
             </div>
           </DialogHeader>
@@ -379,7 +432,7 @@ export default function PortalResources() {
             <div
               className="prose prose-sm dark:prose-invert max-w-none [&_blockquote]:bg-blue-50 [&_blockquote]:dark:bg-blue-950 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-500 [&_blockquote]:p-4 [&_blockquote]:my-4 [&_blockquote]:rounded-r-lg [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_p]:my-3"
               dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(
+                __html: sanitizePortalResourceContent(
                   viewingResource.content
                     // Fix corrupted UTF-8 sequences
                     .replace(/â€"/g, '-')

@@ -102,7 +102,7 @@ describe('AdminWorkspaceClients', () => {
     expect(screen.getByText('Admin preview · Read only')).toBeInTheDocument()
     expect(screen.getByText('Your clients')).toBeInTheDocument()
     expect(screen.getByText('owner@acme.example')).toBeInTheDocument()
-    expect(screen.getByText(/Viewing exactly what owner@acme\.example sees/)).toBeInTheDocument()
+    expect(screen.getByText(/Viewing the workspace layout and data for owner@acme\.example/)).toBeInTheDocument()
     expect(screen.getByText(/remain signed in as admin@example\.com/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add client/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Edit Acme Client' })).toBeDisabled()

@@ -523,6 +523,58 @@ The function logs various events to `client_portal_activity_log`:
 
 ---
 
+### workspace-guest-resources
+
+Creates and manages the independent Guest Resources catalog owned by one
+private workspace.
+
+**Endpoint:** `/functions/v1/workspace-guest-resources`
+**Method:** `POST`
+**Authentication:** Supabase Auth JWT with a fresh active owner/admin
+membership. Platform administrators may use `list` for the read-only workspace
+preview but cannot mutate a tenant catalog.
+
+#### Request
+
+```json
+{
+  "action": "create",
+  "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
+  "resource": {
+    "title": "Interview checklist",
+    "description": "A checklist for recording day",
+    "content": "<p>Prepare your microphone...</p>",
+    "category": "preparation",
+    "type": "article",
+    "url": null,
+    "file_url": null,
+    "featured": true,
+    "display_order": 1,
+    "status": "published",
+    "visibility": "selected_clients",
+    "client_ids": ["123e4567-e89b-12d3-a456-426614174001"]
+  }
+}
+```
+
+Supported actions are `list`, `create`, `update`, and `delete`. `update` and
+`delete` also require `resource_id`. Create/update payloads are complete
+replacements and reject unknown fields, invalid enums, unsafe URLs, duplicate
+client IDs, and selected-client visibility without an audience.
+
+Every object and assigned client is checked against `workspace_id` inside one
+service-only transaction. Mutations append a workspace audit event. The browser
+has no direct table privileges, and template provenance is server-controlled.
+
+#### Response
+
+`list` returns `{ "resources": [...] }`. Create/update return
+`{ "success": true, "resource": {...} }`; delete returns a successful result
+without exposing another record. Management rows contain only the workspace
+resource DTO and their exact `client_ids` assignments.
+
+---
+
 ## Error Handling
 
 All functions implement comprehensive error handling with:

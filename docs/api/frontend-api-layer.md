@@ -137,7 +137,12 @@ The client portal uses Supabase Edge Functions for secure operations:
 - `validate-portal-session` - Session validation
 - `logout-portal-session` - Session termination
 - `get-client-bookings` - Protected booking data
+- `get-guest-resources` - Returns the published Guest Resources projection for one validated portal client
 - `analyze-podcast-fit` - AI analysis with caching
+
+Workspace account Guest Resources uses a separate authenticated function:
+
+- `workspace-guest-resources` - Handles workspace-scoped `list`, `create`, `update`, and `delete` actions after validating the current account and workspace role
 
 **Usage Pattern:**
 ```typescript
@@ -984,15 +989,62 @@ export async function getOrderStats(): Promise<{ totalOrders: number; paidOrders
 export async function getOrderItems(orderId: string): Promise<OrderItem[]>
 ```
 
-#### Guest Resources (`/src/services/guestResources.ts`)
-**Purpose:** Manage educational resources for podcast guests
-**Tables:** `guest_resources`, `guest_resource_views`
+#### Guest Resources
+
+**Purpose:** Manage workspace-customizable resources and project only the resources visible to an authenticated portal client.
+
+**Storage model:** Guest Resources uses the shared Supabase/PostgreSQL database. Private tenant rows are separated by `workspace_id`; workspaces do not receive separate databases. Browser code does not access `workspace_guest_resources` or `workspace_guest_resource_clients` directly.
+
+**Current routes:**
+
+| Route | Page/service path | Behavior |
+| --- | --- | --- |
+| `/app/guest-resources` | `WorkspaceGuestResources` + `/src/services/workspaceGuestResources.ts` | Workspace owners/admins create, edit, publish, archive, assign, and delete resources in their own workspace. |
+| `/admin/workspaces/:workspaceId/guest-resources` | `AdminWorkspaceGuestResources` wrapping `WorkspaceGuestResources` | Platform-admin preview of the same workspace layout and data. Mutation controls are disabled, the administrator remains in their own session, and the backend permits list only. |
+| `/portal/resources` | `PortalResources` + `getPortalGuestResources()` | Client portal projection. Private-workspace clients receive only published resources visible to that exact client; default-workspace clients retain the platform catalog. |
+| `/admin/guest-resources` | `GuestResourcesManagement` + legacy helpers in `/src/services/guestResources.ts` | Platform/default-workspace template catalog. It seeds one-time snapshots for private workspaces; later template edits do not live-sync to existing workspaces. |
+
+##### Workspace manager service (`/src/services/workspaceGuestResources.ts`)
+
+The manager service invokes the `workspace-guest-resources` Edge Function. It canonicalizes workspace/resource/client UUIDs, validates returned `workspace_id` values, and validates resource content and URL fields before accepting a response.
 
 ```typescript
 export type ResourceType = 'article' | 'video' | 'download' | 'link'
 export type ResourceCategory = 'preparation' | 'technical_setup' | 'best_practices' | 'promotion' | 'examples' | 'templates'
+export type WorkspaceResourceStatus = 'draft' | 'published' | 'archived'
+export type WorkspaceResourceVisibility = 'all_clients' | 'selected_clients'
 
-export interface GuestResource {
+export interface WorkspaceGuestResource {
+  id: string
+  workspace_id: string
+  title: string
+  description: string
+  content: string | null
+  category: ResourceCategory
+  type: ResourceType
+  url: string | null
+  file_url: string | null
+  featured: boolean
+  display_order: number
+  status: WorkspaceResourceStatus
+  visibility: WorkspaceResourceVisibility
+  client_ids: string[]
+}
+
+export async function listWorkspaceGuestResources(workspaceId: string): Promise<WorkspaceGuestResource[]>
+export async function createWorkspaceGuestResource(workspaceId: string, input: WorkspaceGuestResourceInput): Promise<WorkspaceGuestResource>
+export async function updateWorkspaceGuestResource(workspaceId: string, resourceId: string, input: WorkspaceGuestResourceInput): Promise<WorkspaceGuestResource>
+export async function deleteWorkspaceGuestResource(workspaceId: string, resourceId: string): Promise<void>
+```
+
+Workspace content supports safe rich-text articles plus video, download, and external-link resource types. Download resources store an external `file_url`; the current feature does not upload, organize, or host files. Visibility is either `all_clients` or `selected_clients`, with at most 500 client IDs in a mutation payload. Published resources require their usable target: meaningful article content, `url` for video/link, or `file_url` for download.
+
+##### Portal service (`/src/services/guestResources.ts`)
+
+`getPortalGuestResources()` invokes `get-guest-resources` with the requested client ID and the current opaque portal session token. Explicit platform-admin client impersonation is the only supported tokenless branch. The service retrieves pages of 100 up to the 1,000-resource workspace limit and rejects malformed responses or responses containing tenant-only fields.
+
+```typescript
+export interface PortalGuestResource {
   id: string
   title: string
   description: string
@@ -1003,17 +1055,20 @@ export interface GuestResource {
   file_url: string | null
   featured: boolean
   display_order: number
+  published_at: string
+  updated_at: string
 }
 
-export async function getGuestResources(options?: { category?: ResourceCategory; featured?: boolean }): Promise<GuestResource[]>
-export async function getGuestResourceById(resourceId: string): Promise<GuestResource>
-export async function createGuestResource(input: { ... }): Promise<GuestResource>
-export async function updateGuestResource(resourceId: string, updates: { ... }): Promise<GuestResource>
-export async function deleteGuestResource(resourceId: string): Promise<void>
-export async function trackResourceView(resourceId: string, clientId: string): Promise<ResourceView | null>
-export async function getClientResourceViews(clientId: string): Promise<any[]>
-export async function getResourceViewCount(resourceId: string): Promise<number>
+export async function getPortalGuestResources(request: {
+  clientId: string
+  sessionToken?: string
+  platformAdminImpersonation?: boolean
+}): Promise<PortalGuestResource[]>
 ```
+
+The Edge Function hashes and validates the portal session, then calls `portal_guest_resources_for_client_v1`. That service-only RPC derives `workspace_id` from the client and applies workspace, publication, and all-client/selected-client visibility filters. The portal response intentionally omits `workspace_id`, `status`, `visibility`, `client_ids`, `source_template_id`, and actor metadata.
+
+Legacy platform-catalog CRUD and `guest_resource_views` helpers remain in `guestResources.ts`, but the current workspace manager and `/portal/resources` route do not provide Guest Resources analytics, SEO tools, or a file manager.
 
 #### Outreach Messages (`/src/services/outreachMessages.ts`)
 **Purpose:** Manage podcast outreach emails
@@ -1514,11 +1569,15 @@ if (!data.success) {
 - Row-level security policies in Supabase
 - Client data access restricted by `client_id`
 - Admin functions require admin session validation
+- Workspace Guest Resources operations require an authenticated account, a fresh credential epoch, and an owner/admin membership in the requested `workspace_id`
+- Platform administrators can list a private workspace's Guest Resources for the read-only preview but cannot mutate through that preview
 
 ### 3. Data Protection
 - Sensitive operations use Edge Functions
 - Opaque portal tokens stored in tab-scoped `sessionStorage`, with fixed-expiry
   checks and a tested in-memory fallback when browser storage is denied
+- Guest Resources portal reads revalidate the hashed portal session in the service-only database RPC and derive workspace ownership from the client row
+- Client-facing Guest Resources responses exclude workspace, assignment, provenance, status, and actor fields
 - Admin emails cached with TTL to reduce database load
 
 ## Monitoring and Observability

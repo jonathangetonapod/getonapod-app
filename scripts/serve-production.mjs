@@ -1,16 +1,53 @@
 import { createServer } from 'node:http'
+import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import serveHandler from 'serve-handler'
+import { validateBrowserBundle } from './validate-browser-bundle.mjs'
 
 const MODULE_PATH = fileURLToPath(import.meta.url)
 const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', 'dist')
 const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|resources\/?$|blog(?:\/[^/]+)?\/?$|course\/?$|what-to-expect\/?$)/
 const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
+const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
 
 export function isPrivateApplicationPath(pathname) {
   return !PUBLIC_FILE_PATTERN.test(pathname) && !INDEXABLE_ROUTE_PATTERN.test(pathname)
+}
+
+export function isStaticFileRequest(pathname) {
+  return pathname === '/assets'
+    || pathname.startsWith('/assets/')
+    || PUBLIC_FILE_PATTERN.test(pathname)
+    || FILE_LIKE_PATH_PATTERN.test(pathname)
+}
+
+async function isRegularPublicFile(publicDirectory, pathname) {
+  let decodedPath
+  try {
+    decodedPath = decodeURIComponent(pathname).replaceAll('\\', '/')
+  } catch {
+    return false
+  }
+
+  const candidate = path.resolve(publicDirectory, `.${decodedPath}`)
+  const relative = path.relative(publicDirectory, candidate)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return false
+
+  try {
+    return (await lstat(candidate)).isFile()
+  } catch {
+    return false
+  }
+}
+
+function sendMissingStaticFile(response) {
+  response.statusCode = 404
+  response.setHeader('Cache-Control', 'no-store')
+  response.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  response.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive')
+  response.end('Not Found')
 }
 
 function setApplicationHeaders(request, response) {
@@ -33,6 +70,20 @@ export function createProductionServer({ publicDirectory = DEFAULT_PUBLIC_DIRECT
     setApplicationHeaders(request, response)
 
     try {
+      const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+      if (isStaticFileRequest(pathname)) {
+        if (!await isRegularPublicFile(publicDirectory, pathname)) {
+          sendMissingStaticFile(response)
+          return
+        }
+        await serveHandler(request, response, {
+          public: publicDirectory,
+          cleanUrls: false,
+          directoryListing: false,
+        })
+        return
+      }
+
       await serveHandler(request, response, {
         public: publicDirectory,
         cleanUrls: false,
@@ -59,6 +110,7 @@ function parsePort(value) {
 }
 
 if (path.resolve(process.argv[1] ?? '') === MODULE_PATH) {
+  validateBrowserBundle(DEFAULT_PUBLIC_DIRECTORY)
   const port = parsePort(process.env.PORT ?? '3000')
   const server = createProductionServer()
 

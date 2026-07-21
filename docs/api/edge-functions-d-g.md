@@ -1709,24 +1709,32 @@ curl -X POST https://your-project.supabase.co/functions/v1/get-customer-analytic
 
 ### get-guest-resources
 
-Retrieves guest resources with filtering by category, type, and featured status, with pagination support.
+Returns the published guest resources visible to one authenticated client
+portal. The server validates the client's opaque portal session, derives the
+client's active workspace, and applies all-client or exact selected-client
+visibility before pagination. Omitting the portal token is allowed only for an
+authenticated platform administrator using explicit client impersonation.
 
 **Endpoint:** `/functions/v1/get-guest-resources`
 **Method:** `POST`
-**Authentication:** Service Role Key required via environment variables (no caller auth required)
+**Authentication:** Exact client portal session, or platform-administrator JWT
 
 #### Request Body
 ```json
 {
+  "clientId": "123e4567-e89b-12d3-a456-426614174000",
+  "sessionToken": "123e4567-e89b-12d3-a456-426614174001",
   "category": "preparation",           // Optional: Filter by resource category
-  "type": "guide",                     // Optional: Filter by resource type
+  "type": "article",                   // Optional: article, video, download, or link
   "featured_only": false,              // Optional: Only return featured resources (default: false)
   "limit": 50,                         // Optional: Max results (default: 50)
   "offset": 0                          // Optional: Offset for pagination (default: 0)
 }
 ```
 
-All parameters are optional. If no body is provided, returns all resources.
+`clientId` is always required. `sessionToken` is required for a real portal
+client and must match that client. A platform administrator may omit it only
+while using the explicit impersonation path.
 
 #### Response Format
 ```json
@@ -1739,40 +1747,49 @@ All parameters are optional. If no body is provided, returns all resources.
       "description": "A comprehensive guide to audio setup and presentation",
       "content": "<h2>Pre-Interview Setup</h2>...",
       "category": "technical_setup",
-      "type": "guide",
+      "type": "article",
       "url": "https://example.com/resource",
       "file_url": "https://storage.example.com/file.pdf",
       "featured": true,
       "display_order": 1,
-      "created_at": "2024-01-10T10:00:00Z",
+      "published_at": "2024-01-10T10:00:00Z",
       "updated_at": "2024-01-15T12:00:00Z"
     }
   ],
-  "total": 12
+  "total": 12,
+  "limit": 50,
+  "offset": 0
 }
 ```
 
+The portal projection deliberately excludes `workspace_id`, lifecycle state,
+visibility rules, template provenance, actor IDs, and sibling client IDs.
+
 #### Error Responses
 ```json
-// 500 Internal Server Error
+// 401 Unauthorized
 {
-  "success": false,
-  "error": "Internal server error"
+  "error": "Session expired or invalid",
+  "code": "INVALID_PORTAL_SESSION"
 }
 ```
 
 #### Features
 - **Category Filtering**: Filter by resource category (preparation, technical_setup, best_practices, promotion, examples, templates)
-- **Type Filtering**: Filter by resource type (guide, checklist, template, etc.)
+- **Type Filtering**: Filter by article, video, download, or link
 - **Featured Filter**: Optionally return only featured resources
 - **Pagination**: Supports limit/offset pagination with total count
-- **Sorting**: Ordered by `display_order` ascending, then `created_at` descending
+- **Isolation**: Workspace and audience are derived server-side from the validated client
+- **Sorting**: Featured resources first, then `display_order`, title, and stable resource ID
 
 #### Example Request
 ```bash
 curl -X POST https://your-project.supabase.co/functions/v1/get-guest-resources \
+  -H "apikey: YOUR_PUBLIC_ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "clientId": "123e4567-e89b-12d3-a456-426614174000",
+    "sessionToken": "123e4567-e89b-12d3-a456-426614174001",
     "category": "preparation",
     "featured_only": true,
     "limit": 10

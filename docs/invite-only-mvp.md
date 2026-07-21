@@ -2,29 +2,26 @@
 
 ## Current deployment state
 
-Pull request #1 was merged into `main` on 2026-07-21 at commit
-`3f608997522a76207ace8ebf355daf0cf3642865`. The production Railway integration
-automatically deployed the new frontend. The coordinated production Supabase
-cutover was completed separately on 2026-07-21 from reviewed source head
-`b2655c36f46042d4ace56236fbd373272205e207`; later audit/documentation fixes
-belong to the follow-up pull request.
+The historical invite-only cutover plus the manual-account/Clients overlay are
+deployed. The administrator can invite users or create one-time-password
+accounts, and the workspace selector opens the read-only Clients experience.
+The invitation flow has since been observed working, although delivery
+reliability and full two-account acceptance still require evidence.
 
-All six migrations are applied and ledger-reconciled; the exact catalog
-verifier passes; production has the exact 87-function manifest and JWT policy;
-and `account-context` CORS is healthy. The six approved shutdown targets are
-absent. Stripe and the separate video service are fail-closed tombstones with
-their obsolete service credentials removed.
+The workspace-customizable Guest Resources backend increment completed on
+2026-07-22. Production now records eight coordinated migrations and exactly 90
+active Edge Functions: 75 JWT-verified and 15 reviewed public/custom-auth
+handlers. `get-guest-resources` v14 (`verify_jwt=false`) and
+`workspace-guest-resources` v1 (`verify_jwt=true`) are active. The frontend
+routes remain local; they have not yet been pushed to `main` or deployed by
+Railway.
 
-The backend is safe to retain. Real invitations remain disabled by operator
-policy until custom SMTP, exposed-credential rotation, signed-in administrator
-smoke testing, and one complete invitation/two-account acceptance flow pass.
-See [`production-cutover-2026-07-21.md`](production-cutover-2026-07-21.md) for
-the sanitized evidence and open gates.
-
-The pending manual-account and read-only administrator workspace-view overlay
-is specified separately in [`manual-workspace-accounts.md`](manual-workspace-accounts.md).
-It adds a seventh forward migration and must not be treated as part of the
-historical six-migration production cutover until its own release gates pass.
+The privileged browser key was replaced by the project publishable key,
+Cloudflare was purged, and the recursive live-asset credential scan passed.
+The exposed legacy service-role key remains compromised, but consumer migration,
+exposure-window review, and safe rotation are separate incident work. See
+[`production-cutover-2026-07-21.md`](production-cutover-2026-07-21.md) for the
+historical cutover and the sanitized 2026-07-22 increment evidence.
 
 ## Release objective
 
@@ -116,6 +113,15 @@ service-only `workspace_client_operation` RPC. That transaction:
 4. binds every row to the verified workspace; and
 5. writes an append-only workspace audit event for mutations.
 
+The deployed Guest Resources backend uses the same one-database tenancy model.
+Private copies live in forced-RLS `workspace_guest_resources`, selected-client
+audiences use same-workspace composite foreign keys, and all management goes
+through the audited `workspace-guest-resources` transaction. Private workspaces
+receive independent snapshots of the global GOAP catalog; later global edits
+do not overwrite tenant customization. Platform administrators may list the
+same private catalog for read-only preview, but the database rejects their
+mutations.
+
 Direct browser policies on the full `clients` and `bookings` base rows are
 platform-admin-only. Workspace users cannot use `.select('*')` to recover
 portal, dashboard, outreach, Google, or other internal fields. A client trigger
@@ -142,6 +148,16 @@ Password login:
 - locks the active workspace, client, and credential before issuing a session;
 - stores only `sha256$...` session verifiers; and
 - returns a minimal client DTO with `Cache-Control: no-store`.
+
+`get-guest-resources` has gateway JWT verification disabled only because a
+client portal uses an opaque session bearer rather than Supabase Auth. The
+handler and transactional RPC still require either the exact unexpired hashed
+session for the requested client or a fresh platform-admin JWT. They derive the
+active workspace from that client and return only published all-client or
+explicitly assigned resources through a narrow DTO; no caller supplies a
+workspace ID. Canonical article HTML is sanitized on display, published
+articles require visible text, and action resources require safe
+credential-free HTTP(S) targets.
 
 Migration cutover deletes raw legacy sessions and legacy/plaintext password
 credentials, disables every affected portal, and requires an operator to set a
@@ -211,11 +227,9 @@ an external integration.
 8. Review Sentry, hosting, proxy, and support logs for captured invite, recovery,
    or capability URLs. Revoke affected sessions/links and purge retained
    telemetry under the incident process.
-9. Apply the exact current six-version release unit to a fresh staging baseline
-   or restore the pre-MVP backup first. Production records those exact versions;
-   an older draft is not an in-place upgrade path.
-10. Protect `main`: require the no-secret static validation check, a reviewer,
-    an up-to-date branch/merge queue, and block direct and force pushes.
+9. For a fresh staging baseline, apply the six historical cutover migrations,
+   the manual-account seventh migration, and the Guest Resources eighth
+   migration in order. An older draft is not an in-place upgrade path.
 
 ## Deployment order
 
@@ -292,6 +306,23 @@ endpoints unavailable, investigate against the staging backup, and continue
 only after the schema is reconciled. Never put an old portal handler back in
 service to work around a failed cutover.
 
+The preceding sequence documents the historical account/portal containment
+cutover. The 2026-07-22 Guest Resources increment did not replay it. A private,
+checksummed backup and inventory were captured; only
+`20260721000200_workspace_guest_resources.sql` was applied as migration 8. The
+committed verifier passed over `verify-full` TLS with the Supabase Root 2021 CA
+inside a serializable read-only transaction; its SHA-256 is
+`53f59f3593eb3753729d37422fc3e6965ef3a1e38abdce73cba51bc509704137`.
+Only `get-guest-resources` v14 and `workspace-guest-resources` v1 were deployed.
+OPTIONS/CORS and fail-closed probes passed, as did the default-client narrow
+portal RPC projection. The reviewed frontend remains pending for the approved
+direct-`main` push and Railway deployment.
+
+The rollback behavior runner is restricted to a confirmed non-production
+local/staging database and ends with `ROLLBACK`. The staging catalog runner is
+also non-production-only. Static validation parses and shell-checks these
+artifacts but does not execute either one.
+
 ## Evidence runners
 
 Use the checked-in runners only from a preserved, reviewed clean commit. The
@@ -308,8 +339,10 @@ publishable key, one platform administrator, Alice, Bob, a unique run ID, and
 the evidence path. Alice and Bob must be disposable private-workspace accounts
 whose client lists are empty before the run. It never loads a dotenv file or
 accepts a service-role key.
-It creates tagged synthetic clients, tests real and modified cross-tenant UUIDs
-over Edge and REST, probes all manifest tombstones and excluded functions,
+It creates tagged synthetic clients and one selected-client resource, tests
+real and modified cross-tenant IDs over Clients/Guest Resources Edge and REST,
+checks read-only admin resource preview plus exact client-portal session
+visibility, probes all manifest tombstones and excluded functions,
 checks the Resend signature/body limit, exercises suspension/portal revocation,
 and performs owner cleanup in `finally`. Exit `2` means the automated HTTP
 subset passed while the checked-in external release-gate allowlist remains
@@ -324,7 +357,7 @@ Administrator credentials are required, and any unexpected incomplete record
 converts the run to a failure. Exact variable names and a safe command template
 are in the root README.
 
-Run `scripts/staging-database-verifier.sh` after the six migrations. Provide
+Run `scripts/staging-database-verifier.sh` after all eight migrations. Provide
 the connection only through `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `PGPASSWORD`, and `PGSSLMODE=verify-full`, plus
 `STAGING_DB_EXPECTED_PGHOST`, mandatory
@@ -408,6 +441,16 @@ never use production credentials.
 | Alice updates/deletes Bob's client UUID | No row changes; no false success |
 | Alice queries full `clients`, `bookings`, credentials, sessions, or audit tables | Denied |
 | Alice attempts to write workspace/dashboard/portal/outreach/internal fields | Rejected |
+| Alice creates a published selected-client article | Canonical meaningful HTML is stored; only Alice's chosen client can see it; an audit event exists |
+| Alice lists resources and Bob lists resources | Each private workspace returns only its independent snapshots/custom records |
+| Alice supplies Bob's workspace, resource, or client assignment ID | `403`/`404`/validation denial; no resource or assignment changes |
+| Administrator opens Alice's Guest Resources workspace preview | Same list/details are visible; every mutation is rejected server-side |
+| Draft/archived or unassigned selected-client resource is requested through the portal | Not returned |
+| Published article contains only empty/NBSP/zero-width markup | Rejected by browser, Edge, RPC, and table constraint |
+| Published video/link/download has a missing, malformed, or credential-bearing target | Rejected before portal exposure |
+| Catalog exceeds 1,000 resources, 5,000,000 content characters, or 500 assignments on one resource | Atomic quota/validation denial; no partial mutation |
+| Client is moved/deleted or its portal identity changes | Portal credentials/sessions/tokens and resource assignments are revoked transactionally |
+| Default-workspace client loads resources | Receives the global GOAP catalog; private-workspace clients receive only their workspace catalog |
 | Alice, Bob, anonymous, and administrator sessions exercise the live Storage API with staging-only fixtures | Tenant/anonymous insert, update, and delete are denied; any existing administrator write path remains administrator-only; private reads remain denied and intended public reads are unchanged |
 | Administrator views the global client list/detail | Workspace name is visible for every record |
 | Administrator suspends Alice | Workspace APIs are denied and portal sessions/tokens are deleted immediately; Auth is banned after successful provider reconciliation, or the claim remains for review |
@@ -452,11 +495,12 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` verifies the exact manifest/release shape; parses all six
-migrations and the verifier with a PostgreSQL grammar parser; checks app and
+`check:static` verifies the exact manifest/release shape; parses all eight
+migrations and both SQL verification files with a PostgreSQL grammar parser; checks app and
 staging TypeScript; enforces zero warnings on the MVP lint scope; tests
 sensitive URLs, telemetry, session storage, retired helpers, and staging-path
-containment; semantically checks all 89 Edge entrypoints with Deno 2.5.2 and a
+containment; semantically checks all 92 Edge entrypoints/105 Edge TypeScript
+files with Deno 2.5.2 and a
 frozen `deno.lock`; checks the database-runner shell; performs an isolated
 static build; clean-installs, builds, and audits the nested MCP server; exercises
 the dependency-free retired video tombstone with malformed/oversized requests;
@@ -469,14 +513,20 @@ workflow pins Node 22.22.2, npm 10.9.7, Deno 2.5.2, and its Actions by commit,
 then repeats the gates for pull requests and merge queues. Full-repository
 ESLint retains unrelated legacy debt and is not the release check.
 
-Static checks alone do not prove RLS. The production catalog verifier has
-passed; the two-account browser/REST/Edge/storage matrix remains an onboarding
-acceptance gate.
+Static checks alone do not prove RLS. They grammar-parse but do not execute the
+rollback behavior suite or staging catalog verifier, and they do not run the
+read-only production browser asset scan. The historical production catalog
+verifier passed before this incremental slice. The new Guest Resources
+target-bound production verifier and live browser scan also passed. Signed-in
+private-workspace, administrator-preview, and private-client portal acceptance
+remain unavailable until a controlled private workspace is provisioned.
 
 ## Accepted limitations and follow-up
 
-- Only client CRUD is tenant-ready; every other legacy module needs an explicit
-  ownership model and cross-account tests before tenant exposure.
+- The production frontend currently exposes Clients only. The reviewed local
+  frontend adds Guest Resources and its backend is active; every other legacy
+  module needs an explicit ownership model and cross-account tests before
+  tenant exposure.
 - Workspace users cannot invite teammates or self-manage workspace/account
   settings.
 - There is no workspace forgot-password UI; support uses a controlled Supabase
@@ -510,7 +560,14 @@ acceptance gate.
 
 ## Known credential incident
 
-The current-tree scan passes, but repository-history review found
+Browser containment completed on 2026-07-22. Railway now uses the project
+publishable key, the public bundle was rebuilt, Cloudflare was purged, and
+`npm run verify:production-browser` passed over the live referenced asset
+graph. The formerly exposed service-role value remains compromised even though
+it is no longer shipped to browsers. Audit the exposure window and migrate all
+retained server/Edge/external consumers before disabling or rotating it.
+
+The current-tree scan passes, but repository-history review also found
 non-placeholder Podscan and BridgeKit credentials. OpenAI, Podscan, Jotform,
 and Clay webhook credentials were also shared through chat. Do not reuse them.
 Revoke/rotate first, then review provider, Supabase, CI, hosting, Sentry, and
@@ -521,21 +578,21 @@ No history rewrite has been performed. Any cleanup must be coordinated across
 GitHub, open branches/PRs, forks/clones, caches, artifacts, and third-party
 logs; a rewrite never substitutes for credential rotation.
 
-## Merge gate
+## Direct-main frontend gate
 
-The backend cutover is complete. Merge the follow-up branch into `main` only
-after:
+The account/Clients and Guest Resources backend cutovers are complete. The
+repository owner selected a direct-`main` workflow for this slice; no release
+branch or pull request is required. Before the remaining push, review the final
+verifier/documentation delta and run the complete static suite against the
+exact feature source. Then push the exact reviewed commit directly to
+`main`, allow Railway to deploy it, and repeat the live asset and route/header
+checks.
 
-- this guide, the README, and the sanitized cutover record are committed and
-  pull request #2 describes the actual release;
-- the final head receives a fresh green GitHub check and any synthetic merge is
-  reviewed;
-- a signed-in administrator production smoke test confirms dashboard, users,
-  global clients, legacy records, and logout;
-- security, frontend/workflow, and operations reviewers accept the final diff;
-  and
-- `main` has required review/check protection, or the repository owner
-  explicitly records acceptance of the unprotected-branch risk.
+Production currently has no private workspace. Provision one controlled
+private workspace after the frontend deploy, then complete signed-in workspace
+customization, read-only administrator preview, selected-client portal
+visibility, and malformed/stale-access acceptance. Add a second disposable
+workspace for the full cross-tenant denial matrix.
 
 Merging source is separate from opening onboarding. Do not invite real users
 until custom SMTP, exposed-credential rotation, a complete invitation/password

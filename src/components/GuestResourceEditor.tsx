@@ -2,12 +2,13 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import LinkExtension from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import { useToast } from '@/hooks/use-toast'
 import {
   Bold, Italic, Strikethrough, List, ListOrdered,
@@ -21,9 +22,26 @@ interface GuestResourceEditorProps {
   category?: string
   placeholder?: string
   className?: string
+  allowAI?: boolean
+  allowImages?: boolean
 }
 
-export function GuestResourceEditor({ content, onChange, category, placeholder, className }: GuestResourceEditorProps) {
+interface ToolbarButtonProps {
+  onClick: () => void
+  active?: boolean
+  children: ReactNode
+  title: string
+}
+
+export function GuestResourceEditor({
+  content,
+  onChange,
+  category,
+  placeholder,
+  className,
+  allowAI = true,
+  allowImages = false,
+}: GuestResourceEditorProps) {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -40,11 +58,13 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
           class: 'text-blue-600 underline cursor-pointer',
         },
       }),
-      Image.configure({
-        HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg my-4',
-        },
-      }),
+      ...(allowImages
+        ? [Image.configure({
+            HTMLAttributes: {
+              class: 'max-w-full h-auto rounded-lg my-4',
+            },
+          })]
+        : []),
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -52,6 +72,7 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
     },
     editorProps: {
       attributes: {
+        'aria-label': 'Resource content',
         class: 'prose prose-sm sm:prose-base max-w-none focus:outline-none min-h-[400px] p-4 [&_blockquote]:bg-blue-50 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-500 [&_blockquote]:p-4 [&_blockquote]:my-4 [&_blockquote]:rounded-r-lg [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1',
       },
     },
@@ -68,7 +89,7 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
     return null
   }
 
-  const ToolbarButton = ({ onClick, active, children, title }: any) => (
+  const ToolbarButton = ({ onClick, active = false, children, title }: ToolbarButtonProps) => (
     <button
       type="button"
       onClick={onClick}
@@ -119,7 +140,7 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
           .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
           .replace(/[\u2013\u2014\u2015]/g, '-')
           .replace(/\u2026/g, '...')
-          .replace(/[\uFFFC\uFFFD\u200B\u200C\u200D\uFEFF]/g, '')
+          .replace(/\uFFFC|\uFFFD|\u200B|\u200C|\u200D|\uFEFF/g, '')
           .replace(/[\u0080-\u009F]/g, '')
         editor.commands.setContent(cleanContent)
 
@@ -154,13 +175,23 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
       editor.chain().focus().extendMarkRange('link').unsetLink().run()
       return
     }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+    const safeUrl = safeExternalUrl(url.trim())
+    if (!safeUrl) {
+      toast({
+        title: 'Invalid link',
+        description: 'Links must use HTTP or HTTPS and cannot contain credentials.',
+        variant: 'destructive',
+      })
+      return
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: safeUrl }).run()
   }
 
   const addImage = () => {
     const url = window.prompt('Image URL')
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run()
+    const safeUrl = url ? safeExternalUrl(url.trim()) : null
+    if (safeUrl) {
+      editor.chain().focus().setImage({ src: safeUrl }).run()
     }
   }
 
@@ -170,18 +201,21 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
     <div className={`border rounded-lg overflow-hidden ${className}`}>
       {/* Toolbar */}
       <div className="bg-gray-50 border-b p-2 flex items-center gap-1 flex-wrap">
-        <Button
-          type="button"
-          variant="default"
-          size="sm"
-          onClick={() => setIsAIModalOpen(true)}
-          className="mr-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-        >
-          <Sparkles className="w-4 h-4 mr-1" />
-          Generate with AI
-        </Button>
-
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        {allowAI && (
+          <>
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => setIsAIModalOpen(true)}
+              className="mr-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+            >
+              <Sparkles className="w-4 h-4 mr-1" />
+              Generate with AI
+            </Button>
+            <div className="w-px h-6 bg-gray-300 mx-1" />
+          </>
+        )}
 
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -265,9 +299,11 @@ export function GuestResourceEditor({ content, onChange, category, placeholder, 
           <LinkIcon className="w-4 h-4" />
         </ToolbarButton>
 
-        <ToolbarButton onClick={addImage} title="Add Image">
-          <ImageIcon className="w-4 h-4" />
-        </ToolbarButton>
+        {allowImages && (
+          <ToolbarButton onClick={addImage} title="Add Image">
+            <ImageIcon className="w-4 h-4" />
+          </ToolbarButton>
+        )}
 
         <div className="w-px h-6 bg-gray-300 mx-1" />
 

@@ -23,7 +23,9 @@ ARG VITE_APP_VERSION=""
 RUN test -n "${VITE_SUPABASE_URL}" \
   && test -n "${VITE_SUPABASE_ANON_KEY}" \
   && test -n "${VITE_APP_URL}" \
-  && npm run build
+  && node scripts/validate-public-supabase-config.mjs \
+  && npm run build \
+  && node scripts/validate-browser-bundle.mjs dist
 
 FROM node:22.22.2-alpine AS runtime
 
@@ -38,6 +40,8 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force
 
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node scripts/scan-release-secrets.mjs ./scripts/scan-release-secrets.mjs
+COPY --chown=node:node scripts/validate-browser-bundle.mjs ./scripts/validate-browser-bundle.mjs
 COPY --chown=node:node scripts/serve-production.mjs ./scripts/serve-production.mjs
 
 USER node

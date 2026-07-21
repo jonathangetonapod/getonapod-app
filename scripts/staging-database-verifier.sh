@@ -9,6 +9,7 @@ readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 readonly VERIFIER='supabase/tests/20260720_invite_only_workspace_verification.sql'
 readonly -a RELEASE_INPUTS=(
   'docs/invite-only-edge-manifest.json'
+  'scripts/run-workspace-guest-resources-behavior.sh'
   'scripts/staging-database-verifier.sh'
   'supabase/migrations/20260720000100_invite_only_workspace_core.sql'
   'supabase/migrations/20260720000200_invite_only_workspace_rls.sql'
@@ -17,6 +18,8 @@ readonly -a RELEASE_INPUTS=(
   'supabase/migrations/20260720000500_client_prospect_link_normalization.sql'
   'supabase/migrations/20260720000600_trigger_function_privileges.sql'
   'supabase/migrations/20260721000100_manual_workspace_accounts.sql'
+  'supabase/migrations/20260721000200_workspace_guest_resources.sql'
+  'supabase/tests/20260721_workspace_guest_resources_behavior.sql'
   "${VERIFIER}"
 )
 readonly -a REQUIRED_ENV=(

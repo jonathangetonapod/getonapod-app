@@ -44,11 +44,13 @@ try {
     '/admin/clients',
     '/admin/workspace-users',
     '/admin/workspaces/11111111-1111-4111-8111-111111111111/clients',
+    '/admin/workspaces/11111111-1111-4111-8111-111111111111/guest-resources',
     '/app/clients',
+    '/app/guest-resources',
     '/change-password',
     '/portal/dashboard',
+    '/portal/resources',
     '/unknown-route',
-    '/unknown.js',
   ]
 
   for (const route of privateRoutes) {
@@ -68,15 +70,32 @@ try {
     if (route === '/') indexHtml = await response.text()
   }
 
-  const assetPath = indexHtml.match(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/u)?.[1]
-  assert.ok(assetPath, 'built index must reference a hashed asset')
+  const assetPath = indexHtml.match(/src="(\/assets\/[^"]+\.js)"/u)?.[1]
+  assert.ok(assetPath, 'built index must reference a hashed JavaScript asset')
   const asset = await fetch(`${origin}${assetPath}`)
   assert.equal(asset.status, 200, assetPath)
   assertSecurityHeaders(asset, assetPath)
   assert.equal(asset.headers.get('x-robots-tag'), null, assetPath)
-  assert.match(asset.headers.get('content-type') ?? '', /(?:javascript|text\/css)/u, assetPath)
+  assert.match(asset.headers.get('content-type') ?? '', /javascript/u, assetPath)
 
-  process.stdout.write('npm start production route, asset, and security-header checks passed\n')
+  const missingStaticFiles = [
+    '/assets/Node.js',
+    '/assets/missing.js',
+    '/assets/nested/missing.js',
+    '/favicon-missing.svg',
+    '/unknown.js',
+  ]
+  for (const route of missingStaticFiles) {
+    const response = await fetch(`${origin}${route}`)
+    assert.equal(response.status, 404, route)
+    assertSecurityHeaders(response, route)
+    assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive', route)
+    assert.equal(response.headers.get('cache-control'), 'no-store', route)
+    assert.match(response.headers.get('content-type') ?? '', /^text\/plain\b/u, route)
+    assert.equal(await response.text(), 'Not Found', route)
+  }
+
+  process.stdout.write('npm start production route, asset, missing-file, and security-header checks passed\n')
 } catch (error) {
   if (output) process.stderr.write(`production server output:\n${output}\n`)
   throw error

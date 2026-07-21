@@ -1,7 +1,14 @@
 # Database Schema Documentation
 
 ## Overview
-This document describes the complete database schema for the authority-built podcast placement platform. The database is built on Supabase (PostgreSQL) with the **pgvector** extension enabled for vector similarity search. It includes 37 tables spanning client management, podcast discovery, booking systems, e-commerce, blog content, outreach automation, AI-powered podcast analysis, and analytics.
+
+This document describes the principal database structures for the authority-built podcast placement platform. The database is built on Supabase (PostgreSQL) with the **pgvector** extension enabled for vector similarity search. It spans client management, podcast discovery, booking systems, e-commerce, blog content, outreach automation, AI-powered podcast analysis, and analytics.
+
+### Shared-database workspace model
+
+GOAP uses one shared PostgreSQL database; it does **not** create a separate database for each user or workspace. Workspace-enabled records carry a `workspace_id` that references `public.workspaces`. Database constraints, service-only functions, and workspace-aware application services keep one workspace's records separate from another's.
+
+Guest Resources follows this model explicitly. Private-workspace resources live in `workspace_guest_resources`, selected-client assignments include the same `workspace_id`, and composite foreign keys prevent an assignment from connecting a resource to a client in another workspace. The legacy `guest_resources` catalog remains the default-workspace/platform template source.
 
 ### Extensions
 - **pgvector** (`vector`) — Enables vector similarity search for semantic podcast matching using OpenAI embeddings
@@ -14,6 +21,7 @@ This document describes the complete database schema for the authority-built pod
 ```sql
 public.clients (
   id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
   name TEXT NOT NULL,
   email TEXT,
   linkedin_url TEXT,
@@ -858,21 +866,22 @@ public.sync_history (
 
 ## Guest Resources
 
-### 32. Guest Resources Table
-**Purpose**: Educational content, guides, and resources for podcast guests
+### 32. Platform Guest Resources Table
+
+**Purpose**: Default-workspace resource catalog and seed templates for private workspaces
 
 ```sql
 public.guest_resources (
   id UUID PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
-  content TEXT, -- Markdown content for articles
+  content TEXT, -- Canonical safe HTML for articles
   category resource_category NOT NULL,
   type resource_type NOT NULL,
 
   -- Type-specific fields
-  url TEXT, -- For videos (YouTube/Vimeo) or external links
-  file_url TEXT, -- For downloadable PDFs/files
+  url TEXT, -- Safe HTTP(S) URL for videos or external links
+  file_url TEXT, -- Safe HTTP(S) URL for downloadable content
 
   -- Metadata
   featured BOOLEAN DEFAULT false,
@@ -883,12 +892,17 @@ public.guest_resources (
 )
 ```
 
+The workspace migration normalizes and validates this catalog before using it as a template source. Existing private workspaces receive a one-time snapshot during migration, and a new private workspace receives a snapshot when it is created. Later edits to the platform catalog do not live-sync into existing workspace copies.
+
+`file_url` stores a URL only. This schema does not provide a Guest Resources upload or file-management subsystem.
+
 **Custom Types**:
 - `resource_type`: `'article'`, `'video'`, `'download'`, `'link'`
 - `resource_category`: `'preparation'`, `'technical_setup'`, `'best_practices'`, `'promotion'`, `'examples'`, `'templates'`
 
 ### 33. Guest Resource Views Table
-**Purpose**: Tracks client views of guest resources
+
+**Purpose**: Legacy view records associated with the platform `guest_resources` catalog
 
 ```sql
 public.guest_resource_views (
@@ -898,6 +912,88 @@ public.guest_resource_views (
   viewed_at TIMESTAMPTZ DEFAULT NOW()
 )
 ```
+
+The workspace-aware `/portal/resources` path does not write this table and does not currently expose workspace Guest Resources analytics.
+
+### Private-workspace Guest Resource Tables
+
+These three tables implement customizable Guest Resources for tenant workspaces inside the shared database.
+
+#### `workspace_guest_resources`
+
+Stores the workspace-owned resource snapshot and its publishing controls:
+
+```sql
+public.workspace_guest_resources (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE RESTRICT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  content TEXT,
+  category resource_category NOT NULL,
+  type resource_type NOT NULL,
+  url TEXT,
+  file_url TEXT,
+  featured BOOLEAN NOT NULL DEFAULT false,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'published', 'archived')),
+  published_at TIMESTAMPTZ,
+  visibility TEXT NOT NULL DEFAULT 'all_clients'
+    CHECK (visibility IN ('all_clients', 'selected_clients')),
+  source_template_id UUID REFERENCES guest_resources(id) ON DELETE SET NULL,
+  created_by UUID,
+  updated_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id, workspace_id)
+)
+```
+
+Published articles require meaningful canonical HTML. Published videos and links require `url`; published downloads require `file_url`. A workspace copy keeps `source_template_id` for provenance, but its content is independent after cloning.
+
+#### `workspace_guest_resource_clients`
+
+Stores selected-client visibility assignments:
+
+```sql
+public.workspace_guest_resource_clients (
+  workspace_id UUID NOT NULL,
+  resource_id UUID NOT NULL,
+  client_id UUID NOT NULL,
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (resource_id, client_id),
+  FOREIGN KEY (resource_id, workspace_id)
+    REFERENCES workspace_guest_resources(id, workspace_id) ON DELETE CASCADE,
+  FOREIGN KEY (client_id, workspace_id)
+    REFERENCES clients(id, workspace_id) ON DELETE CASCADE
+)
+```
+
+The composite foreign keys make cross-workspace resource/client assignments invalid at the database boundary.
+
+#### `workspace_guest_resource_quota_counters`
+
+Provides a serialized counter row for each workspace:
+
+```sql
+public.workspace_guest_resource_quota_counters (
+  workspace_id UUID PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  resource_count INTEGER NOT NULL DEFAULT 0 CHECK (resource_count BETWEEN 0 AND 1000),
+  content_char_count BIGINT NOT NULL DEFAULT 0
+    CHECK (content_char_count BETWEEN 0 AND 5000000)
+)
+```
+
+Triggers update the counter atomically as resource rows change, enforcing at most 1,000 resources and 5,000,000 stored content characters per workspace. The default workspace's counter tracks the platform catalog; private counters track their respective workspace tables.
+
+### Guest Resource service RPCs
+
+- `workspace_guest_resource_operation_v1(...)` is executable only by `service_role`. It supports `list`, `create`, `update`, and `delete`, binds the supplied actor to a current Auth user and fresh workspace membership, replaces selected-client assignments atomically, and writes mutation events to `workspace_audit_log`. Workspace owners/admins can manage their own workspace; a platform administrator can only list a private workspace for preview.
+- `portal_guest_resources_for_client_v1(...)` is executable only by `service_role`. It derives the workspace from the client, revalidates the exact hashed portal session inside the read transaction (or accepts the service-only platform-admin preview branch), and returns only published resources visible to that client. For private workspaces, visibility is either `all_clients` or a matching row in `workspace_guest_resource_clients`; default-workspace clients retain the platform catalog.
+
+The workspace resource and assignment tables use forced RLS with service-role-only policies. Browser roles do not query them directly. The portal RPC projects only client-facing fields and does not return `workspace_id`, status, visibility rules, assignment IDs, actor IDs, or template provenance.
 
 ## Client Podcast Approval Dashboard
 
@@ -1022,13 +1118,14 @@ public.prospect_podcast_analyses (
 ### Content & Communication
 1. **Blog Posts** are categorized by **Blog Categories**
 2. **Email Logs** track all outbound communication
-3. **Guest Resources** provide educational content for podcast guests
+3. **Guest Resources** provide a platform template catalog plus independent, `workspace_id`-scoped copies that can target all clients or selected clients
 4. **Sales Calls** track business development activities
 
 ### Authentication & Security
 1. **Admin Users** manage the platform
 2. **Client Portal Tokens/Sessions** enable passwordless client access
 3. All activity is logged in **Client Portal Activity Log**
+4. Workspace Guest Resource mutations are audited in **Workspace Audit Log**
 
 ## Key Database Functions
 
@@ -1043,6 +1140,8 @@ public.prospect_podcast_analyses (
 7. **`search_similar_podcasts()`** - Vector similarity search using pgvector cosine distance; pre-filters for guest acceptance, activity recency, and exclusion lists; returns top N matches above a similarity threshold
 8. **`generate_client_dashboard_slug()`** - Trigger function that auto-generates URL slugs from client names (handles duplicates with random suffix)
 9. **`auto_increment_fetch_count()`** - Trigger function that auto-increments `podscan_fetch_count` when `podscan_last_fetched_at` is updated
+10. **`workspace_guest_resource_operation_v1()`** - Service-only, membership-gated workspace resource operations and audit logging
+11. **`portal_guest_resources_for_client_v1()`** - Service-only client-derived Guest Resources projection with portal-session revalidation
 
 ### Trigger Functions (updated_at)
 
@@ -1078,6 +1177,7 @@ These trigger functions auto-update the `updated_at` column on row changes:
 2. **Client Portal Access**: Clients can only access their own data via portal sessions
 3. **Public Access**: Published blog posts, active premium podcasts, prospect dashboards
 4. **Service Role**: Edge functions have elevated access for automation
+5. **Workspace Guest Resources**: Browser roles have no direct table access; authenticated operations and portal reads cross service-only Edge Function/RPC boundaries
 
 ### Security Context
 
