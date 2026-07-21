@@ -1,9 +1,9 @@
 # Get On A Pod — invite-only workspace MVP
 
-This application is being converted into an invite-only, multi-account MVP
-without billing or public registration. A platform administrator invites a
-user; the user accepts the email invitation, creates a password, signs in, and
-manages clients inside one private workspace.
+This application is an administrator-provisioned, multi-account MVP without
+billing or public registration. A platform administrator can invite a user by
+email or create the account manually and hand over a one-time temporary
+password. Each user signs in and manages clients inside one private workspace.
 
 ## Current rollout status
 
@@ -20,12 +20,11 @@ an exact inventory of 87 active Edge Functions with no JWT-policy drift.
 legacy shutdown targets are absent. The separate video service is a
 credential-free 410 tombstone, and obsolete Stripe Edge secrets were removed.
 
-The backend is safe to retain, but real-user onboarding is still on hold:
-custom SMTP is not configured, no real invitation has completed end to end,
-the signed-in administrator browser smoke test is pending, and credentials
-exposed through chat still require rotation. Do not send an invitation until
-those gates are complete. The follow-up branch must also be pushed, rechecked
-in pull request #2, and merged so `main` matches the deployed backend source.
+Pull request #2 is now merged, so `main` matches the deployed cutover source.
+The manual-account and read-only workspace-view feature described below is the
+next release and is not yet deployed. Its migration, two new Edge Functions,
+changed guarded functions, frontend, and acceptance evidence must move as one
+reviewed release. Credentials exposed through chat still require rotation.
 
 The sanitized cutover evidence and remaining gates are recorded in
 [`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md).
@@ -34,7 +33,7 @@ The sanitized cutover evidence and remaining gates are recorded in
 
 | Role | Supported access |
 | --- | --- |
-| Platform administrator | Existing internal `/admin/*` application, user invitations, account suspension/reactivation, and all legacy/default-workspace data |
+| Platform administrator | Existing internal `/admin/*` application, email invitations, manual account creation, account suspension/reactivation, and a read-only view of each private workspace's clients |
 | Workspace user | `/app/clients`; create, list, edit, and delete only clients owned by the user's private workspace |
 | Client portal user | Separate `/portal/*` login and minimal bookings/resources view for a client record; this is not a SaaS workspace account |
 | Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
@@ -49,8 +48,10 @@ tenant access to every legacy operational module are deliberately out of scope.
 | --- | --- |
 | `/login` | Workspace/platform account login |
 | `/accept-invite` | Supabase email-invite completion |
+| `/change-password` | Mandatory first-sign-in password replacement for manually created accounts |
 | `/app/clients` | Authenticated workspace client CRUD |
 | `/admin/users` | Platform administrator invitation/lifecycle console |
+| `/admin/workspaces/:workspaceId/clients` | Platform administrator read-only view of one explicitly selected private workspace |
 | `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
 | `/portal/login` | Separate client portal login |
 | `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
@@ -81,6 +82,28 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   known matching identity is invalidated before delivery becomes retryable;
   unresolved provider or identity ambiguity retains the claim and requires
   operator review. Invite acceptance also requires a password.
+- Manual accounts use a separate database-first flow. The server—not the
+  browser—generates a 28-character temporary password, creates an exact marked
+  Supabase Auth identity without sending email, and returns the credential only
+  in the successful `no-store` response. Plaintext credentials never enter the
+  application database, audit log, Auth metadata, browser storage, or query
+  cache. A lost credential is replaced, never retrieved.
+- A manually created membership remains non-active until the user replaces the
+  temporary password. Password rotation and first-password replacement use
+  durable claims and exact attempt/execution markers. The provider password
+  update revokes existing sessions before activation, and a membership token
+  epoch plus current Auth metadata rejects stale access JWTs.
+- Manual-account revocation is database-first: it immediately revokes the
+  membership, archives the private workspace, clears portal capabilities, and
+  then deletes only the exact marked Auth identity. Interrupted cleanup remains
+  visible under a durable claim and becomes safely retryable after review.
+- Credential reconciliation renews one exclusive execution lease only after a
+  15-minute review window. That window deliberately exceeds Supabase's hosted
+  Edge hard lifetime; revisit the invariant before self-hosting or increasing
+  worker limits.
+- The administrator workspace selector is an explicit URL-scoped, read-only
+  view. It does not impersonate the tenant, mutate the administrator's Auth
+  context, or silently fall back to another workspace.
 - Suspend/reactivate uses a separate durable service-only lifecycle claim. The
   database transition commits first and remains authoritative while Auth is
   reconciled. A different request token can never steal a claim automatically;
@@ -139,7 +162,8 @@ Relevant server-side secrets are configured in Supabase, as required by the
 functions being deployed:
 
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- `APP_URL`/`WEB_URL`, `ALLOWED_ORIGIN`/`ALLOWED_ORIGINS`
+- `APP_URL`/`WEB_URL`, `ALLOWED_ORIGIN`/`ALLOWED_ORIGINS` for any optional
+  HTTPS origins (including legacy domains, when still required)
 - `PODSCAN_API_KEY` or `PODSCAN_TOKEN`
 - `RESEND_WEBHOOK_SECRET`
 - provider keys such as OpenAI, Resend, and Google credentials
@@ -147,6 +171,12 @@ functions being deployed:
 The excluded legacy Clay/Bison handlers require `CLAY_WEBHOOK_SECRET` and
 `CAMPAIGN_WEBHOOK_SECRET` only in their separate operator environment; do not
 configure them in the tenant MVP environment.
+
+Shared Edge CORS always permits `https://getonapod.com` and its `www` origin.
+Localhost and `127.0.0.1` are permitted only when the Edge environment sets
+`ENVIRONMENT=development` explicitly; an unset or non-development value fails
+closed for local origins. Legacy production domains have no built-in access and
+must be added through the origin settings above.
 
 `npm run build` always uses the deterministic static sitemap and an isolated
 Vite environment that does not load the repository's ignored dotenv files. It
@@ -288,12 +318,14 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` runs the release-shape verifier, parses all six release
-migrations plus the SQL verifier with a PostgreSQL grammar parser, runs both
-TypeScript checks and the zero-warning MVP lint scope, exercises the URL,
-telemetry, session-storage, retired-helper, and evidence-path tests, checks all
-89 Edge entrypoints against the frozen Deno lock, validates the database-runner
-shell, performs a clean install/build and both audits for the nested MCP server,
+`check:static` runs the release-shape verifier, parses the six historical
+cutover migrations, the pending manual-account migration, and the SQL verifier
+with a PostgreSQL grammar parser, runs both TypeScript checks, the zero-warning
+MVP lint scope, and focused workspace UI tests, exercises the URL, telemetry,
+session-storage, retired-helper, and evidence-path tests, checks all 91 Edge
+entrypoints and shared Edge unit tests against the frozen Deno lock,
+validates the database-runner shell, performs a clean install/build and both
+audits for the nested MCP server,
 tests the dependency-free retired video-service tombstone with malformed and
 oversized bodies, checks the exact Docker/Railway runtime contract and secret-
 excluding build context, performs an isolated static build, launches the real
@@ -351,8 +383,11 @@ refused/failed; exit `2` means the runner's automated HTTP checks passed while
 the separately reviewed external release gates recorded in the NDJSON remain
 incomplete. Those records cover the database verifier, commit-bound deployment
 inventory, hosted Auth, invite delivery fault injection and the backend
-password gate, durable-claim recovery, UI/legacy-admin checks, audit and portal
-races, the live Storage API boundary, capability links, provider side
+password gate, durable-claim recovery, manual-account creation, pre-change
+denial, rotation, first-password replacement, stale-token denial, fault
+reconciliation and revocation, administrator workspace-view isolation and
+navigation, UI/legacy-admin checks, audit and portal races, the live Storage API
+boundary, capability links, provider side
 effects/decommissioning, credential rotation, historical telemetry review, and
 signed Resend behavior. The runner
 never turns those external gates into an automatic pass. Administrator
@@ -360,8 +395,10 @@ credentials are mandatory; omitting them is a configuration refusal, and any
 incomplete record outside the exact checked-in allowlist converts the run to a
 failure.
 
-After the six migrations have been applied to the same staging release, run
-the database verifier using `PG*` environment variables. Prefer a project-
+For the pending manual-account release, run the database verifier only after
+the historical six migrations and
+`20260721000100_manual_workspace_accounts.sql` have been applied to the same
+staging release. Use `PG*` environment variables and prefer a project-
 specific direct database hostname rather than a hostname shared by production
 and staging. Hostnames with a trailing dot are refused. Never put the connection
 URL or password on the command line or type a password into shell history:
@@ -479,9 +516,15 @@ The detailed rollout and acceptance matrix is in
 - Only client CRUD is tenant-enabled. Podcast operations, outreach, reporting,
   and other legacy modules remain platform-admin-only until they receive an
   explicit `workspace_id` model and isolation tests.
+- The platform administrator's private-workspace view is intentionally
+  read-only and currently shows only that workspace's clients. It is not an
+  impersonation mode and does not make legacy modules tenant-aware.
 - Workspace users cannot invite teammates or own multiple workspaces.
 - Workspace password recovery has no product UI yet; support must perform a
   controlled Supabase Auth recovery/reset.
+- Temporary passwords for manually created accounts are displayed once. They
+  must be transferred out of band through an approved secure channel; if the
+  password is lost, the administrator issues a new temporary password.
 - The production invitation UI warns about email readiness but has no automatic
   SMTP-health switch. Until SMTP and a real invite are verified, administrator
   discipline is the release gate and the Invite user action must not be used.
@@ -542,36 +585,28 @@ repository: the legacy deploy/migration helpers refuse to run. A staging backend
 rollout still needs a reviewed executor or operator procedure bound to the exact
 commit, project, backup, phased manifest, and private evidence directory.
 
-## Remaining release gates
+## Next-release gates
 
-The production backend cutover is complete, but the follow-up source is not yet
-merged and real-user onboarding is not accepted.
+The historical production cutover and its follow-up source merge are complete.
+The manual-account/read-only-workspace-view increment is not deployed. Follow
+the release contract in
+[`docs/manual-workspace-accounts.md`](docs/manual-workspace-accounts.md) before
+merging or deploying it.
 
-Before merging the follow-up branch:
-
-1. commit and push the updated cutover record and audit fixes;
-2. update pull request #2 so its title/body and head SHA match the actual
-   backend release;
-3. require a fresh green GitHub check on that exact head and review any
-   synthetic merge result;
-4. complete the signed-in production administrator smoke test, especially
-   dashboard/global-client error handling and logout;
-5. obtain final security, frontend/workflow, and operations approval on the
-   documented diff; and
-6. enable `main` branch protection/required checks, or explicitly record the
-   repository-control risk before merge.
-
-Before sending any real invitation:
+Before enabling the new manual-account action in production:
 
 1. rotate the exposed OpenAI, Podscan, Jotform, and Clay credentials and review
    provider/application logs;
-2. configure and verify custom SMTP and the production invitation template;
-3. complete one controlled email → password → acceptance → login → isolated
-   client CRUD → logout journey;
-4. complete two-account cross-tenant denial plus suspend/reactivate testing;
-5. verify replacement capability links and any reissued portal access;
-6. record provider-side Stripe webhook/caller removal, obsolete schedules, and
-   the remaining external/manual fault/concurrency gates; and
+2. apply and catalog-verify the new forward migration on a disposable staging
+   project, then deploy the exact reviewed Edge manifest and frontend;
+3. exercise create → one-time handoff → temporary sign-in → forced password
+   replacement → fresh sign-in → isolated client CRUD → logout;
+4. test duplicate/concurrent creation, password rotation, expired credentials,
+   provider timeouts, session revocation, and two-account cross-tenant denial;
+5. complete the signed-in administrator browser smoke test for workspace
+   switching, malformed/stale workspace URLs, back/reload behavior, and logout;
+6. obtain independent database-security, Edge-saga, frontend, and release-ops
+   approval on the exact commit and require a fresh green CI result; and
 7. decide when to delete the credential-free Railway video tombstone project
    and the 17 Edge tombstones after caller quietness is proved.
 

@@ -26,6 +26,14 @@ serve(async (req) => {
     const membershipId = requireUuid(body.membership_id, 'membership_id')
     const { admin, user, email } = await requireAuthenticatedUser(req)
 
+    if (user.app_metadata?.workspace_provisioning_method === 'admin_temporary_password') {
+      throw new HttpError(
+        409,
+        'INITIAL_PASSWORD_CHANGE_REQUIRED',
+        'Use the initial password change flow for this account',
+      )
+    }
+
     // The service-role-only RPC locks and validates the invitation, including
     // status, expiry, email ownership and idempotent re-acceptance by this user.
     const { data, error } = await admin.rpc('accept_workspace_invite', {
@@ -64,7 +72,6 @@ serve(async (req) => {
 
     return jsonResponse(req, METHODS, 200, {
       success: true,
-      membership,
     })
   } catch (error) {
     return errorResponse(req, METHODS, error)

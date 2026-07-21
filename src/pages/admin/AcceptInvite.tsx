@@ -31,6 +31,10 @@ const AcceptInvite = () => {
   }, [membership?.full_name, user?.user_metadata?.full_name])
 
   useEffect(() => {
+    if (accountState === 'password_change_required' || accountState === 'reauthentication_required') {
+      navigate('/change-password', { replace: true })
+      return
+    }
     if (accountState === 'active') {
       navigate(isPlatformAdmin ? '/admin/dashboard' : '/app/clients', { replace: true })
     }

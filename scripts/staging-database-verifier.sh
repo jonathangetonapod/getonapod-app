@@ -16,6 +16,7 @@ readonly -a RELEASE_INPUTS=(
   'supabase/migrations/20260720000400_resend_webhook_idempotency.sql'
   'supabase/migrations/20260720000500_client_prospect_link_normalization.sql'
   'supabase/migrations/20260720000600_trigger_function_privileges.sql'
+  'supabase/migrations/20260721000100_manual_workspace_accounts.sql'
   "${VERIFIER}"
 )
 readonly -a REQUIRED_ENV=(

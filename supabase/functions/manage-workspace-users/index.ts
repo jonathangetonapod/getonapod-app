@@ -26,6 +26,8 @@ type MembershipRow = Record<string, unknown> & {
   full_name: string | null
   role: string
   status: string
+  provisioning_method: string
+  password_change_required: boolean
   created_at: string
 }
 
@@ -48,6 +50,14 @@ type InviteCleanupConflictRow = {
 type InvitePendingRow = {
   membership_id: string
   claim_kind: 'deliver' | 'revoke_cleanup'
+  review_after: string
+}
+
+type CredentialPendingRow = {
+  membership_id: string
+  claim_kind:
+    | 'temporary_password_rotation'
+    | 'initial_password_change'
   review_after: string
 }
 
@@ -802,11 +812,18 @@ serve(async (req) => {
       if (invitePendingError) {
         throw new HttpError(500, 'USER_LIST_FAILED', 'Workspace users could not be loaded safely')
       }
+      const { data: credentialPendingData, error: credentialPendingError } = await admin.rpc(
+        'list_workspace_account_credential_reconciliation_pending',
+      )
+      if (credentialPendingError) {
+        throw new HttpError(500, 'USER_LIST_FAILED', 'Workspace users could not be loaded safely')
+      }
 
       const membershipRows = (data ?? []) as unknown as MembershipRow[]
       const pendingRows = (pendingData ?? []) as unknown as LifecyclePendingRow[]
       const cleanupConflictRows = (cleanupConflictData ?? []) as unknown as InviteCleanupConflictRow[]
       const invitePendingRows = (invitePendingData ?? []) as unknown as InvitePendingRow[]
+      const credentialPendingRows = (credentialPendingData ?? []) as unknown as CredentialPendingRow[]
       const pendingByMembership = new Map(
         pendingRows.map((row) => [row.membership_id, row.review_after]),
       )
@@ -815,6 +832,9 @@ serve(async (req) => {
       )
       const invitePendingByMembership = new Map(
         invitePendingRows.map((row) => [row.membership_id, row]),
+      )
+      const credentialPendingByMembership = new Map(
+        credentialPendingRows.map((row) => [row.membership_id, row]),
       )
 
       return jsonResponse(req, METHODS, 200, {
@@ -830,6 +850,7 @@ serve(async (req) => {
             const reviewAfter = pendingByMembership.get(row.id) ?? null
             const cleanupConflict = cleanupConflictByMembership.get(row.id)
             const invitePending = invitePendingByMembership.get(row.id)
+            const credentialPending = credentialPendingByMembership.get(row.id)
             return userDto({
               ...row,
               auth_reconciliation_pending: reviewAfter !== null,
@@ -839,6 +860,9 @@ serve(async (req) => {
               invite_reconciliation_pending: invitePending !== undefined,
               invite_reconciliation_claim_kind: invitePending?.claim_kind ?? null,
               invite_reconciliation_review_after: invitePending?.review_after ?? null,
+              credential_reconciliation_pending: credentialPending !== undefined,
+              credential_reconciliation_claim_kind: credentialPending?.claim_kind ?? null,
+              credential_reconciliation_review_after: credentialPending?.review_after ?? null,
             })
           }),
       })
@@ -887,6 +911,13 @@ serve(async (req) => {
         throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Workspace invitation not found')
       }
       const membership = data as unknown as MembershipRow & { workspace?: WorkspaceRow | null }
+      if (membership.provisioning_method === 'admin_temporary_password') {
+        throw new HttpError(
+          409,
+          'MANUAL_ACCOUNT_ACTION_REQUIRED',
+          'Use the manual account retry action for this workspace account',
+        )
+      }
       if (!membership.workspace) {
         throw new HttpError(409, 'INVITE_WORKSPACE_MISSING', 'The invitation workspace requires manual review')
       }
@@ -937,6 +968,16 @@ serve(async (req) => {
       }
 
       const row = membership as unknown as MembershipRow
+      if (
+        action === 'revoke_pending'
+        && row.provisioning_method === 'admin_temporary_password'
+      ) {
+        throw new HttpError(
+          409,
+          'MANUAL_ACCOUNT_ACTION_REQUIRED',
+          'Manual account revocation requires the dedicated credential workflow',
+        )
+      }
       const { data: protectedAdmin, error: protectedAdminError } = await admin.rpc(
         'is_platform_admin_email',
         { p_email: row.email_normalized },

@@ -8,6 +8,8 @@ export type AccountState =
   | 'signed_out'
   | 'active'
   | 'pending'
+  | 'password_change_required'
+  | 'reauthentication_required'
   | 'expired'
   | 'suspended'
   | 'no_membership'
@@ -16,31 +18,29 @@ export type AccountState =
 export interface Workspace {
   id: string
   name: string
-  slug?: string | null
+  slug: string | null
   status: 'active' | 'suspended' | 'archived' | string
+  is_default: boolean
 }
 
 export interface WorkspaceMembership {
   id: string
   workspace_id: string
-  user_id?: string | null
-  email?: string | null
-  email_normalized?: string | null
-  full_name?: string | null
+  full_name: string | null
   role: 'owner' | 'admin' | 'member'
   status: 'invited' | 'active' | 'suspended' | 'revoked' | string
-  invite_expires_at?: string | null
-  invited_at?: string | null
-  accepted_at?: string | null
 }
 
 interface AccountContextResponse {
-  user: {
-    id: string
-    email: string | null
-  }
   platform_admin: boolean
-  state: 'active' | 'pending' | 'expired' | 'suspended' | 'no_membership'
+  state:
+    | 'active'
+    | 'pending'
+    | 'password_change_required'
+    | 'reauthentication_required'
+    | 'expired'
+    | 'suspended'
+    | 'no_membership'
   membership: WorkspaceMembership | null
   workspace: Workspace | null
 }

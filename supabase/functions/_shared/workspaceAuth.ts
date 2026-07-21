@@ -5,6 +5,9 @@ import {
 } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 import { getCorsHeaders } from './cors.ts'
+import { HttpError } from './httpError.ts'
+
+export { HttpError } from './httpError.ts'
 
 export const MEMBERSHIP_COLUMNS = [
   'id',
@@ -19,6 +22,9 @@ export const MEMBERSHIP_COLUMNS = [
   'invite_expires_at',
   'accepted_at',
   'accepted_by',
+  'provisioning_method',
+  'password_change_required',
+  'workspace_access_not_before_epoch',
   'suspended_at',
   'suspended_by',
   'revoked_at',
@@ -38,23 +44,14 @@ export const WORKSPACE_COLUMNS = [
   'updated_at',
 ].join(',')
 
-export class HttpError extends Error {
-  readonly status: number
-  readonly code: string
-
-  constructor(status: number, code: string, message: string) {
-    super(message)
-    this.name = 'HttpError'
-    this.status = status
-    this.code = code
-  }
-}
-
 export interface AuthContext {
   admin: SupabaseClient
   user: User
   email: string
   platformAdmin: boolean
+  accessToken: string
+  tokenIssuedAt: number
+  tokenAppMetadata: Record<string, unknown>
 }
 
 export interface AuditEvent {
@@ -100,6 +97,85 @@ function bearerToken(req: Request): string {
   return match[1]
 }
 
+function verifiedTokenClaims(
+  token: string,
+  expectedUserId: string,
+): { issuedAt: number; appMetadata: Record<string, unknown> } {
+  const parts = token.split('.')
+  if (parts.length !== 3) {
+    throw new HttpError(401, 'INVALID_AUTH', 'Authentication is invalid or expired')
+  }
+
+  try {
+    const encoded = parts[1].replaceAll('-', '+').replaceAll('_', '/')
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')
+    const bytes = Uint8Array.from(atob(padded), (value) => value.charCodeAt(0))
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>
+    const issuedAt = payload.iat
+    const appMetadata = payload.app_metadata
+
+    if (
+      payload.sub !== expectedUserId
+      || typeof issuedAt !== 'number'
+      || !Number.isSafeInteger(issuedAt)
+      || issuedAt < 1
+      || !appMetadata
+      || typeof appMetadata !== 'object'
+      || Array.isArray(appMetadata)
+    ) {
+      throw new Error('invalid claims')
+    }
+
+    return {
+      issuedAt,
+      appMetadata: appMetadata as Record<string, unknown>,
+    }
+  } catch {
+    // The token has already been verified with Auth. Parsing here extracts the
+    // issuance and embedded app-metadata claims needed to reject stale tokens.
+    throw new HttpError(401, 'INVALID_AUTH', 'Authentication is invalid or expired')
+  }
+}
+
+function positiveCredentialVersion(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null
+}
+
+function credentialMarker(value: unknown): string | null {
+  return typeof value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value.toLowerCase()
+    : null
+}
+
+export function workspaceCredentialIsFresh(context: AuthContext): boolean {
+  const current = context.user.app_metadata ?? {}
+  if (current.workspace_provisioning_method !== 'admin_temporary_password') {
+    return true
+  }
+
+  const token = context.tokenAppMetadata
+  const currentVersion = positiveCredentialVersion(current.workspace_credential_version)
+  const tokenVersion = positiveCredentialVersion(token.workspace_credential_version)
+  const currentAttempt = credentialMarker(current.workspace_credential_attempt_id)
+  const tokenAttempt = credentialMarker(token.workspace_credential_attempt_id)
+  const currentExecution = credentialMarker(current.workspace_credential_execution_id)
+  const tokenExecution = credentialMarker(token.workspace_credential_execution_id)
+
+  return currentVersion !== null
+    && tokenVersion === currentVersion
+    && currentAttempt !== null
+    && tokenAttempt === currentAttempt
+    && currentExecution !== null
+    && tokenExecution === currentExecution
+    && token.workspace_provisioning_method === 'admin_temporary_password'
+    && token.workspace_password_change_required === current.workspace_password_change_required
+    && token.workspace_id === current.workspace_id
+    && token.workspace_membership_id === current.workspace_membership_id
+}
+
 export async function secretsMatch(left: string, right: string): Promise<boolean> {
   const encoder = new TextEncoder()
   const [leftHash, rightHash] = await Promise.all([
@@ -129,6 +205,7 @@ export async function requireAuthenticatedUser(req: Request): Promise<AuthContex
   if (!email) {
     throw new HttpError(403, 'EMAIL_REQUIRED', 'A verified account email is required')
   }
+  const tokenClaims = verifiedTokenClaims(token, data.user.id)
 
   // Platform access is bound to the immutable Auth user, its current email,
   // and an active default-workspace membership. An email change alone can
@@ -147,6 +224,9 @@ export async function requireAuthenticatedUser(req: Request): Promise<AuthContex
     user: data.user,
     email,
     platformAdmin: platformAdmin === true,
+    accessToken: token,
+    tokenIssuedAt: tokenClaims.issuedAt,
+    tokenAppMetadata: tokenClaims.appMetadata,
   }
 }
 

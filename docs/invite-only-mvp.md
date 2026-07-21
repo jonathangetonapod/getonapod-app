@@ -21,6 +21,11 @@ smoke testing, and one complete invitation/two-account acceptance flow pass.
 See [`production-cutover-2026-07-21.md`](production-cutover-2026-07-21.md) for
 the sanitized evidence and open gates.
 
+The pending manual-account and read-only administrator workspace-view overlay
+is specified separately in [`manual-workspace-accounts.md`](manual-workspace-accounts.md).
+It adds a seventh forward migration and must not be treated as part of the
+historical six-migration production cutover until its own release gates pass.
+
 ## Release objective
 
 A platform administrator can invite an account, and the invitee can accept the

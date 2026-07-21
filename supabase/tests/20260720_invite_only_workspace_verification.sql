@@ -3319,6 +3319,275 @@ BEGIN
 END;
 $$;
 
+DO $$
+DECLARE
+  cancel_definition TEXT;
+  claim_definition TEXT;
+  complete_revocation_definition TEXT;
+  finalize_definition TEXT;
+  find_revocation_auth_definition TEXT;
+  list_reconciliation_definition TEXT;
+  reconcile_definition TEXT;
+  release_definition TEXT;
+  revoke_definition TEXT;
+  required_function TEXT;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('provisioning_method', 'text', 'NO'),
+      ('password_change_required', 'boolean', 'NO'),
+      ('workspace_access_not_before_epoch', 'bigint', 'NO')
+    ) AS expected(column_name, data_type, is_nullable)
+    LEFT JOIN information_schema.columns AS actual
+      ON actual.table_schema = 'public'
+      AND actual.table_name = 'workspace_memberships'
+      AND actual.column_name = expected.column_name
+      AND actual.data_type = expected.data_type
+      AND actual.is_nullable = expected.is_nullable
+    WHERE actual.column_name IS NULL
+  ) THEN
+    RAISE EXCEPTION 'manual workspace credential columns are missing or malformed';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class AS relation
+    WHERE relation.oid = 'public.workspace_account_credential_claims'::regclass
+      AND relation.relrowsecurity
+      AND relation.relkind = 'r'
+  ) OR has_table_privilege('anon', 'public.workspace_account_credential_claims', 'SELECT')
+    OR has_table_privilege('authenticated', 'public.workspace_account_credential_claims', 'SELECT')
+    OR has_table_privilege('service_role', 'public.workspace_account_credential_claims', 'SELECT')
+  THEN
+    RAISE EXCEPTION 'workspace credential claims are not service-function-only';
+  END IF;
+
+  IF EXISTS (
+    SELECT expected.column_name
+    FROM (VALUES
+      ('membership_id', 'uuid', 'NO'),
+      ('attempt_id', 'uuid', 'NO'),
+      ('execution_id', 'uuid', 'NO'),
+      ('claim_kind', 'text', 'NO'),
+      ('actor_user_id', 'uuid', 'NO'),
+      ('acquired_at', 'timestamp with time zone', 'NO'),
+      ('review_after', 'timestamp with time zone', 'NO')
+    ) AS expected(column_name, data_type, is_nullable)
+    LEFT JOIN information_schema.columns AS actual
+      ON actual.table_schema = 'public'
+      AND actual.table_name = 'workspace_account_credential_claims'
+      AND actual.column_name = expected.column_name
+      AND actual.data_type = expected.data_type
+      AND actual.is_nullable = expected.is_nullable
+    WHERE actual.column_name IS NULL
+  ) OR (
+    SELECT count(*)
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'workspace_account_credential_claims'
+  ) <> 7 THEN
+    RAISE EXCEPTION 'workspace credential claim shape is malformed';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'public.workspace_memberships'::regclass
+      AND conname = 'workspace_memberships_password_change_state_check'
+      AND pg_get_constraintdef(oid) ILIKE '%password_change_required%admin_temporary_password%status = ''invited''%'
+  ) THEN
+    RAISE EXCEPTION 'manual password-change membership invariant is missing';
+  END IF;
+
+  FOREACH required_function IN ARRAY ARRAY[
+    'public.begin_workspace_password_account(text,text,text,text,uuid)',
+    'public.finalize_workspace_password_account(uuid,uuid,uuid,uuid)',
+    'public.cancel_workspace_password_account_provisioning(uuid,uuid,uuid)',
+    'public.claim_workspace_account_credential(uuid,text,uuid,uuid,uuid,bigint,bigint,uuid,uuid,boolean)',
+    'public.release_workspace_account_credential_claim(uuid,uuid,uuid,uuid)',
+    'public.reconcile_workspace_account_credential_claim(uuid,text,uuid,uuid)',
+    'public.list_workspace_account_credential_reconciliation_pending()',
+    'public.complete_workspace_temporary_password_rotation(uuid,uuid,uuid,uuid,bigint)',
+    'public.complete_workspace_initial_password_change(uuid,uuid,text,uuid,uuid,bigint,bigint)',
+    'public.claim_workspace_password_account_revocation(uuid,uuid,uuid)',
+    'public.find_workspace_password_account_auth_user(uuid,uuid,uuid)',
+    'public.complete_workspace_password_account_revocation(uuid,uuid,uuid)',
+    'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)'
+  ]
+  LOOP
+    IF to_regprocedure(required_function) IS NULL
+      OR NOT has_function_privilege('service_role', required_function, 'EXECUTE')
+      OR has_function_privilege('anon', required_function, 'EXECUTE')
+      OR has_function_privilege('authenticated', required_function, 'EXECUTE')
+    THEN
+      RAISE EXCEPTION 'manual workspace function % is missing or exposed', required_function;
+    END IF;
+  END LOOP;
+
+  finalize_definition := pg_get_functiondef(
+    'public.finalize_workspace_password_account(uuid,uuid,uuid,uuid)'::regprocedure
+  );
+  claim_definition := pg_get_functiondef(
+    'public.claim_workspace_account_credential(uuid,text,uuid,uuid,uuid,bigint,bigint,uuid,uuid,boolean)'::regprocedure
+  );
+  release_definition := pg_get_functiondef(
+    'public.release_workspace_account_credential_claim(uuid,uuid,uuid,uuid)'::regprocedure
+  );
+  reconcile_definition := pg_get_functiondef(
+    'public.reconcile_workspace_account_credential_claim(uuid,text,uuid,uuid)'::regprocedure
+  );
+  cancel_definition := pg_get_functiondef(
+    'public.cancel_workspace_password_account_provisioning(uuid,uuid,uuid)'::regprocedure
+  );
+  list_reconciliation_definition := pg_get_functiondef(
+    'public.list_workspace_account_credential_reconciliation_pending()'::regprocedure
+  );
+  revoke_definition := pg_get_functiondef(
+    'public.claim_workspace_password_account_revocation(uuid,uuid,uuid)'::regprocedure
+  );
+  find_revocation_auth_definition := pg_get_functiondef(
+    'public.find_workspace_password_account_auth_user(uuid,uuid,uuid)'::regprocedure
+  );
+  complete_revocation_definition := pg_get_functiondef(
+    'public.complete_workspace_password_account_revocation(uuid,uuid,uuid)'::regprocedure
+  );
+
+  IF to_regprocedure('public.current_auth_token_iat()') IS NULL
+    OR pg_get_functiondef('public.current_auth_token_iat()'::regprocedure)
+      NOT ILIKE '%auth.jwt()%iat%'
+    OR pg_get_functiondef('public.current_workspace_id()'::regprocedure)
+      NOT ILIKE '%workspace_access_not_before_epoch%current_auth_token_iat%'
+    OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%workspace_access_not_before_epoch%current_auth_token_iat%'
+    OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%workspace_access_not_before_epoch%current_auth_token_iat%'
+    OR to_regprocedure('public.workspace_auth_credential_is_fresh(uuid)') IS NULL
+    OR pg_get_functiondef('public.workspace_auth_credential_is_fresh(uuid)'::regprocedure)
+      NOT ILIKE '%raw_app_meta_data%workspace_credential_version%workspace_credential_attempt_id%workspace_credential_execution_id%workspace_password_change_required%'
+  THEN
+    RAISE EXCEPTION 'workspace access helpers do not reject stale access tokens';
+  END IF;
+
+  IF finalize_definition NOT ILIKE '%admin_temporary_password%'
+    OR finalize_definition NOT ILIKE '%workspace_password_change_required%'
+    OR finalize_definition NOT ILIKE '%workspace_credential_execution_id%'
+    OR finalize_definition NOT ILIKE '%encrypted_password%'
+    OR finalize_definition NOT ILIKE '%confirmed_at%'
+    OR finalize_definition NOT ILIKE '%last_sign_in_at%'
+    OR finalize_definition NOT ILIKE '%workspace_invite_delivery_claims%'
+    OR finalize_definition NOT ILIKE '%temporary_password_issued%'
+    OR pg_get_functiondef(
+      'public.complete_workspace_initial_password_change(uuid,uuid,text,uuid,uuid,bigint,bigint)'::regprocedure
+    ) NOT ILIKE '%claim.acquired_at >= membership.invite_expires_at%workspace_password_change_required%workspace_credential_attempt_id%workspace_credential_execution_id%workspace_access_not_before_epoch%p_token_issued_at + 1%clock_timestamp%initial_password_changed%'
+    OR pg_get_functiondef(
+      'public.complete_workspace_temporary_password_rotation(uuid,uuid,uuid,uuid,bigint)'::regprocedure
+    ) NOT ILIKE '%workspace_credential_attempt_id%workspace_credential_execution_id%p_execution_id%temporary_password_rotated%'
+    OR pg_get_functiondef(
+      'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)'::regprocedure
+    ) NOT ILIKE '%p_token_issued_at >= membership.workspace_access_not_before_epoch%FOR SHARE OF membership%workspace_client_operation%'
+  THEN
+    RAISE EXCEPTION 'manual credential finalization or token-epoch enforcement is malformed';
+  END IF;
+
+  IF claim_definition NOT ILIKE '%p_attempt_id = p_execution_id%'
+    OR claim_definition NOT ILIKE '%existing_claim.attempt_id <> p_attempt_id%'
+    OR claim_definition NOT ILIKE '%existing_claim.execution_id <> p_execution_id%'
+    OR claim_definition NOT ILIKE '%existing_claim.review_after <= now()%'
+    OR claim_definition NOT ILIKE '%requires reconciliation%'
+    OR claim_definition NOT ILIKE '%p_token_issued_at < membership.workspace_access_not_before_epoch%'
+    OR claim_definition NOT ILIKE '%p_expected_credential_version%'
+    OR claim_definition NOT ILIKE '%p_expected_credential_attempt_id%'
+    OR claim_definition NOT ILIKE '%p_expected_credential_execution_id%'
+    OR claim_definition NOT ILIKE '%actor_credential_execution_id%'
+    OR claim_definition NOT ILIKE '%workspace credential change is busy%'
+    OR release_definition NOT ILIKE '%workspace_credential_attempt_id%'
+    OR release_definition NOT ILIKE '%workspace_credential_execution_id%'
+    OR release_definition NOT ILIKE '%p_execution_id%'
+    OR release_definition NOT ILIKE '%provider change requires reconciliation%'
+    OR reconcile_definition NOT ILIKE '%claim.review_after > now()%'
+    OR reconcile_definition NOT ILIKE '%p_execution_id = claim.execution_id%'
+    OR reconcile_definition NOT ILIKE '%p_execution_id = claim.attempt_id%'
+    OR reconcile_definition NOT ILIKE '%requires a new execution%'
+    OR reconcile_definition NOT ILIKE '%execution_id = p_execution_id%'
+    OR reconcile_definition NOT ILIKE '%review_after = now() +%'
+    OR reconcile_definition NOT ILIKE '%400 seconds%'
+    OR reconcile_definition NOT ILIKE '%Preserve acquired_at%'
+    OR cancel_definition NOT ILIKE '%status = ''revoked''%'
+    OR cancel_definition NOT ILIKE '%status = ''archived''%'
+    OR cancel_definition NOT ILIKE '%workspace_credential_attempt_id%'
+    OR cancel_definition NOT ILIKE '%manual_provisioning_cancelled%'
+  THEN
+    RAISE EXCEPTION 'manual credential concurrency or cancellation is malformed';
+  END IF;
+
+  IF list_reconciliation_definition
+      NOT ILIKE '%RETURNS TABLE(membership_id uuid, claim_kind text, review_after timestamp with time zone)%'
+    OR list_reconciliation_definition NOT ILIKE '%claim.membership_id%'
+    OR list_reconciliation_definition NOT ILIKE '%claim.claim_kind%'
+    OR list_reconciliation_definition NOT ILIKE '%claim.review_after%'
+    OR list_reconciliation_definition ILIKE '%attempt_id%'
+    OR list_reconciliation_definition ILIKE '%execution_id%'
+    OR list_reconciliation_definition ILIKE '%actor_user_id%'
+  THEN
+    RAISE EXCEPTION 'manual credential reconciliation projection is too broad or malformed';
+  END IF;
+
+  IF revoke_definition NOT ILIKE '%admin_temporary_password%'
+    OR revoke_definition NOT ILIKE '%status = ''revoked''%'
+    OR revoke_definition NOT ILIKE '%password_change_required = false%'
+    OR revoke_definition NOT ILIKE '%workspace_access_not_before_epoch%'
+    OR revoke_definition NOT ILIKE '%revoke_cleanup%'
+    OR revoke_definition NOT ILIKE '%review_after > now()%'
+    OR revoke_definition NOT ILIKE '%manual_revoked%'
+    OR find_revocation_auth_definition NOT ILIKE '%workspace_credential_attempt_id%'
+    OR find_revocation_auth_definition NOT ILIKE '%workspace_credential_execution_id%'
+    OR find_revocation_auth_definition NOT ILIKE '%workspace_provisioning_method%'
+    OR find_revocation_auth_definition NOT ILIKE '%manual workspace Auth identity is unsafe%'
+    OR complete_revocation_definition NOT ILIKE '%workspace.membership.manual_auth_cleanup_completed%'
+    OR complete_revocation_definition NOT ILIKE '%workspace_invite_delivery_claims%'
+  THEN
+    RAISE EXCEPTION 'manual account revocation claim or exact Auth cleanup is malformed';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgrelid = 'public.workspace_memberships'::regclass
+      AND tgname = 'workspace_memberships_advance_access_epoch'
+      AND tgenabled <> 'D'
+      AND NOT tgisinternal
+  ) OR pg_get_functiondef(
+    'public.advance_workspace_access_epoch_on_disable()'::regprocedure
+  ) NOT ILIKE '%OLD.status = ''active''%NEW.status <> ''active''%workspace_access_not_before_epoch%clock_timestamp%'
+    OR has_function_privilege(
+      'service_role',
+      'public.advance_workspace_access_epoch_on_disable()',
+      'EXECUTE'
+    )
+  THEN
+    RAISE EXCEPTION 'workspace disable transitions do not advance the access-token epoch safely';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'workspace_memberships'
+      AND policyname IN (
+        'workspace_memberships_authenticated_select',
+        'workspace_memberships_authenticated_select_isolation'
+      )
+      AND (
+        COALESCE(qual, '') NOT ILIKE '%current_auth_token_iat%'
+        OR COALESCE(qual, '') NOT ILIKE '%workspace_auth_credential_is_fresh%'
+      )
+  ) THEN
+    RAISE EXCEPTION 'workspace membership reads do not enforce the access-token epoch';
+  END IF;
+END;
+$$;
+
 SELECT
   workspace.id,
   workspace.name,

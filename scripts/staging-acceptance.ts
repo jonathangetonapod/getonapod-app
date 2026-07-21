@@ -132,6 +132,7 @@ const RELEASE_INPUT_PATHS = [
   'supabase/migrations/20260720000400_resend_webhook_idempotency.sql',
   'supabase/migrations/20260720000500_client_prospect_link_normalization.sql',
   'supabase/migrations/20260720000600_trigger_function_privileges.sql',
+  'supabase/migrations/20260721000100_manual_workspace_accounts.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
 ] as const
 const ACCEPTANCE_ENV_ALLOWLIST = new Set([
@@ -156,6 +157,13 @@ const EXPECTED_EXTERNAL_INCOMPLETE_GATES = new Map([
   ['manual.hosted_auth_configuration', 'HOSTED_AUTH_CONFIGURATION_EVIDENCE_REQUIRED'],
   ['manual.invite_lifecycle', 'MANUAL_INVITE_EVIDENCE_REQUIRED'],
   ['manual.invite_provider_faults_and_password_gate', 'INVITE_FAULT_INJECTION_EVIDENCE_REQUIRED'],
+  ['manual.manual_account_create_and_one_time_handoff', 'MANUAL_ACCOUNT_CREATE_EVIDENCE_REQUIRED'],
+  ['manual.manual_account_prechange_data_denial', 'MANUAL_ACCOUNT_PRECHANGE_DENIAL_REQUIRED'],
+  ['manual.manual_account_rotation_and_stale_token_denial', 'MANUAL_ACCOUNT_ROTATION_EVIDENCE_REQUIRED'],
+  ['manual.manual_account_password_change_and_fresh_login', 'MANUAL_ACCOUNT_PASSWORD_CHANGE_EVIDENCE_REQUIRED'],
+  ['manual.manual_account_fault_reconciliation', 'MANUAL_ACCOUNT_RECONCILIATION_EVIDENCE_REQUIRED'],
+  ['manual.manual_account_revocation', 'MANUAL_ACCOUNT_REVOCATION_EVIDENCE_REQUIRED'],
+  ['manual.admin_workspace_view_isolation_and_navigation', 'ADMIN_WORKSPACE_VIEW_EVIDENCE_REQUIRED'],
   ['manual.lifecycle_claim_recovery', 'LIFECYCLE_RECOVERY_EVIDENCE_REQUIRED'],
   ['manual.uninvited_account_denial', 'UNINVITED_ACCOUNT_EVIDENCE_REQUIRED'],
   ['manual.browser_routes_and_admin_legacy', 'MANUAL_UI_EVIDENCE_REQUIRED'],
@@ -879,10 +887,9 @@ async function loadTenantSession(
   const context = asRecord(contextResult.json)
   const workspace = asRecord(context?.workspace)
   const membership = asRecord(context?.membership)
-  const user = asRecord(context?.user)
   assertSafe(context?.state === 'active', 'TENANT_CONTEXT_NOT_ACTIVE')
   assertSafe(context?.platform_admin === false, 'TENANT_CONTEXT_IS_ADMIN')
-  assertSafe(user?.email === credentials.email, 'TENANT_CONTEXT_IDENTITY_MISMATCH')
+  assertSafe(context?.user === undefined, 'TENANT_CONTEXT_EXPOSES_AUTH_IDENTITY')
   assertSafe(typeof workspace?.id === 'string' && UUID_PATTERN.test(workspace.id), 'TENANT_WORKSPACE_INVALID')
   assertSafe(workspace.status === 'active', 'TENANT_WORKSPACE_NOT_ACTIVE')
   assertSafe(workspace.is_default === false, 'TENANT_WORKSPACE_IS_DEFAULT')
@@ -910,9 +917,8 @@ async function loadAdminSession(
   })
   assertSafe(contextResult.status === 200, 'ADMIN_CONTEXT_REJECTED', contextResult.status)
   const context = asRecord(contextResult.json)
-  const user = asRecord(context?.user)
   assertSafe(context?.platform_admin === true, 'ADMIN_CONTEXT_NOT_PLATFORM_ADMIN')
-  assertSafe(user?.email === credentials.email, 'ADMIN_CONTEXT_IDENTITY_MISMATCH')
+  assertSafe(context?.user === undefined, 'ADMIN_CONTEXT_EXPOSES_AUTH_IDENTITY')
   return {
     ...credentials,
     accessToken: auth.accessToken,

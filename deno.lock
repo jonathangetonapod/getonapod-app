@@ -373,6 +373,8 @@
         "npm:@supabase/supabase-js@^2.89.0",
         "npm:@tailwindcss/typography@~0.5.16",
         "npm:@tanstack/react-query@^5.83.0",
+        "npm:@testing-library/jest-dom@^6.6.3",
+        "npm:@testing-library/react@^16.3.0",
         "npm:@tiptap/extension-image@^3.14.0",
         "npm:@tiptap/extension-link@^3.14.0",
         "npm:@tiptap/react@^3.14.0",
@@ -400,6 +402,7 @@
         "npm:google-auth-library@^10.5.0",
         "npm:googleapis@169",
         "npm:input-otp@^1.4.2",
+        "npm:jsdom@^26.1.0",
         "npm:libpg-query@17.7.4",
         "npm:lovable-tagger@^1.1.13",
         "npm:lucide-react@0.462",
@@ -427,6 +430,7 @@
         "npm:typescript@^5.8.3",
         "npm:vaul@~0.9.9",
         "npm:vite@7.3.6",
+        "npm:vitest@^3.2.6",
         "npm:zod@^3.25.76",
         "npm:zustand@^5.0.9"
       ]

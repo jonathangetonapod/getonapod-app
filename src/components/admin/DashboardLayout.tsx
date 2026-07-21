@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import {
   DndContext,
   closestCenter,
@@ -234,6 +235,8 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               <X className="h-5 w-5" />
             </Button>
           </div>
+
+          <WorkspaceSwitcher />
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">

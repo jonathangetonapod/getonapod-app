@@ -68,6 +68,10 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return <Navigate to="/accept-invite" replace />
   }
 
+  if (accountState === 'password_change_required' || accountState === 'reauthentication_required') {
+    return <Navigate to="/change-password" replace />
+  }
+
   if (accountState !== 'active') {
     return <AccessUnavailable />
   }

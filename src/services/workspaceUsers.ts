@@ -15,6 +15,9 @@ export interface ManagedWorkspaceUser {
   invited_at: string | null
   invite_expires_at: string | null
   accepted_at: string | null
+  provisioning_method: 'platform_bootstrap' | 'email_invite' | 'admin_temporary_password'
+  password_change_required: boolean
+  workspace_access_not_before_epoch: number
   suspended_at?: string | null
   auth_reconciliation_pending: boolean
   auth_reconciliation_review_after: string | null
@@ -23,6 +26,12 @@ export interface ManagedWorkspaceUser {
   invite_reconciliation_pending: boolean
   invite_reconciliation_claim_kind: 'deliver' | 'revoke_cleanup' | null
   invite_reconciliation_review_after: string | null
+  credential_reconciliation_pending: boolean
+  credential_reconciliation_claim_kind:
+    | 'temporary_password_rotation'
+    | 'initial_password_change'
+    | null
+  credential_reconciliation_review_after: string | null
   workspace?: { id: string; name: string } | null
 }
 
@@ -60,3 +69,63 @@ export const updateWorkspaceUserStatus = async (
     | 'retry_invite',
   membershipId: string,
 ) => invoke({ action, membership_id: membershipId })
+
+export interface ManualWorkspaceCredential {
+  membership: {
+    id: string
+    workspace_id: string
+    status: WorkspaceUserStatus
+    provisioning_method: ManagedWorkspaceUser['provisioning_method']
+    password_change_required: boolean
+    invite_expires_at: string | null
+  }
+  workspace?: { id: string; name: string } | null
+  email: string
+  temporary_password: string
+}
+
+async function invokeManualAccount(body: Record<string, unknown>): Promise<ManualWorkspaceCredential> {
+  const { data, error } = await supabase.functions.invoke<ManualWorkspaceCredential>(
+    'provision-workspace-account',
+    { body },
+  )
+  if (error) throw await toFunctionError(error, 'The manual workspace account request failed.')
+  if (!data?.temporary_password || !data.email || !data.membership) {
+    throw new Error('The temporary credential response was incomplete.')
+  }
+  return data
+}
+
+export const createManualWorkspaceAccount = (input: {
+  request_id: string
+  email: string
+  full_name?: string
+  workspace_name?: string
+}) => invokeManualAccount({ action: 'create', ...input })
+
+export const retryManualWorkspaceAccount = (membershipId: string, requestId: string) => (
+  invokeManualAccount({ action: 'retry', membership_id: membershipId, request_id: requestId })
+)
+
+export const rotateManualWorkspacePassword = (membershipId: string, requestId: string) => (
+  invokeManualAccount({ action: 'rotate', membership_id: membershipId, request_id: requestId })
+)
+
+export async function revokeManualWorkspaceAccount(
+  membershipId: string,
+  requestId: string,
+): Promise<void> {
+  const { error } = await supabase.functions.invoke('provision-workspace-account', {
+    body: { action: 'revoke', membership_id: membershipId, request_id: requestId },
+  })
+  if (error) throw await toFunctionError(error, 'The manual workspace account could not be revoked.')
+}
+
+export async function changeInitialPassword(input: {
+  membership_id: string
+  attempt_id: string
+  new_password: string
+}): Promise<void> {
+  const { error } = await supabase.functions.invoke('change-initial-password', { body: input })
+  if (error) throw await toFunctionError(error, 'The initial password could not be changed.')
+}

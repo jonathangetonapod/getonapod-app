@@ -26,12 +26,24 @@ const Login = () => {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const attemptedPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname
+  const locationState = location.state as {
+    from?: { pathname?: string }
+    passwordChanged?: boolean
+    signInAgain?: boolean
+  } | null
+  const attemptedPath = locationState?.from?.pathname
+  const passwordChanged = locationState?.passwordChanged === true
+  const signInAgain = locationState?.signInAgain === true
   const adminEntry = location.pathname.startsWith('/admin') || attemptedPath?.startsWith('/admin') === true
 
   useEffect(() => {
     if (accountState === 'pending') {
       navigate('/accept-invite', { replace: true })
+      return
+    }
+
+    if (accountState === 'password_change_required' || accountState === 'reauthentication_required') {
+      navigate('/change-password', { replace: true })
       return
     }
 
@@ -117,10 +129,17 @@ const Login = () => {
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Sign in</CardTitle>
           <CardDescription className="text-center">
-            Access is invite-only. Use the email address that received your invitation.
+            Use the email from your invitation or the account created for you by an administrator.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {(passwordChanged || signInAgain) && (
+            <p className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm" role="status">
+              {passwordChanged
+                ? 'Password changed. Sign in with your new password.'
+                : 'Your credentials changed. Sign in again with the newest password.'}
+            </p>
+          )}
           <form onSubmit={handlePasswordSignIn} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

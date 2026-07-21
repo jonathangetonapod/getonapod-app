@@ -89,7 +89,13 @@ verify_jwt = true
 [functions.account-context]
 verify_jwt = true
 
+[functions.change-initial-password]
+verify_jwt = true
+
 [functions.manage-workspace-users]
+verify_jwt = true
+
+[functions.provision-workspace-account]
 verify_jwt = true
 
 [functions.workspace-clients]

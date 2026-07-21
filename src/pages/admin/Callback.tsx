@@ -11,6 +11,8 @@ const AuthCallback = () => {
     if (accountState === 'loading') return
     if (accountState === 'pending') {
       navigate('/accept-invite', { replace: true })
+    } else if (accountState === 'password_change_required' || accountState === 'reauthentication_required') {
+      navigate('/change-password', { replace: true })
     } else if (accountState === 'active') {
       navigate(isPlatformAdmin ? '/admin/dashboard' : '/app/clients', { replace: true })
     } else {

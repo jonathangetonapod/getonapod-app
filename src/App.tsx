@@ -38,6 +38,8 @@ import ClientApprovalView from "./pages/client/ClientApprovalView";
 import AcceptInvite from "./pages/admin/AcceptInvite";
 import WorkspaceUsers from "./pages/admin/WorkspaceUsers";
 import WorkspaceClients from "./pages/app/WorkspaceClients";
+import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
+import ChangeInitialPassword from "./pages/account/ChangeInitialPassword";
 
 const KeyedProspectView = () => {
   const { slug } = useParams()
@@ -71,6 +73,7 @@ const App = () => (
             {/* Invite-only workspace account routes */}
             <Route path="/login" element={<AdminLogin />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
+            <Route path="/change-password" element={<ChangeInitialPassword />} />
             <Route path="/app" element={<Navigate to="/app/clients" replace />} />
             <Route
               path="/app/clients"
@@ -212,6 +215,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <ClientDetail />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/workspaces/:workspaceId/clients"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceClients />
                 </PlatformAdminRoute>
               }
             />

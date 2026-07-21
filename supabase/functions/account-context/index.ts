@@ -1,29 +1,52 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
+  type AccountMembershipRecord,
+  type AccountWorkspaceRecord,
+  toAccountMembershipDto,
+  toAccountWorkspaceDto,
+} from '../_shared/accountContextDto.ts'
+import {
   errorResponse,
   HttpError,
   jsonResponse,
-  MEMBERSHIP_COLUMNS,
   optionsResponse,
   parseOptionalJsonObject,
   requireAuthenticatedUser,
   requireOnlyKeys,
-  WORKSPACE_COLUMNS,
+  workspaceCredentialIsFresh,
 } from '../_shared/workspaceAuth.ts'
 
 const METHODS = ['GET', 'POST'] as const
 
-type MembershipRow = Record<string, unknown> & {
-  workspace_id: string
+const ACCOUNT_MEMBERSHIP_COLUMNS = [
+  'id',
+  'workspace_id',
+  'email_normalized',
+  'full_name',
+  'role',
+  'status',
+  'invite_expires_at',
+  'password_change_required',
+  'workspace_access_not_before_epoch',
+].join(',')
+
+const ACCOUNT_WORKSPACE_COLUMNS = [
+  'id',
+  'name',
+  'slug',
+  'status',
+  'is_default',
+].join(',')
+
+type MembershipRow = AccountMembershipRecord & {
   email_normalized: string
-  status: string
   invite_expires_at: string | null
+  password_change_required: boolean
+  workspace_access_not_before_epoch: number | string
 }
 
-type WorkspaceRow = Record<string, unknown> & {
-  status: string
-}
+type WorkspaceRow = AccountWorkspaceRecord
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
@@ -38,12 +61,13 @@ serve(async (req) => {
       requireOnlyKeys(body, [])
     }
 
-    const { admin, user, email, platformAdmin } = await requireAuthenticatedUser(req)
+    const authContext = await requireAuthenticatedUser(req)
+    const { admin, user, email, platformAdmin } = authContext
 
     // Accepted/suspended memberships are permanently bound to the Auth user ID.
     const { data: userMemberships, error: userMembershipError } = await admin
       .from('workspace_memberships')
-      .select(MEMBERSHIP_COLUMNS)
+      .select(ACCOUNT_MEMBERSHIP_COLUMNS)
       .eq('user_id', user.id)
       .limit(2)
 
@@ -58,7 +82,7 @@ serve(async (req) => {
     if (memberships.length === 0) {
       const { data: pendingMemberships, error: pendingError } = await admin
         .from('workspace_memberships')
-        .select(MEMBERSHIP_COLUMNS)
+        .select(ACCOUNT_MEMBERSHIP_COLUMNS)
         .is('user_id', null)
         .eq('email_normalized', email)
         .eq('status', 'invited')
@@ -85,7 +109,6 @@ serve(async (req) => {
     const membership = memberships[0] ?? null
     if (!membership) {
       return jsonResponse(req, METHODS, 200, {
-        user: { id: user.id, email },
         platform_admin: platformAdmin,
         state: 'no_membership',
         membership: null,
@@ -95,7 +118,7 @@ serve(async (req) => {
 
     const { data: workspaceData, error: workspaceError } = await admin
       .from('workspaces')
-      .select(WORKSPACE_COLUMNS)
+      .select(ACCOUNT_WORKSPACE_COLUMNS)
       .eq('id', membership.workspace_id)
       .maybeSingle()
 
@@ -104,28 +127,50 @@ serve(async (req) => {
     }
     const workspace = workspaceData as unknown as WorkspaceRow
 
-    let state: 'active' | 'pending' | 'expired' | 'suspended'
+    let state:
+      | 'active'
+      | 'pending'
+      | 'password_change_required'
+      | 'reauthentication_required'
+      | 'expired'
+      | 'suspended'
     if (membership.status === 'invited') {
       const expiresAt = membership.invite_expires_at
         ? new Date(membership.invite_expires_at).getTime()
         : Number.NaN
-      state = !Number.isFinite(expiresAt) || expiresAt <= Date.now() || workspace.status !== 'active'
-        ? 'expired'
-        : 'pending'
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() || workspace.status !== 'active') {
+        state = 'expired'
+      } else if (membership.password_change_required) {
+        const accessNotBefore = Number(membership.workspace_access_not_before_epoch)
+        const temporaryTokenIsFresh = Number.isSafeInteger(accessNotBefore)
+          && accessNotBefore >= 0
+          && authContext.tokenIssuedAt >= accessNotBefore
+          && workspaceCredentialIsFresh(authContext)
+        state = temporaryTokenIsFresh
+          ? 'password_change_required'
+          : 'reauthentication_required'
+      } else {
+        state = 'pending'
+      }
     } else if (membership.status === 'suspended' || workspace.status === 'suspended') {
       state = 'suspended'
     } else if (membership.status === 'active' && workspace.status === 'active') {
-      state = 'active'
+      const accessNotBefore = Number(membership.workspace_access_not_before_epoch)
+      const accessTokenIsFresh = Number.isSafeInteger(accessNotBefore)
+        && accessNotBefore >= 0
+        && authContext.tokenIssuedAt >= accessNotBefore
+      state = accessTokenIsFresh && workspaceCredentialIsFresh(authContext)
+        ? 'active'
+        : 'reauthentication_required'
     } else {
       throw new HttpError(500, 'INVALID_ACCOUNT_STATE', 'Account context is unavailable')
     }
 
     return jsonResponse(req, METHODS, 200, {
-      user: { id: user.id, email },
       platform_admin: platformAdmin,
       state,
-      membership,
-      workspace,
+      membership: toAccountMembershipDto(membership),
+      workspace: toAccountWorkspaceDto(workspace),
     })
   } catch (error) {
     return errorResponse(req, METHODS, error)

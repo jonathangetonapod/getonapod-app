@@ -12,6 +12,7 @@ import {
   requireString,
   requireUuid,
   requireAuthenticatedUser,
+  workspaceCredentialIsFresh,
 } from '../_shared/workspaceAuth.ts'
 
 const METHODS = ['POST'] as const
@@ -89,7 +90,11 @@ serve(async (req) => {
 
     const body = await parseJsonObject(req)
     const action = typeof body.action === 'string' ? body.action : ''
-    const { admin, user } = await requireAuthenticatedUser(req)
+    const authContext = await requireAuthenticatedUser(req)
+    if (!workspaceCredentialIsFresh(authContext)) {
+      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+    }
+    const { admin, user, tokenIssuedAt } = authContext
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
     let clientId: string | null = null
     let payload: Record<string, string | null> = {}
@@ -110,12 +115,13 @@ serve(async (req) => {
       throw new HttpError(400, 'INVALID_ACTION', 'Unknown workspace client action')
     }
 
-    const { data, error } = await admin.rpc('workspace_client_operation', {
+    const { data, error } = await admin.rpc('workspace_client_operation_v2', {
       p_action: action,
       p_workspace_id: workspaceId,
       p_client_id: clientId,
       p_payload: payload,
       p_actor_user_id: user.id,
+      p_token_issued_at: tokenIssuedAt,
     })
 
     if (error) rpcError(error)
