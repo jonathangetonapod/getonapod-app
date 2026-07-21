@@ -811,7 +811,14 @@ $$;
 DO $$
 BEGIN
   IF to_regclass('storage.objects') IS NOT NULL THEN
-    EXECUTE 'ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY';
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_class
+      WHERE oid = 'storage.objects'::regclass
+        AND relrowsecurity
+    ) THEN
+      RAISE EXCEPTION 'storage.objects must have row-level security enabled before tenant cutover';
+    END IF;
     EXECUTE 'DROP POLICY IF EXISTS workspace_transition_platform_admin_write_gate ON storage.objects';
     EXECUTE 'DROP POLICY IF EXISTS workspace_transition_platform_admin_insert_gate ON storage.objects';
     EXECUTE 'DROP POLICY IF EXISTS workspace_transition_platform_admin_update_gate ON storage.objects';

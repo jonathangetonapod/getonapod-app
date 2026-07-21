@@ -1,6 +1,6 @@
 # Authority Built Database Architecture
 
-> **Invite-only MVP warning:** this is a historical schema survey. The four
+> **Invite-only MVP warning:** this is a historical schema survey. The six
 > `20260720*` migrations, SQL verifier, root README, and
 > `docs/invite-only-mvp.md` define the release boundary. Magic-link and
 > plaintext portal authentication described below are retired.

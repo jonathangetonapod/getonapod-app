@@ -33,6 +33,12 @@ if [[ "${#edge_files[@]}" -ne "$expected_count" ]]; then
 fi
 
 export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
+"$deno_bin" cache \
+  --quiet \
+  --frozen \
+  --lock=deno.lock \
+  --node-modules-dir=none \
+  "${edge_files[@]}"
 "$deno_bin" check \
   --frozen \
   --lock=deno.lock \

@@ -19,6 +19,7 @@ DECLARE
   missing_workspace_policy_count BIGINT;
   missing_gate_count BIGINT;
   unsafe_view_count BIGINT;
+  lifecycle_pair_definition TEXT;
   resend_function_definition TEXT;
   resend_suppressed_upsert_definition TEXT;
   null_action_rejected BOOLEAN := false;
@@ -243,11 +244,23 @@ BEGIN
       invalid_private_workspace_count;
   END IF;
 
-  IF to_regprocedure(
-      'public.enforce_private_workspace_lifecycle_pair()'
-    ) IS NULL OR pg_get_functiondef(
-      'public.enforce_private_workspace_lifecycle_pair()'::regprocedure
-    ) NOT ILIKE '%TG_OP%OLD.id%NEW.id%OLD.workspace_id%NEW.workspace_id%LEFT JOIN public.workspace_memberships%count(membership.id)%FILTER%matching_lifecycle_count%membership_count <> 1%matching_lifecycle_count <> 1%private workspace requires exactly one lifecycle-matched membership%'
+  SELECT pg_get_functiondef(
+    to_regprocedure('public.enforce_private_workspace_lifecycle_pair()')
+  )
+  INTO lifecycle_pair_definition;
+
+  IF lifecycle_pair_definition IS NULL
+    OR lifecycle_pair_definition NOT ILIKE '%TG_OP%'
+    OR lifecycle_pair_definition NOT ILIKE '%OLD.id%'
+    OR lifecycle_pair_definition NOT ILIKE '%NEW.id%'
+    OR lifecycle_pair_definition NOT ILIKE '%OLD.workspace_id%'
+    OR lifecycle_pair_definition NOT ILIKE '%NEW.workspace_id%'
+    OR lifecycle_pair_definition NOT ILIKE '%LEFT JOIN public.workspace_memberships%'
+    OR lifecycle_pair_definition NOT ILIKE '%count(membership.id)%'
+    OR lifecycle_pair_definition NOT ILIKE '%FILTER%matching_lifecycle_count%'
+    OR lifecycle_pair_definition NOT ILIKE '%membership_count <> 1%'
+    OR lifecycle_pair_definition NOT ILIKE '%matching_lifecycle_count <> 1%'
+    OR lifecycle_pair_definition NOT ILIKE '%private workspace requires exactly one lifecycle-matched membership%'
     OR EXISTS (
       SELECT 1
       FROM (VALUES
@@ -973,7 +986,9 @@ BEGIN
   -- a strong-looking suffix was actually rotated. Release source review must
   -- additionally require migration 003 to update every non-NULL client slug,
   -- select every prospect dashboard into its rotation map without a filter,
-  -- and rewrite client-to-prospect references from that same map.
+  -- and rewrite real client-to-prospect references from that same map.
+  -- Migration 005 canonicalizes the historical empty-string representation of
+  -- "no linked prospect" and prevents weak values from returning.
 
   SELECT count(*)
   INTO invalid_slug_count
@@ -1007,6 +1022,70 @@ BEGIN
       invalid_slug_count;
   END IF;
 
+  IF to_regprocedure(
+      'public.normalize_client_prospect_dashboard_slug()'
+    ) IS NULL
+    OR pg_get_functiondef(
+      'public.normalize_client_prospect_dashboard_slug()'::regprocedure
+    ) NOT ILIKE '%NEW.prospect_dashboard_slug := NULLIF%btrim(NEW.prospect_dashboard_slug)%'
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger AS trigger_definition
+      WHERE trigger_definition.tgrelid = 'public.clients'::regclass
+        AND trigger_definition.tgname =
+          'clients_normalize_prospect_dashboard_slug'
+        AND NOT trigger_definition.tgisinternal
+        AND trigger_definition.tgenabled = 'O'
+        AND trigger_definition.tgfoid =
+          'public.normalize_client_prospect_dashboard_slug()'::regprocedure
+        AND pg_get_triggerdef(trigger_definition.oid)
+          ILIKE '%BEFORE INSERT OR UPDATE OF prospect_dashboard_slug ON public.clients%'
+    ) OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid = 'public.clients'::regclass
+        AND constraint_definition.conname =
+          'clients_prospect_dashboard_slug_capability_check'
+        AND constraint_definition.contype = 'c'
+        AND constraint_definition.convalidated
+        AND pg_get_constraintdef(constraint_definition.oid)
+          ILIKE '%prospect_dashboard_slug IS NULL%'
+        AND pg_get_constraintdef(constraint_definition.oid)
+          LIKE '%^prospect-[0-9a-f]{24}$%'
+    ) OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_definition
+      WHERE constraint_definition.conrelid = 'public.clients'::regclass
+        AND constraint_definition.confrelid =
+          'public.prospect_dashboards'::regclass
+        AND constraint_definition.conname =
+          'clients_prospect_dashboard_slug_fkey'
+        AND constraint_definition.contype = 'f'
+        AND constraint_definition.convalidated
+        AND constraint_definition.confupdtype = 'c'
+        AND constraint_definition.confdeltype = 'n'
+        AND constraint_definition.conkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid = 'public.clients'::regclass
+              AND attribute.attname = 'prospect_dashboard_slug'
+          )
+        ]::SMALLINT[]
+        AND constraint_definition.confkey = ARRAY[
+          (
+            SELECT attribute.attnum
+            FROM pg_attribute AS attribute
+            WHERE attribute.attrelid = 'public.prospect_dashboards'::regclass
+              AND attribute.attname = 'slug'
+          )
+        ]::SMALLINT[]
+    )
+  THEN
+    RAISE EXCEPTION
+      'client-to-prospect capability references are not durably normalized';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_index AS index_definition
@@ -1025,6 +1104,35 @@ BEGIN
         ILIKE '%(slug)%'
   ) THEN
     RAISE EXCEPTION 'dashboard capability slugs are not protected by unique indexes';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'public.workspace_touch_updated_at()',
+      'public.assign_client_workspace()',
+      'public.enforce_private_workspace_single_live_member()',
+      'public.enforce_private_workspace_lifecycle_pair()',
+      'public.prevent_workspace_audit_mutation()',
+      'public.generate_client_dashboard_slug()',
+      'public.generate_prospect_dashboard_capability_slug()',
+      'public.guard_client_internal_fields()',
+      'public.revoke_client_portal_access_artifacts()',
+      'public.normalize_client_prospect_dashboard_slug()'
+    ]) AS trigger_function(signature)
+    CROSS JOIN (VALUES ('anon'), ('authenticated')) AS browser_role(name)
+    WHERE to_regprocedure(trigger_function.signature) IS NULL
+      OR COALESCE(
+        has_function_privilege(
+          browser_role.name,
+          to_regprocedure(trigger_function.signature),
+          'EXECUTE'
+        ),
+        true
+      )
+  ) THEN
+    RAISE EXCEPTION
+      'browser roles can directly execute release trigger functions';
   END IF;
 
   IF NOT EXISTS (
@@ -2002,13 +2110,13 @@ BEGIN
     ) NOT ILIKE '%is_platform_admin_identity%same_email_membership.email_normalized = membership.email_normalized%ORDER BY same_email_membership.id%FOR UPDATE%SELECT claim.lock_token, claim.claim_kind%existing_lock_token IS DISTINCT FROM p_lock_token%existing_claim_kind = ''revoke_cleanup''%newer_membership.email_normalized = membership.email_normalized%newer_membership.created_at >= membership.created_at%workspace_invite_delivery_claims AS other_claim%other_membership.id <> membership.id%historical workspace invitation is superseded%raw_app_meta_data%workspace_membership_id%<> membership.id%raw_app_meta_data%workspace_id%<> membership.workspace_id%bound_membership.user_id = auth_user.id%unsafe: contradictory ownership%array_agg(auth_user.id%auth_user.id = membership.user_id%raw_user_meta_data%workspace_membership_id%raw_user_meta_data%workspace_id%membership.workspace_id%auth_user.invited_at IS NOT NULL%auth_user.created_at >= membership.created_at%raw_app_meta_data%workspace_membership_id%raw_app_meta_data%workspace_id%membership.workspace_id%cardinality(candidate_user_ids) <> 1%Auth identity is ambiguous%is_platform_admin_email(candidate_emails[1])%'
     OR pg_get_functiondef(
       'public.find_workspace_invite_auth_user(uuid,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%WHERE (%auth_user.id = membership.user_id%OR auth_user.raw_user_meta_data ->> ''workspace_membership_id'' = membership.id::text%OR (%auth_user.raw_app_meta_data ->> ''workspace_membership_id'' = membership.id::text%AND auth_user.raw_app_meta_data ->> ''workspace_id'' = membership.workspace_id::text%))%AND (%auth_user.raw_app_meta_data ->> ''workspace_membership_id'' IS NOT NULL%<> membership.id::text%OR (%auth_user.raw_app_meta_data ->> ''workspace_id'' IS NOT NULL%<> membership.workspace_id::text%OR EXISTS (%bound_membership.user_id = auth_user.id%'
+    ) NOT ILIKE '%WHERE (%auth_user.id = membership.user_id%OR auth_user.raw_user_meta_data ->> ''workspace_membership_id'' = membership.id::text%OR (%auth_user.raw_app_meta_data ->> ''workspace_membership_id'' = membership.id::text%AND auth_user.raw_app_meta_data ->> ''workspace_id'' = membership.workspace_id::text%)%)%AND (%auth_user.raw_app_meta_data ->> ''workspace_membership_id'' IS NOT NULL%<> membership.id::text%OR (%auth_user.raw_app_meta_data ->> ''workspace_id'' IS NOT NULL%<> membership.workspace_id::text%OR EXISTS (%bound_membership.user_id = auth_user.id%'
     OR pg_get_functiondef(
       'public.find_workspace_invite_auth_user(uuid,uuid,uuid)'::regprocedure
     ) ILIKE '%LIMIT 1%'
     OR pg_get_functiondef(
       'public.revoke_workspace_invite(uuid,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%is_platform_admin_identity%WHERE existing_membership.id = p_membership_id;%same_email_membership.email_normalized = membership.email_normalized%ORDER BY same_email_membership.id%FOR UPDATE%WHERE existing_membership.id = p_membership_id%FOR UPDATE%membership.status = ''revoked''%newer_membership.email_normalized = membership.email_normalized%newer_membership.created_at >= membership.created_at%workspace_invite_delivery_claims AS other_claim%other_membership.id <> membership.id%historical workspace invitation is superseded%workspace_invite_delivery_claims%FOR UPDATE%lock_token IS DISTINCT FROM p_lock_token%claim_kind <> ''revoke_cleanup''%IF FOUND THEN%membership.status <> ''revoked''%RETURN membership%membership.status NOT IN (''provisioning'', ''invited'', ''revoked'')%status = ''revoked''%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%workspace.membership.revoked%INSERT INTO public.workspace_invite_delivery_claims%''revoke_cleanup''%review_after%interval ''15 minutes''%'
+    ) NOT ILIKE '%is_platform_admin_identity%WHERE existing_membership.id = p_membership_id;%same_email_membership.email_normalized = membership.email_normalized%ORDER BY same_email_membership.id%FOR UPDATE%WHERE existing_membership.id = p_membership_id%FOR UPDATE%membership.status = ''revoked''%newer_membership.email_normalized = membership.email_normalized%newer_membership.created_at >= membership.created_at%workspace_invite_delivery_claims AS other_claim%other_membership.id <> membership.id%historical workspace invitation is superseded%workspace_invite_delivery_claims%FOR UPDATE%lock_token IS DISTINCT FROM p_lock_token%claim_kind <> ''revoke_cleanup''%IF FOUND THEN%membership.status <> ''revoked''%RETURN membership%membership.status NOT IN (''provisioning'', ''invited'', ''revoked'')%status = ''revoked''%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%workspace.membership.revoked%INSERT INTO public.workspace_invite_delivery_claims%review_after%''revoke_cleanup''%interval ''15 minutes''%'
     OR pg_get_functiondef(
       'public.revoke_workspace_invite(uuid,uuid,uuid)'::regprocedure
     ) ILIKE '%ON CONFLICT%'
@@ -2733,7 +2841,7 @@ BEGIN
     ) NOT ILIKE '%FROM public.workspaces AS workspace%workspace.id = membership.workspace_id%NOT workspace.is_default%workspace.status = CASE membership.status%WHEN ''provisioning'' THEN ''active''%WHEN ''invited'' THEN ''active''%WHEN ''active'' THEN ''active''%WHEN ''suspended'' THEN ''suspended''%WHEN ''revoked'' THEN ''archived''%NOT EXISTS%other_membership.workspace_id = membership.workspace_id%other_membership.id <> membership.id%FOR SHARE%private workspace lifecycle does not match its membership%SELECT claim.*%workspace_auth_lifecycle_claims%'
     OR pg_get_functiondef(
       'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) ILIKE '%jsonb_build_object(%p_lock_token%'
+    ) ~* 'jsonb_build_object[[:space:]]*\([^;]*p_lock_token'
     OR pg_get_function_result(
       'public.list_workspace_auth_lifecycle_pending()'::regprocedure
     ) NOT ILIKE '%membership_id uuid%review_after timestamp with time zone%'
