@@ -9,21 +9,26 @@ manages clients inside one private workspace.
 
 Pull request #1 was merged into `main` on 2026-07-21 at commit
 `3f608997522a76207ace8ebf355daf0cf3642865`. Railway automatically deployed
-that frontend to the production GOAP service. The coordinated Supabase release
-was not applied: the required workspace schema and new Edge Functions,
-including `account-context`, are absent from the production project.
+that frontend to the production GOAP service. The coordinated production
+Supabase cutover was completed on 2026-07-21 from the follow-up release branch,
+whose backend deployment/configuration head was
+`b2655c36f46042d4ace56236fbd373272205e207`.
 
-The frontend therefore fails closed on every protected route. An existing Auth
-session can be valid while `/admin/*` and `/app/*` display **Access
-unavailable** because account authorization cannot be resolved. This is a
-known frontend/backend version mismatch, not evidence that a user was removed.
+Production now has all six release migrations, a passing catalog verifier, and
+an exact inventory of 87 active Edge Functions with no JWT-policy drift.
+`account-context` has a valid production CORS preflight, and the six approved
+legacy shutdown targets are absent. The separate video service is a
+credential-free 410 tombstone, and obsolete Stripe Edge secrets were removed.
 
-Do not deploy one function or one migration to production as a shortcut. Either
-temporarily restore the pre-MVP frontend from commit `b46a737631ee840f2f49270bdfbbe392833e814a`
-or leave protected routes fail-closed until the complete release passes the
-staging procedure below. An empty Railway `staging` environment exists, but it
-has no service, domain, deployment, or copied production configuration. A
-dedicated sanitized Supabase staging project is still required.
+The backend is safe to retain, but real-user onboarding is still on hold:
+custom SMTP is not configured, no real invitation has completed end to end,
+the signed-in administrator browser smoke test is pending, and credentials
+exposed through chat still require rotation. Do not send an invitation until
+those gates are complete. The follow-up branch must also be pushed, rechecked
+in pull request #2, and merged so `main` matches the deployed backend source.
+
+The sanitized cutover evidence and remaining gates are recorded in
+[`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md).
 
 ## MVP roles
 
@@ -59,9 +64,9 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
 ## Security boundaries
 
 - The checked-in Supabase configuration disables public email signup and
-  anonymous Auth, and the product exposes no signup UI. Hosted Auth must be
-  verified to match before release; only a platform administrator may create a
-  workspace invitation.
+  anonymous Auth, and the product exposes no signup UI. Production hosted Auth
+  was verified to match on 2026-07-21; only a platform administrator may create
+  a workspace invitation.
 - The server derives platform-admin status from the immutable Auth user ID, its
   current email, the `admin_users` allowlist, and an active default-workspace
   membership. Browser metadata or an email change alone is not an authority.
@@ -159,12 +164,19 @@ not a place for service-role or provider credentials.
 
 ## Database rollout
 
-Use a dedicated staging project. Do not point local acceptance testing at
-production and do not replay the repository's entire historical migration
-directory blindly. The legacy `scripts/deploy-edge-functions.sh` and
-`scripts/run-migration.cjs` helpers are intentionally retired and fail closed;
-they do not implement this release's target, commit, backup, manifest, or
-evidence controls.
+The six-version production rollout was completed on 2026-07-21. The procedure
+below is retained for recovery and future environments. The operator explicitly
+accepted proceeding without a dedicated staging backend or restore rehearsal;
+do not generalize that exception to later releases.
+
+For future acceptance, use a dedicated staging project. Do not point synthetic
+acceptance tests at production and do not replay the repository's entire
+historical migration directory blindly. It contains 86 historical or
+noncanonical files; only the six coordinated 20260720 versions are authoritative
+for this cutover and recorded in the production migration ledger. The legacy
+`scripts/deploy-edge-functions.sh` and `scripts/run-migration.cjs` helpers are
+intentionally retired and fail closed; they do not implement this release's
+target, commit, backup, manifest, or evidence controls.
 
 Use a coordinated maintenance window; do not run the SQL while historical
 portal functions can still mint credentials or sessions:
@@ -210,13 +222,15 @@ Important cutover effects:
 
 - Every pre-cutover client and prospect dashboard capability slug is rotated,
   regardless of its former format. Previously shared links stop working;
-  inventory and distribute replacement URLs after staging acceptance.
+  inventory and distribute replacement URLs after controlled end-to-end
+  acceptance.
 - Raw legacy portal sessions are invalidated. Legacy plaintext portal
   credentials are deleted and affected portals are disabled; an operator must
   set a new password and securely reissue access before those clients sign in.
 - Legacy client-portal magic-link tokens are deleted and cannot be redeemed.
 - Existing client rows are assigned to the default workspace; other legacy data
-  remains administrator-only. Verify row counts and ownership before promotion.
+  remains administrator-only. The production catalog verifier confirmed the
+  ownership invariants.
 
 Deploy the new account/client functions and every changed guarded function from
 this branch as one reviewed, explicit allowlist. Do not bulk-deploy the entire
@@ -232,14 +246,14 @@ omitting them from a deploy is not deletion. At minimum the MVP uses
 `login-with-password`, `validate-portal-session`, `logout-portal-session`,
 `get-client-bookings`, and `public-client-dashboard`.
 
-Production may still contain historical copies of all 17 retired function
-entrypoints; omitting those names from a deploy does not remove a remote
-function. Keep the 410 tombstones in place through migration and acceptance.
+Production currently contains the 17 reviewed 410 tombstones; omitting those
+names from a future deploy does not remove a remote function. Keep the
+tombstones in place through acceptance and external caller cleanup.
 `get-client-portfolio` is replaced by the narrower
 `public-client-dashboard` capability endpoint. After every caller, schedule,
 and provider workflow is removed, delete the remote functions and list the
-inventory again. Migration 3 deletes all outstanding magic-link tokens, so
-none may be carried into production.
+inventory again. The six separate shutdown targets are already absent.
+Migration 3 deleted all outstanding magic-link tokens, so none may be restored.
 
 Configure the Resend endpoint for only `email.sent`, `email.delivered`,
 `email.delivery_delayed`, `email.failed`, `email.bounced`,
@@ -251,16 +265,16 @@ mail. A temporarily missing log returns a retryable 500 so a send/log commit
 race can recover; alert and reconcile any identifier that remains unmatched
 before Resend exhausts retries.
 
-Hosted Auth settings must also disable email/anonymous signup, set the invite
-expiry to 24 hours, and allow only the intended staging `/accept-invite`
-callback. A Supabase invite email is a bearer credential: anyone with the full
-link can establish the invited Auth session, so it must not be forwarded or
-logged.
+Production hosted Auth disables email/anonymous signup, uses a 24-hour invite
+expiry, and allows the required production `/accept-invite` and `/admin/callback`
+redirects. Custom SMTP is still unconfigured, so invitation sending remains on
+hold. A Supabase invite email is a bearer credential: anyone with the full link
+can establish the invited Auth session, so it must not be forwarded or logged.
 
-Migration 1 is intentionally still a numbered, pre-release migration on this
-branch. Apply the complete current file to a fresh dedicated staging baseline,
-or replay staging from its pre-MVP backup; do not assume that an older draft of
-the same migration has been upgraded in place.
+Production records the exact six-version release unit in its migration ledger.
+Apply those complete current files to a fresh dedicated staging baseline, or
+replay staging from its pre-MVP backup; do not assume that an older draft of a
+release migration has been upgraded in place.
 
 ## Verification
 
@@ -294,9 +308,9 @@ to the 2.5.2 executable.
 
 ### Executable staging evidence
 
-Run staging evidence only from a reviewed, clean commit on
-`feat/invite-only-workspaces`. Both runners refuse a dirty/untracked worktree,
-an unexpected branch, an uncommitted release input, a reused evidence path, or
+Run staging evidence only from a reviewed, clean commit. Both runners refuse a
+dirty/untracked worktree, an unsafe branch name, an uncommitted release input,
+a reused evidence path, or
 an explicitly identified production target. Evidence paths must be absolute,
 must have an existing current-user-owned parent that is not group/world
 writable, and must be outside every linked worktree, the Git directory, and the
@@ -386,7 +400,8 @@ must pass. A local PostgreSQL parser catches SQL grammar errors, but only the
 catalog verifier against the actual staging schema can validate definitions,
 ACLs, RLS, and data invariants.
 
-Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
+Latest release evidence (2026-07-21; production backend at clean deployment
+source head `b2655c36f46042d4ace56236fbd373272205e207`):
 
 | Check | Result |
 | --- | --- |
@@ -397,6 +412,12 @@ Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
 | Nested MCP clean install/build/audits | Pass; MCP SDK 1.29.0 and zero full/production vulnerabilities |
 | Docker/Railway deployment contract | Pass; exact two-stage Node/npm toolchain, required browser build arguments, non-root runtime, and secret-excluding context |
 | Release/Edge manifest shape | Pass; 89 changed functions = 87 deployed, including 17 tombstones, plus 2 tenant-environment exclusions; 94 Edge TypeScript files |
+| Production migration unit | Pass; all six versions applied and reconciled into the migration ledger with names and statement arrays |
+| Production database catalog verifier | Pass; exact committed verifier ran serializable/read-only and ended with `ROLLBACK` |
+| Production Edge inventory | Pass; 87 expected/active, zero missing/unexpected, 73 JWT-verified and the exact 14 reviewed non-JWT handlers |
+| Hosted Auth and CORS | Pass; signup/anonymous disabled, 24-hour invite expiry, required production callback routes present, and `account-context` preflight 204 |
+| Fail-closed HTTP containment | Pass; protected unauthenticated requests denied, public handlers reject empty input, and five public tombstones return 410 |
+| Billing/video containment | Pass; Stripe endpoint tombstoned and Edge secrets removed; Railway video API tombstoned and service credentials removed |
 | Edge semantic type check | Pass; all 89 entrypoints on Deno 2.5.2 with frozen `deno.lock` |
 | Edge TypeScript inventory/syntax check | Pass; 94 function/shared TypeScript files |
 | App TypeScript | Pass; zero diagnostics |
@@ -409,12 +430,13 @@ Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
 | Local SQL grammar parse | Pass; six migrations plus verifier |
 | Patch whitespace check | Pass |
 
-These are static results, not deployment approval. A live database was not
-available, so the migration verifier, RLS behavior, provider webhooks, and
-cross-account concurrency cases are still staging gates.
+The static, catalog, inventory, hosted-configuration, and unauthenticated HTTP
+gates above are complete. They do not replace signed-in browser acceptance,
+SMTP/invitation delivery, two-account isolation, provider-side webhook/caller
+removal, credential rotation, or concurrency/fault testing.
 
-Staging acceptance requires one platform administrator and two invited test
-accounts:
+Remaining end-to-end acceptance requires one platform administrator and two
+disposable invited test accounts:
 
 - each account sees only its own client list;
 - guessed/direct client UUID reads and every cross-account write fail;
@@ -460,7 +482,14 @@ The detailed rollout and acceptance matrix is in
 - Workspace users cannot invite teammates or own multiple workspaces.
 - Workspace password recovery has no product UI yet; support must perform a
   controlled Supabase Auth recovery/reset.
+- The production invitation UI warns about email readiness but has no automatic
+  SMTP-health switch. Until SMTP and a real invite are verified, administrator
+  discipline is the release gate and the Invite user action must not be used.
 - The client portal is intentionally minimal and separate from workspace Auth.
+- Clearing a client portal password deletes the verifier, sessions, and tokens,
+  so authentication fails closed, but it does not automatically clear the
+  historical `portal_access_enabled` display flag. Disable portal access
+  explicitly when retiring a portal until that state is normalized.
 - The frontend build still emits a large single-chunk warning; route-level code
   splitting is post-MVP performance work.
 - Both the full and production dependency audits are currently clean. Keep the
@@ -515,35 +544,38 @@ commit, project, backup, phased manifest, and private evidence directory.
 
 ## Remaining release gates
 
-The source merge has already occurred, but the backend release is not approved.
-Make no additional production mutation until:
+The production backend cutover is complete, but the follow-up source is not yet
+merged and real-user onboarding is not accepted.
 
-1. every exposed credential is rotated;
-2. repository history and external logs are reviewed for the exposed values,
-   with history remediation coordinated before any force-push;
-3. staging backup/schema review succeeds;
-4. a commit-bound staging deployment inventory proves the exact frontend,
-   migrations, and Edge manifest were deployed;
-5. all six migrations and the database verifier pass;
-6. hosted Auth configuration and the uninvited-account denial are verified;
-7. the complete two-account isolation matrix passes over browser navigation,
-   REST, Edge Functions, storage, and modified URLs;
-8. all 17 retired function tombstones return 410 in their configured gateway
-   context, their remote inventory is removed after caller cleanup, and retired
-   Stripe plus the separate retired video-generator Railway service and HeyGen
-   integration are unregistered or removed; both
-   excluded tenant handlers are absent and their callers are unregistered;
-9. invite/provider and lifecycle fault/concurrency tests, durable-claim manual
-   recovery, signed Resend replay/provider evidence, capability redistribution,
-   and telemetry incident review are recorded;
-10. every other external/manual gate enumerated by the staging runner is
-    complete, with no unexpected incomplete record;
-11. build/static checks show no regression;
-12. the final diff receives security, data/RLS, Edge, frontend, and operations
-   review;
-13. `main` branch protection and required checks are enabled; and
-14. the required GitHub check passes on any follow-up PR (and any merge-group)
-    synthetic merge containing the exact reviewed head SHA.
+Before merging the follow-up branch:
+
+1. commit and push the updated cutover record and audit fixes;
+2. update pull request #2 so its title/body and head SHA match the actual
+   backend release;
+3. require a fresh green GitHub check on that exact head and review any
+   synthetic merge result;
+4. complete the signed-in production administrator smoke test, especially
+   dashboard/global-client error handling and logout;
+5. obtain final security, frontend/workflow, and operations approval on the
+   documented diff; and
+6. enable `main` branch protection/required checks, or explicitly record the
+   repository-control risk before merge.
+
+Before sending any real invitation:
+
+1. rotate the exposed OpenAI, Podscan, Jotform, and Clay credentials and review
+   provider/application logs;
+2. configure and verify custom SMTP and the production invitation template;
+3. review the remaining historical Auth redirect allowlist entries and remove
+   any legacy/local callback that is not still required;
+4. complete one controlled email → password → acceptance → login → isolated
+   client CRUD → logout journey;
+5. complete two-account cross-tenant denial plus suspend/reactivate testing;
+6. verify replacement capability links and any reissued portal access;
+7. record provider-side Stripe webhook/caller removal, obsolete schedules, and
+   the remaining external/manual fault/concurrency gates; and
+8. decide when to delete the credential-free Railway video tombstone project
+   and the 17 Edge tombstones after caller quietness is proved.
 
 Credentials previously committed in repository history or shared through chat
 remain compromised after source cleanup. Rotate them; deleting the visible

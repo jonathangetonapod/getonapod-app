@@ -4,21 +4,22 @@
 
 Pull request #1 was merged into `main` on 2026-07-21 at commit
 `3f608997522a76207ace8ebf355daf0cf3642865`. The production Railway integration
-automatically deployed the new frontend, but no Supabase migration or Edge
-Function deployment was part of that integration. Production currently returns
-`404 NOT_FOUND` for `account-context`, `accept-workspace-invite`,
-`manage-workspace-users`, and `workspace-clients`.
+automatically deployed the new frontend. The coordinated production Supabase
+cutover was completed separately on 2026-07-21 from reviewed source head
+`b2655c36f46042d4ace56236fbd373272205e207`; later audit/documentation fixes
+belong to the follow-up pull request.
 
-Protected application routes intentionally fail closed in this split-release
-state. Do not bypass the account gate or deploy `account-context` by itself: it
-depends on the workspace schema and server-side authorization RPCs. Immediate
-service restoration requires an explicitly approved frontend rollback to
-`b46a737631ee840f2f49270bdfbbe392833e814a`; otherwise keep protected routes
-closed while the complete release is exercised in staging.
+All six migrations are applied and ledger-reconciled; the exact catalog
+verifier passes; production has the exact 87-function manifest and JWT policy;
+and `account-context` CORS is healthy. The six approved shutdown targets are
+absent. Stripe and the separate video service are fail-closed tombstones with
+their obsolete service credentials removed.
 
-The GOAP Railway project now has an empty `staging` environment with no service,
-domain, deployment, or copied production configuration. A separate sanitized
-Supabase staging project and secure deployer/database access remain prerequisites.
+The backend is safe to retain. Real invitations remain disabled by operator
+policy until custom SMTP, exposed-credential rotation, signed-in administrator
+smoke testing, and one complete invitation/two-account acceptance flow pass.
+See [`production-cutover-2026-07-21.md`](production-cutover-2026-07-21.md) for
+the sanitized evidence and open gates.
 
 ## Release objective
 
@@ -33,8 +34,8 @@ The target MVP intentionally has:
 - no billing, checkout, paid add-ons, or order management;
 - no user-managed teams or multiple private-workspace members;
 - no tenant access to legacy modules that are not workspace-aware; and
-- no additional production mutation before staging acceptance and explicit
-  cutover approval.
+- no invitation of real users before email delivery and end-to-end acceptance
+  are verified.
 
 The platform administrator uses the existing `/admin/*` application. Invited
 workspace accounts use `/app/clients`. Client portal users are separate client
@@ -163,7 +164,7 @@ Cutover is customer-visible:
 
 - every rotated old approval link stops working;
 - operators must export/inventory replacement URLs and redistribute them only
-  after staging acceptance; and
+  after controlled acceptance; and
 - client portal users with a pre-cutover session must sign in again.
 
 ## Retired surfaces
@@ -180,10 +181,12 @@ The orphan `get-client-portfolio` service-role reader is also an HTTP 410
 tombstone. The supported replacement is the narrower
 `public-client-dashboard` capability endpoint.
 
-Before production promotion, remove the Stripe webhook from Stripe and remove
-the separate retired video-generator Railway service, HeyGen integration, and
-their stored secrets. Deploying a frontend redirect
-alone does not retire an external integration.
+Production now serves the Stripe 410 tombstone and the reviewed Railway video
+tombstone; obsolete Supabase Stripe secrets and service-scoped HeyGen/Supabase
+video credentials are removed. Provider-side Stripe webhook/caller removal and
+eventual deletion of the credential-free Railway tombstone project still need
+explicit evidence/approval. Deploying a frontend redirect alone does not retire
+an external integration.
 
 ## Staging prerequisites
 
@@ -203,9 +206,9 @@ alone does not retire an external integration.
 8. Review Sentry, hosting, proxy, and support logs for captured invite, recovery,
    or capability URLs. Revoke affected sessions/links and purge retained
    telemetry under the incident process.
-9. Apply the current migration files to a fresh staging baseline or restore the
-   pre-MVP backup first. The branch has edited its still-unreleased numbered
-   migration; an older draft is not an in-place upgrade path.
+9. Apply the exact current six-version release unit to a fresh staging baseline
+   or restore the pre-MVP backup first. Production records those exact versions;
+   an older draft is not an in-place upgrade path.
 10. Protect `main`: require the no-secret static validation check, a reviewer,
     an up-to-date branch/merge queue, and block direct and force pushes.
 
@@ -276,8 +279,8 @@ backup, phased manifest, and private output directory.
     return 410 and `/health` to report only `status: retired`.
 11. Only after acceptance proves containment and every caller is gone, delete
     the 17 retired remote functions, remove the separate video-generator
-    Railway service, and save the final absent-function inventory. Make no
-    additional production mutation until reviewers approve all evidence.
+    Railway service, and save the final absent-function inventory. For future
+    rollouts, pause additional mutation whenever required evidence fails.
 
 If any migration or assertion fails, keep traffic closed and the new account
 endpoints unavailable, investigate against the staging backup, and continue
@@ -286,14 +289,12 @@ service to work around a failed cutover.
 
 ## Evidence runners
 
-Use the checked-in runners only from the preserved, reviewed
-`feat/invite-only-workspaces` worktree at commit
-`ec94301da5dc64de5d7f7c2c79a96a626dc573af`. The runners require that exact
-branch and a clean worktree including untracked files, then fingerprint the
-commit and release inputs into sanitized NDJSON. Its tree is identical to the
-merged `main` tree at `3f608997522a76207ace8ebf355daf0cf3642865`. Each output
-path must be absolute, outside the repository, have an existing parent, and not
-already exist.
+Use the checked-in runners only from a preserved, reviewed clean commit. The
+runners require a safe symbolic branch name and a clean worktree including
+untracked files, then fingerprint the exact commit and release inputs into
+sanitized NDJSON. Each output path must be absolute, outside the repository,
+have an existing parent, and not already exist. The historical staging artifact
+for the earlier feature branch is not evidence for the final production head.
 
 `npm run test:staging` is the black-box HTTP runner. It accepts only dedicated
 `ACCEPTANCE_*` variables for the exact staging project ref, a mandatory
@@ -463,8 +464,9 @@ workflow pins Node 22.22.2, npm 10.9.7, Deno 2.5.2, and its Actions by commit,
 then repeats the gates for pull requests and merge queues. Full-repository
 ESLint retains unrelated legacy debt and is not the release check.
 
-Static checks do not prove RLS. The release remains blocked until the SQL
-verifier and two-account staging matrix pass.
+Static checks alone do not prove RLS. The production catalog verifier has
+passed; the two-account browser/REST/Edge/storage matrix remains an onboarding
+acceptance gate.
 
 ## Accepted limitations and follow-up
 
@@ -516,28 +518,23 @@ logs; a rewrite never substitutes for credential rotation.
 
 ## Merge gate
 
-Merge `feat/invite-only-workspaces` into `main` only when:
+The backend cutover is complete. Merge the follow-up branch into `main` only
+after:
 
-- compromised credentials are rotated;
-- repository history and telemetry/hosting logs are reviewed and remediated;
-- a commit-bound staging deployment inventory proves the exact migrations,
-  Edge manifest, and frontend under review;
-- staging migration backup/review and the SQL verifier pass;
-- hosted Auth configuration and uninvited-account denial are verified;
-- the complete two-account browser/REST/Edge/storage matrix passes;
-- invite and lifecycle provider fault/concurrency injection, durable-claim
-  manual recovery, and signed Resend replay/provider evidence pass;
-- replacement capability links are inventoried and redistribution is approved;
-- all 17 retired functions have completed the tombstone, caller cleanup, and
-  remote-deletion inventory sequence;
-- both excluded tenant handlers are remotely absent and their callers removed;
-- external Stripe/video integrations are unregistered;
-- every external/manual gate enumerated by the staging runner is complete, with
-  no unexpected incomplete record;
-- build/static/dependency checks are accepted; and
-- data/RLS, Edge/security, frontend, and operations reviewers approve the final
-  diff;
-- `main` has required review/check protection and blocks direct/force pushes;
+- this guide, the README, and the sanitized cutover record are committed and
+  pull request #2 describes the actual release;
+- the final head receives a fresh green GitHub check and any synthetic merge is
+  reviewed;
+- a signed-in administrator production smoke test confirms dashboard, users,
+  global clients, legacy records, and logout;
+- security, frontend/workflow, and operations reviewers accept the final diff;
   and
-- the required GitHub check passes on the PR (and any merge-group) synthetic
-  merge containing the exact reviewed feature-head SHA.
+- `main` has required review/check protection, or the repository owner
+  explicitly records acceptance of the unprotected-branch risk.
+
+Merging source is separate from opening onboarding. Do not invite real users
+until custom SMTP, exposed-credential rotation, a complete invitation/password
+flow, two-account isolation, suspend/reactivate behavior, capability/portal
+reissue, and the remaining provider/caller cleanup evidence pass. Keep the 17
+Edge tombstones and the credential-free Railway video tombstone until external
+caller quietness and deletion timing are approved.

@@ -122,7 +122,7 @@ const EDGE_FUNCTION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/
 const SAFE_LABEL_PATTERN = /^[A-Za-z0-9_.:-]{1,160}$/
 const MAX_RESPONSE_BYTES = 1_048_576
 const REQUEST_TIMEOUT_MS = 30_000
-const RELEASE_BRANCH = 'feat/invite-only-workspaces'
+const RELEASE_BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/
 const RELEASE_INPUT_PATHS = [
   'docs/invite-only-edge-manifest.json',
   'scripts/staging-acceptance.ts',
@@ -186,6 +186,13 @@ const SAFE_CLIENT_KEYS = new Set([
   'updated_at',
 ])
 
+function isSafeReleaseBranch(value: string): boolean {
+  return RELEASE_BRANCH_PATTERN.test(value)
+    && !value.includes('..')
+    && !value.includes('//')
+    && !value.endsWith('/')
+}
+
 class SafeFailure extends Error {
   readonly code: string
   readonly httpStatus?: number
@@ -224,7 +231,7 @@ class EvidenceWriter {
     if (record.code && !SAFE_LABEL_PATTERN.test(record.code)) {
       throw new SafeFailure('UNSAFE_EVIDENCE_CODE')
     }
-    if (record.release_branch && record.release_branch !== RELEASE_BRANCH) {
+    if (record.release_branch && !isSafeReleaseBranch(record.release_branch)) {
       throw new SafeFailure('UNSAFE_RELEASE_BRANCH')
     }
     if (record.release_commit && !/^[0-9a-f]{40,64}$/.test(record.release_commit)) {
@@ -511,7 +518,7 @@ function verifyReleaseIntegrity(): ReleaseIntegrity {
   assertSafe(discoveredRoot === repoRoot, 'SOURCE_INTEGRITY_REFUSED')
 
   const branch = gitOutput(repoRoot, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
-  assertSafe(branch === RELEASE_BRANCH, 'SOURCE_INTEGRITY_REFUSED')
+  assertSafe(isSafeReleaseBranch(branch), 'SOURCE_INTEGRITY_REFUSED')
   const commit = gitOutput(repoRoot, ['rev-parse', '--verify', 'HEAD^{commit}']).toLowerCase()
   assertSafe(/^[0-9a-f]{40,64}$/.test(commit), 'SOURCE_INTEGRITY_REFUSED')
   assertSafe(

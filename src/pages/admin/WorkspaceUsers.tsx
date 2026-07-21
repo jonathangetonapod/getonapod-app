@@ -104,7 +104,7 @@ const WorkspaceUsers = () => {
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><h1 className="text-3xl font-bold tracking-tight">Workspace users</h1><p className="text-muted-foreground">Invite people and control access to their private client workspaces.</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">Workspace users</h1><p className="text-muted-foreground">Invite people after production email delivery is verified, and control access to their private client workspaces.</p></div>
           <Button onClick={() => setInviteOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Invite user</Button>
         </div>
 
@@ -122,7 +122,7 @@ const WorkspaceUsers = () => {
                 </Button>
               </div>
             ) : users.length === 0 ? (
-              <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center"><Send className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No invited users</p><p className="text-sm text-muted-foreground">Invite the first user when staging is configured.</p></div></div>
+              <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center"><Send className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No invited users</p><p className="text-sm text-muted-foreground">Configure and verify production invite email delivery before inviting the first user.</p></div></div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -165,7 +165,7 @@ const WorkspaceUsers = () => {
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Invite a workspace user</DialogTitle><DialogDescription>The invitee receives one private workspace and cannot invite additional users in this MVP.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Invite a workspace user</DialogTitle><DialogDescription>Confirm production invite email delivery is configured before sending. The invitee receives one private workspace and cannot invite additional users in this MVP.</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); inviteMutation.mutate() }}>
             <div className="space-y-2"><Label htmlFor="invite-email">Email</Label><Input id="invite-email" type="email" required autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="invite-name">Full name</Label><Input id="invite-name" value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>

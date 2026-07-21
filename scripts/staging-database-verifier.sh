@@ -4,7 +4,6 @@ set +x
 set -euo pipefail
 umask 077
 
-readonly RELEASE_BRANCH='feat/invite-only-workspaces'
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 readonly VERIFIER='supabase/tests/20260720_invite_only_workspace_verification.sql'
@@ -182,7 +181,8 @@ readonly discovered_root
 [[ "$(realpath -- "${discovered_root}")" == "${REPO_ROOT}" ]] || refuse
 current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || refuse
 readonly current_branch
-[[ "${current_branch}" == "${RELEASE_BRANCH}" ]] || refuse
+[[ "${current_branch}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$ ]] || refuse
+[[ "${current_branch}" != *..* && "${current_branch}" != *//* && "${current_branch}" != */ ]] || refuse
 release_commit="$(git rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" || refuse
 readonly release_commit
 [[ "${release_commit}" =~ ^[0-9a-f]{40,64}$ ]] || refuse
