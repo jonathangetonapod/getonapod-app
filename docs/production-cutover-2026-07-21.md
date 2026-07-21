@@ -23,8 +23,7 @@ two-account isolation acceptance, and exposed-credential rotation remain open.
   bytes, point-in-time recovery, and a restore rehearsal are not available.
 - Public and anonymous Auth signup are disabled. The site URL is
   `https://getonapod.com`; the exact `/accept-invite` and `/admin/callback`
-  redirects are allowed; invitation expiry is 24 hours. Additional historical
-  Railway/local redirect entries remain and require review before invitations.
+  redirects are the complete allowlist; invitation expiry is 24 hours.
 - Migrations `20260720000100` through `20260720000600` were applied in order.
   The exact committed catalog verifier passed inside a serializable read-only
   transaction and ended with `ROLLBACK`. Its SHA-256 was
@@ -81,21 +80,19 @@ restored.
    values into tracked files, chat, or evidence.
 2. Configure and verify custom SMTP and the production invitation email. Do
    not use the Invite user action before this is complete.
-3. Review the remaining historical Auth redirect allowlist entries and remove
-   every legacy/local callback that is not still required.
-4. Run a signed-in administrator smoke test for dashboard, users, global
+3. Run a signed-in administrator smoke test for dashboard, users, global
    clients, legacy records, and logout.
-5. Complete one real invitation from delivery through password creation,
+4. Complete one real invitation from delivery through password creation,
    acceptance, login, isolated client CRUD, logout, suspension, and
    reactivation. Complete the two-account cross-tenant denial matrix.
-6. Confirm provider-side removal of the external Stripe webhook and every
+5. Confirm provider-side removal of the external Stripe webhook and every
    obsolete caller/schedule. Retain the 410 tombstones until that evidence is
    complete.
-7. Decide whether to delete the credential-free Railway video tombstone
+6. Decide whether to delete the credential-free Railway video tombstone
    project after its audit/caller-observation value is no longer needed.
-8. Push the follow-up branch, refresh pull request #2, require a new CI result
+7. Push the follow-up branch, refresh pull request #2, require a new CI result
    for the final head, and merge only the reviewed commit.
-9. Add branch protection/required checks to `main`, or explicitly accept that
+8. Add branch protection/required checks to `main`, or explicitly accept that
    repository-control risk before merge.
 
 ## Operating constraints

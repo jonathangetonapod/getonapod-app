@@ -266,8 +266,8 @@ race can recover; alert and reconcile any identifier that remains unmatched
 before Resend exhausts retries.
 
 Production hosted Auth disables email/anonymous signup, uses a 24-hour invite
-expiry, and allows the required production `/accept-invite` and `/admin/callback`
-redirects. Custom SMTP is still unconfigured, so invitation sending remains on
+expiry, and allows only the exact production `/accept-invite` and
+`/admin/callback` redirects. Custom SMTP is still unconfigured, so invitation sending remains on
 hold. A Supabase invite email is a bearer credential: anyone with the full link
 can establish the invited Auth session, so it must not be forwarded or logged.
 
@@ -415,7 +415,7 @@ source head `b2655c36f46042d4ace56236fbd373272205e207`):
 | Production migration unit | Pass; all six versions applied and reconciled into the migration ledger with names and statement arrays |
 | Production database catalog verifier | Pass; exact committed verifier ran serializable/read-only and ended with `ROLLBACK` |
 | Production Edge inventory | Pass; 87 expected/active, zero missing/unexpected, 73 JWT-verified and the exact 14 reviewed non-JWT handlers |
-| Hosted Auth and CORS | Pass; signup/anonymous disabled, 24-hour invite expiry, required production callback routes present, and `account-context` preflight 204 |
+| Hosted Auth and CORS | Pass; signup/anonymous disabled, 24-hour invite expiry, allowlist reduced to the exact two production callbacks, and `account-context` preflight 204 |
 | Fail-closed HTTP containment | Pass; protected unauthenticated requests denied, public handlers reject empty input, and five public tombstones return 410 |
 | Billing/video containment | Pass; Stripe endpoint tombstoned and Edge secrets removed; Railway video API tombstoned and service credentials removed |
 | Edge semantic type check | Pass; all 89 entrypoints on Deno 2.5.2 with frozen `deno.lock` |
@@ -566,15 +566,13 @@ Before sending any real invitation:
 1. rotate the exposed OpenAI, Podscan, Jotform, and Clay credentials and review
    provider/application logs;
 2. configure and verify custom SMTP and the production invitation template;
-3. review the remaining historical Auth redirect allowlist entries and remove
-   any legacy/local callback that is not still required;
-4. complete one controlled email → password → acceptance → login → isolated
+3. complete one controlled email → password → acceptance → login → isolated
    client CRUD → logout journey;
-5. complete two-account cross-tenant denial plus suspend/reactivate testing;
-6. verify replacement capability links and any reissued portal access;
-7. record provider-side Stripe webhook/caller removal, obsolete schedules, and
+4. complete two-account cross-tenant denial plus suspend/reactivate testing;
+5. verify replacement capability links and any reissued portal access;
+6. record provider-side Stripe webhook/caller removal, obsolete schedules, and
    the remaining external/manual fault/concurrency gates; and
-8. decide when to delete the credential-free Railway video tombstone project
+7. decide when to delete the credential-free Railway video tombstone project
    and the 17 Edge tombstones after caller quietness is proved.
 
 Credentials previously committed in repository history or shared through chat
