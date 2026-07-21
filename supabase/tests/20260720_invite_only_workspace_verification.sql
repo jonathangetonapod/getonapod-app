@@ -1411,6 +1411,7 @@ BEGIN
       'workspace_memberships',
       'workspace_audit_log',
       'workspace_auth_lifecycle_claims',
+      'workspace_account_credential_claims',
       'clients',
       'bookings',
       'client_portal_credentials',
@@ -3356,9 +3357,28 @@ BEGIN
     WHERE relation.oid = 'public.workspace_account_credential_claims'::regclass
       AND relation.relrowsecurity
       AND relation.relkind = 'r'
-  ) OR has_table_privilege('anon', 'public.workspace_account_credential_claims', 'SELECT')
-    OR has_table_privilege('authenticated', 'public.workspace_account_credential_claims', 'SELECT')
-    OR has_table_privilege('service_role', 'public.workspace_account_credential_claims', 'SELECT')
+  ) OR EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('anon'),
+      ('authenticated'),
+      ('service_role')
+    ) AS checked_role(role_name)
+    CROSS JOIN (VALUES
+      ('SELECT'),
+      ('INSERT'),
+      ('UPDATE'),
+      ('DELETE'),
+      ('TRUNCATE'),
+      ('REFERENCES'),
+      ('TRIGGER')
+    ) AS checked_privilege(privilege_name)
+    WHERE has_table_privilege(
+      checked_role.role_name,
+      'public.workspace_account_credential_claims',
+      checked_privilege.privilege_name
+    )
+  )
   THEN
     RAISE EXCEPTION 'workspace credential claims are not service-function-only';
   END IF;
@@ -3457,14 +3477,28 @@ BEGIN
     OR pg_get_functiondef('public.current_auth_token_iat()'::regprocedure)
       NOT ILIKE '%auth.jwt()%iat%'
     OR pg_get_functiondef('public.current_workspace_id()'::regprocedure)
-      NOT ILIKE '%workspace_access_not_before_epoch%current_auth_token_iat%'
+      NOT ILIKE '%workspace_access_not_before_epoch%'
+    OR pg_get_functiondef('public.current_workspace_id()'::regprocedure)
+      NOT ILIKE '%current_auth_token_iat%'
     OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
-      NOT ILIKE '%workspace_access_not_before_epoch%current_auth_token_iat%'
+      NOT ILIKE '%workspace_access_not_before_epoch%'
+    OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%current_auth_token_iat%'
     OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
-      NOT ILIKE '%workspace_access_not_before_epoch%current_auth_token_iat%'
+      NOT ILIKE '%workspace_access_not_before_epoch%'
+    OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%current_auth_token_iat%'
     OR to_regprocedure('public.workspace_auth_credential_is_fresh(uuid)') IS NULL
     OR pg_get_functiondef('public.workspace_auth_credential_is_fresh(uuid)'::regprocedure)
-      NOT ILIKE '%raw_app_meta_data%workspace_credential_version%workspace_credential_attempt_id%workspace_credential_execution_id%workspace_password_change_required%'
+      NOT ILIKE '%raw_app_meta_data%'
+    OR pg_get_functiondef('public.workspace_auth_credential_is_fresh(uuid)'::regprocedure)
+      NOT ILIKE '%workspace_credential_version%'
+    OR pg_get_functiondef('public.workspace_auth_credential_is_fresh(uuid)'::regprocedure)
+      NOT ILIKE '%workspace_credential_attempt_id%'
+    OR pg_get_functiondef('public.workspace_auth_credential_is_fresh(uuid)'::regprocedure)
+      NOT ILIKE '%workspace_credential_execution_id%'
+    OR pg_get_functiondef('public.workspace_auth_credential_is_fresh(uuid)'::regprocedure)
+      NOT ILIKE '%workspace_password_change_required%'
   THEN
     RAISE EXCEPTION 'workspace access helpers do not reject stale access tokens';
   END IF;
