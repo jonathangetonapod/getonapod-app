@@ -91,6 +91,7 @@ const EXPECTED_EXPLICIT_JWT_FUNCTIONS = Object.freeze([
   'accept-workspace-invite',
   'account-context',
   'create-client-account',
+  'create-prospect-sheet',
   'manage-client-portal-password',
   'manage-workspace-users',
   'podscan-proxy',
