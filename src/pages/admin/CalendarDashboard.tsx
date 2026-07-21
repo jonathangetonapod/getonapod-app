@@ -58,7 +58,7 @@ export default function CalendarDashboard() {
 
   // Fetch clients
   const { data: clientsData, isLoading: clientsLoading } = useQuery({
-    queryKey: ['clients'],
+    queryKey: ['clients', { status: 'active' }],
     queryFn: () => getClients({ status: 'active' })
   })
 

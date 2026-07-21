@@ -1,6 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getCachedPodcasts, batchUpsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
+import {
+  HttpError,
+  parseJsonObject,
+  requireOnlyKeys,
+  requirePlatformAdminOrService,
+} from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -132,6 +138,36 @@ interface FitAnalysis {
   pitch_angles: Array<{ title: string; description: string }>
 }
 
+interface GetProspectPodcastsRequest {
+  spreadsheetId?: string
+  prospectDashboardId?: string
+  prospectName?: string
+  prospectBio?: string
+  dashboardSlug?: string
+  cacheOnly?: boolean
+  skipAiAnalysis?: boolean
+  aiAnalysisOnly?: boolean
+  checkStatusOnly?: boolean
+}
+
+async function hasPrivilegedAccess(req: Request): Promise<boolean> {
+  try {
+    await requirePlatformAdminOrService(req)
+    return true
+  } catch (error) {
+    if (error instanceof HttpError && (error.status === 401 || error.status === 403)) {
+      return false
+    }
+    throw error
+  }
+}
+
+function normalizeDashboardSlug(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const slug = value.trim().toLowerCase()
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && slug.length <= 180 ? slug : null
+}
+
 /**
  * Call Claude API to analyze podcast fit
  */
@@ -219,23 +255,72 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json()
-    const { spreadsheetId, prospectDashboardId, prospectName, prospectBio, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
-
-    if (!spreadsheetId) {
+    if (req.method !== 'POST') {
       return new Response(
-        JSON.stringify({ error: 'Spreadsheet ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Only POST is allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
-    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
-    console.log('[Get Prospect Podcasts] Prospect name:', prospectName, '| Bio length:', prospectBio?.length || 0)
+    const privileged = await hasPrivilegedAccess(req)
+    const body = await parseJsonObject(req, 16_384) as GetProspectPodcastsRequest
+    requireOnlyKeys(body as unknown as Record<string, unknown>, [
+      'spreadsheetId',
+      'prospectDashboardId',
+      'prospectName',
+      'prospectBio',
+      'dashboardSlug',
+      'cacheOnly',
+      'skipAiAnalysis',
+      'aiAnalysisOnly',
+      'checkStatusOnly',
+    ])
+    let { spreadsheetId, prospectDashboardId, prospectName, prospectBio } = body
+    const { dashboardSlug, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    if (!privileged) {
+      if (cacheOnly !== true || skipAiAnalysis || aiAnalysisOnly || checkStatusOnly) {
+        return new Response(
+          JSON.stringify({ error: 'Platform administrator access is required for this operation' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const slug = normalizeDashboardSlug(dashboardSlug)
+      if (!slug) {
+        return new Response(
+          JSON.stringify({ error: 'A valid dashboard link is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const { data: dashboard, error: dashboardError } = await supabase
+        .from('prospect_dashboards')
+        .select('id,spreadsheet_id,prospect_name,prospect_bio')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (dashboardError || !dashboard) {
+        return new Response(
+          JSON.stringify({ error: 'Dashboard not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      spreadsheetId = dashboard.spreadsheet_id
+      prospectDashboardId = dashboard.id
+      prospectName = dashboard.prospect_name
+      prospectBio = dashboard.prospect_bio || ''
+    }
+
+    console.log('[Get Prospect Podcasts] Starting for dashboard:', prospectDashboardId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
+    console.log('[Get Prospect Podcasts] Prospect name:', prospectName, '| Bio length:', prospectBio?.length || 0)
 
     // FAST PATH: For cacheOnly mode, try to skip Google Sheets and return cached data directly
     if (cacheOnly && prospectDashboardId) {
@@ -245,7 +330,11 @@ serve(async (req) => {
       const { data: analyses, error: analysisError } = await supabase
         .from('prospect_podcast_analyses')
         .select(`
-          *,
+          podcast_id,
+          ai_clean_description,
+          ai_fit_reasons,
+          ai_pitch_angles,
+          ai_analyzed_at,
           podcasts!inner(
             podscan_id,
             podcast_name,
@@ -262,6 +351,7 @@ serve(async (req) => {
           )
         `)
         .eq('prospect_dashboard_id', prospectDashboardId)
+        .limit(500)
 
       if (analysisError) {
         console.error('[Get Prospect Podcasts] Analysis query error:', analysisError)
@@ -301,6 +391,23 @@ serve(async (req) => {
             missing: 0,
             fastPath: true,
             hasAiAnalysis: true,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Public dashboard requests are database-cache reads only. Privileged
+      // callers may continue to fall back to Sheets and refresh the cache.
+      if (!privileged) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            podcasts: [],
+            total: 0,
+            cached: 0,
+            missing: 0,
+            fastPath: true,
+            hasAiAnalysis: false,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
@@ -416,6 +523,13 @@ serve(async (req) => {
           hasAiAnalysis: false,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!spreadsheetId) {
+      return new Response(
+        JSON.stringify({ error: 'Spreadsheet ID is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -556,6 +670,7 @@ serve(async (req) => {
         itunes_rating: p.itunes_rating,
         episode_count: p.episode_count,
         audience_size: p.audience_size,
+        podscan_email: p.podscan_email ?? null,
         podcast_categories: p.podcast_categories,
         demographics: p.demographics,
         ai_clean_description: null,  // Will load from prospect_podcast_analyses if needed
@@ -583,7 +698,7 @@ serve(async (req) => {
     if (prospectDashboardId && cachedPodcasts.length > 0) {
       const { data: analyses } = await supabase
         .from('prospect_podcast_analyses')
-        .select('*')
+        .select('podcast_id,ai_clean_description,ai_fit_reasons,ai_pitch_angles,ai_analyzed_at')
         .eq('prospect_dashboard_id', prospectDashboardId)
         .in('podcast_id', centralCached.map((p: any) => p.id))
 
@@ -1098,13 +1213,14 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('[Get Prospect Podcasts] Error:', error)
+    const status = error instanceof HttpError ? error.status : 500
+    if (!(error instanceof HttpError)) console.error('[Get Prospect Podcasts] Request failed')
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
+        error: error instanceof HttpError ? error.message : 'Internal server error',
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

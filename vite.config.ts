@@ -6,8 +6,12 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "::",
+    // Vite 5's development server is not a production boundary. Bind locally
+    // by default; an explicit DEV_SERVER_HOST opt-in is required for containers
+    // or trusted LAN testing.
+    host: process.env.DEV_SERVER_HOST || "127.0.0.1",
     port: 8080,
+    strictPort: true,
   },
   preview: {
     host: "0.0.0.0",

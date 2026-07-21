@@ -53,7 +53,6 @@ import {
   Key,
   EyeOff,
   RefreshCw,
-  Package,
   ChevronUp,
   ChevronDown,
   Mic,
@@ -65,14 +64,13 @@ import {
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient, setClientPassword, clearClientPassword, generatePassword } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
 import { getPodcastById } from '@/services/podscan'
-import { updatePortalAccess, sendPortalInvitation } from '@/services/clientPortal'
+import { updatePortalAccess } from '@/services/clientPortal'
 import { createClientGoogleSheet } from '@/services/googleSheets'
-import { getClientAddons, updateBookingAddonStatus, deleteBookingAddon, getAddonStatusColor, getAddonStatusText, formatPrice } from '@/services/addonServices'
-import type { BookingAddon } from '@/services/addonServices'
 import { getClientCacheStatus, findCachedPodcastsMetadata } from '@/services/podcastCache'
 import type { PodcastOutreachAction } from '@/services/podcastCache'
 import { PodcastOutreachSwiper } from '@/components/admin/PodcastOutreachSwiper'
 import { supabase } from '@/lib/supabase'
+import { openExternalUrl } from '@/lib/externalUrl'
 import { cn } from '@/lib/utils'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -94,10 +92,8 @@ export default function ClientDetail() {
   const [goingLiveTimeRange, setGoingLiveTimeRange] = useState<TimeRange>(30)
   const [editingBooking, setEditingBooking] = useState<any>(null)
   const [deletingBooking, setDeletingBooking] = useState<any>(null)
-  const [orderToDelete, setOrderToDelete] = useState<BookingAddon | null>(null)
   const [isDeleteClientDialogOpen, setIsDeleteClientDialogOpen] = useState(false)
   const [fetchingPodcast, setFetchingPodcast] = useState(false)
-  const [sendingInvitation, setSendingInvitation] = useState(false)
   const [togglingPortalAccess, setTogglingPortalAccess] = useState(false)
   const [settingPassword, setSettingPassword] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -198,13 +194,6 @@ export default function ClientDetail() {
   const { data: bookingsData, isLoading: bookingsLoading } = useQuery({
     queryKey: ['bookings', 'client', id],
     queryFn: () => getBookings({ client_id: id }),
-    enabled: !!id
-  })
-
-  // Fetch addon orders for this client
-  const { data: clientAddons, isLoading: addonsLoading } = useQuery({
-    queryKey: ['client-addons', id],
-    queryFn: () => getClientAddons(id!),
     enabled: !!id
   })
 
@@ -345,26 +334,6 @@ export default function ClientDetail() {
         variant: 'destructive'
       })
       setDeletingBooking(null)
-    }
-  })
-
-  const deleteOrderMutation = useMutation({
-    mutationFn: deleteBookingAddon,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
-      queryClient.invalidateQueries({ queryKey: ['all-booking-addons'] })
-      toast({
-        title: 'Order Deleted',
-        description: 'Add-on order has been successfully deleted',
-      })
-      setOrderToDelete(null)
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to delete order',
-        variant: 'destructive',
-      })
     }
   })
 
@@ -939,38 +908,6 @@ export default function ClientDetail() {
     }
   }
 
-  const handleSendInvitation = async () => {
-    if (!client) return
-
-    if (!client.email) {
-      toast({
-        title: 'No Email Address',
-        description: 'Please add an email address to this client first',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    setSendingInvitation(true)
-    try {
-      await sendPortalInvitation(client.id)
-      toast({
-        title: 'Invitation Sent',
-        description: `Portal invitation sent to ${client.email}`
-      })
-      // Refresh client data to update invitation_sent_at
-      queryClient.invalidateQueries({ queryKey: ['client', id] })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to send invitation',
-        variant: 'destructive'
-      })
-    } finally {
-      setSendingInvitation(false)
-    }
-  }
-
   const handleCopyPortalUrl = () => {
     // Always use production URL, not localhost
     const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
@@ -1021,6 +958,7 @@ export default function ClientDetail() {
 
   const handleClearPassword = async () => {
     if (!client) return
+    if (!window.confirm('Clear this portal password and revoke all active portal sessions?')) return
 
     try {
       await clearClientPassword(client.id)
@@ -1034,16 +972,6 @@ export default function ClientDetail() {
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to clear password',
         variant: 'destructive'
-      })
-    }
-  }
-
-  const handleCopyPassword = () => {
-    if (client?.portal_password) {
-      navigator.clipboard.writeText(client.portal_password)
-      toast({
-        title: 'Copied!',
-        description: 'Password copied to clipboard'
       })
     }
   }
@@ -1842,6 +1770,9 @@ export default function ClientDetail() {
               }>
                 {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
               </Badge>
+              <Badge variant="outline">
+                Workspace: {client.workspace?.name || 'Unknown workspace'}
+              </Badge>
               <span className="text-sm text-muted-foreground">
                 Joined {formatDate(client.created_at)}
               </span>
@@ -2275,29 +2206,9 @@ export default function ClientDetail() {
               {/* Portal Actions */}
               {client.portal_access_enabled && (
                 <div className="space-y-3 pt-3 border-t">
-                  <Button
-                    onClick={handleSendInvitation}
-                    disabled={!client.email || sendingInvitation}
-                    className="w-full"
-                  >
-                    {sendingInvitation ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Send Portal Invitation
-                      </>
-                    )}
-                  </Button>
-
-                  {!client.email && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      Add email address to send invitation
-                    </p>
-                  )}
+                  <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+                    Automated client-portal invitation email is not part of this MVP. Set or reset the password below, then share the copied login URL through your approved secure channel.
+                  </p>
 
                   <Button
                     variant="outline"
@@ -2329,123 +2240,65 @@ export default function ClientDetail() {
                       </p>
                     </div>
 
-                    {client.portal_password ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                          <Input
-                            type={showPassword ? 'text' : 'password'}
-                            value={client.portal_password}
-                            readOnly
-                            className="flex-1"
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={handleCopyPassword}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
+                    <div className="space-y-2">
+                      {client.password_set_at && (
+                        <div className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+                          Password configured. Existing passwords cannot be viewed; enter a new one to reset it.
+                          {client.password_set_at && (
+                            <span className="mt-1 block">
+                              Last set {new Date(client.password_set_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                              {client.password_set_by && ` by ${client.password_set_by}`}
+                            </span>
+                          )}
                         </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder={client.password_set_at ? 'Enter a new password' : 'Enter password'}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setShowPassword(!showPassword)}
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleGeneratePassword}
+                          className="flex-1"
+                        >
+                          <RefreshCw className="mr-2 h-3 w-3" />
+                          Generate
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSetPassword}
+                          disabled={newPassword.length < 8 || settingPassword}
+                          className="flex-1"
+                        >
+                          {settingPassword ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Key className="mr-2 h-3 w-3" />}
+                          {settingPassword ? 'Setting...' : client.password_set_at ? 'Reset Password' : 'Set Password'}
+                        </Button>
                         {client.password_set_at && (
-                          <p className="text-xs text-muted-foreground">
-                            Set {new Date(client.password_set_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                            {client.password_set_by && ` by ${client.password_set_by}`}
-                          </p>
+                          <Button variant="destructive" size="sm" onClick={handleClearPassword}>
+                            Clear
+                          </Button>
                         )}
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setNewPassword(client.portal_password || '')
-                              setShowPassword(true)
-                            }}
-                            className="flex-1"
-                          >
-                            <RefreshCw className="mr-2 h-3 w-3" />
-                            Change
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={handleClearPassword}
-                            className="flex-1"
-                          >
-                            Clear Password
-                          </Button>
-                        </div>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <Input
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="Enter password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            className="flex-1"
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4" />
-                            ) : (
-                              <Eye className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleGeneratePassword}
-                            className="flex-1"
-                          >
-                            <RefreshCw className="mr-2 h-3 w-3" />
-                            Generate
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={handleSetPassword}
-                            disabled={!newPassword || settingPassword}
-                            className="flex-1"
-                          >
-                            {settingPassword ? (
-                              <>
-                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                                Setting...
-                              </>
-                            ) : (
-                              <>
-                                <Key className="mr-2 h-3 w-3" />
-                                Set Password
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Password for client portal login
-                        </p>
-                      </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* Portal Info */}
@@ -2506,10 +2359,11 @@ export default function ClientDetail() {
                   checked={client.dashboard_enabled || false}
                   onCheckedChange={async (checked) => {
                     try {
-                      await supabase
+                      const { error } = await supabase
                         .from('clients')
                         .update({ dashboard_enabled: checked })
                         .eq('id', client.id)
+                      if (error) throw error
                       queryClient.invalidateQueries({ queryKey: ['client', id] })
                       toast({
                         title: checked ? 'Dashboard Enabled' : 'Dashboard Disabled',
@@ -3326,175 +3180,6 @@ export default function ClientDetail() {
             </CardContent>
           </Card>
 
-          {/* Addon Orders Management */}
-          {clientAddons && clientAddons.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  Add-on Services ({clientAddons.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {clientAddons.map((addon: BookingAddon) => (
-                    <div key={addon.id} className="p-4 border rounded-lg space-y-3">
-                      {/* Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-semibold">{addon.service?.name}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {addon.booking?.podcast_name || 'Unknown Podcast'}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-semibold">{formatPrice(addon.amount_paid_cents)}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(addon.purchased_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Status & Actions */}
-                      <div className="grid gap-3 md:grid-cols-2">
-                        {/* Status Dropdown */}
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`status-${addon.id}`} className="text-xs">Status</Label>
-                          <Select
-                            value={addon.status}
-                            onValueChange={(value) => {
-                              updateBookingAddonStatus(
-                                addon.id,
-                                value as BookingAddon['status'],
-                                addon.google_drive_url || undefined,
-                                addon.admin_notes || undefined
-                              ).then(() => {
-                                toast({
-                                  title: 'Status Updated',
-                                  description: `Order status changed to ${getAddonStatusText(value as BookingAddon['status'])}`
-                                })
-                                queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
-                              }).catch(error => {
-                                toast({
-                                  title: 'Error',
-                                  description: error.message,
-                                  variant: 'destructive'
-                                })
-                              })
-                            }}
-                          >
-                            <SelectTrigger id={`status-${addon.id}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="in_progress">In Progress</SelectItem>
-                              <SelectItem value="delivered">Delivered</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Google Drive URL */}
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`drive-${addon.id}`} className="text-xs">Google Drive URL</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              id={`drive-${addon.id}`}
-                              placeholder="https://drive.google.com/..."
-                              defaultValue={addon.google_drive_url || ''}
-                              onBlur={(e) => {
-                                const newUrl = e.target.value
-                                if (newUrl !== (addon.google_drive_url || '')) {
-                                  updateBookingAddonStatus(
-                                    addon.id,
-                                    addon.status,
-                                    newUrl || undefined,
-                                    addon.admin_notes || undefined
-                                  ).then(() => {
-                                    toast({
-                                      title: 'Drive URL Updated'
-                                    })
-                                    queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
-                                  })
-                                }
-                              }}
-                            />
-                            {addon.google_drive_url && (
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                onClick={() => window.open(addon.google_drive_url!, '_blank')}
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Admin Notes */}
-                      <div className="space-y-1.5">
-                        <Label htmlFor={`notes-${addon.id}`} className="text-xs">Admin Notes</Label>
-                        <textarea
-                          id={`notes-${addon.id}`}
-                          className="w-full min-h-[60px] px-3 py-2 text-sm border rounded-md"
-                          placeholder="Internal notes about this order..."
-                          defaultValue={addon.admin_notes || ''}
-                          onBlur={(e) => {
-                            const newNotes = e.target.value
-                            if (newNotes !== (addon.admin_notes || '')) {
-                              updateBookingAddonStatus(
-                                addon.id,
-                                addon.status,
-                                addon.google_drive_url || undefined,
-                                newNotes || undefined
-                              ).then(() => {
-                                toast({
-                                  title: 'Notes Updated'
-                                })
-                                queryClient.invalidateQueries({ queryKey: ['client-addons', id] })
-                              })
-                            }
-                          }}
-                        />
-                      </div>
-
-                      {/* Delete Order Button */}
-                      <div className="pt-2 border-t">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setOrderToDelete(addon)}
-                          className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Order
-                        </Button>
-                      </div>
-
-                      {/* Delivered Info */}
-                      {addon.delivered_at && (
-                        <div className="text-xs text-muted-foreground flex items-center gap-1 pt-1">
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          Delivered on {new Date(addon.delivered_at).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Progress Stats */}
           <Card>
             <CardHeader>
@@ -4204,7 +3889,11 @@ export default function ClientDetail() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open(`/p/${editClientForm.prospect_dashboard_slug}`, '_blank')}
+                  onClick={() => {
+                    const slug = editClientForm.prospect_dashboard_slug
+                    if (!slug) return
+                    openExternalUrl(`${window.location.origin}/prospect/${encodeURIComponent(slug)}`)
+                  }}
                   className="gap-2"
                 >
                   <ExternalLink className="h-4 w-4" />
@@ -4615,56 +4304,6 @@ export default function ClientDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Order Confirmation Dialog */}
-      <AlertDialog open={!!orderToDelete} onOpenChange={() => setOrderToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Add-on Order</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this add-on service order? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {orderToDelete && (
-            <div className="my-4 p-4 rounded-lg bg-muted">
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="font-semibold">Service:</span> {orderToDelete.service?.name}
-                </div>
-                <div>
-                  <span className="font-semibold">Podcast:</span> {orderToDelete.booking?.podcast_name}
-                </div>
-                <div>
-                  <span className="font-semibold">Amount:</span> {formatPrice(orderToDelete.amount_paid_cents)}
-                </div>
-                <div>
-                  <span className="font-semibold">Status:</span> {getAddonStatusText(orderToDelete.status)}
-                </div>
-              </div>
-            </div>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteOrderMutation.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (orderToDelete) {
-                  deleteOrderMutation.mutate(orderToDelete.id)
-                }
-              }}
-              disabled={deleteOrderMutation.isPending}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {deleteOrderMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete Order'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </DashboardLayout>
   )
 }

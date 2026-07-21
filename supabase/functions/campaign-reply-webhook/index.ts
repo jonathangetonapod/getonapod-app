@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { secretsMatch } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -13,11 +14,18 @@ serve(async (req) => {
   }
 
   try {
-    // Verify webhook secret (optional but recommended)
-    const webhookSecret = Deno.env.get('CAMPAIGN_WEBHOOK_SECRET')
-    const providedSecret = req.headers.get('x-webhook-secret')
+    if (req.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405, headers: corsHeaders })
+    }
 
-    if (webhookSecret && providedSecret !== webhookSecret) {
+    const webhookSecret = Deno.env.get('CAMPAIGN_WEBHOOK_SECRET')?.trim()
+    if (!webhookSecret) {
+      console.error('[Campaign Webhook] Webhook secret is not configured')
+      return new Response('Webhook unavailable', { status: 503, headers: corsHeaders })
+    }
+    const providedSecret = req.headers.get('x-webhook-secret') ?? ''
+
+    if (!providedSecret || !(await secretsMatch(providedSecret, webhookSecret))) {
       return new Response(
         JSON.stringify({ error: 'Invalid webhook secret' }),
         {
@@ -27,8 +35,16 @@ serve(async (req) => {
       )
     }
 
-    const payload = await req.json()
-    console.log('[Campaign Webhook] Received payload:', JSON.stringify(payload, null, 2))
+    const declaredLength = Number(req.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declaredLength) && declaredLength > 262_144) {
+      return new Response('Payload too large', { status: 413, headers: corsHeaders })
+    }
+    const rawPayload = await req.text()
+    if (new TextEncoder().encode(rawPayload).byteLength > 262_144) {
+      return new Response('Payload too large', { status: 413, headers: corsHeaders })
+    }
+    const payload = JSON.parse(rawPayload)
+    console.log('[Campaign Webhook] Received verified Email Bison webhook')
 
     // Parse Email Bison webhook structure
     // Structure: { event: {...}, data: { lead, campaign, reply, scheduled_email, campaign_event } }

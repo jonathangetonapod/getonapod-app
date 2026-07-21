@@ -1,13 +1,61 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { User, Session } from '@supabase/supabase-js'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { isAdminEmailAsync } from '@/lib/config'
-import { toast } from 'sonner'
+import { queryClient } from '@/lib/queryClient'
+
+export type AccountState =
+  | 'loading'
+  | 'signed_out'
+  | 'active'
+  | 'pending'
+  | 'expired'
+  | 'suspended'
+  | 'no_membership'
+  | 'error'
+
+export interface Workspace {
+  id: string
+  name: string
+  slug?: string | null
+  status: 'active' | 'suspended' | 'archived' | string
+}
+
+export interface WorkspaceMembership {
+  id: string
+  workspace_id: string
+  user_id?: string | null
+  email?: string | null
+  email_normalized?: string | null
+  full_name?: string | null
+  role: 'owner' | 'admin' | 'member'
+  status: 'invited' | 'active' | 'suspended' | 'revoked' | string
+  invite_expires_at?: string | null
+  invited_at?: string | null
+  accepted_at?: string | null
+}
+
+interface AccountContextResponse {
+  user: {
+    id: string
+    email: string | null
+  }
+  platform_admin: boolean
+  state: 'active' | 'pending' | 'expired' | 'suspended' | 'no_membership'
+  membership: WorkspaceMembership | null
+  workspace: Workspace | null
+}
 
 interface AuthContextType {
   user: User | null
   session: Session | null
   loading: boolean
+  accountState: AccountState
+  accountError: string | null
+  isPlatformAdmin: boolean
+  membership: WorkspaceMembership | null
+  workspace: Workspace | null
+  canWriteClients: boolean
+  refreshAccount: () => Promise<void>
   signInWithGoogle: () => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -15,62 +63,132 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const clearSensitiveAccountStorage = () => {
+  try {
+    window.localStorage.removeItem('podcast-finder-state')
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [accountState, setAccountState] = useState<AccountState>('loading')
+  const [accountError, setAccountError] = useState<string | null>(null)
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+  const [membership, setMembership] = useState<WorkspaceMembership | null>(null)
+  const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const accountRequestRef = useRef(0)
+  const lastUserIdRef = useRef<string | null>(null)
 
-  useEffect(() => {
-    // Get initial session
-    const initSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-
-      // Check if user email is authorized (async)
-      if (session?.user) {
-        const isAdmin = await isAdminEmailAsync(session.user.email)
-        if (!isAdmin) {
-          toast.error('Access denied. Your email is not authorized for admin access.')
-          await supabase.auth.signOut()
-          setSession(null)
-          setUser(null)
-          setLoading(false)
-          return
-        }
-      }
-
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-    }
-
-    initSession()
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      // Check if user email is authorized (async)
-      if (session?.user) {
-        const isAdmin = await isAdminEmailAsync(session.user.email)
-        if (!isAdmin) {
-          toast.error('Access denied. Your email is not authorized for admin access.')
-          await supabase.auth.signOut()
-          setSession(null)
-          setUser(null)
-          setLoading(false)
-          return
-        }
-      }
-
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    return () => subscription.unsubscribe()
+  const clearAccount = useCallback((nextState: AccountState = 'signed_out') => {
+    accountRequestRef.current += 1
+    if (nextState === 'signed_out') clearSensitiveAccountStorage()
+    setAccountState(nextState)
+    setAccountError(null)
+    setIsPlatformAdmin(false)
+    setMembership(null)
+    setWorkspace(null)
   }, [])
 
-  const signInWithGoogle = async () => {
+  const refreshAccount = useCallback(async () => {
+    const requestId = ++accountRequestRef.current
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (requestId !== accountRequestRef.current) return
+
+    if (sessionError) {
+      clearAccount('error')
+      setAccountError(sessionError.message)
+      return
+    }
+
+    if (!sessionData.session) {
+      clearAccount('signed_out')
+      return
+    }
+    if (sessionData.session.user.id !== lastUserIdRef.current) return
+
+    setAccountState('loading')
+    setAccountError(null)
+
+    const { data, error } = await supabase.functions.invoke<AccountContextResponse>('account-context')
+    if (requestId !== accountRequestRef.current) return
+
+    if (error || !data) {
+      setAccountState('error')
+      setAccountError(error?.message || 'Unable to load account access.')
+      setIsPlatformAdmin(false)
+      setMembership(null)
+      setWorkspace(null)
+      return
+    }
+
+    setIsPlatformAdmin(Boolean(data.platform_admin))
+    setMembership(data.membership || null)
+    setWorkspace(data.workspace || null)
+
+    // Platform admins retain access to the legacy operational dashboard even
+    // when they do not have a tenant membership.
+    setAccountState(data.platform_admin ? 'active' : data.state)
+  }, [clearAccount])
+
+  const applySession = useCallback((nextSession: Session | null) => {
+    const nextUserId = nextSession?.user.id ?? null
+    if (lastUserIdRef.current !== nextUserId) {
+      queryClient.clear()
+      clearSensitiveAccountStorage()
+      lastUserIdRef.current = nextUserId
+      accountRequestRef.current += 1
+      setAccountError(null)
+      setIsPlatformAdmin(false)
+      setMembership(null)
+      setWorkspace(null)
+      setAccountState(nextSession ? 'loading' : 'signed_out')
+    }
+
+    setSession(nextSession)
+    setUser(nextSession?.user ?? null)
+    if (!nextSession) clearAccount('signed_out')
+  }, [clearAccount])
+
+  useEffect(() => {
+    let mounted = true
+
+    const initialize = async () => {
+      const { data, error } = await supabase.auth.getSession()
+      if (!mounted) return
+
+      if (error) {
+        setAccountState('error')
+        setAccountError(error.message)
+        return
+      }
+
+      applySession(data.session)
+    }
+
+    void initialize()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return
+      applySession(nextSession)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [applySession])
+
+  const accessToken = session?.access_token
+  useEffect(() => {
+    if (!accessToken) return
+    setAccountState('loading')
+    void refreshAccount()
+  }, [accessToken, refreshAccount])
+
+  const signInWithGoogle = useCallback(async () => {
     const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -79,26 +197,50 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       },
     })
     if (error) throw error
-  }
+  }, [])
 
-  const signInWithPassword = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
-  }
+  }, [])
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
+    clearSensitiveAccountStorage()
     const { error } = await supabase.auth.signOut()
+    applySession(null)
+    queryClient.clear()
     if (error) throw error
-  }
+  }, [applySession])
 
-  return (
-    <AuthContext.Provider value={{ user, session, loading, signInWithGoogle, signInWithPassword, signOut }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    session,
+    loading: accountState === 'loading',
+    accountState,
+    accountError,
+    isPlatformAdmin,
+    membership,
+    workspace,
+    canWriteClients: isPlatformAdmin || membership?.role === 'owner' || membership?.role === 'admin',
+    refreshAccount,
+    signInWithGoogle,
+    signInWithPassword,
+    signOut,
+  }), [
+    user,
+    session,
+    accountState,
+    accountError,
+    isPlatformAdmin,
+    membership,
+    workspace,
+    refreshAccount,
+    signInWithGoogle,
+    signInWithPassword,
+    signOut,
+  ])
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => {

@@ -1,5 +1,14 @@
 # Authority Built API Documentation Index
 
+> **Invite-only MVP note:** this index contains historical endpoint detail and
+> is not the deployment manifest. Billing, Stripe, HeyGen/video generation,
+> magic-link portal auth, AI Sales Director, and several admin modules are
+> retired or 410 tombstones. Use the root `README.md` and
+> `docs/invite-only-mvp.md` as the release contract. The exact 17 tombstones,
+> 87-function deploy allowlist, and two tenant exclusions are recorded in
+> `docs/invite-only-edge-manifest.json`; any conflicting example below is
+> historical. No provider credential may be placed in a `VITE_` variable.
+
 Welcome to the comprehensive API documentation for **Authority Built** - a podcast placement platform that manages client bookings, outreach campaigns, and premium podcast opportunities.
 
 ## 🚀 Quick Start Guide
@@ -14,8 +23,8 @@ Authority Built supports multiple authentication systems:
    - JWT tokens for API access
 
 2. **Client Portal Authentication** (Session-based)
-   - Magic link (passwordless) authentication
-   - Password authentication  
+   - Password authentication only
+   - Historical magic-link endpoints return HTTP 410
    - Session tokens with 24-hour expiry
    - Admin impersonation for support
 
@@ -51,11 +60,11 @@ Authority Built supports multiple authentication systems:
 
 ### [Edge Functions (A-F)](edge-functions-a-f.md)
 **16 Functions - Analysis, authentication, automation, and categorization**
-- 🤖 **AI Analysis**: `analyze-podcast-fit`, `analyze-sales-call`, `auto-categorize-podcast`, `classify-reply`
-- 🔐 **Account Creation**: `create-client-account`, `create-outreach-message`
-- 💳 **Checkout**: `create-addon-checkout`, `create-checkout-session`
+- 🤖 **AI Analysis**: `analyze-podcast-fit`, `auto-categorize-podcast`, `classify-reply`; `analyze-sales-call` is retired
+- 🔐 **Account Creation**: `create-client-account`; `create-outreach-message` is excluded from the tenant environment
+- 💳 **Checkout**: `create-addon-checkout` and `create-checkout-session` are retired tombstones
 - 📊 **Data Operations**: `append-prospect-sheet`, `backfill-prospect-podcasts`, `create-prospect-sheet`
-- 🔗 **Webhooks**: `campaign-reply-webhook`
+- 🔗 **Webhooks**: `campaign-reply-webhook` is excluded from the tenant environment
 - 🔍 **SEO**: `check-indexing-status`
 
 ### [Edge Functions (D-G)](edge-functions-d-g.md)
@@ -63,24 +72,24 @@ Authority Built supports multiple authentication systems:
 - 🗑️ **Data Operations**: `delete-outreach-podcast`, `delete-podcast-from-sheet`, `delete-reply`
 - 📥 **Reply Management**: `fetch-and-classify-replies`, `fetch-email-thread`
 - 📄 **Content Generation**: `generate-blog-content`, `generate-client-bio`, `generate-guest-resource`, `generate-media-kit-doc`, `generate-podcast-queries`, `generate-podcast-summary`, `generate-reply`, `generate-tagline`
-- 📊 **Data Retrieval**: `get-blog-posts`, `get-client-bookings`, `get-client-outreach-podcasts`, `get-client-podcasts`, `get-customer-analytics`, `get-guest-resources`, `get-outreach-podcasts`, `get-pipeline-analytics`, `get-podcast-demographics`, `get-prospect-dashboard`, `get-prospect-podcasts`, `get-testimonials`, `get-upcoming-bookings`
+- 📊 **Data Retrieval**: `get-blog-posts`, `get-client-bookings`, `get-client-outreach-podcasts`, `get-client-podcasts`, `get-guest-resources`, `get-outreach-podcasts`, `get-pipeline-analytics`, `get-podcast-demographics`, `get-prospect-dashboard`, `get-prospect-podcasts`, `get-testimonials`, `get-upcoming-bookings`; `get-customer-analytics` is retired
 
 ### [Edge Functions (L-S)](edge-functions-l-s.md)
 **Login, management, QA, search, and synchronization**
-- 🔐 **Authentication**: `login-with-password`, `logout-portal-session`, `send-portal-magic-link`
-- 👨‍💼 **Admin Management**: `manage-admin-users`
+- 🔐 **Authentication**: `login-with-password`, `logout-portal-session`; `send-portal-magic-link` is retired
+- 👨‍💼 **Admin Management**: `manage-workspace-users`; `manage-admin-users` is retired
 - 📞 **Outreach**: `read-outreach-list`, `score-podcast-compatibility`, `search-podcasts`, `send-outreach-webhook`
 - ✉️ **Email**: `send-reply`, `resend-webhook`
 - 🔍 **QA**: `qa-review-podcasts`
 - 📈 **SEO**: `submit-to-indexing`
-- 🔄 **Sync**: `sync-fathom-calls`, `sync-replies`
-- 💳 **Payments**: `stripe-webhook`
+- 🔄 **Sync**: `sync-replies`; `sync-fathom-calls` is retired
+- 💳 **Payments**: `stripe-webhook` is retired
 
 ### [Edge Functions (U-V + Shared)](edge-functions-v-shared.md)
 **Order management, validation functions, and shared utilities**
-- 📦 **Order Management**: `update-order-status`
-- ✅ **Validation**: `validate-portal-session`, `verify-portal-token`
-- 📧 **Email Templates**: Professional invitation and magic link emails
+- 📦 **Order Management**: `update-order-status` is retired
+- ✅ **Validation**: `validate-portal-session`; `verify-portal-token` is retired
+- 📧 **Email Templates**: Workspace invitation and operational emails
 - 🗄️ **Podcast Cache**: Central caching system (60-80% API savings)
 
 ### [Frontend API Layer](frontend-api-layer.md)
@@ -116,8 +125,8 @@ Frontend:     React + TypeScript + Tailwind + React Query + Zustand
 Backend:      Supabase (PostgreSQL + Edge Functions)
 Auth:         Supabase Auth + Custom Portal System
 AI Services:  OpenAI (embeddings) + Anthropic Claude (analysis/generation)
-Video:        HeyGen (AI video generation)
-Payments:     Stripe Checkout + Webhooks
+Video:        Retired (historical endpoints return HTTP 410)
+Payments:     Retired (historical endpoints return HTTP 410)
 Email:        Resend + Email Bison
 Storage:      Supabase Storage (client assets)
 Search:       Podscan API + pgvector (embeddings)
@@ -133,10 +142,8 @@ Monitoring:   Sentry (error tracking + session replay)
        │                   │                   │
        ├── External APIs ──┼── AI Services ────┤
        │   (Podscan)       │   (OpenAI/Claude) │
-       ├── Stripe ─────────┼── Email Services ─┤
-       │   (Payments)      │   (Resend/Bison)  │
-       ├── HeyGen ─────────┼── Monitoring ─────┤
-       │   (Video)         │   (Sentry)        │
+       ├── Email Services ─┼── Monitoring ─────┤
+       │   (Resend/Bison)  │   (Sentry)        │
        └── Google APIs ────┴── File Storage ───┘
            (Docs/Calendar)     (Supabase)
 ```
@@ -146,12 +153,14 @@ Monitoring:   Sentry (error tracking + session replay)
 ### Authentication Endpoints
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
-| `send-portal-magic-link` | POST | Send magic link email | None |
-| `verify-portal-token` | POST | Validate magic link token | None |
+| `send-portal-magic-link` | Any | Retired tombstone | HTTP 410 |
+| `verify-portal-token` | Any | Retired tombstone | HTTP 410 |
+| `get-outreach-podcasts-v2` | Any | Retired tombstone | HTTP 410 |
+| `get-client-portfolio` | Any | Retired tombstone; use `public-client-dashboard` | HTTP 410 |
 | `login-with-password` | POST | Password authentication | None |
 | `validate-portal-session` | POST | Validate session token | Service |
 | `logout-portal-session` | POST | End user session | None |
-| `manage-admin-users` | POST | CRUD admin management | Admin |
+| `manage-admin-users` | Any | Retired tombstone | HTTP 410 |
 
 ### Client & Prospect Management
 | Function | Method | Purpose | Auth |
@@ -166,7 +175,7 @@ Monitoring:   Sentry (error tracking + session replay)
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
 | `analyze-podcast-fit` | POST | AI podcast analysis | Service |
-| `analyze-sales-call` | POST | Sales call analysis | Service |
+| `analyze-sales-call` | Any | Retired tombstone | HTTP 410 |
 | `auto-categorize-podcast` | POST | AI podcast categorization | None |
 | `score-podcast-compatibility` | POST | Compatibility scoring | None |
 | `qa-review-podcasts` | POST | QA score podcasts vs prospect bio | Service |
@@ -175,17 +184,17 @@ Monitoring:   Sentry (error tracking + session replay)
 ### E-commerce & Payments
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
-| `create-checkout-session` | POST | Podcast placement orders | None |
-| `create-addon-checkout` | POST | Addon service orders | Service |
-| `update-order-status` | POST | Order status transitions | Service |
-| `stripe-webhook` | POST | Payment confirmations | Webhook |
+| `create-checkout-session` | Any | Retired tombstone | HTTP 410 |
+| `create-addon-checkout` | Any | Retired tombstone | HTTP 410 |
+| `update-order-status` | Any | Retired tombstone | HTTP 410 |
+| `stripe-webhook` | Any | Retired tombstone | HTTP 410 |
 
 ### Outreach & Communication
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
 | `read-outreach-list` | POST | Read Google Sheets data | None |
 | `send-outreach-webhook` | POST | Notify outreach systems | None |
-| `create-outreach-message` | POST | Store outreach messages | Service |
+| `create-outreach-message` | — | Excluded from tenant deploy | Not deployed |
 | `create-bison-lead` | POST | Create Email Bison leads | Service |
 | `send-reply` | POST | Send Email Bison replies | None |
 | `generate-reply` | POST | AI-generate contextual email reply | Service |
@@ -207,7 +216,7 @@ Monitoring:   Sentry (error tracking + session replay)
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
 | `get-pipeline-analytics` | POST | Monthly pipeline metrics | Service |
-| `get-customer-analytics` | POST | Revenue/customer stats | Service |
+| `get-customer-analytics` | Any | Retired tombstone | HTTP 410 |
 
 ### Public Content
 | Function | Method | Purpose | Auth |
@@ -227,7 +236,7 @@ Monitoring:   Sentry (error tracking + session replay)
 ### Data Synchronization
 | Function | Method | Purpose | Auth |
 |----------|--------|---------|------|
-| `sync-fathom-calls` | POST/GET | Import meeting recordings | None |
+| `sync-fathom-calls` | Any | Retired tombstone | HTTP 410 |
 | `sync-replies` | POST/GET | Sync email replies | None |
 
 ### SEO & Content
@@ -273,20 +282,6 @@ const { data, error } = await supabase.auth.signInWithPassword({
 
 ### Client Portal Authentication
 ```javascript
-// Magic Link Request
-const response = await fetch('/functions/v1/send-portal-magic-link', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ email: 'client@example.com' })
-})
-
-// Token Verification
-const response = await fetch('/functions/v1/verify-portal-token', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ token: 'magic-link-token' })
-})
-
 // Password Login
 const response = await fetch('/functions/v1/login-with-password', {
   method: 'POST',
@@ -347,9 +342,6 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-key
 OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-claude-key
 
-# Payment Processing
-STRIPE_SECRET_KEY=your-stripe-key
-
 # Email Services
 RESEND_API_KEY=your-resend-key
 EMAIL_BISON_API_TOKEN=your-bison-token
@@ -358,14 +350,10 @@ EMAIL_BISON_API_TOKEN=your-bison-token
 PODSCAN_API_KEY=your-podscan-key
 FATHOM_API_KEY=your-fathom-key
 
-# Video Generation
-HEYGEN_API_KEY=your-heygen-key
-
-# Frontend-specific (VITE_ prefix)
-VITE_STRIPE_PUBLISHABLE_KEY=your-stripe-pub-key
-VITE_HEYGEN_API_KEY=your-heygen-key
-VITE_ANTHROPIC_API_KEY=your-anthropic-key
-VITE_VIDEO_SERVICE_URL=your-video-service-url
+# Frontend-specific browser-safe values only
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_APP_URL=https://your-app.example
 VITE_SENTRY_DSN=your-sentry-dsn
 ```
 

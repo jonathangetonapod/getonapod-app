@@ -1,5 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  HttpError,
+  parseOptionalJsonObject,
+  requireOnlyKeys,
+} from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -12,7 +17,19 @@ serve(async (req) => {
   }
 
   try {
-    const { include_empty = false } = await req.json()
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Only POST is allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const body = await parseOptionalJsonObject(req, 2_048)
+    requireOnlyKeys(body, ['include_empty'])
+    if (body.include_empty !== undefined && typeof body.include_empty !== 'boolean') {
+      throw new HttpError(400, 'INVALID_FIELD', 'include_empty must be a boolean')
+    }
+    const include_empty = (body.include_empty as boolean | undefined) ?? false
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -26,6 +43,7 @@ serve(async (req) => {
       .select('id, name, slug')
       .eq('is_active', true)
       .order('display_order', { ascending: true })
+      .limit(100)
 
     if (categoriesError) {
       throw categoriesError
@@ -78,15 +96,17 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error('[Get Blog Categories] Error:', error)
+    const status = error instanceof HttpError ? error.status : 500
+    const message = error instanceof HttpError ? error.message : 'Internal server error'
+    console.error('[Get Blog Categories] Request failed')
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: message,
       }),
       {
-        status: 500,
+        status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )

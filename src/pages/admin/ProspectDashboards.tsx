@@ -36,6 +36,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabase'
+import { getPodcastById } from '@/services/podscan'
 import { toast } from 'sonner'
 import {
   Share2,
@@ -75,7 +76,6 @@ import {
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
-import { generateProspectVideo, pollVideoStatus } from '@/services/heygen'
 
 interface ProspectDashboard {
   id: string
@@ -182,13 +182,6 @@ export default function ProspectDashboards() {
   const [savingTestimonials, setSavingTestimonials] = useState(false)
   const [togglingTestimonials, setTogglingTestimonials] = useState(false)
 
-  // Background video generation
-  const [generatingVideo, setGeneratingVideo] = useState(false)
-  const [videoProgress, setVideoProgress] = useState(0)
-
-  // HeyGen AI video generation
-  const [generatingHeyGenVideo, setGeneratingHeyGenVideo] = useState(false)
-
   // Edit prospect name
   const [editProspectName, setEditProspectName] = useState('')
   const [savingProspectName, setSavingProspectName] = useState(false)
@@ -250,27 +243,14 @@ export default function ProspectDashboards() {
 
         // Enrich feedback with podcast names from Podscan API for entries missing names
         const feedbackData = data || []
-        const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
-
         const enrichedFeedback = await Promise.all(
           feedbackData.map(async (fb) => {
             if (fb.podcast_name) return fb
 
             // Fetch podcast name from Podscan
             try {
-              const response = await fetch(
-                `https://podscan.fm/api/v1/podcasts/${fb.podcast_id}`,
-                {
-                  headers: {
-                    'Authorization': `Bearer ${podscanApiKey}`,
-                  },
-                }
-              )
-              if (response.ok) {
-                const podcastData = await response.json()
-                const podcast = podcastData.podcast || podcastData
-                return { ...fb, podcast_name: podcast.podcast_name || null }
-              }
+              const podcast = await getPodcastById(fb.podcast_id)
+              return { ...fb, podcast_name: podcast.podcast_name || null }
             } catch (err) {
               console.error('Error fetching podcast name:', err)
             }
@@ -725,14 +705,7 @@ export default function ProspectDashboards() {
   }
 
   // Generate a random slug
-  const generateSlug = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-    let slug = ''
-    for (let i = 0; i < 8; i++) {
-      slug += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return slug
-  }
+  const generateSlug = () => `prospect-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
 
   const createProspect = async () => {
     if (!newProspect.name.trim()) {
@@ -1240,11 +1213,15 @@ export default function ProspectDashboards() {
     setCheckingStatus(true)
 
     try {
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.')
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           spreadsheetId: selectedDashboard.spreadsheet_id,
@@ -1296,11 +1273,15 @@ export default function ProspectDashboards() {
     try {
       toast.info('Fetching missing podcasts from Podscan...')
 
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.')
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           spreadsheetId: selectedDashboard.spreadsheet_id,
@@ -1516,252 +1497,6 @@ export default function ProspectDashboards() {
     }
   }
 
-  const handleGenerateBackgroundVideo = async () => {
-    if (!selectedDashboard) return
-
-    setGeneratingVideo(true)
-    setVideoProgress(0)
-
-    try {
-      // Update status to processing
-      await supabase
-        .from('prospect_dashboards')
-        .update({ background_video_status: 'processing' })
-        .eq('id', selectedDashboard.id)
-
-      // Update local state
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, background_video_status: 'processing' } : null
-      )
-
-      toast.info('Starting dashboard recording...', {
-        description: 'This will take about 45-60 seconds'
-      })
-
-      // Call video generation service
-      const videoServiceUrl = import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001'
-      const response = await fetch(`${videoServiceUrl}/api/generate-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dashboardId: selectedDashboard.id,
-          slug: selectedDashboard.slug
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to generate video')
-      }
-
-      const result = await response.json()
-
-      // Update local state with video URL
-      setDashboards(prev =>
-        prev.map(d =>
-          d.id === selectedDashboard.id
-            ? {
-                ...d,
-                background_video_url: result.videoUrl,
-                background_video_generated_at: new Date().toISOString(),
-                background_video_status: 'completed'
-              }
-            : d
-        )
-      )
-      setSelectedDashboard(prev =>
-        prev
-          ? {
-              ...prev,
-              background_video_url: result.videoUrl,
-              background_video_generated_at: new Date().toISOString(),
-              background_video_status: 'completed'
-            }
-          : null
-      )
-
-      toast.success('Dashboard video generated!', {
-        description: 'Ready to use with HeyGen'
-      })
-    } catch (error) {
-      console.error('Error generating video:', error)
-
-      // Update status to failed
-      await supabase
-        .from('prospect_dashboards')
-        .update({ background_video_status: 'failed' })
-        .eq('id', selectedDashboard.id)
-
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, background_video_status: 'failed' } : null
-      )
-
-      toast.error('Failed to generate video', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      })
-    } finally {
-      setGeneratingVideo(false)
-      setVideoProgress(0)
-    }
-  }
-
-  // HeyGen AI Video Generation
-  const handleGenerateHeyGenVideo = async () => {
-    if (!selectedDashboard) return
-
-    if (!selectedDashboard.background_video_url) {
-      toast.error('Generate dashboard recording first')
-      return
-    }
-
-    if (!selectedDashboard.first_name) {
-      toast.error('Please enter prospect first name')
-      return
-    }
-
-    try {
-      setGeneratingHeyGenVideo(true)
-
-      toast.info('Starting HeyGen AI video generation...', {
-        description: 'This may take 2-3 minutes'
-      })
-
-      // Generate the video
-      const videoId = await generateProspectVideo(
-        selectedDashboard.id,
-        selectedDashboard.background_video_url,
-        selectedDashboard.first_name
-      )
-
-      // Update local state to show pending status
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, heygen_video_status: 'pending', heygen_video_id: videoId } : null
-      )
-
-      toast.success('HeyGen video queued!', {
-        description: 'Rendering in progress...'
-      })
-
-      // Poll for completion in the background
-      pollVideoStatus(videoId, selectedDashboard.id)
-        .then((videoUrl) => {
-          setSelectedDashboard(prev =>
-            prev
-              ? {
-                  ...prev,
-                  heygen_video_url: videoUrl,
-                  heygen_video_status: 'completed',
-                }
-              : null
-          )
-          toast.success('HeyGen video ready!', {
-            description: 'Your AI avatar video is complete'
-          })
-        })
-        .catch((error) => {
-          console.error('Polling error:', error)
-          toast.error('Video generation failed', {
-            description: error instanceof Error ? error.message : 'Please try again'
-          })
-        })
-        .finally(() => {
-          setGeneratingHeyGenVideo(false)
-        })
-    } catch (error) {
-      console.error('Error generating HeyGen video:', error)
-      setGeneratingHeyGenVideo(false)
-
-      toast.error('Failed to start video generation', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      })
-    }
-  }
-
-  // Refresh HeyGen Video Status (failsafe)
-  const handleRefreshVideoStatus = async () => {
-    if (!selectedDashboard?.heygen_video_id) {
-      toast.error('No video ID found')
-      return
-    }
-
-    try {
-      toast.info('Checking video status...')
-
-      const response = await fetch(
-        `${import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001'}/api/heygen/status/${selectedDashboard.heygen_video_id}/${selectedDashboard.id}`,
-        { cache: 'no-store' }
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to check video status')
-      }
-
-      const status = await response.json()
-
-      // Update local state
-      setSelectedDashboard(prev =>
-        prev
-          ? {
-              ...prev,
-              heygen_video_status: status.status,
-              ...(status.video_url && { heygen_video_url: status.video_url }),
-              ...(status.thumbnail_url && { heygen_video_thumbnail_url: status.thumbnail_url }),
-            }
-          : null
-      )
-
-      if (status.status === 'completed') {
-        toast.success('Video is ready!')
-      } else if (status.status === 'failed') {
-        toast.error('Video generation failed')
-      } else {
-        toast.info(`Video status: ${status.status}`)
-      }
-    } catch (error) {
-      console.error('Error refreshing video status:', error)
-      toast.error('Failed to refresh status')
-    }
-  }
-
-  // Download HeyGen video as MP4
-  const handleDownloadVideo = async () => {
-    if (!selectedDashboard?.heygen_video_url) {
-      toast.error('No video URL available')
-      return
-    }
-
-    try {
-      toast.info('Downloading video...')
-
-      // Fetch the video from HeyGen URL
-      const response = await fetch(selectedDashboard.heygen_video_url)
-
-      if (!response.ok) {
-        throw new Error('Failed to download video')
-      }
-
-      // Get the video blob
-      const blob = await response.blob()
-
-      // Create a download link
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${selectedDashboard.prospect_name || 'prospect'}-heygen-video.mp4`
-      document.body.appendChild(a)
-      a.click()
-
-      // Cleanup
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast.success('Video downloaded!')
-    } catch (error) {
-      console.error('Error downloading video:', error)
-      toast.error('Failed to download video')
-    }
-  }
-
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -1794,11 +1529,15 @@ export default function ProspectDashboards() {
       const timeoutId = setTimeout(() => controller.abort(), 50000)
 
       try {
+        const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+        if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.')
+
         const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             spreadsheetId: selectedDashboard.spreadsheet_id,

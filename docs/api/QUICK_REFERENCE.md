@@ -1,5 +1,12 @@
 # Authority Built API Quick Reference
 
+> **Invite-only MVP warning:** this quick reference includes historical
+> endpoints. Billing/video/magic-link operations are retired and return HTTP
+> 410. The root `README.md` and `docs/invite-only-mvp.md` are authoritative;
+> `docs/invite-only-edge-manifest.json` is the exact deployment inventory. Any
+> conflicting example below is historical. Provider secrets are server-only
+> and must never use a `VITE_` variable.
+
 **🚀 One-page cheat sheet for all API endpoints, authentication, and common operations**
 
 ## 🔐 Authentication Quick Setup
@@ -15,17 +22,11 @@ await supabase.auth.signInWithPassword({ email, password })
 
 ### Client Portal Auth
 ```javascript
-// Magic Link
-POST /functions/v1/send-portal-magic-link
-{ "email": "client@example.com" }
-
-// Verify Token
-POST /functions/v1/verify-portal-token  
-{ "token": "magic-link-token" }
-
 // Password Login
 POST /functions/v1/login-with-password
 { "email": "client@example.com", "password": "password" }
+
+// Historical magic-link names return HTTP 410.
 ```
 
 ### Service Role (Backend)
@@ -38,12 +39,15 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 ### 🔐 Authentication & Sessions
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
-| `/send-portal-magic-link` | POST | Send magic link | `{email}` |
-| `/verify-portal-token` | POST | Verify magic link | `{token}` |
+| `/send-portal-magic-link` | Any | Retired tombstone | HTTP 410 |
+| `/verify-portal-token` | Any | Retired tombstone | HTTP 410 |
+| `/get-outreach-podcasts-v2` | Any | Retired tombstone | HTTP 410 |
+| `/get-client-portfolio` | Any | Retired; use `/public-client-dashboard` | HTTP 410 |
 | `/login-with-password` | POST | Password login | `{email, password}` |
 | `/validate-portal-session` | POST | Check session | `{sessionToken}` |
 | `/logout-portal-session` | POST | End session | `{sessionToken}` |
-| `/manage-admin-users` | POST | Admin CRUD | `{action, email, ...}` |
+| `/manage-admin-users` | Any | Retired tombstone | HTTP 410 |
+| `/manage-workspace-users` | POST | Invite/suspend/reactivate workspace accounts | Authenticated platform admin |
 
 ### 👥 Client Management
 | Endpoint | Method | Purpose | Body |
@@ -62,7 +66,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
 | `/analyze-podcast-fit` | POST | Fit analysis | `{podcastName, clientBio, ...}` |
-| `/analyze-sales-call` | POST | Call analysis | `{sales_call_id}` |
+| `/analyze-sales-call` | Any | Retired tombstone | HTTP 410 |
 | `/auto-categorize-podcast` | POST | AI podcast categorization | `{podcastName, description?, whyThisShow?}` |
 | `/score-podcast-compatibility` | POST | Compatibility score | `{clientBio, podcasts[]}` |
 | `/qa-review-podcasts` | POST | QA score podcasts (max 10) | `{prospect_bio, podcasts[]}` |
@@ -71,17 +75,17 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 ### 🛒 E-commerce
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
-| `/create-checkout-session` | POST | Podcast orders | `{cartItems[], customerEmail}` |
-| `/create-addon-checkout` | POST | Addon orders | `{addons[], clientId}` |
-| `/update-order-status` | POST | Order status transition | `{order_id, status, admin_notes?}` |
-| `/stripe-webhook` | POST | Payment events | Stripe payload |
+| `/create-checkout-session` | Any | Retired tombstone | HTTP 410 |
+| `/create-addon-checkout` | Any | Retired tombstone | HTTP 410 |
+| `/update-order-status` | Any | Retired tombstone | HTTP 410 |
+| `/stripe-webhook` | Any | Retired tombstone | HTTP 410 |
 
 ### 📞 Outreach & Communication
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
 | `/read-outreach-list` | POST | Read Google Sheet | `{clientId}` |
 | `/send-outreach-webhook` | POST | Notify systems | `{clientId, podcastId}` |
-| `/create-outreach-message` | POST | Store messages | `{client_id, email_1, ...}` |
+| `/create-outreach-message` | — | Excluded from tenant deploy | Not deployed |
 | `/create-bison-lead` | POST | Create CRM lead | `{message_id}` |
 | `/send-reply` | POST | Send email reply | `{bisonReplyId, message}` |
 | `/generate-reply` | POST | AI-generate reply | `{bisonReplyId, leadType?, customPrompt?}` |
@@ -103,7 +107,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
 | `/get-pipeline-analytics` | POST | Monthly pipeline metrics | `{month?, year?}` |
-| `/get-customer-analytics` | POST | Revenue/customer stats | `{date_from?, date_to?}` |
+| `/get-customer-analytics` | Any | Retired tombstone | HTTP 410 |
 
 ### 🌐 Public Content
 | Endpoint | Method | Purpose | Body |
@@ -123,7 +127,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 ### 🔄 Data Sync
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
-| `/sync-fathom-calls` | POST/GET | Import recordings | `{daysBack?}` |
+| `/sync-fathom-calls` | Any | Retired tombstone | HTTP 410 |
 | `/sync-replies` | POST/GET | Sync email replies | `{syncType?, daysBack?}` |
 
 ### 📈 SEO & Content
@@ -135,7 +139,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 ### 🔗 Webhooks
 | Endpoint | Method | Purpose | Body |
 |----------|--------|---------|------|
-| `/campaign-reply-webhook` | POST | Email replies | Email Bison format |
+| `/campaign-reply-webhook` | — | Excluded from tenant deploy | Not deployed |
 | `/resend-webhook` | POST | Email events | Resend format |
 
 ## 🗄️ Database Quick Access
@@ -242,14 +246,14 @@ const client = await supabase.functions.invoke('create-client-account', {
   body: {
     name: 'John Smith',
     email: 'john@example.com',
-    enable_portal_access: true,
-    send_invitation_email: true,
+    enable_portal_access: false,
+    send_invitation_email: false,
     create_google_sheet: true
   }
 })
 
-// 2. Client receives email and logs in via magic link
-// 3. Access portal at /portal/login
+// 2. Platform admin sets a new portal password through the guarded endpoint.
+// 3. Deliver credentials through an approved channel; client uses /portal/login.
 ```
 
 ### Podcast Outreach Workflow
@@ -272,24 +276,10 @@ for (const approved of approvedPodcasts) {
 }
 ```
 
-### E-commerce Purchase Flow
-```javascript
-// 1. Create checkout session
-const checkout = await supabase.functions.invoke('create-checkout-session', {
-  body: {
-    cartItems: [{
-      podcastId: 'podcast-1',
-      podcastName: 'Amazing Podcast', 
-      price: 299.99
-    }],
-    customerEmail: 'customer@example.com'
-  }
-})
+### E-commerce purchase flow
 
-// 2. Redirect to Stripe: checkout.url
-// 3. Stripe webhook processes payment confirmation
-// 4. Order created in database
-```
+Retired in the invite-only MVP. Checkout, add-on, order-status, and Stripe
+webhook entrypoints are HTTP 410 tombstones and perform no provider work.
 
 ### AI Analysis
 ```javascript
@@ -320,9 +310,8 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### Payments & Email
+### Email
 ```bash
-STRIPE_SECRET_KEY=sk_live_...
 RESEND_API_KEY=re_...
 EMAIL_BISON_API_TOKEN=...
 ```
@@ -331,15 +320,13 @@ EMAIL_BISON_API_TOKEN=...
 ```bash
 PODSCAN_API_KEY=...
 FATHOM_API_KEY=...
-HEYGEN_API_KEY=...
 ```
 
-### Frontend (VITE_ prefix)
+### Frontend (browser-safe values only)
 ```bash
-VITE_STRIPE_PUBLISHABLE_KEY=pk_...
-VITE_HEYGEN_API_KEY=...
-VITE_ANTHROPIC_API_KEY=sk-ant-...
-VITE_VIDEO_SERVICE_URL=...
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=...
+VITE_APP_URL=https://your-app.example
 VITE_SENTRY_DSN=...
 VITE_APP_VERSION=...
 ```

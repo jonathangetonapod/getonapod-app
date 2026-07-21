@@ -134,16 +134,16 @@ supabase db diff --use-migra                    # Generate migration from schema
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` — Supabase anonymous/public key
 - `VITE_SENTRY_DSN` — Sentry error tracking DSN
-- `VITE_STRIPE_PUBLISHABLE_KEY` — Stripe public key
-- `VITE_VIDEO_SERVICE_URL` — Video generator service URL
-- `VITE_HEYGEN_API_KEY` — HeyGen avatar video API key
+- `VITE_APP_URL` — canonical browser application origin
+
+No provider or service credential belongs in a `VITE_` variable. Billing and
+HeyGen/video generation are retired in the invite-only MVP; Podscan, AI, email,
+Google, and webhook secrets remain server-only.
 
 **Edge function env vars (set in Supabase dashboard, not in `.env`):**
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — auto-injected by Supabase
 - `ANTHROPIC_API_KEY` — Claude API for AI features
 - `OPENAI_API_KEY` — OpenAI for embeddings/completions
-- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — Stripe server-side
-
 ## Edge Function Pattern
 
 Standard boilerplate for every new edge function:
@@ -153,7 +153,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN')!,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 

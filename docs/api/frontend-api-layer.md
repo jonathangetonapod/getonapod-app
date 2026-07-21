@@ -179,11 +179,16 @@ export function GlobalCacheStats() {
 #### Podscan API (`/src/services/podscan.ts`)
 **Purpose:** Podcast data and search functionality
 
-**Authentication:**
+**Authentication boundary:**
 ```typescript
-const PODSCAN_API_BASE = 'https://podscan.fm/api/v1'
-const API_KEY = import.meta.env.VITE_PODSCAN_API_KEY
+const { data, error } = await supabase.functions.invoke('podscan-proxy', {
+  body: { action, ...parameters }
+})
 ```
+
+The browser never receives the Podscan credential. The proxy requires a live
+platform-administrator session and reads `PODSCAN_API_KEY`/`PODSCAN_TOKEN` only
+from server-side Supabase secret storage.
 
 **Interface:**
 ```typescript
@@ -245,70 +250,19 @@ export async function getTopChartPodcasts(platform: 'apple' | 'spotify', country
 - `searchAllPodcasts` paginates through all results (50 per page) with 500ms rate-limit delays, retry logic for 429 errors, and abort signal support
 - Chart API normalizes field names across Apple and Spotify response formats
 
-#### HeyGen Video Service (`/src/services/heygen.ts`)
-**Purpose:** AI avatar video generation for prospect dashboards
+#### Retired video and billing services
 
-**Environment Variables:**
-- `VITE_HEYGEN_API_KEY` - HeyGen API key
-- `VITE_VIDEO_SERVICE_URL` - Video generator service URL (default: `http://localhost:3001`)
-
-**Interfaces:**
-```typescript
-export interface HeyGenTemplateVariable {
-  name: string
-  type: 'text' | 'image' | 'video' | 'audio' | 'avatar'
-  properties: Record<string, any>
-}
-
-export interface HeyGenGenerateRequest {
-  title: string
-  caption?: boolean
-  variables: Record<string, HeyGenTemplateVariable>
-}
-
-export interface HeyGenVideoStatus {
-  id: string
-  status: 'pending' | 'waiting' | 'processing' | 'completed' | 'failed'
-  video_url?: string | null
-  thumbnail_url?: string | null
-  gif_url?: string | null
-  duration?: number | null
-  error?: { code: number; message: string; detail: string } | null
-}
-```
-
-**Key Functions:**
-```typescript
-export async function listTemplates(): Promise<any>
-export async function getTemplateDetails(templateId?: string): Promise<any>
-export async function generateVideoFromTemplate(
-  request: HeyGenGenerateRequest,
-  templateId?: string
-): Promise<{ video_id: string }>
-export async function getVideoStatus(videoId: string, dashboardId: string): Promise<HeyGenVideoStatus>
-export async function generateProspectVideo(
-  dashboardId: string,
-  backgroundVideoUrl: string,
-  firstName: string
-): Promise<string>
-export async function pollVideoStatus(
-  videoId: string,
-  dashboardId: string,
-  maxAttempts?: number,
-  intervalMs?: number
-): Promise<string>
-```
-
-**Architecture Notes:**
-- `generateProspectVideo` and `getVideoStatus` route through a separate video-generator service to keep API keys secure server-side
-- `pollVideoStatus` polls until completion (default 120 attempts at 5s intervals = 10 min timeout)
+The browser HeyGen/video SDK and Stripe checkout service are removed from the
+invite-only MVP. Their historical Edge endpoints return HTTP 410. Do not add
+`VITE_HEYGEN_API_KEY`, `VITE_VIDEO_SERVICE_URL`, or a Stripe key back to the
+frontend; retire the external Railway/HeyGen service and unregister Stripe's
+webhook during the production cutover.
 
 #### Anthropic Claude AI (`/src/services/ai.ts`)
 **Purpose:** AI-powered podcast summaries and feature suggestions
 
-**Environment Variable:** `VITE_ANTHROPIC_API_KEY`
-
-**Model:** `claude-sonnet-4-5-20250929` (via `@anthropic-ai/sdk`, `dangerouslyAllowBrowser: true`)
+AI requests go through guarded Supabase Edge Functions. Provider keys are
+server-only and never use a `VITE_` variable.
 
 **Key Functions:**
 ```typescript
@@ -331,34 +285,6 @@ interface PodcastSummaryInput {
 ```
 
 **Fallback:** Returns a template-based summary if the API call fails.
-
-#### Stripe Payment (`/src/services/stripe.ts`)
-**Purpose:** Payment processing for premium podcast placements and addon services
-
-**Environment Variable:** `VITE_STRIPE_PUBLISHABLE_KEY`
-
-**Key Functions:**
-```typescript
-export const createCheckoutSession = async (
-  cartItems: CartItem[],
-  customerEmail: string,
-  customerName: string
-): Promise<{ sessionId: string; url: string }>
-
-export const redirectToCheckout = async (sessionId: string): Promise<void>
-
-export const getCheckoutSession = async (sessionId: string): Promise<{ sessionId: string }>
-
-export const createAddonCheckoutSession = async (
-  addons: Array<{ bookingId: string; serviceId: string }>,
-  clientId: string
-): Promise<{ sessionId: string; url: string }>
-```
-
-**Architecture Notes:**
-- Stripe is lazy-loaded via `loadStripe()` only when needed
-- Checkout sessions are created via Supabase Edge Functions (`create-checkout-session`, `create-addon-checkout`)
-- Webhooks handle order creation server-side
 
 #### Google Calendar (`/src/lib/googleCalendar.ts`)
 **Purpose:** Generate Google Calendar "Add Event" URLs for podcast bookings
@@ -485,7 +411,6 @@ export interface Client {
   portal_access_enabled?: boolean
   portal_last_login_at?: string | null
   portal_invitation_sent_at?: string | null
-  portal_password?: string | null
   password_set_at?: string | null
   password_set_by?: string | null
 }
@@ -728,7 +653,6 @@ export interface Client {
   portal_access_enabled?: boolean
   portal_last_login_at?: string | null
   portal_invitation_sent_at?: string | null
-  portal_password?: string | null
   password_set_at?: string | null
   password_set_by?: string | null
 }
@@ -827,7 +751,8 @@ export async function analyzePodcastFit(podcast: PodcastDataForAnalysis, clientI
 #### AI Categorization (`/src/services/categorization.ts`)
 **Purpose:** Auto-categorize podcasts using Claude AI
 
-**Model:** `claude-haiku-4-5-20251001` (via direct REST API with `VITE_ANTHROPIC_API_KEY`)
+The service invokes the guarded `auto-categorize-podcast` Edge Function; its AI
+provider credential is server-only.
 
 ```typescript
 export interface AutoCategorizeInput {
@@ -1515,15 +1440,6 @@ const { data, isLoading, error } = useQuery({
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 
-# External APIs
-VITE_PODSCAN_API_KEY=your-podscan-key
-VITE_HEYGEN_API_KEY=your-heygen-key
-VITE_ANTHROPIC_API_KEY=your-anthropic-key
-VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
-
-# Video Service
-VITE_VIDEO_SERVICE_URL=https://your-video-service.com
-
 # Monitoring
 VITE_SENTRY_DSN=https://...@sentry.io/...
 VITE_APP_VERSION=1.0.0
@@ -1632,9 +1548,8 @@ The Authority Built frontend API layer provides a robust, type-safe interface to
 - **React Query integration** for efficient data fetching
 - **TypeScript interfaces** for type safety
 - **Consistent error handling** throughout the application
-- **External API integrations** -- Podscan, HeyGen, Anthropic Claude, Stripe, Google Calendar, Google Indexing
+- **Server-guarded integrations** -- Podscan, AI providers, Google Calendar, and Google Indexing
 - **AI-powered features** -- podcast categorization, query generation, compatibility scoring, QA review, podcast summaries
-- **E-commerce layer** -- Stripe checkout, cart store (Zustand), customer/order management, addon services
 - **Sentry observability** -- error tracking, session replay, performance monitoring
 - **20+ service modules** covering blog, testimonials, sales calls, guest resources, outreach, and more
 

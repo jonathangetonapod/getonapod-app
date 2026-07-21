@@ -1,6 +1,11 @@
 # Supabase Edge Functions API Documentation
 ## V Functions (validate-*, verify-*) & Shared Utilities
 
+> **MVP status warning:** this file preserves historical request/response
+> detail. `docs/invite-only-edge-manifest.json` is authoritative for deployed,
+> retired (HTTP 410), and tenant-excluded functions; conflicting examples here
+> are not supported release behavior.
+
 This document provides comprehensive API documentation for all Supabase Edge Functions starting with "V" and the shared utilities used across the Get On A Pod platform.
 
 ---
@@ -372,7 +377,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/validate-portal-sessi
 
 #### CORS Headers
 ```http
-Access-Control-Allow-Origin: *
+Access-Control-Allow-Origin: <configured application origin>
 Access-Control-Allow-Headers: authorization, x-client-info, apikey, content-type
 ```
 
@@ -496,7 +501,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/verify-portal-token \
 
 #### CORS Headers
 ```http
-Access-Control-Allow-Origin: *
+Access-Control-Allow-Origin: <configured application origin>
 Access-Control-Allow-Headers: authorization, x-client-info, apikey, content-type
 ```
 

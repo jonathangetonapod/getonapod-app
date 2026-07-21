@@ -20,7 +20,12 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 async function checkWesley() {
-  const email = 'wez.powell0@gmail.com'
+  const email = process.env.DIAGNOSTIC_CLIENT_EMAIL
+
+  if (!email) {
+    console.error('Missing DIAGNOSTIC_CLIENT_EMAIL')
+    process.exit(1)
+  }
 
   console.log('🔍 Checking Wesley\'s account...\n')
 

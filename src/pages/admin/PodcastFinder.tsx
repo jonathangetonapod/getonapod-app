@@ -359,9 +359,7 @@ export default function PodcastFinder() {
     }
     setSavingProspect(true)
     try {
-      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-      let slug = ''
-      for (let i = 0; i < 8; i++) slug += chars.charAt(Math.floor(Math.random() * chars.length))
+      const slug = `prospect-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
 
       const { data, error } = await supabase
         .from('prospect_dashboards')

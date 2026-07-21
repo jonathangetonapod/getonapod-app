@@ -12,11 +12,14 @@
  *     --temperature hot --intent pricing --campaign 218
  */
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const BRIDGEKIT_URL = process.env.BRIDGEKIT_URL || 'https://getbridgekit.com/mcp?session_token=sess_Roj864Tb13Js6qhA8Z_Htq_0r7VEaA2BMqcTMFrbvwE';
+const BRIDGEKIT_URL = process.env.BRIDGEKIT_MCP_URL;
+if (!BRIDGEKIT_URL) {
+  throw new Error('BRIDGEKIT_MCP_URL is required');
+}
 const DRAFTS_DIR = process.env.DRAFTS_DIR || path.join(process.env.HOME, 'drafts');
 
 // Ensure drafts directory exists
@@ -40,15 +43,16 @@ function parseArgs() {
 
 // Call BridgeKit MCP tool
 function callBridgekit(toolName, toolArgs) {
-  const argsStr = Object.entries(toolArgs)
+  const args = Object.entries(toolArgs)
     .filter(([k, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${k}="${String(v).replace(/"/g, '\\"')}"`)
-    .join(' ');
-  
-  const cmd = `mcporter call --http-url "${BRIDGEKIT_URL}" ${toolName} ${argsStr}`;
+    .map(([k, v]) => `${k}=${String(v)}`);
   
   try {
-    const result = execSync(cmd, { encoding: 'utf-8', timeout: 120000, stdio: ['pipe', 'pipe', 'pipe'] });
+    const result = execFileSync(
+      'mcporter',
+      ['call', '--http-url', BRIDGEKIT_URL, toolName, ...args],
+      { encoding: 'utf-8', timeout: 120000, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
     // mcporter returns JSON directly
     const parsed = JSON.parse(result);
     return parsed;

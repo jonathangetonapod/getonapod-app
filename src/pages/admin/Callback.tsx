@@ -1,19 +1,22 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 
 const AuthCallback = () => {
+  const { accountState, isPlatformAdmin } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
-    // The AuthContext will automatically handle the session
-    // Just redirect to dashboard after a brief moment
-    const timer = setTimeout(() => {
-      navigate('/admin/dashboard', { replace: true })
-    }, 1000)
-
-    return () => clearTimeout(timer)
-  }, [navigate])
+    if (accountState === 'loading') return
+    if (accountState === 'pending') {
+      navigate('/accept-invite', { replace: true })
+    } else if (accountState === 'active') {
+      navigate(isPlatformAdmin ? '/admin/dashboard' : '/app/clients', { replace: true })
+    } else {
+      navigate('/admin/login', { replace: true })
+    }
+  }, [accountState, isPlatformAdmin, navigate])
 
   return (
     <div className="min-h-screen flex items-center justify-center">

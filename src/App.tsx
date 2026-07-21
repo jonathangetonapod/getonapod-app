@@ -1,24 +1,20 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PlatformAdminRoute, ProtectedRoute } from "@/components/ProtectedRoute";
+import { queryClient } from "@/lib/queryClient";
 import { ClientProtectedRoute } from "@/components/ClientProtectedRoute";
 import Index from "./pages/Index";
 import Resources from "./pages/Resources";
-import PremiumPlacements from "./pages/PremiumPlacements";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import Course from "./pages/Course";
 import WhatToExpect from "./pages/WhatToExpect";
-import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
-import Checkout from "./pages/Checkout";
-import CheckoutSuccess from "./pages/CheckoutSuccess";
-import CheckoutCanceled from "./pages/CheckoutCanceled";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminOnboarding from "./pages/admin/Onboarding";
@@ -26,32 +22,32 @@ import PodcastFinder from "./pages/admin/PodcastFinder";
 import ProspectDashboards from "./pages/admin/ProspectDashboards";
 import PodcastDatabase from "./pages/admin/PodcastDatabase";
 import AuthCallback from "./pages/admin/Callback";
-import AISalesDirector from "./pages/admin/AISalesDirector";
 import CalendarDashboard from "./pages/admin/CalendarDashboard";
 import UpcomingRecordings from "./pages/admin/UpcomingRecordings";
 import UpcomingGoingLive from "./pages/admin/UpcomingGoingLive";
 import ClientsManagement from "./pages/admin/ClientsManagement";
 import ClientDetail from "./pages/admin/ClientDetail";
 import OutreachPlatform from "./pages/admin/OutreachPlatform";
-import BlogManagement from "./pages/admin/BlogManagement";
-import BlogEditor from "./pages/admin/BlogEditor";
-import VideoManagement from "./pages/admin/VideoManagement";
-import PremiumPlacementsManagement from "./pages/admin/PremiumPlacementsManagement";
 import GuestResourcesManagement from "./pages/admin/GuestResourcesManagement";
-import CustomersManagement from "./pages/admin/CustomersManagement";
 import LeadsManagement from "./pages/admin/LeadsManagement";
-import OrdersManagement from "./pages/admin/OrdersManagement";
-import Settings from "./pages/admin/Settings";
-import Analytics from "./pages/admin/Analytics";
-import AnalyticsTest from "./pages/AnalyticsTest";
 import PortalLogin from "./pages/portal/Login";
-import PortalDashboard from "./pages/portal/Dashboard";
+import PortalDashboard from "./pages/portal/DashboardMvp";
 import PortalResources from "./pages/portal/Resources";
 import ProspectView from "./pages/prospect/ProspectView";
 import ClientApprovalView from "./pages/client/ClientApprovalView";
-import Docs from "./pages/Docs";
+import AcceptInvite from "./pages/admin/AcceptInvite";
+import WorkspaceUsers from "./pages/admin/WorkspaceUsers";
+import WorkspaceClients from "./pages/app/WorkspaceClients";
 
-const queryClient = new QueryClient();
+const KeyedProspectView = () => {
+  const { slug } = useParams()
+  return <ProspectView key={slug || 'missing'} />
+}
+
+const KeyedClientApprovalView = () => {
+  const { slug } = useParams()
+  return <ClientApprovalView key={slug || 'missing'} />
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -63,30 +59,42 @@ const App = () => (
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/docs" element={<Docs />} />
+            <Route path="/docs" element={<Navigate to="/" replace />} />
             <Route path="/resources" element={<Resources />} />
-            <Route path="/premium-placements" element={<PremiumPlacements />} />
+            <Route path="/premium-placements" element={<Navigate to="/" replace />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/course" element={<Course />} />
             <Route path="/what-to-expect" element={<WhatToExpect />} />
-            <Route path="/onboarding" element={<Onboarding />} />
+            <Route path="/onboarding" element={<Navigate to="/admin/onboarding" replace />} />
 
-            {/* Checkout routes */}
-            <Route path="/checkout" element={<Checkout />} />
-            <Route path="/checkout/success" element={<CheckoutSuccess />} />
-            <Route path="/checkout/canceled" element={<CheckoutCanceled />} />
+            {/* Invite-only workspace account routes */}
+            <Route path="/login" element={<AdminLogin />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
+            <Route path="/app" element={<Navigate to="/app/clients" replace />} />
+            <Route
+              path="/app/clients"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceClients />
+                </ProtectedRoute>
+              }
+            />
 
-            {/* Test route - no auth required */}
-            <Route path="/test-analytics" element={<AnalyticsTest />} />
+            {/* Billing is intentionally out of scope for the invite-only MVP. */}
+            <Route path="/checkout" element={<Navigate to="/" replace />} />
+            <Route path="/checkout/success" element={<Navigate to="/" replace />} />
+            <Route path="/checkout/canceled" element={<Navigate to="/" replace />} />
+
+            <Route path="/test-analytics" element={<Navigate to="/" replace />} />
 
             {/* Client Portal routes */}
             <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
             <Route path="/portal/login" element={<PortalLogin />} />
             {/* Public prospect dashboard */}
-            <Route path="/prospect/:slug" element={<ProspectView />} />
+            <Route path="/prospect/:slug" element={<KeyedProspectView />} />
             {/* Public client approval dashboard */}
-            <Route path="/client/:slug" element={<ClientApprovalView />} />
+            <Route path="/client/:slug" element={<KeyedClientApprovalView />} />
             <Route
               path="/portal/dashboard"
               element={
@@ -108,188 +116,127 @@ const App = () => (
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/callback" element={<AuthCallback />} />
+
+            {/* Retired admin surfaces redirect to the supported admin landing page. */}
+            <Route path="/admin/ai-sales-director/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/videos/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/blog/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/premium-placements/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/customers/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/orders/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/analytics/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/settings/*" element={<Navigate to="/admin/dashboard" replace />} />
+
+            <Route
+              path="/admin/users"
+              element={
+                <PlatformAdminRoute>
+                  <WorkspaceUsers />
+                </PlatformAdminRoute>
+              }
+            />
             <Route
               path="/admin/dashboard"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <AdminDashboard />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/onboarding"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <AdminOnboarding />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/podcast-finder"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <PodcastFinder />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/prospect-dashboards"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <ProspectDashboards />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/podcast-database"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <PodcastDatabase />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/ai-sales-director"
-              element={
-                <ProtectedRoute>
-                  <AISalesDirector />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/calendar"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <CalendarDashboard />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/upcoming"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <UpcomingRecordings />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/going-live"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <UpcomingGoingLive />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/clients"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <ClientsManagement />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/clients/:id"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <ClientDetail />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/outreach-platform"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <OutreachPlatform />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/blog"
-              element={
-                <ProtectedRoute>
-                  <BlogManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/blog/new"
-              element={
-                <ProtectedRoute>
-                  <BlogEditor />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/blog/:id/edit"
-              element={
-                <ProtectedRoute>
-                  <BlogEditor />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/videos"
-              element={
-                <ProtectedRoute>
-                  <VideoManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/premium-placements"
-              element={
-                <ProtectedRoute>
-                  <PremiumPlacementsManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/customers"
-              element={
-                <ProtectedRoute>
-                  <CustomersManagement />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/leads"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <LeadsManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/orders"
-              element={
-                <ProtectedRoute>
-                  <OrdersManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/settings"
-              element={
-                <ProtectedRoute>
-                  <Settings />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/analytics"
-              element={
-                <ProtectedRoute>
-                  <Analytics />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
             <Route
               path="/admin/guest-resources"
               element={
-                <ProtectedRoute>
+                <PlatformAdminRoute>
                   <GuestResourcesManagement />
-                </ProtectedRoute>
+                </PlatformAdminRoute>
               }
             />
 

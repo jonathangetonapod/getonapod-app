@@ -1,5 +1,10 @@
 # Supabase Edge Functions API Reference (L-S)
 
+> **MVP status warning:** this file preserves historical request/response
+> detail. `docs/invite-only-edge-manifest.json` is authoritative for deployed,
+> retired (HTTP 410), and tenant-excluded functions; conflicting examples here
+> are not supported release behavior.
+
 This document provides comprehensive API documentation for all Supabase Edge Functions starting with L-S in the Authority Built platform.
 
 ## Table of Contents
@@ -133,47 +138,20 @@ Logs out a user session and invalidates the session token.
 ### send-portal-magic-link
 
 **Endpoint:** `/functions/v1/send-portal-magic-link`  
-**HTTP Method:** `POST`  
+**HTTP Method:** Any
 **Auth Required:** No  
 
-Sends a magic link email for passwordless authentication.
+This legacy magic-link endpoint is a release-containment tombstone. It ignores
+the request body, performs no email or database work, and always returns HTTP
+410 (except CORS preflight). Password-based portal access replaces it.
 
-#### Request Body
+#### Response (410)
 ```json
 {
-  "email": "user@example.com"
+  "error": "Portal magic links are no longer available",
+  "code": "PORTAL_MAGIC_LINKS_DISABLED"
 }
 ```
-
-#### Success Response (200)
-```json
-{
-  "success": true,
-  "message": "Check your email for a login link. It will expire in 15 minutes."
-}
-```
-
-#### Error Responses
-```json
-// 400 Bad Request
-{
-  "error": "Invalid email format"
-}
-
-// 429 Too Many Requests  
-{
-  "error": "Too many requests. Please wait a few minutes before trying again."
-}
-```
-
-#### Features
-- Email format validation
-- Portal access checking
-- Email suppression checking (bounces/complaints)
-- Rate limiting (15 requests per 15 minutes)
-- 15-minute token expiration
-- Activity and email delivery logging
-- Privacy-first (no email enumeration)
 
 ---
 
@@ -798,9 +776,12 @@ Sends email replies via Email Bison API.
 
 **Endpoint:** `/functions/v1/resend-webhook`  
 **HTTP Method:** `POST`  
-**Auth Required:** No (Webhook signature verification)
+**Auth Required:** Valid Resend/Svix signature over the exact raw body
 
-Handles email delivery events from Resend service.
+Records Resend delivery events through the service-only
+`process_resend_webhook_event` transaction. The transaction writes the
+`svix-id` receipt and the corresponding status, engagement counter, or
+suppression change atomically.
 
 #### Expected Headers
 ```
@@ -811,110 +792,34 @@ svix-signature: signature
 
 #### Webhook Events Supported
 
-##### email.sent
-```json
-{
-  "type": "email.sent",
-  "created_at": "2024-01-01T12:00:00.000Z",
-  "data": {
-    "email_id": "resend_email_id",
-    "from": "sender@example.com",
-    "to": ["recipient@example.com"],
-    "subject": "Email Subject"
-  }
-}
-```
+`email.sent`, `email.delivered`, `email.delivery_delayed`, `email.failed`,
+`email.bounced`, `email.complained`, `email.suppressed`, `email.opened`, and
+`email.clicked`.
 
-##### email.delivered
-```json
-{
-  "type": "email.delivered",
-  "created_at": "2024-01-01T12:00:00.000Z",
-  "data": {
-    "email_id": "resend_email_id",
-    "from": "sender@example.com",
-    "to": ["recipient@example.com"],
-    "subject": "Email Subject"
-  }
-}
-```
-
-##### email.bounced
-```json
-{
-  "type": "email.bounced",
-  "created_at": "2024-01-01T12:00:00.000Z", 
-  "data": {
-    "email_id": "resend_email_id",
-    "from": "sender@example.com",
-    "to": ["recipient@example.com"],
-    "subject": "Email Subject",
-    "bounce_type": "hard"
-  }
-}
-```
-
-##### email.complained
-```json
-{
-  "type": "email.complained",
-  "created_at": "2024-01-01T12:00:00.000Z",
-  "data": {
-    "email_id": "resend_email_id", 
-    "from": "sender@example.com",
-    "to": ["recipient@example.com"],
-    "subject": "Email Subject",
-    "complaint_type": "abuse"
-  }
-}
-```
-
-##### email.opened
-```json
-{
-  "type": "email.opened",
-  "created_at": "2024-01-01T12:00:00.000Z",
-  "data": {
-    "email_id": "resend_email_id",
-    "from": "sender@example.com", 
-    "to": ["recipient@example.com"],
-    "subject": "Email Subject"
-  }
-}
-```
-
-##### email.clicked
-```json
-{
-  "type": "email.clicked",
-  "created_at": "2024-01-01T12:00:00.000Z",
-  "data": {
-    "email_id": "resend_email_id",
-    "from": "sender@example.com",
-    "to": ["recipient@example.com"], 
-    "subject": "Email Subject",
-    "click": {
-      "link": "https://example.com/link",
-      "timestamp": "2024-01-01T12:00:00.000Z"
-    }
-  }
-}
-```
+Supported events require a bounded `data.email_id`. Bounce classification is
+read from `data.bounce.type`; provider values are normalized to hard, soft, or
+unknown. A provider-suppressed event marks the address suppressed without
+incrementing its bounce count or changing its bounce timestamps. Signed event
+families outside this list are receipt-ledgered and ignored.
 
 #### Success Response (200)
 ```json
 {
   "received": true,
-  "event_type": "email.delivered"
+  "duplicate": false
 }
 ```
 
 #### Features
-- Webhook signature verification (TODO)
-- Email status tracking
-- Bounce and complaint handling with auto-suppression
-- Open and click tracking with counters
-- Always returns 200 to prevent retries
+
+- Rejects missing/invalid Svix headers or signatures before service-role work
+- Enforces POST and a 64 KiB raw-body limit
+- Deduplicates at-least-once delivery by `svix-id`
+- Prevents older delivery events from regressing terminal status
+- Counts each signed open/click receipt once
+- Suppresses hard bounces, complaints, and provider-suppressed recipients
+- Returns 500 for transactional failures or a temporarily missing `email_logs`
+  row so Resend can retry
 
 ---
 

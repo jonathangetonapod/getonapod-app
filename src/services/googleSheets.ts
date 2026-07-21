@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getPodcastById } from '@/services/podscan'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -317,44 +318,30 @@ export async function getClientOutreachPodcasts(
       return { success: true, podcasts: [], total: 0 }
     }
 
-    // Fetch podcast details from Podscan API (from frontend where DNS works)
-    // Using batched parallel processing for speed while respecting rate limits
-    const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
+    // Fetch through the authenticated server proxy so the Podscan credential
+    // is never included in the browser bundle.
     const BATCH_SIZE = 10 // Fetch 10 at a time
     const podcasts: OutreachPodcast[] = []
 
     // Helper function to fetch a single podcast
     const fetchPodcast = async (podcastId: string): Promise<OutreachPodcast | null> => {
       try {
-        const podcastResponse = await fetch(
-          `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${podscanApiKey}`,
-            },
-          }
-        )
-
-        if (podcastResponse.ok) {
-          const data = await podcastResponse.json()
-          // API returns { podcast: { ... } }, extract the podcast object
-          const podcast = data.podcast || data
-
-          return {
-            podcast_id: podcastId,
-            podcast_name: podcast.podcast_name || 'Unknown Podcast',
-            podcast_description: podcast.podcast_description || null,
-            podcast_image_url: podcast.podcast_image_url || null,
-            podcast_url: podcast.podcast_url || null,
-            publisher_name: podcast.publisher_name || null,
-            itunes_rating: podcast.reach?.itunes?.itunes_rating_average || null,
-            episode_count: podcast.episode_count || null,
-            audience_size: podcast.reach?.audience_size || null,
-            podcast_categories: podcast.podcast_categories || null,
-            last_posted_at: podcast.last_posted_at || null,
-          }
+        const podcast = await getPodcastById(podcastId)
+        return {
+          podcast_id: podcastId,
+          podcast_name: podcast.podcast_name || 'Unknown Podcast',
+          podcast_description: podcast.podcast_description || null,
+          podcast_image_url: podcast.podcast_image_url || null,
+          podcast_url: podcast.podcast_url || null,
+          publisher_name: podcast.publisher_name || null,
+          itunes_rating: podcast.reach?.itunes?.itunes_rating_average
+            ? Number(podcast.reach.itunes.itunes_rating_average)
+            : null,
+          episode_count: podcast.episode_count || null,
+          audience_size: podcast.reach?.audience_size || null,
+          podcast_categories: podcast.podcast_categories || null,
+          last_posted_at: podcast.last_posted_at || null,
         }
-        return null
       } catch (error) {
         console.error('[getClientOutreachPodcasts] Error fetching podcast:', podcastId, error)
         return null

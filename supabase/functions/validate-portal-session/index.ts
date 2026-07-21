@@ -1,74 +1,82 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { hashPortalSessionToken } from '../_shared/portalSecurity.ts'
+import {
+  createAdminClient,
+  errorResponse,
+  HttpError,
+  jsonResponse,
+  optionsResponse,
+  parseJsonObject,
+  requireOnlyKeys,
+  requireUuid,
+} from '../_shared/workspaceAuth.ts'
+
+const METHODS = ['POST'] as const
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
   try {
-    const { sessionToken } = await req.json()
-
-    if (!sessionToken) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Session token is required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+    if (req.method !== 'POST') {
+      throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
     }
 
-    // Create Supabase client with service role to bypass RLS
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const body = await parseJsonObject(req, 1_024)
+    requireOnlyKeys(body, ['sessionToken'])
+    const sessionToken = requireUuid(body.sessionToken, 'sessionToken')
+    const sessionTokenHash = await hashPortalSessionToken(sessionToken)
+    const admin = createAdminClient()
 
-    console.log('[VALIDATE-SESSION] Validating session token')
-
-    // Verify session exists and is not expired
-    const { data: session, error: sessionError } = await supabase
+    const { data: session, error: sessionError } = await admin
       .from('client_portal_sessions')
-      .select('*, clients(*)')
-      .eq('session_token', sessionToken)
+      .select('id,client_id,clients(id,name,email,photo_url,portal_access_enabled,workspace:workspaces(status))')
+      .eq('session_token', sessionTokenHash)
       .gt('expires_at', new Date().toISOString())
-      .single()
+      .maybeSingle()
 
-    if (sessionError || !session) {
-      console.log('[VALIDATE-SESSION] Session not found or expired')
-      return new Response(
-        JSON.stringify({ success: false, error: 'Session expired or invalid' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      )
+    if (sessionError) {
+      throw new HttpError(503, 'SESSION_LOOKUP_FAILED', 'Session validation is temporarily unavailable')
     }
 
-    console.log('[VALIDATE-SESSION] Session valid, client:', session.clients.name)
+    const client = session?.clients as {
+      id?: string
+      name?: string
+      email?: string | null
+      photo_url?: string | null
+      portal_access_enabled?: boolean
+      workspace?: { status?: string } | null
+    } | null
 
-    // Update last_active_at
-    await supabase
+    if (
+      !session
+      || !client?.id
+      || !client.name
+      || !client.portal_access_enabled
+      || client.workspace?.status !== 'active'
+    ) {
+      throw new HttpError(401, 'INVALID_PORTAL_SESSION', 'Session expired or invalid')
+    }
+
+    const { error: activityError } = await admin
       .from('client_portal_sessions')
       .update({ last_active_at: new Date().toISOString() })
-      .eq('session_token', sessionToken)
+      .eq('id', session.id)
 
-    // Return client data
-    return new Response(
-      JSON.stringify({
-        success: true,
-        client: session.clients
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    if (activityError) {
+      throw new HttpError(503, 'SESSION_UPDATE_FAILED', 'Session validation is temporarily unavailable')
+    }
+
+    return jsonResponse(req, METHODS, 200, {
+      success: true,
+      client: {
+        id: client.id,
+        name: client.name,
+        email: client.email ?? null,
+        photo_url: client.photo_url ?? null,
+      },
+    })
   } catch (error) {
-    console.error('[VALIDATE-SESSION] Error:', error)
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || 'Failed to validate session'
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
+    return errorResponse(req, METHODS, error)
   }
 })

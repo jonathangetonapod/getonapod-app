@@ -42,6 +42,7 @@ export default function PageSEO({
       <meta name="author" content={author} />
       <meta name="robots" content={robots} />
       <meta name="googlebot" content={robots} />
+      {noindex ? <meta name="referrer" content="no-referrer" /> : null}
       <meta name="theme-color" content={DEFAULT_THEME_COLOR} />
       <meta name="application-name" content={SITE_NAME} />
       <meta name="apple-mobile-web-app-title" content={SITE_NAME} />

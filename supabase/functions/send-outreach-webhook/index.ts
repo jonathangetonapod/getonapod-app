@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -13,6 +14,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const { clientId, podcastId } = await req.json()
 
     // Validation
@@ -53,7 +55,7 @@ serve(async (req) => {
       throw new Error('Webhook URL not configured for this client')
     }
 
-    console.log('[Send Outreach Webhook] Client:', client.name, '| Webhook:', client.outreach_webhook_url)
+    console.log('[Send Outreach Webhook] Client webhook configured')
 
     // Fetch podcast data from cache
     const { data: podcast, error: podcastError } = await supabase
@@ -131,7 +133,7 @@ serve(async (req) => {
       },
     }
 
-    console.log('[Send Outreach Webhook] Sending webhook to:', client.outreach_webhook_url)
+    console.log('[Send Outreach Webhook] Sending configured client webhook')
 
     // Send webhook with 10-second timeout
     const controller = new AbortController()

@@ -17,7 +17,19 @@ const SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
   ''
-const BASE_URL = process.env.VITE_APP_URL || 'https://getonapod.com'
+const STRICT_DATABASE = process.env.SITEMAP_REQUIRE_DATABASE === 'true'
+
+function resolveBaseUrl(): string {
+  try {
+    const parsed = new URL(process.env.VITE_APP_URL || 'https://getonapod.com')
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.origin
+  } catch {
+    // Use the production canonical origin below.
+  }
+  return 'https://getonapod.com'
+}
+
+const BASE_URL = resolveBaseUrl()
 
 interface BlogPost {
   slug: string
@@ -28,28 +40,35 @@ interface BlogPost {
 async function generateSitemap() {
   console.log('🗺️  Generating sitemap...')
 
-  // Initialize Supabase client
-  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+  let posts: BlogPost[] = []
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .select('slug, updated_at, published_at')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
 
-  // Fetch all published blog posts
-  const { data: posts, error } = await supabase
-    .from('blog_posts')
-    .select('slug, updated_at, published_at')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-
-  if (error) {
-    console.error('❌ Error fetching posts:', error)
-    process.exit(1)
+    if (error) {
+      if (STRICT_DATABASE) throw new Error('Sitemap database query failed')
+      console.warn('⚠️  Blog index unavailable; generating a static-only sitemap')
+    } else {
+      posts = (data || []).filter(
+        (post): post is BlogPost => typeof post?.slug === 'string' && post.slug.length > 0,
+      )
+    }
+  } else if (STRICT_DATABASE) {
+    throw new Error('Sitemap database credentials are required in strict mode')
+  } else {
+    console.warn('⚠️  No sitemap database credentials; generating static pages only')
   }
 
-  console.log(`📝 Found ${posts?.length || 0} published posts`)
+  console.log(`📝 Found ${posts.length} published posts`)
 
   // Static pages
   const staticPages = [
     { url: '', priority: '1.0', changefreq: 'daily' },
     { url: '/blog', priority: '0.9', changefreq: 'daily' },
-    { url: '/premium-placements', priority: '0.9', changefreq: 'weekly' },
     { url: '/resources', priority: '0.8', changefreq: 'weekly' },
     { url: '/course', priority: '0.8', changefreq: 'monthly' },
     { url: '/what-to-expect', priority: '0.8', changefreq: 'monthly' },
@@ -68,13 +87,13 @@ ${staticPages
   </url>`
   )
   .join('\n')}
-${(posts || [])
+${posts
   .map(
     (post: BlogPost) => `  <url>
-    <loc>${BASE_URL}/blog/${post.slug}</loc>
+    <loc>${BASE_URL}/blog/${encodeURIComponent(post.slug)}</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
-    <lastmod>${new Date(post.updated_at || post.published_at).toISOString().split('T')[0]}</lastmod>
+    <lastmod>${safeDate(post.updated_at || post.published_at)}</lastmod>
   </url>`
   )
   .join('\n')}
@@ -86,7 +105,14 @@ ${(posts || [])
   writeFileSync(sitemapPath, sitemap, 'utf-8')
 
   console.log(`✅ Sitemap generated: ${sitemapPath}`)
-  console.log(`📊 Total URLs: ${staticPages.length + (posts?.length || 0)}`)
+  console.log(`📊 Total URLs: ${staticPages.length + posts.length}`)
+}
+
+function safeDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? new Date().toISOString().split('T')[0]
+    : date.toISOString().split('T')[0]
 }
 
 generateSitemap().catch((error) => {

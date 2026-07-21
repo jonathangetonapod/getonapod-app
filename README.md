@@ -1,400 +1,391 @@
-# Get On A Pod - Complete Podcast Placement Platform
+# Get On A Pod — invite-only workspace MVP
 
-A comprehensive SaaS platform for managing podcast placement services, client relationships, and sales operations.
+This branch turns the existing internal application into an invite-only,
+multi-account MVP without billing or public registration. A platform
+administrator invites a user; the user accepts the email invitation, creates a
+password, signs in, and manages clients inside one private workspace.
 
-## 🚀 Project Overview
+The implementation is isolated on `feat/invite-only-workspaces`. Do not merge
+or deploy it to production until the staging migration, SQL verifier, and
+two-account isolation matrix pass.
 
-Get On A Pod is a full-stack application that helps founders and financial professionals build authority through podcast appearances. This platform includes client management, booking tracking, sales analytics, a secure client portal, premium podcast marketplace, and AI-powered sales call analysis.
+## MVP roles
 
-## 🎯 Core Features
+| Role | Supported access |
+| --- | --- |
+| Platform administrator | Existing internal `/admin/*` application, user invitations, account suspension/reactivation, and all legacy/default-workspace data |
+| Workspace user | `/app/clients`; create, list, edit, and delete only clients owned by the user's private workspace |
+| Client portal user | Separate `/portal/*` login and minimal bookings/resources view for a client record; this is not a SaaS workspace account |
+| Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
 
-### Admin Dashboard
-- **Client Management** - Complete CRM with client profiles, contact info, notes, and bio
-- **Booking Tracking** - Track podcast bookings through full lifecycle (conversation → booked → recorded → published)
-- **Calendar View** - Visual calendar for managing scheduled recordings and publish dates
-- **Podcast Finder** - AI-powered podcast discovery with query generation and compatibility scoring
-- **Podcast Database** - Browse 1,000+ cached podcasts with advanced filtering and matching
-- **Prospect Dashboards** - Create personalized podcast recommendation dashboards for prospects
-- **Sales Analytics** - AI-powered analysis of sales calls with actionable recommendations
-- **Campaign Management** - Email campaigns with reply tracking via Bison
-- **Blog System** - Built-in content management for SEO and marketing
+Each invited account owns one private workspace. User-managed teams, multiple
+members per private workspace, public signup, self-service billing, and full
+tenant access to every legacy operational module are deliberately out of scope.
 
-### AI-Powered Podcast Discovery
+## Routes
 
-#### Podcast Finder
-- **Smart Query Generation** - AI generates 5 targeted search queries based on client/prospect bio
-- **Compatibility Scoring** - Claude AI scores podcast fit (1-10) with detailed reasoning
-- **Batch Processing** - Score up to 50 podcasts in parallel batches
-- **Export to Google Sheets** - One-click export with automatic cache population
-- **Dual Mode** - Works for both existing clients and new prospects
-- **Real-time Search** - Instant results from Podscan API (5,000,000+ podcasts)
+| Route | Access |
+| --- | --- |
+| `/login` | Workspace/platform account login |
+| `/accept-invite` | Supabase email-invite completion |
+| `/app/clients` | Authenticated workspace client CRUD |
+| `/admin/users` | Platform administrator invitation/lifecycle console |
+| `/admin/*` | Platform administrator only |
+| `/portal/login` | Separate client portal login |
+| `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
+| `/prospect/:slug`, `/client/:slug` | Enabled capability dashboards; `noindex, nofollow` |
 
-#### Podcast Database
-- **Centralized Cache** - Browse 2,400+ pre-fetched podcasts from central database
-- **Vector Embeddings** - AI-powered semantic search for intelligent prospect-podcast matching
-- **Four Modes:**
-  - **Browse** - View all cached podcasts with filtering and search
-  - **Match for Client** - Score and export podcasts to client sheets
-  - **Match for Prospect** - Score and export to prospect dashboards
-  - **Analytics** - Comprehensive insights into database growth, performance, and trends
-- **Advanced Filtering** - Search by name, category, audience size, rating, language, region, email availability
-- **Smart Caching** - 60-80% API cost reduction through proactive cache optimization
-- **Table Density Control** - Compact/Comfortable/Spacious view options
-- **Column Visibility** - Show/hide columns based on preference
-- **Export Integration** - Same Google Sheets export as Podcast Finder
+The following surfaces are retired for this MVP and redirect to a supported
+landing page: billing/checkout, premium placements, customers/orders/analytics,
+AI Sales Director, admin videos, admin blog, admin settings, and the old API
+docs route. Their charge/order/video mutation endpoints return HTTP 410.
 
-#### Prospect Dashboards
-- **Personalized Recommendations** - Create custom podcast lists for prospects
-- **Google Sheets Integration** - Each prospect gets their own shareable sheet
-- **Bio-Based Matching** - AI analyzes prospect background for best-fit podcasts
-- **Public Dashboard URLs** - Shareable links for prospect viewing
-- **Approval Workflow** - Review and enable dashboards before sharing
+## Security boundaries
 
-### Client Portal (Magic Link Auth)
-- **Secure Access** - Passwordless authentication via email magic links (15-min expiry)
-- **Dashboard** - View all podcast bookings with status, dates, and episode URLs
-- **Analytics Tab** - Month-over-month growth metrics (bookings, reach, quality improvements)
-- **Calendar View** - See scheduled recordings and publish dates
-- **Attention Needed** - Alerts for bookings missing scheduled/recording/publish dates
-- **Outreach List** - View podcasts in the outreach pipeline from Google Sheets
-- **Premium Placements** - Browse and add guaranteed podcast spots to cart
+- Supabase public email signup and anonymous Auth are disabled. Only a platform
+  administrator can create a workspace invitation.
+- The server derives platform-admin status from the `admin_users` allowlist and
+  the current Auth email. Browser metadata is not an authority.
+- Workspace users never query the full `clients` row. `workspace-clients`
+  calls a service-only transactional RPC that returns a narrow projection and
+  rechecks active membership and workspace state.
+- Direct base-table access to `clients` and `bookings` is platform-admin-only.
+  RLS and server checks both enforce the workspace boundary.
+- Client portal password verifiers are PBKDF2-HMAC-SHA256 values with a
+  600,000-iteration work factor in the
+  service-role-only `client_portal_credentials` table. The retired
+  `clients.portal_password` column is constrained to `NULL`.
+- Portal bearer tokens are opaque UUIDs. Only SHA-256 verifiers are stored;
+  stored verifiers are never accepted as bearer tokens. Login attempt
+  reservation is atomic and password/session changes revoke prior access.
+- Changing a client's portal email is an identity reassignment: it disables
+  portal access, deletes the old verifier and sessions, and requires a platform
+  administrator to set a fresh password before the new identity can sign in.
+- Client and prospect approval URLs are bearer capabilities with 96 bits of
+  random suffix entropy. They are server-validated, excluded from the sitemap,
+  marked `noindex, nofollow`, and use a no-referrer policy.
+- Podscan and other paid/service credentials stay in server-side secret storage.
+  No third-party secret may use a `VITE_` name.
 
-### Premium Podcast Marketplace
-- **Public Storefront** - Browse 150+ premium podcast placement opportunities
-- **Advanced Filters** - Filter by category, audience size, price range
-- **Shopping Cart** - Add multiple placements and checkout
-- **Featured Listings** - Highlight top-tier opportunities
+## Local development
 
-### Integrations
-- **Claude AI (Anthropic)** - Haiku for compatibility scoring, Sonnet for query generation
-- **Google Sheets** - Automated podcast export and outreach tracking per client/prospect
-- **Podscan API** - Real-time podcast search and metadata (5M+ podcasts)
-- **Resend** - Transactional emails (magic links, notifications)
-- **Bison** - Email campaign management and reply tracking
-- **Supabase** - Database, authentication, storage, edge functions
-
-### Sales & Analytics
-- **Call Recording Analysis** - AI-powered insights using Corey Jackson sales framework
-- **Recommendations Engine** - Context-aware next steps for each sales call
-- **Text Analysis** - Extract pain points, goals, and key metrics from transcripts
-- **Performance Tracking** - Monitor booking trends, revenue, and conversion rates
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **Framework:** React 18 + TypeScript
-- **Build Tool:** Vite 5.4
-- **Styling:** Tailwind CSS 3.4 with custom theme
-- **UI Components:** shadcn/ui (60+ components)
-- **Routing:** React Router DOM 7
-- **State Management:** React Query (TanStack Query), Zustand
-- **Forms:** React Hook Form + Zod validation
-- **Charts:** Recharts
-- **Icons:** Lucide React
-
-### Backend
-- **Database:** PostgreSQL (Supabase)
-- **Auth:** Custom magic link system + Supabase Auth
-- **Edge Functions:** Deno (Supabase Functions)
-- **Storage:** Supabase Storage (client assets, resources)
-- **APIs:** REST + Supabase Realtime
-
-### Infrastructure
-- **Hosting:** Railway
-- **Database:** Supabase (PostgreSQL with RLS)
-- **Email:** Resend
-- **DNS:** Cloudflare
-- **Version Control:** GitHub
-
-## 📦 Installation & Setup
+Requirements: Node.js 20+ and npm.
 
 ```bash
-# Clone the repository
-git clone https://github.com/jonathangetonapod/authority-built
-cd authority-built
-
-# Install dependencies
-npm install
-
-# Set up environment variables
+npm ci
 cp .env.example .env.local
-# Edit .env.local with your Supabase and API keys
-
-# Start development server
 npm run dev
 ```
 
-The site will be available at `http://localhost:5173`
+The development server runs at `http://localhost:8080`.
 
-### Environment Variables
+Only browser-safe values belong in `.env.local`:
 
-```env
-# Supabase
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-# Podscan API
-VITE_PODSCAN_API_KEY=your_podscan_api_key
-
-# Resend (for email)
-RESEND_API_KEY=your_resend_api_key
-
-# Portal
-PORTAL_BASE_URL=https://yourdomain.com
+```dotenv
+VITE_SUPABASE_URL=https://your-staging-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-staging-anon-key
+VITE_APP_URL=http://localhost:8080
 ```
 
-## 🗄️ Database Schema
+Never place a service-role key, database password, OpenAI key, Podscan key,
+Google service-account JSON, webhook secret, or other private credential in a
+browser variable or tracked file. `credentials.json`, `.env*`, and service
+account files are ignored.
 
-### Core Tables
-- `clients` - Client profiles and metadata
-- `bookings` - Podcast bookings with status tracking
-- `podcasts` - Centralized podcast cache (2,431+ podcasts with metadata and vector embeddings)
-- `prospect_dashboards` - Prospect information and Google Sheet links
-- `premium_podcasts` - Marketplace inventory
-- `sales_calls` - Call recordings and AI analysis
-- `campaigns` - Email campaign tracking
-- `campaign_replies` - Bison reply integration
-- `blog_posts` - Content management
+Relevant server-side secrets are configured in Supabase, as required by the
+functions being deployed:
 
-### Vector Search Tables
-- `podcasts.embedding` - 1536-dimension vector embeddings (text-embedding-3-small)
-- `search_similar_podcasts()` - Semantic search function using cosine similarity
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- `APP_URL`/`WEB_URL`, `ALLOWED_ORIGIN`/`ALLOWED_ORIGINS`
+- `PODSCAN_API_KEY` or `PODSCAN_TOKEN`
+- `RESEND_WEBHOOK_SECRET`
+- provider keys such as OpenAI, Resend, and Google credentials
 
-### Portal System
-- `client_portal_tokens` - Magic link tokens (15-min expiry)
-- `client_portal_sessions` - Active sessions (24-hour expiry)
-- `client_portal_activity_log` - Audit trail for security
+The excluded legacy Clay/Bison handlers require `CLAY_WEBHOOK_SECRET` and
+`CAMPAIGN_WEBHOOK_SECRET` only in their separate operator environment; do not
+configure them in the tenant MVP environment.
 
-### Features
-- **Row Level Security (RLS)** - Clients can only access their own data
-- **Automatic Timestamps** - created_at, updated_at via triggers
-- **Soft Deletes** - Archived flag instead of deletion
-- **Foreign Key Constraints** - Data integrity enforcement
+`npm run build` generates a static-only sitemap when database variables are
+absent, so a clean checkout remains reproducible. Release builds that must
+include published blog URLs should set `SITEMAP_REQUIRE_DATABASE=true` and
+provide a staging-safe Supabase URL/key; strict mode fails closed if the query
+is unavailable.
 
-## 🚀 Deployment
+## Database rollout
 
-### Railway (Production)
+Use a dedicated staging project. Do not point local acceptance testing at
+production and do not replay the repository's entire historical migration
+directory blindly.
+
+Use a coordinated maintenance window; do not run the SQL while historical
+portal functions can still mint credentials or sessions:
+
+1. Back up the target, record the remote Edge Function/webhook/schedule
+   inventory, and quiesce client-portal traffic and automated callers.
+2. Deploy all 17 HTTP 410 handlers in phase 1 of the checked-in Edge manifest.
+   The five names in `unauthenticated_tombstone_probes` (the four legacy public
+   functions plus `stripe-webhook`) must return 410 without a user JWT or side
+   effect. Probe the other tombstones with an administrator JWT and require no
+   provider/database side effect.
+3. While traffic remains closed, deploy this branch's
+   `login-with-password`, `validate-portal-session`,
+   `logout-portal-session`, `get-client-bookings`, and `resend-webhook`.
+   Before their new RPCs exist these handlers fail closed (Resend receives a
+   retryable failure), preventing an old handler from crossing the cutover.
+4. Apply this release unit in order:
+
+   1. `supabase/migrations/20260720000100_invite_only_workspace_core.sql`
+   2. `supabase/migrations/20260720000200_invite_only_workspace_rls.sql`
+   3. `supabase/migrations/20260720000300_client_portal_security.sql`
+   4. `supabase/migrations/20260720000400_resend_webhook_idempotency.sql`
+   5. `supabase/tests/20260720_invite_only_workspace_verification.sql`
+
+5. Recheck the post-migration zero-token/hash-only invariants, inspect
+   workspace/client ownership, deploy the remaining reviewed function manifest
+   and frontend, then run the complete acceptance matrix before reopening
+   traffic.
+
+Migration 1 creates workspaces/memberships, assigns existing clients to the
+default Get On A Pod workspace, and preserves the legacy administrator model.
+Migration 2 installs tenant RLS, public-data containment, and the narrow client
+operation RPC. Migration 3 hardens portal credentials/sessions and capability
+links. Migration 4 makes signed Resend delivery events transactional,
+deduplicated by `svix-id`, and monotonic under out-of-order delivery.
+
+Important cutover effects:
+
+- Every pre-cutover client and prospect dashboard capability slug is rotated,
+  regardless of its former format. Previously shared links stop working;
+  inventory and distribute replacement URLs after staging acceptance.
+- Raw legacy portal sessions are invalidated. Legacy plaintext portal
+  credentials are deleted and affected portals are disabled; an operator must
+  set a new password and securely reissue access before those clients sign in.
+- Legacy client-portal magic-link tokens are deleted and cannot be redeemed.
+- Existing data remains in the default workspace; verify row counts and
+  ownership before promotion.
+
+Deploy the new account/client functions and every changed guarded function from
+this branch as one reviewed, explicit allowlist. Do not bulk-deploy the entire
+`supabase/functions` directory: the repository retains legacy operator code,
+and `create-outreach-message` plus `campaign-reply-webhook` are intentionally
+excluded from the tenant environment. The checked-in phased allowlist is
+[`docs/invite-only-edge-manifest.json`](docs/invite-only-edge-manifest.json);
+regenerate and review it if `main` moves. Delete any old remote copies of the
+two excluded handlers from the tenant Supabase project before opening traffic;
+omitting them from a deploy is not deletion. At minimum the MVP uses
+`account-context`, `manage-workspace-users`, `accept-workspace-invite`,
+`workspace-clients`, `manage-client-portal-password`, `podscan-proxy`,
+`login-with-password`, `validate-portal-session`, `logout-portal-session`,
+`get-client-bookings`, and `public-client-dashboard`.
+
+Production may still contain historical copies of all 17 retired function
+entrypoints; omitting those names from a deploy does not remove a remote
+function. Keep the 410 tombstones in place through migration and acceptance.
+`get-client-portfolio` is replaced by the narrower
+`public-client-dashboard` capability endpoint. After every caller, schedule,
+and provider workflow is removed, delete the remote functions and list the
+inventory again. Migration 3 deletes all outstanding magic-link tokens, so
+none may be carried into production.
+
+Configure the Resend endpoint for only `email.sent`, `email.delivered`,
+`email.delivery_delayed`, `email.failed`, `email.bounced`,
+`email.complained`, `email.suppressed`, `email.opened`, and `email.clicked`.
+Use a dedicated Resend account/team for this tracked application mail; an API
+key or sending domain alone does not isolate webhook delivery. Do not attach
+this handler to an account that also emits untracked Supabase Auth or other
+mail. A temporarily missing log returns a retryable 500 so a send/log commit
+race can recover; alert and reconcile any identifier that remains unmatched
+before Resend exhausts retries.
+
+Hosted Auth settings must also disable email/anonymous signup, set the invite
+expiry to 24 hours, and allow only the intended staging `/accept-invite`
+callback. A Supabase invite email is a bearer credential: anyone with the full
+link can establish the invited Auth session, so it must not be forwarded or
+logged.
+
+## Verification
+
+Static checks:
 
 ```bash
-# Deploy to Railway
-railway up
-
-# View logs
-railway logs
+npm run build
+npm audit --omit=dev
+npx tsc --noEmit -p tsconfig.app.json
+npm run lint
+git diff --check
 ```
 
-### Supabase Functions
+### Executable staging evidence
+
+Run staging evidence only from a reviewed, clean commit on
+`feat/invite-only-workspaces`. Both runners refuse a dirty/untracked worktree,
+an unexpected branch, an uncommitted release input, a reused evidence path, or
+an explicitly identified production target. Evidence paths must be absolute,
+must have an existing parent outside this repository, and should point to a
+private release-artifact directory.
+
+The HTTP runner reads only dedicated `ACCEPTANCE_*` process variables. It does
+not load `.env.local`, accept a service-role key, or write raw responses. Supply
+one platform administrator and two already active, disposable private-workspace
+staging accounts. Alice's and Bob's workspaces must each contain zero clients;
+the harness refuses to mutate a workspace with existing client data:
 
 ```bash
-# Deploy edge functions
-
-# Portal & Auth
-npx supabase functions deploy send-portal-magic-link
-npx supabase functions deploy verify-portal-token
-
-# Google Sheets Integration
-npx supabase functions deploy create-client-google-sheet
-npx supabase functions deploy export-to-google-sheets
-npx supabase functions deploy get-client-outreach-podcasts
-npx supabase functions deploy delete-outreach-podcast
-
-# Podcast Finder (AI-Powered)
-npx supabase functions deploy generate-podcast-queries
-npx supabase functions deploy score-podcast-compatibility
-
-# Prospect Dashboards
-npx supabase functions deploy create-prospect-sheet
-npx supabase functions deploy append-prospect-sheet
-
-# Podcast Metadata
-npx supabase functions deploy get-client-podcasts
-npx supabase functions deploy analyze-podcast-fit
+export ACCEPTANCE_EXPECTED_PROJECT_REF='<staging-project-ref>'
+export ACCEPTANCE_PRODUCTION_PROJECT_REFS='<production-project-ref[,another-ref]>'
+export ACCEPTANCE_CONFIRM='RUN_SYNTHETIC_TESTS_ON_<staging-project-ref>'
+export ACCEPTANCE_SUPABASE_URL='https://<staging-project-ref>.supabase.co'
+export ACCEPTANCE_SUPABASE_ANON_KEY='<browser-safe-anon-or-publishable-key>'
+export ACCEPTANCE_RUN_ID='goap-acceptance-001'
+export ACCEPTANCE_ADMIN_EMAIL='<staging-platform-admin-email>'
+export ACCEPTANCE_ALICE_EMAIL='<active-staging-tenant-a-email>'
+export ACCEPTANCE_BOB_EMAIL='<active-staging-tenant-b-email>'
+export ACCEPTANCE_EVIDENCE_PATH='/absolute/private/path/http-acceptance.ndjson'
+read -r -s -p 'Staging admin password: ' ACCEPTANCE_ADMIN_PASSWORD; printf '\n'
+read -r -s -p 'Staging Alice password: ' ACCEPTANCE_ALICE_PASSWORD; printf '\n'
+read -r -s -p 'Staging Bob password: ' ACCEPTANCE_BOB_PASSWORD; printf '\n'
+export ACCEPTANCE_ADMIN_PASSWORD ACCEPTANCE_ALICE_PASSWORD ACCEPTANCE_BOB_PASSWORD
+npm run typecheck:staging
+npm run test:staging
 ```
 
-## 📝 Recent Updates (April 2026)
+The runner creates tagged synthetic clients, attacks the tenant boundary over
+Edge Functions and REST, checks exact tombstone/exclusion behavior, probes the
+Resend signature/body limits, exercises suspend/reactivate plus portal-session
+revocation, and removes its fixtures in `finally`. Its NDJSON contains only
+fixed test labels, statuses, HTTP status codes, and source fingerprints—never
+emails, UUIDs, tokens, URLs, request bodies, or response bodies. Exit `1` means
+refused/failed; exit `2` means the automated checks passed but the manual invite
+and signed Resend replay/provider gates are still incomplete. The runner never
+turns those manual gates into an automatic pass.
 
-### Prospect Cache Bug Fix + API Docs Expansion (April 27, 2026)
-- ✅ **Fixed silent cache write bug** - `create-prospect-sheet`, `append-prospect-sheet`, and `export-to-google-sheets` were upserting `rss_feed` to the `podcasts` table, but the schema column is `rss_url` (renamed in the email→podscan_email migration era). Every prospect dashboard creation was logging `cacheErrors` for all podcasts (PGRST204: "Could not find the 'rss_feed' column"). Three-line fix: rename the upsert column key to `rss_url` while keeping `rss_feed` as the input payload field for backwards compat with frontend callers.
-- ✅ **Verified end-to-end** - Created a prospect via curl, confirmed `cacheSaved: 1`, `cacheErrors: 0`, dashboard URL + Google Sheet both rendered correctly, then auto-cleaned the test data.
-- ✅ **Expanded `src/lib/api-docs.ts`** - Documented the full Google Sheet pipeline (env vars `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_WORKSPACE_USER_EMAIL`, `GOOGLE_SHEET_TEMPLATE_ID`; column layout A-G; slug entropy; service-account domain-wide delegation flow). Enriched `create-prospect-sheet` and `append-prospect-sheet` notes with the 7-step creation flow and dedup behavior.
-- ✅ **Documented missing endpoints** - Added `health-check` (new System & Operations category) and `generate-sample-sequence` (AI Content Generation) to `/docs`. API docs now cover 78/78 deployed edge functions.
+After the four migrations have been applied to the same staging release, run
+the database verifier using `PG*` environment variables. Prefer a project-
+specific direct database hostname rather than a hostname shared by production
+and staging. Hostnames with a trailing dot are refused. Never put the connection
+URL or password on the command line or type a password into shell history:
 
-## 📝 Recent Updates (January 2026)
-
-### AI-Powered Semantic Podcast Matching (January 29, 2026)
-- ✅ **Massive Database Expansion** - Grew from 1,422 to 2,431 podcasts (+71% growth)
-- ✅ **Vector Embeddings** - Generated embeddings for all 2,431 podcasts using OpenAI text-embedding-3-small
-- ✅ **pgvector Integration** - Enabled semantic search with cosine similarity
-- ✅ **Intelligent Matching** - Match prospects to podcasts based on meaning, not just keywords
-- ✅ **Top 20 Categories** - Focused scraping on most popular categories (Business, News, Culture, Technology, etc.)
-- ✅ **Search Function** - Built `search_similar_podcasts()` for prospect-podcast matching
-- ✅ **Cost Efficient** - Total embedding cost: ~$0.06 for 2,431 podcasts
-
-## 📝 Recent Updates (January 2026)
-
-### Podcast Database Analytics Dashboard (January 26, 2026)
-- ✅ **Comprehensive Analytics View** - New Analytics mode with 7 database views
-- ✅ **Growth Tracking** - Daily, weekly, and monthly podcast additions
-- ✅ **Coverage Statistics** - Email coverage %, demographics %, geographic diversity
-- ✅ **Cost Optimization Metrics** - Cache efficiency %, API calls saved, money saved
-- ✅ **Top Performers** - Top 20 most cached podcasts with reuse counts
-- ✅ **Category Insights** - Top 30 categories with audience metrics and distribution
-- ✅ **Recently Added** - Last 20 podcasts with ratings and audience size
-- ✅ **Visual Analytics** - Progress bars, stat cards, and ranking lists
-- ✅ **Auto-refresh** - Live data updates every 60 seconds
-
-### Email Extraction & UX Improvements (January 25, 2026)
-- ✅ **Automatic Email Extraction** - All podcast fetches now capture contact emails from Podscan API
-- ✅ **Database Column Rename** - Renamed `email` to `podscan_email` for clarity
-- ✅ **Email Filter** - Filter podcasts by email availability
-- ✅ **Table Density Control** - Compact/Comfortable/Spacious view options
-- ✅ **Category Dropdown Scrolling** - Scrollable multi-select category filter
-- ✅ **Column Visibility** - Show/hide table columns based on preference
-- ✅ **Enhanced Caching** - Emails automatically saved to central cache
-
-### AI-Powered Podcast Discovery System
-- ✅ Built complete Podcast Finder with AI query generation (Claude Sonnet)
-- ✅ Implemented compatibility scoring with Claude Haiku (1-10 scale with reasoning)
-- ✅ Created Podcast Database page with centralized cache (1,000+ podcasts)
-- ✅ Added four-mode architecture: Browse, Match for Client, Match for Prospect, Analytics
-- ✅ Integrated Google Sheets export for clients and prospects
-- ✅ Built prospect dashboard system with shareable public URLs
-
-### Cache Optimization & Cost Reduction
-- ✅ Implemented proactive caching during export (saves API calls)
-- ✅ Created centralized `podcasts` table for deduplication across clients
-- ✅ Added epic logging to all edge functions for observability
-- ✅ Achieved 60-80% API cost reduction through smart caching
-- ✅ Built `podcast_cache_statistics` view for monitoring savings
-- ✅ Added detailed analytics views for comprehensive insights
-
-### Prospect Dashboard Features
-- ✅ Create personalized podcast recommendations for prospects
-- ✅ Google Sheets integration (one sheet per prospect)
-- ✅ Public dashboard URLs with slug-based routing
-- ✅ Approval workflow (draft → enabled → published)
-- ✅ Bio-based AI matching for best-fit podcasts
-
-### Previous Updates (December 2025)
-
-#### Client Portal Enhancements
-- ✅ Added analytics tab with month-over-month growth charts
-- ✅ Implemented attention needed alerts for missing dates
-- ✅ Added collapsible analytics sections
-- ✅ Bar chart visualizations for bookings and quality metrics
-
-#### Bug Fixes
-- ✅ Fixed booking update not refreshing UI (query cache invalidation)
-- ✅ Fixed clearing dates not saving to database (null vs undefined)
-- ✅ Fixed scheduled date detection in attention needed alerts
-- ✅ Removed non-existent go_live_date field references
-
-#### Sales Analytics
-- ✅ AI-powered call analysis with Corey Jackson framework
-- ✅ Actionable recommendations with priority scoring
-- ✅ Text analysis for pain points and goals
-- ✅ Re-analyze functionality for updated insights
-
-## 💰 Cost Optimization
-
-### Intelligent Podcast Caching
-- **Centralized Database** - Single `podcasts` table shared across all clients/prospects
-- **Proactive Caching** - Exports automatically save metadata to cache
-- **Reactive Caching** - Fetches save to cache for future use
-- **Deduplication** - Popular podcasts cached once, used by all
-- **Cost Tracking** - Real-time statistics on API calls saved and money saved
-- **60-80% Savings** - Typical reduction in Podscan API costs
-
-### Cache Statistics Views
-```sql
--- Basic stats
-SELECT * FROM podcast_cache_statistics;
-
--- Detailed analytics
-SELECT * FROM podcast_cache_statistics_detailed;
--- Shows: total_podcasts, email_coverage_pct, demographics_coverage_pct,
---        cache_efficiency_pct, estimated_money_saved_usd, and more
-
--- Growth tracking
-SELECT * FROM podcast_growth_stats;
--- Shows: added_today, added_last_7_days, added_last_30_days
-
--- Top performers
-SELECT * FROM top_cached_podcasts;
-SELECT * FROM recently_added_podcasts;
-
--- Category insights
-SELECT * FROM podcast_category_stats;
-
--- Distribution analysis
-SELECT * FROM podcast_audience_distribution;
-SELECT * FROM podcast_rating_distribution;
+```bash
+export PGHOST='<staging-database-host>'
+export PGPORT='5432'
+export PGDATABASE='postgres'
+export PGUSER='<staging-database-user>'
+export PGSSLMODE='require'
+export STAGING_DB_EXPECTED_PGHOST='<staging-database-host>'
+export STAGING_DB_PRODUCTION_PGHOSTS='<production-database-host[,another-host]>'
+export STAGING_DB_EVIDENCE_PATH='/absolute/private/path/database-verifier.ndjson'
+read -r -s -p 'Staging database password: ' PGPASSWORD; printf '\n'
+export PGPASSWORD
+staging_release_commit="$(git rev-parse --verify HEAD)"
+export STAGING_DB_CONFIRM="RUN_SQL_VERIFIER_ON_${STAGING_DB_EXPECTED_PGHOST,,}:${PGPORT}/${PGDATABASE}?user=${PGUSER}@${staging_release_commit}"
+unset staging_release_commit
+./scripts/staging-database-verifier.sh
 ```
 
-See `EXPORT_CACHE_OPTIMIZATION.md` for detailed documentation.
+This wrapper executes only the committed SQL verifier, in one serializable,
+read-only transaction with `ON_ERROR_STOP`, a bounded runtime, no psql startup
+files, and an exact committed snapshot of the SQL. Raw stdout/stderr live only
+in a mode-700 temporary directory and are deleted on exit. The private evidence
+directory must be owned by the current user and not group/world-writable. The
+retained mode-600 NDJSON and `.sha256` files contain only the release
+commit/input digest and pass/fail/exit metadata.
 
-## 🔐 Security Features
+The repository still contains legacy TypeScript/lint debt; compare results with
+`main` and require this branch to add no failures. Full lint and TypeScript are
+not currently green because of inherited legacy findings, so focused changed-
+file checks and the recorded baseline are required. The production build and
+production-dependency audit must pass. SQL syntax and Edge entrypoints are
+checked separately, but catalog tests and real staging requests remain
+mandatory.
 
-### Client Portal
-- **Passwordless Auth** - Magic links via email (no password vulnerabilities)
-- **Token Expiry** - 15-minute tokens, 24-hour sessions
-- **Rate Limiting** - 15 magic link requests per 15 minutes
-- **IP Tracking** - Audit log with IP addresses and user agents
-- **RLS Policies** - Database-level access control
-- **Generic Error Messages** - Prevents email enumeration
+Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
 
-### Admin
-- **Supabase Auth** - Industry-standard authentication
-- **RLS Enforcement** - All queries filtered by permissions
-- **Secure Edge Functions** - Server-side validation
+| Check | Result |
+| --- | --- |
+| Production build/static sitemap | Pass; five public sitemap URLs |
+| Production dependency audit | Pass; zero vulnerabilities |
+| Release-critical Edge type check | Pass; 18 entrypoints |
+| Focused changed-file ESLint | Pass |
+| Staging HTTP runner type check | Pass |
+| Staging runners with missing environment | Pass; refuse before network/artifact creation |
+| Database verifier shell syntax | Pass |
+| SQL parse | Pass; four migrations plus verifier |
+| App TypeScript baseline | 22 diagnostics vs. 33 on `main` |
+| Full ESLint baseline | 250 errors/25 warnings vs. 374/38 on `main` |
+| Patch whitespace check | Pass |
 
-## 📊 Key Metrics
+These are static results, not deployment approval. A live database was not
+available, so the migration verifier, RLS behavior, provider webhooks, and
+cross-account concurrency cases are still staging gates.
 
-The platform tracks:
-- Total bookings and conversion rates
-- Audience reach per booking (quality metric)
-- Month-over-month growth in bookings secured
-- Episode publish rates and timelines
-- Podcast cache efficiency and API cost savings (with detailed analytics)
-- Database growth metrics (daily, weekly, monthly additions)
-- Email and demographics coverage percentages
-- Geographic diversity (languages, regions)
-- Category distribution and audience insights
-- Top cached podcasts and reuse rates
-- Compatibility scoring success rates
-- Sales call performance and recommendations
-- Client engagement and portal activity
-- Prospect dashboard creation and engagement
+Staging acceptance requires one platform administrator and two invited test
+accounts:
 
-## 🎨 UI/UX Features
+- each account sees only its own client list;
+- guessed/direct client UUID reads and every cross-account write fail;
+- hidden/internal client fields cannot be changed through tenant APIs;
+- suspend denies Auth access immediately and revokes that workspace's client
+  portal sessions/tokens; reactivate restores only workspace access;
+- expired/revoked invitations cannot be accepted;
+- a stored portal session verifier cannot be used as a bearer token;
+- changing a portal email disables access and the old password cannot
+  authenticate the replacement identity;
+- enabled replacement capability links work, old links fail, and disabled
+  dashboards fail closed;
+- all retired billing/order/video endpoints return 410 and no provider can
+  create a charge or paid video job;
+- duplicate/out-of-order Resend events do not double-count engagement, regress
+  delivery status, or skip hard-bounce/complaint/provider suppression; a
+  provider-suppressed event must not increment bounce counts or alter bounce
+  timestamps.
 
-- ✅ Fully responsive design (mobile-first)
-- ✅ Dark mode support throughout
-- ✅ Accessible components (WCAG compliant)
-- ✅ Loading states and optimistic updates
-- ✅ Toast notifications for user feedback
-- ✅ Modal dialogs and slide-out sheets
-- ✅ Interactive charts and data visualizations
-- ✅ Search, filter, and sort functionality
+The detailed rollout and acceptance matrix is in
+[`docs/invite-only-mvp.md`](docs/invite-only-mvp.md).
 
-## 📚 Documentation
+## Known MVP limitations
 
-- [React Documentation](https://react.dev)
-- [Supabase Documentation](https://supabase.com/docs)
-- [Tailwind CSS](https://tailwindcss.com/docs)
-- [shadcn/ui](https://ui.shadcn.com)
-- [TanStack Query](https://tanstack.com/query)
+- Only client CRUD is tenant-enabled. Podcast operations, outreach, reporting,
+  and other legacy modules remain platform-admin-only until they receive an
+  explicit `workspace_id` model and isolation tests.
+- Workspace users cannot invite teammates or own multiple workspaces.
+- Workspace password recovery has no product UI yet; support must perform a
+  controlled Supabase Auth recovery/reset.
+- The client portal is intentionally minimal and separate from workspace Auth.
+- The frontend build still emits a large single-chunk warning; route-level code
+  splitting is post-MVP performance work.
+- `npm audit --omit=dev` is clean. The full development audit retains the Vite
+  5/esbuild dev-server advisory because its fix requires a breaking Vite major
+  upgrade; the dev server binds to loopback by default and must never serve
+  production or an untrusted network. Plan the Vite upgrade after MVP.
+- `create-outreach-message` and `campaign-reply-webhook` are excluded from the
+  tenant MVP deploy. Their shared webhook secrets, caller-supplied client IDs,
+  and non-atomic duplicate checks are not a tenant boundary. Keep them disabled
+  for tenant traffic until they have explicit workspace/client mapping, unique
+  provider-event keys, and one transactional ingestion RPC. If the legacy
+  administrator still needs them, run them only in an isolated operator
+  environment with separate secrets and acceptance evidence.
+- The Resend receipt ledger has no automatic retention job yet. Monitor its
+  growth and add a service-only purge whose retention window exceeds the
+  provider retry/replay horizon before production volume grows.
+- Production hosting must add and verify CSP/HSTS/frame/content-type/referrer
+  response headers; React meta tags are not an HTTP-header substitute.
 
-## 🤝 Support
+## Merge policy
 
-For questions or issues:
-- Email: jonathan@getonapod.com
-- GitHub Issues: [Report an issue](https://github.com/jonathangetonapod/authority-built/issues)
+`main` and production remain unchanged while this branch is under review. Merge
+only after:
 
-## 📄 License
+1. every exposed credential is rotated;
+2. staging backup/schema review succeeds;
+3. all four migrations and the verifier pass;
+4. the two-account isolation matrix passes over REST, Edge Functions, and
+   modified URLs;
+5. all 17 retired function tombstones return 410 in their configured gateway
+   context, their remote inventory is removed after caller cleanup, and retired
+   Stripe and Railway/HeyGen integrations are unregistered or removed;
+6. build/static checks show no regression; and
+7. the final diff receives security, data/RLS, and frontend review.
 
-Private - All Rights Reserved
-
----
-
-Built with [Claude Code](https://claude.com/claude-code) 🤖
+Credentials previously committed in repository history or shared through chat
+remain compromised after source cleanup. Rotate them; deleting the visible
+string is not sufficient.

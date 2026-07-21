@@ -32,8 +32,13 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
     }
   });
 
+  const embeddableTestimonials = testimonials.flatMap((testimonial) => {
+    const embedUrl = getEmbedUrl(testimonial.video_url)
+    return embedUrl ? [{ testimonial, embedUrl }] : []
+  })
+
   // Show nothing if no testimonials
-  if (!isLoading && testimonials.length === 0) {
+  if (!isLoading && embeddableTestimonials.length === 0) {
     return null;
   }
 
@@ -62,7 +67,7 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {testimonials.map((testimonial, index) => (
+              {embeddableTestimonials.map(({ testimonial, embedUrl }, index) => (
                 <div
                   key={testimonial.id}
                   className="group overflow-hidden rounded-[28px] border border-white/10 bg-white/5 transition-all duration-300 hover:-translate-y-1 hover:border-[#d4b08f]/30 hover:shadow-[0_20px_36px_rgba(3,10,18,0.28)]"
@@ -70,10 +75,13 @@ const SocialProofSection = ({ testimonialIds }: SocialProofSectionProps) => {
                 >
                   <div className="relative aspect-video bg-[#10263b]">
                     <iframe
-                      src={getEmbedUrl(testimonial.video_url)}
+                      src={embedUrl}
                       title={`${testimonial.client_name} testimonial`}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      sandbox="allow-scripts allow-same-origin allow-presentation"
                       className="absolute inset-0 w-full h-full"
                     />
                   </div>

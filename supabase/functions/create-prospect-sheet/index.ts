@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -10,12 +11,7 @@ const corsHeaders = {
  * Generate a random slug for the prospect dashboard URL
  */
 function generateSlug(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-  let slug = ''
-  for (let i = 0; i < 8; i++) {
-    slug += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return slug
+  return `prospect-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
 }
 
 interface PodcastExportData {
@@ -137,6 +133,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const { prospectName, prospectBio, prospectImageUrl, podcasts, existingProspectId } = await req.json() as {
       prospectName: string
       prospectBio?: string
@@ -341,6 +338,7 @@ serve(async (req) => {
 
       if (updateError) {
         console.error('[Prospect Sheet] Failed to update existing prospect:', updateError)
+        throw new Error('Failed to update prospect dashboard')
       } else {
         dashboardRecord = updated
         console.log('[Prospect Sheet] Existing prospect updated:', updated.id)
@@ -349,7 +347,6 @@ serve(async (req) => {
     } else {
       // Create a new prospect dashboard record
       slug = generateSlug()
-      console.log('[Prospect Sheet] Generated slug:', slug)
 
       const { data: inserted, error: dbError } = await supabase
         .from('prospect_dashboards')
@@ -366,8 +363,10 @@ serve(async (req) => {
 
       if (dbError) {
         console.error('[Prospect Sheet] Failed to create dashboard record:', dbError)
+        throw new Error('Failed to create prospect dashboard')
       } else {
         dashboardRecord = inserted
+        slug = inserted.slug
         console.log('[Prospect Sheet] Dashboard record created:', inserted.id)
       }
     }

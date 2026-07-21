@@ -463,6 +463,7 @@ export default function ClientsManagement() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
+                    <TableHead>Workspace</TableHead>
                     <TableHead className="text-center">Status</TableHead>
                     <TableHead className="text-center">Portal</TableHead>
                     <TableHead className="text-center">Total</TableHead>
@@ -485,6 +486,11 @@ export default function ClientsManagement() {
                         {client.name}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{client.email || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {client.workspace?.name || 'Unknown workspace'}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-center">
                         {getStatusBadge(client.status)}
                       </TableCell>
@@ -608,6 +614,7 @@ export default function ClientsManagement() {
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
+                        <TableHead>Workspace</TableHead>
                         <TableHead className="text-center">Status</TableHead>
                         <TableHead className="text-center">Portal</TableHead>
                         <TableHead className="text-center">Total</TableHead>
@@ -630,6 +637,11 @@ export default function ClientsManagement() {
                             {client.name}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{client.email || '-'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {client.workspace?.name || 'Unknown workspace'}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-center">
                             {getStatusBadge(client.status)}
                           </TableCell>

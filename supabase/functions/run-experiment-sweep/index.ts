@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -166,10 +167,11 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const startTime = Date.now()
-  const TIME_LIMIT_MS = 5 * 60 * 1000 // 5 minutes
-
   try {
+    await requirePlatformAdminOrService(req)
+    const startTime = Date.now()
+    const TIME_LIMIT_MS = 5 * 60 * 1000 // 5 minutes
+
     let body: any
     try {
       body = await req.json()

@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://ysjwveqnwjysldpfqzov.supabase.co'
-const supabaseAnonKey = 'sb_publishable_cH4MjtOi8FWAgaTsltLasg_pOvc4752'
+const supabaseUrl = process.env.VITE_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const diagnosticClientId = process.env.DIAGNOSTIC_CLIENT_ID
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !supabaseServiceKey || !diagnosticClientId) {
+  throw new Error('VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and DIAGNOSTIC_CLIENT_ID are required')
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 async function clearRateLimit() {
-  const email = 'wez.powell0@gmail.com'
-  const clientId = 'c736b28d-e91b-45c4-8841-72ed9ec25837'
+  const clientId = diagnosticClientId
 
   console.log('🧹 Clearing rate limit for Wesley...\n')
 

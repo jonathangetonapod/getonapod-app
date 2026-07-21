@@ -1,20 +1,13 @@
--- Check if the test client exists and has proper portal access
--- Replace 'test@example.com' with the actual email you're testing with
-
-SELECT 
-  id,
-  name,
-  email,
-  portal_access_enabled,
-  CASE 
-    WHEN portal_password IS NOT NULL THEN 'Password is set'
-    ELSE 'NO PASSWORD SET'
-  END as password_status,
-  portal_invitation_sent_at,
-  portal_last_login_at
-FROM clients
-WHERE email = 'YOUR_TEST_EMAIL_HERE'
-LIMIT 1;
-
--- Also check if SUPABASE environment variables are set correctly
--- (You'll need to verify this in Supabase dashboard under Settings > Edge Functions)
+-- Usage with psql: psql "$DATABASE_URL" -v client_email='person@example.com' -f scripts/check-login-client.sql
+-- This intentionally reports only credential configuration metadata.
+SELECT
+  client.id,
+  client.name,
+  client.email,
+  client.portal_access_enabled,
+  client.password_set_at,
+  (credential.client_id IS NOT NULL) AS credential_configured
+FROM public.clients AS client
+LEFT JOIN public.client_portal_credentials AS credential
+  ON credential.client_id = client.id
+WHERE lower(btrim(client.email)) = lower(btrim(:'client_email'));

@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils'
 import { getGuestResources, type GuestResource, type ResourceCategory } from '@/services/guestResources'
 import PageSEO from '@/components/seo/PageSEO'
+import { openExternalUrl } from '@/lib/externalUrl'
 
 const categoryInfo: Record<
   ResourceCategory,
@@ -132,17 +133,17 @@ export default function Resources() {
     }
 
     if (resource.type === 'download' && resource.file_url) {
-      window.open(resource.file_url, '_blank')
+      openExternalUrl(resource.file_url)
       return
     }
 
     if (resource.url) {
-      window.open(resource.url, '_blank')
+      openExternalUrl(resource.url)
       return
     }
 
     if (resource.file_url) {
-      window.open(resource.file_url, '_blank')
+      openExternalUrl(resource.file_url)
     }
   }
 
@@ -553,11 +554,11 @@ export default function Resources() {
                   className="rounded-full px-6"
                   onClick={() => {
                     if (viewingResource.file_url) {
-                      window.open(viewingResource.file_url, '_blank')
+                      openExternalUrl(viewingResource.file_url)
                       return
                     }
                     if (viewingResource.url) {
-                      window.open(viewingResource.url, '_blank')
+                      openExternalUrl(viewingResource.url)
                     }
                   }}
                 >

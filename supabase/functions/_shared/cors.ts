@@ -3,12 +3,38 @@
  * Restricts origins to known domains instead of wildcard '*'.
  */
 
-const ALLOWED_ORIGINS = [
+const DEFAULT_ALLOWED_ORIGINS = [
   'https://getonapod.com',
   'https://www.getonapod.com',
   'https://authoritybuilt.com',
   'https://www.authoritybuilt.com',
 ]
+
+function configuredOrigins(): string[] {
+  const configured = [
+    Deno.env.get('ALLOWED_ORIGINS'),
+    Deno.env.get('ALLOWED_ORIGIN'),
+    Deno.env.get('APP_URL'),
+    Deno.env.get('WEB_URL'),
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .flatMap((value) => {
+      try {
+        const parsed = new URL(value)
+        const local = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
+        if (parsed.protocol !== 'https:' && !(local && parsed.protocol === 'http:')) return []
+        return [parsed.origin]
+      } catch {
+        return []
+      }
+    })
+
+  return [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured])]
+}
+
+const ALLOWED_ORIGINS = configuredOrigins()
 
 // In development, also allow localhost
 if (Deno.env.get('ENVIRONMENT') !== 'production') {

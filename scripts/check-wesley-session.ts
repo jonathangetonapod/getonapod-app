@@ -1,13 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://ysjwveqnwjysldpfqzov.supabase.co'
-const supabaseAnonKey = 'sb_publishable_cH4MjtOi8FWAgaTsltLasg_pOvc4752'
+const supabaseUrl = process.env.VITE_SUPABASE_URL
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY
+const platformAdminJwt = process.env.DIAGNOSTIC_PLATFORM_ADMIN_JWT
+const diagnosticClientId = process.env.DIAGNOSTIC_CLIENT_ID
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !supabaseAnonKey || !platformAdminJwt || !diagnosticClientId) {
+  throw new Error('VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, DIAGNOSTIC_PLATFORM_ADMIN_JWT, and DIAGNOSTIC_CLIENT_ID are required')
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { headers: { Authorization: `Bearer ${platformAdminJwt}` } },
+})
 
 async function checkWesleySession() {
-  const email = 'wez.powell0@gmail.com'
-  const clientId = 'c736b28d-e91b-45c4-8841-72ed9ec25837'
+  const clientId = diagnosticClientId
 
   console.log('🔍 Checking Wesley\'s sessions...\n')
 

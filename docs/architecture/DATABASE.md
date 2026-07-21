@@ -39,7 +39,7 @@ Primary client management table.
 | `portal_access_enabled` | BOOLEAN | Can access client portal |
 | `portal_last_login_at` | TIMESTAMPTZ | Last portal login |
 | `portal_invitation_sent_at` | TIMESTAMPTZ | Portal invite timestamp |
-| `portal_password` | TEXT | Plain text password (if set) |
+| `portal_password` | TEXT | Retired compatibility column; constrained to `NULL` |
 | `google_sheet_url` | TEXT | Associated Google Sheet |
 | `prospect_dashboard` | BOOLEAN | Has prospect dashboard |
 | `media_kit_url` | TEXT | Media kit URL |
@@ -692,10 +692,12 @@ The `podcasts` table serves as a **universal cache**:
 - `podscan_email` field in multiple tables (inconsistent)
 - Some tables use `podcast_id` (TEXT), others use UUID references
 
-### 3. **Plain Text Password Storage**
-- `clients.portal_password` stores passwords in plain text
-- **SECURITY CONCERN**: Should be hashed for production use
-- Consider migrating to bcrypt or similar
+### 3. **Portal Credential Boundary (July 2026)**
+- `clients.portal_password` is retired and constrained to `NULL`.
+- Versioned PBKDF2-SHA256 verifiers live only in the service-role-only
+  `client_portal_credentials` table.
+- Opaque portal session tokens are held by the client; only SHA-256 verifiers
+  are stored in `client_portal_sessions`.
 
 ### 4. **Missing Foreign Key Constraints**
 - Some `podcast_id` fields are TEXT without FK constraints

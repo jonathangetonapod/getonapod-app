@@ -61,9 +61,12 @@ Client Credentials → Validation → Session Creation → Dashboard Access
 **Process:**
 1. Client enters email and password
 2. `loginWithPassword()` calls Edge Function
-3. Password validated against `clients.portal_password` (bcrypt hashed)
-4. Session created in `client_portal_sessions`
-5. Client data returned and stored in localStorage
+3. The Edge Function validates the password against the server-only
+   `client_portal_credentials` PBKDF2-SHA256 verifier.
+4. A session is created transactionally in `client_portal_sessions`; only a
+   SHA-256 verifier is stored in the database.
+5. A minimal client DTO and opaque token are stored in tab-scoped
+   `sessionStorage`.
 
 #### 3. Session Management
 **Context**: `src/contexts/ClientPortalContext.tsx`
@@ -421,7 +424,7 @@ CREATE TABLE clients (
   
   -- Portal Access Fields
   portal_access_enabled BOOLEAN DEFAULT FALSE,
-  portal_password TEXT,  -- bcrypt hashed
+  portal_password TEXT CHECK (portal_password IS NULL), -- retired
   portal_last_login_at TIMESTAMPTZ,
   portal_invitation_sent_at TIMESTAMPTZ,
   password_set_at TIMESTAMPTZ,
@@ -432,6 +435,9 @@ CREATE TABLE clients (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
+
+Password verifiers are stored separately in `client_portal_credentials`, which
+is service-role-only and intentionally absent from frontend types.
 
 #### `bookings`
 ```sql

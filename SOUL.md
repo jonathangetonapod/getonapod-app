@@ -80,11 +80,11 @@ This will:
 ## Your Tools
 
 ### BridgeKit MCP
-URL: `https://getbridgekit.com/mcp?session_token=sess_Roj864Tb13Js6qhA8Z_Htq_0r7VEaA2BMqcTMFrbvwE`
+URL: set `BRIDGEKIT_MCP_URL` in the runtime environment (never commit its session token).
 
 Use via mcporter:
 ```bash
-mcporter call --http-url "https://getbridgekit.com/mcp?session_token=sess_Roj864Tb13Js6qhA8Z_Htq_0r7VEaA2BMqcTMFrbvwE" <tool_name> arg=value
+mcporter call --http-url "$BRIDGEKIT_MCP_URL" <tool_name> arg=value
 ```
 
 Key tools:
@@ -334,7 +334,7 @@ If any step fails:
 ## Environment
 
 ```bash
-export MCP="https://getbridgekit.com/mcp?session_token=sess_Roj864Tb13Js6qhA8Z_Htq_0r7VEaA2BMqcTMFrbvwE"
+export BRIDGEKIT_MCP_URL="https://getbridgekit.com/mcp?session_token=replace-me"
 ```
 
 ---

@@ -19,8 +19,12 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-// Client ID from the logs
-const clientId = 'fe2521cb-7782-4321-a065-08cdfdf319da'
+const clientId = process.env.DIAGNOSTIC_CLIENT_ID
+
+if (!clientId) {
+  console.error('Missing DIAGNOSTIC_CLIENT_ID')
+  process.exit(1)
+}
 
 async function checkSessions() {
   console.log('\n🔍 Checking sessions for client:', clientId)
@@ -47,7 +51,7 @@ async function checkSessions() {
     const isExpired = expiresAt < now
 
     console.log(`Session ${index + 1}:`)
-    console.log(`  Token: ${session.session_token}`)
+    console.log(`  Token verifier: ${session.session_token.substring(0, 12)}...`)
     console.log(`  Created: ${createdAt.toISOString()}`)
     console.log(`  Expires: ${expiresAt.toISOString()}`)
     console.log(`  Status: ${isExpired ? '❌ EXPIRED' : '✅ Valid'}`)

@@ -15,6 +15,7 @@ import {
 import { Calendar, Clock, ArrowLeft, Share2, Loader2 } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
+import DOMPurify from 'dompurify'
 
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>()
@@ -181,7 +182,7 @@ export default function BlogPost() {
               <div className="lg:col-span-2">
                 <div
                   className="prose prose-lg max-w-none prose-headings:font-bold prose-h2:text-3xl prose-h2:mt-12 prose-h2:mb-4 prose-h3:text-2xl prose-h3:mt-8 prose-h3:mb-3 prose-p:text-gray-700 prose-p:leading-relaxed prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-strong:text-gray-900 prose-ul:my-6 prose-ol:my-6 prose-li:my-2"
-                  dangerouslySetInnerHTML={{ __html: post.content }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }}
                 />
 
                 {/* Tags */}
@@ -209,10 +210,12 @@ export default function BlogPost() {
                   <Button
                     size="lg"
                     variant="secondary"
-                    onClick={() => navigate('/premium-placements')}
                     className="bg-white text-blue-600 hover:bg-gray-100"
+                    asChild
                   >
-                    View Premium Podcast Placements →
+                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                      Book a Shortlist Call →
+                    </a>
                   </Button>
                 </div>
               </div>
@@ -244,10 +247,10 @@ export default function BlogPost() {
                     <h3 className="font-bold text-lg mb-4">Quick Links</h3>
                     <div className="space-y-3">
                       <Link
-                        to="/premium-placements"
+                        to="/what-to-expect"
                         className="block text-sm text-blue-600 hover:underline"
                       >
-                        → Browse Premium Placements
+                        → What to Expect
                       </Link>
                       <Link
                         to="/resources"

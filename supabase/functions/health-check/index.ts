@@ -20,9 +20,10 @@ serve(async (req) => {
     )
 
     // Quick DB connectivity check
-    const { count, error } = await supabase
+    const { error } = await supabase
       .from('clients')
-      .select('*', { count: 'exact', head: true })
+      .select('id')
+      .limit(1)
 
     const dbHealthy = !error
     const latencyMs = Date.now() - startTime
@@ -32,7 +33,7 @@ serve(async (req) => {
         status: dbHealthy ? 'healthy' : 'degraded',
         timestamp: new Date().toISOString(),
         latency_ms: latencyMs,
-        database: dbHealthy ? 'connected' : error?.message,
+        database: dbHealthy ? 'connected' : 'unavailable',
         version: Deno.env.get('APP_VERSION') || 'unknown',
       }),
       {
@@ -40,13 +41,13 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
-  } catch (error) {
+  } catch {
     return new Response(
       JSON.stringify({
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
         latency_ms: Date.now() - startTime,
-        error: error.message,
+        error: 'Health check failed',
       }),
       {
         status: 503,

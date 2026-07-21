@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import DOMPurify from 'dompurify'
 import { useQuery } from '@tanstack/react-query'
-import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { PortalLayout } from '@/components/portal/PortalLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -24,9 +23,12 @@ import {
   TrendingUp,
   Share2,
   Grid3x3,
-  List
+  List,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react'
-import { getGuestResources, trackResourceView, type GuestResource, type ResourceCategory } from '@/services/guestResources'
+import { getGuestResources, type GuestResource, type ResourceCategory } from '@/services/guestResources'
+import { openExternalUrl } from '@/lib/externalUrl'
 
 const categoryInfo = {
   preparation: {
@@ -69,14 +71,13 @@ const typeInfo = {
 }
 
 export default function PortalResources() {
-  const { client } = useClientPortal()
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [viewingResource, setViewingResource] = useState<GuestResource | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   // Fetch resources
-  const { data: resources, isLoading } = useQuery({
+  const { data: resources, isLoading, error, refetch } = useQuery({
     queryKey: ['guest-resources'],
     queryFn: () => getGuestResources(),
   })
@@ -98,20 +99,15 @@ export default function PortalResources() {
 
   const handleViewResource = (resource: GuestResource) => {
     setViewingResource(resource)
-
-    // Track view
-    if (client) {
-      trackResourceView(resource.id, client.id).catch(console.error)
-    }
   }
 
   const handleResourceAction = (resource: GuestResource) => {
     if (resource.type === 'video' && resource.url) {
-      window.open(resource.url, '_blank')
+      openExternalUrl(resource.url)
     } else if (resource.type === 'download' && resource.file_url) {
-      window.open(resource.file_url, '_blank')
+      openExternalUrl(resource.file_url)
     } else if (resource.type === 'link' && resource.url) {
-      window.open(resource.url, '_blank')
+      openExternalUrl(resource.url)
     } else if (resource.type === 'article') {
       handleViewResource(resource)
     }
@@ -214,6 +210,20 @@ export default function PortalResources() {
       <PortalLayout>
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </PortalLayout>
+    )
+  }
+
+  if (error) {
+    return (
+      <PortalLayout>
+        <div className="flex h-96 flex-col items-center justify-center gap-3 text-center">
+          <AlertCircle className="h-8 w-8 text-destructive" />
+          <p className="font-medium">Resources could not be loaded.</p>
+          <Button variant="outline" onClick={() => void refetch()}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Try again
+          </Button>
         </div>
       </PortalLayout>
     )
@@ -388,7 +398,7 @@ export default function PortalResources() {
           {viewingResource?.url && (
             <div className="pt-4 border-t">
               <Button
-                onClick={() => window.open(viewingResource.url!, '_blank')}
+                onClick={() => openExternalUrl(viewingResource.url!)}
                 className="w-full"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
@@ -400,7 +410,7 @@ export default function PortalResources() {
           {viewingResource?.file_url && (
             <div className="pt-4 border-t">
               <Button
-                onClick={() => window.open(viewingResource.file_url!, '_blank')}
+                onClick={() => openExternalUrl(viewingResource.file_url!)}
                 className="w-full"
               >
                 <Download className="h-4 w-4 mr-2" />

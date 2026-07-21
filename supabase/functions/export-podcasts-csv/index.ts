@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 /** Escape special Supabase/PostgREST filter characters in user input */
 function sanitizeSearch(input: string): string {
@@ -14,7 +15,10 @@ const corsHeaders = {
 /** Escape a value for CSV (wrap in quotes if it contains commas, quotes, or newlines) */
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return ''
-  const str = String(value)
+  const raw = String(value)
+  // Spreadsheet applications interpret these prefixes as formulas even when
+  // the value is quoted. Prefix untrusted text with an apostrophe.
+  const str = typeof value === 'string' && /^[=+\-@\t]/.test(raw) ? `'${raw}` : raw
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`
   }
@@ -27,6 +31,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const body = await req.json()
 
     const {
@@ -45,7 +50,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    console.log(`[Export Podcasts CSV] search="${search || ''}" limit=${limit}`)
+    console.log(`[Export Podcasts CSV] export requested; limit=${limit}`)
 
     // Build query
     let query = supabase

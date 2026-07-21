@@ -1,32 +1,35 @@
-const { Client } = require('pg');
-const fs = require('fs');
+const { Client } = require('pg')
+const fs = require('fs')
+const path = require('path')
 
 async function run() {
-  // Try connection through Supavisor transaction mode (port 6543)
+  const databaseUrl = process.env.DATABASE_URL
+  const migrationArgument = process.env.MIGRATION_FILE
+  if (!databaseUrl || !migrationArgument) {
+    throw new Error('DATABASE_URL and MIGRATION_FILE are required')
+  }
+
+  const migrationsRoot = path.resolve('supabase/migrations')
+  const migrationFile = path.resolve(migrationArgument)
+  if (!migrationFile.startsWith(`${migrationsRoot}${path.sep}`) || !migrationFile.endsWith('.sql')) {
+    throw new Error('MIGRATION_FILE must be a .sql file inside supabase/migrations')
+  }
+
   const client = new Client({
-    host: 'aws-0-us-west-1.pooler.supabase.com',
-    port: 6543,
-    user: 'postgres.ysjwveqnwjysldpfqzov',
-    password: '06Garc1210.',
-    database: 'postgres',
-    ssl: { rejectUnauthorized: false }
-  });
+    connectionString: databaseUrl,
+    ssl: process.env.DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: true },
+  })
 
   try {
-    console.log('Connecting to database...');
-    await client.connect();
-    console.log('Connected!');
-
-    const sql = fs.readFileSync('supabase/migrations/20260110_add_show_pricing_section.sql', 'utf8');
-    console.log('Running migration...');
-    await client.query(sql);
-    console.log('Migration completed successfully!');
-  } catch (err) {
-    console.error('Error:', err.message);
-    process.exit(1);
+    await client.connect()
+    await client.query(fs.readFileSync(migrationFile, 'utf8'))
+    console.log(`Migration completed: ${path.basename(migrationFile)}`)
   } finally {
-    await client.end();
+    await client.end()
   }
 }
 
-run();
+run().catch((error) => {
+  console.error('Migration failed:', error instanceof Error ? error.message : 'Unknown error')
+  process.exitCode = 1
+})
