@@ -243,14 +243,15 @@ backup, phased manifest, and private output directory.
    `logout-portal-session`, `get-client-bookings`, and `resend-webhook`.
    Before the new RPCs exist they fail closed; Resend receives a retryable 500
    rather than letting a historical webhook mutate state during migration.
-5. Apply the five migrations and verifier as one release unit:
+5. Apply the six migrations and verifier as one release unit:
 
    1. `20260720000100_invite_only_workspace_core.sql`
    2. `20260720000200_invite_only_workspace_rls.sql`
    3. `20260720000300_client_portal_security.sql`
    4. `20260720000400_resend_webhook_idempotency.sql`
    5. `20260720000500_client_prospect_link_normalization.sql`
-   6. `supabase/tests/20260720_invite_only_workspace_verification.sql`
+   6. `20260720000600_trigger_function_privileges.sql`
+   7. `supabase/tests/20260720_invite_only_workspace_verification.sql`
 
 6. Re-run the zero-magic-token, hash-only credential/session, ACL/RLS, default
    workspace, private workspace, and client-ownership assertions after all
@@ -317,7 +318,7 @@ Administrator credentials are required, and any unexpected incomplete record
 converts the run to a failure. Exact variable names and a safe command template
 are in the root README.
 
-Run `scripts/staging-database-verifier.sh` after the five migrations. Provide
+Run `scripts/staging-database-verifier.sh` after the six migrations. Provide
 the connection only through `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `PGPASSWORD`, and `PGSSLMODE=verify-full`, plus
 `STAGING_DB_EXPECTED_PGHOST`, mandatory
@@ -445,7 +446,7 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` verifies the exact manifest/release shape; parses all five
+`check:static` verifies the exact manifest/release shape; parses all six
 migrations and the verifier with a PostgreSQL grammar parser; checks app and
 staging TypeScript; enforces zero warnings on the MVP lint scope; tests
 sensitive URLs, telemetry, session storage, retired helpers, and staging-path

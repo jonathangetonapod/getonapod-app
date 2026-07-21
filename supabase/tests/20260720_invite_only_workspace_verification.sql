@@ -1106,6 +1106,35 @@ BEGIN
     RAISE EXCEPTION 'dashboard capability slugs are not protected by unique indexes';
   END IF;
 
+  IF EXISTS (
+    SELECT 1
+    FROM unnest(ARRAY[
+      'public.workspace_touch_updated_at()',
+      'public.assign_client_workspace()',
+      'public.enforce_private_workspace_single_live_member()',
+      'public.enforce_private_workspace_lifecycle_pair()',
+      'public.prevent_workspace_audit_mutation()',
+      'public.generate_client_dashboard_slug()',
+      'public.generate_prospect_dashboard_capability_slug()',
+      'public.guard_client_internal_fields()',
+      'public.revoke_client_portal_access_artifacts()',
+      'public.normalize_client_prospect_dashboard_slug()'
+    ]) AS trigger_function(signature)
+    CROSS JOIN (VALUES ('anon'), ('authenticated')) AS browser_role(name)
+    WHERE to_regprocedure(trigger_function.signature) IS NULL
+      OR COALESCE(
+        has_function_privilege(
+          browser_role.name,
+          to_regprocedure(trigger_function.signature),
+          'EXECUTE'
+        ),
+        true
+      )
+  ) THEN
+    RAISE EXCEPTION
+      'browser roles can directly execute release trigger functions';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_trigger AS trigger_definition

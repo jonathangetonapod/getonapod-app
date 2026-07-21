@@ -188,7 +188,8 @@ portal functions can still mint credentials or sessions:
    3. `supabase/migrations/20260720000300_client_portal_security.sql`
    4. `supabase/migrations/20260720000400_resend_webhook_idempotency.sql`
    5. `supabase/migrations/20260720000500_client_prospect_link_normalization.sql`
-   6. `supabase/tests/20260720_invite_only_workspace_verification.sql`
+   6. `supabase/migrations/20260720000600_trigger_function_privileges.sql`
+   7. `supabase/tests/20260720_invite_only_workspace_verification.sql`
 
 5. Recheck the post-migration zero-token/hash-only invariants, inspect
    workspace/client ownership, deploy the remaining reviewed function manifest
@@ -202,7 +203,8 @@ operation RPC. Migration 3 hardens portal credentials/sessions and capability
 links. Migration 4 makes signed Resend delivery events transactional,
 deduplicated by `svix-id`, and monotonic under out-of-order delivery. Migration
 5 canonicalizes an unlinked client-to-prospect reference to `NULL` and enforces
-strong, non-orphaned capability references.
+strong, non-orphaned capability references. Migration 6 removes residual
+browser-role execution grants from trigger-only functions.
 
 Important cutover effects:
 
@@ -272,7 +274,7 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` runs the release-shape verifier, parses all five release
+`check:static` runs the release-shape verifier, parses all six release
 migrations plus the SQL verifier with a PostgreSQL grammar parser, runs both
 TypeScript checks and the zero-warning MVP lint scope, exercises the URL,
 telemetry, session-storage, retired-helper, and evidence-path tests, checks all
@@ -344,7 +346,7 @@ credentials are mandatory; omitting them is a configuration refusal, and any
 incomplete record outside the exact checked-in allowlist converts the run to a
 failure.
 
-After the five migrations have been applied to the same staging release, run
+After the six migrations have been applied to the same staging release, run
 the database verifier using `PG*` environment variables. Prefer a project-
 specific direct database hostname rather than a hostname shared by production
 and staging. Hostnames with a trailing dot are refused. Never put the connection
@@ -401,10 +403,10 @@ Latest local evidence (2026-07-21; not yet a clean-commit staging artifact):
 | Staging HTTP runner type check | Pass |
 | Focused MVP ESLint | Pass; zero warnings |
 | Sensitive URL/telemetry tests | Pass |
-| Release secret scan | Pass; 588 full-current-tree files including ignored dotenv/build files, built output, 23 positive and 3 negative scanner self-tests; values suppressed |
+| Release secret scan | Pass; 589 full-current-tree files including ignored dotenv/build files, built output, 23 positive and 3 negative scanner self-tests; values suppressed |
 | Staging runners with missing environment | Pass; refuse before network/artifact creation |
 | Database verifier shell syntax | Pass |
-| Local SQL grammar parse | Pass; five migrations plus verifier |
+| Local SQL grammar parse | Pass; six migrations plus verifier |
 | Patch whitespace check | Pass |
 
 These are static results, not deployment approval. A live database was not
@@ -522,7 +524,7 @@ Make no additional production mutation until:
 3. staging backup/schema review succeeds;
 4. a commit-bound staging deployment inventory proves the exact frontend,
    migrations, and Edge manifest were deployed;
-5. all five migrations and the database verifier pass;
+5. all six migrations and the database verifier pass;
 6. hosted Auth configuration and the uninvited-account denial are verified;
 7. the complete two-account isolation matrix passes over browser navigation,
    REST, Edge Functions, storage, and modified URLs;
