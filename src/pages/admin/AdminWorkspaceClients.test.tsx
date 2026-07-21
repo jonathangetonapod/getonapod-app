@@ -1,20 +1,70 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminWorkspaceClients from '@/pages/admin/AdminWorkspaceClients'
 import { useAuth } from '@/contexts/AuthContext'
-import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
+import { getAdminWorkspaceView, type AdminWorkspaceView } from '@/services/adminWorkspaces'
+import { createWorkspaceClient, deleteWorkspaceClient, updateWorkspaceClient } from '@/services/clients'
 
-vi.mock('@/components/admin/DashboardLayout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
+  WorkspaceSwitcher: () => <div>Workspace switcher</div>,
 }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
+vi.mock('@/services/clients', () => ({
+  createWorkspaceClient: vi.fn(),
+  deleteWorkspaceClient: vi.fn(),
+  getWorkspaceClients: vi.fn(),
+  updateWorkspaceClient: vi.fn(),
+}))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedView = vi.mocked(getAdminWorkspaceView)
-const workspaceId = '11111111-1111-4111-8111-111111111111'
+const mockedCreate = vi.mocked(createWorkspaceClient)
+const mockedUpdate = vi.mocked(updateWorkspaceClient)
+const mockedDelete = vi.mocked(deleteWorkspaceClient)
+
+const adminUserId = '99999999-9999-4999-8999-999999999999'
+const workspaceId = 'a1111111-1111-4111-8111-11111111111a'
+const secondWorkspaceId = 'b2222222-2222-4222-8222-22222222222b'
+
+function workspaceView(
+  selectedWorkspaceId = workspaceId,
+  workspaceName = 'Acme Workspace',
+  clientName = 'Acme Client',
+): AdminWorkspaceView {
+  return {
+    workspace: {
+      id: selectedWorkspaceId,
+      name: workspaceName,
+      slug: workspaceName.toLowerCase().replace(/ /g, '-'),
+      status: 'active',
+      is_default: false,
+    },
+    viewer: {
+      workspace_id: selectedWorkspaceId,
+      email: workspaceName === 'Acme Workspace' ? 'owner@acme.example' : 'owner@bravo.example',
+      full_name: workspaceName === 'Acme Workspace' ? 'Acme Owner' : 'Bravo Owner',
+      role: 'owner',
+    },
+    clients: [{
+      id: selectedWorkspaceId === workspaceId
+        ? 'c3333333-3333-4333-8333-33333333333c'
+        : 'd4444444-4444-4444-8444-44444444444d',
+      workspace_id: selectedWorkspaceId,
+      name: clientName,
+      email: 'client@example.com',
+      contact_person: 'Casey',
+      linkedin_url: null,
+      website: null,
+      status: 'active',
+      notes: null,
+      created_at: '2026-07-21T00:00:00.000Z',
+      updated_at: '2026-07-21T00:00:00.000Z',
+    }],
+  }
+}
 
 function renderPage(path: string, switchTo?: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -28,32 +78,59 @@ function renderPage(path: string, switchTo?: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return queryClient
 }
+
+const previewQueryKey = ['platform', adminUserId, 'workspace-preview', workspaceId, 'clients'] as const
 
 describe('AdminWorkspaceClients', () => {
   beforeEach(() => {
-    mockedUseAuth.mockReturnValue({ user: { email: 'admin@example.com' } } as never)
-    mockedView.mockResolvedValue({
-      workspace: { id: workspaceId, name: 'Acme Workspace', slug: 'acme', status: 'active', is_default: false },
-      clients: [{
-        id: '33333333-3333-4333-8333-333333333333',
-        workspace_id: workspaceId,
-        name: 'Acme Client',
-        email: 'client@example.com',
-        contact_person: 'Casey',
-        website: null,
-        status: 'active',
-      }],
-    })
+    vi.clearAllMocks()
+    mockedUseAuth.mockReturnValue({
+      user: { id: adminUserId, email: 'admin@example.com' },
+      workspace: { id: 'default-workspace', name: 'Default Workspace' },
+      canWriteClients: true,
+    } as never)
+    mockedView.mockResolvedValue(workspaceView())
   })
 
-  it('shows a narrow read-only view for the exact workspace ID', async () => {
+  it('shows the owner experience while preserving fail-closed administrator controls', async () => {
     renderPage(`/admin/workspaces/${workspaceId}/clients`)
-    expect(await screen.findByText('Acme Workspace')).toBeInTheDocument()
+
+    expect(await screen.findByText('Clients in Acme Workspace')).toBeInTheDocument()
     expect(screen.getByText('Acme Client')).toBeInTheDocument()
-    expect(screen.getByText('Platform administrator view · Read only')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
-    expect(mockedView).toHaveBeenCalledWith(workspaceId)
+    expect(screen.getByText('Admin preview · Read only')).toBeInTheDocument()
+    expect(screen.getByText('Your clients')).toBeInTheDocument()
+    expect(screen.getByText('owner@acme.example')).toBeInTheDocument()
+    expect(screen.getByText(/Viewing exactly what owner@acme\.example sees/)).toBeInTheDocument()
+    expect(screen.getByText(/remain signed in as admin@example\.com/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add client/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Edit Acme Client' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove Acme Client' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: /add client/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Acme Client' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Acme Client' }))
+
+    expect(mockedCreate).not.toHaveBeenCalled()
+    expect(mockedUpdate).not.toHaveBeenCalled()
+    expect(mockedDelete).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /exit preview/i })).toHaveAttribute('href', '/admin/users')
+    expect(screen.queryByText('Default Workspace')).not.toBeInTheDocument()
+    expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
+  })
+
+  it('normalizes an uppercase workspace UUID before querying and linking', async () => {
+    renderPage(`/admin/workspaces/${workspaceId.toUpperCase()}/clients`)
+
+    expect(await screen.findByText('Acme Client')).toBeInTheDocument()
+    expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
+    expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute(
+      'href',
+      `/admin/workspaces/${workspaceId}/clients`,
+    )
   })
 
   it('fails closed on a malformed workspace ID without querying clients', async () => {
@@ -63,27 +140,11 @@ describe('AdminWorkspaceClients', () => {
   })
 
   it('uses an isolated query when the selected workspace changes', async () => {
-    const secondWorkspaceId = '44444444-4444-4444-8444-444444444444'
-    mockedView.mockImplementation(async (selectedWorkspaceId) => ({
-      workspace: {
-        id: selectedWorkspaceId,
-        name: selectedWorkspaceId === workspaceId ? 'Acme Workspace' : 'Bravo Workspace',
-        slug: selectedWorkspaceId === workspaceId ? 'acme' : 'bravo',
-        status: 'active',
-        is_default: false,
-      },
-      clients: [{
-        id: selectedWorkspaceId === workspaceId
-          ? '33333333-3333-4333-8333-333333333333'
-          : '55555555-5555-4555-8555-555555555555',
-        workspace_id: selectedWorkspaceId,
-        name: selectedWorkspaceId === workspaceId ? 'Acme Client' : 'Bravo Client',
-        email: null,
-        contact_person: null,
-        website: null,
-        status: 'active',
-      }],
-    }))
+    mockedView.mockImplementation(async (selectedWorkspaceId) => (
+      selectedWorkspaceId === workspaceId
+        ? workspaceView()
+        : workspaceView(secondWorkspaceId, 'Bravo Workspace', 'Bravo Client')
+    ))
     renderPage(
       `/admin/workspaces/${workspaceId}/clients`,
       `/admin/workspaces/${secondWorkspaceId}/clients`,
@@ -93,7 +154,65 @@ describe('AdminWorkspaceClients', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Switch workspace' }))
     expect(await screen.findByText('Bravo Client')).toBeInTheDocument()
     expect(screen.queryByText('Acme Client')).not.toBeInTheDocument()
-    expect(mockedView).toHaveBeenCalledWith(workspaceId)
-    expect(mockedView).toHaveBeenCalledWith(secondWorkspaceId)
+    expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
+    expect(mockedView).toHaveBeenCalledWith(secondWorkspaceId, expect.any(AbortSignal))
+  })
+
+  it('never displays a late response from the previously selected workspace', async () => {
+    let resolveFirst!: (value: AdminWorkspaceView) => void
+    const firstRequest = new Promise<AdminWorkspaceView>((resolve) => {
+      resolveFirst = resolve
+    })
+    mockedView.mockImplementation((selectedWorkspaceId) => (
+      selectedWorkspaceId === workspaceId
+        ? firstRequest
+        : Promise.resolve(workspaceView(secondWorkspaceId, 'Bravo Workspace', 'Bravo Client'))
+    ))
+    renderPage(
+      `/admin/workspaces/${workspaceId}/clients`,
+      `/admin/workspaces/${secondWorkspaceId}/clients`,
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: 'Switch workspace' }))
+    expect(await screen.findByText('Bravo Client')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveFirst(workspaceView(workspaceId, 'Acme Workspace', 'Late Acme Client'))
+      await firstRequest
+    })
+
+    expect(screen.getByText('Bravo Client')).toBeInTheDocument()
+    expect(screen.queryByText('Late Acme Client')).not.toBeInTheDocument()
+  })
+
+  it('rejects mismatched client data before it can enter the preview cache', async () => {
+    const wrongView = workspaceView()
+    wrongView.clients[0].workspace_id = secondWorkspaceId
+    wrongView.clients[0].name = 'Wrong Workspace Client'
+    mockedView.mockResolvedValue(wrongView)
+
+    const queryClient = renderPage(`/admin/workspaces/${workspaceId}/clients`)
+
+    expect(await screen.findByText('The workspace preview response did not match the selected workspace.')).toBeInTheDocument()
+    expect(screen.queryByText('Wrong Workspace Client')).not.toBeInTheDocument()
+    expect(queryClient.getQueryData(previewQueryKey)).toBeUndefined()
+  })
+
+  it.each<{
+    label: string
+    workspacePatch: Partial<AdminWorkspaceView['workspace']>
+  }>([
+    { label: 'default', workspacePatch: { is_default: true } },
+    { label: 'inactive', workspacePatch: { status: 'suspended' } },
+    { label: 'mismatched', workspacePatch: { id: secondWorkspaceId } },
+  ])('rejects a $label workspace response before it can enter the preview cache', async ({ workspacePatch }) => {
+    const invalidView = workspaceView()
+    invalidView.workspace = { ...invalidView.workspace, ...workspacePatch }
+    mockedView.mockResolvedValue(invalidView)
+
+    const queryClient = renderPage(`/admin/workspaces/${workspaceId}/clients`)
+
+    expect(await screen.findByText('The workspace preview response did not match the selected workspace.')).toBeInTheDocument()
+    expect(queryClient.getQueryData(previewQueryKey)).toBeUndefined()
   })
 })

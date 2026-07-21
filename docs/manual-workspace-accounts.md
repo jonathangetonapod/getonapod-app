@@ -1,12 +1,19 @@
-# Manual workspace accounts and administrator workspace view
+# Manual workspace accounts and administrator workspace preview
 
 ## Release status
 
-This is the release contract for the pending source increment based on
-production-aligned `main` commit `399741354e54ed172012270f6d388f5c4167c5a0`.
-It is a pending forward release. The historical six-migration production cutover remains documented in
-`production-cutover-2026-07-21.md`; do not rewrite that evidence or imply this
-seventh migration is already deployed.
+This release contract began from production-aligned `main` commit
+`399741354e54ed172012270f6d388f5c4167c5a0`. Its production backend rollout was
+completed on 2026-07-21: the seventh migration is in the production ledger, the
+catalog verifier passes, and all six changed/new JWT-verified functions are
+deployed. Production has exactly 89 active Edge Functions—75 with JWT
+verification enabled and the exact 14 reviewed handlers with it disabled.
+
+The historical six-migration cutover remains documented in
+`production-cutover-2026-07-21.md`. The administrator preview now reuses the
+real tenant Clients experience in read-only mode. Signed-in end-to-end
+acceptance still needs human/browser confirmation; this document does not
+promote that gate to an automated pass.
 
 ## Product outcome
 
@@ -15,8 +22,9 @@ A platform administrator can:
 - create one private workspace and account without sending an email;
 - receive a server-generated temporary password exactly once;
 - issue a replacement temporary password when the prior value is lost;
-- select an active private workspace from the administrator navigation; and
-- view that workspace's client records without impersonating its owner.
+- select a private workspace whose owner account is active from the administrator navigation; and
+- open the same Clients experience that workspace's owner uses, in a visibly
+  read-only administrator preview without impersonating the owner.
 
 The manually created user signs in at `/login`, is restricted to
 `/change-password`, replaces the temporary password, signs in again, and then
@@ -39,6 +47,11 @@ The administrator workspace route is
 view; it never overwrites `AuthContext.workspace`, Auth/JWT metadata, or a
 membership. Unknown, malformed, default, archived, suspended, or unauthorized
 workspace IDs fail closed. The view is deliberately read-only.
+It reuses the tenant workspace layout and Clients page, including the same
+client rows and loading, empty, and error states. A persistent preview banner
+and workspace selector preserve administrator context; write controls are
+disabled, mutation dialogs are unavailable, and Exit preview returns to the
+administrator console.
 
 ## Manual-account security contract
 
@@ -69,9 +82,9 @@ workspace IDs fail closed. The view is deliberately read-only.
   deleting the exact marked Auth identity. Interrupted deletion remains under
   a visible, retryable cleanup claim and never re-enables workspace access.
 
-## Release unit
+## Production backend release unit
 
-The new forward database input is:
+The deployed forward database input is:
 
 1. `supabase/migrations/20260721000100_manual_workspace_accounts.sql`
 2. `supabase/tests/20260720_invite_only_workspace_verification.sql`
@@ -100,7 +113,7 @@ Use `docs/invite-only-edge-manifest.json` as the exact allowlist. Do not bulk
 deploy the functions directory, and keep the two documented tenant-environment
 exclusions absent.
 
-Recommended deployment order:
+For recovery or a fresh environment, preserve this deployment order:
 
 1. Preserve a target-bound backup and remote function/config inventory.
 2. Quiesce account and tenant-client mutations.
@@ -111,16 +124,18 @@ Recommended deployment order:
 6. Deploy the frontend and run the complete acceptance matrix.
 7. Reopen mutations only after every invariant and recovery test passes.
 
-The migration is forward-compatible with the prior frontend, but the feature
-must not be used until the database, Edge, and frontend components all match
-the same reviewed commit.
+Production completed the database, catalog-verifier, six-function deployment,
+CORS, anonymous-denial, and exact-inventory checks on 2026-07-21. The shared
+frontend preview and the complete signed-in browser acceptance matrix must
+still be verified together on the reviewed frontend commit.
 
 ## Required acceptance
 
 - Anonymous and tenant identities cannot list or view other workspaces or call
   either administrator provisioning action.
-- The administrator selector changes only the explicit URL. Back, reload, and
-  workspace A → B changes never show cached A data under B.
+- The administrator selector changes only the explicit URL. The selected route
+  renders the same tenant Clients experience with mutations disabled. Back,
+  reload, and workspace A → B changes never show cached A data under B.
 - Invalid and stale workspace IDs never fall back to the default workspace or
   an unfiltered client query.
 - Duplicate-email and concurrent creates produce at most one live workspace
@@ -149,7 +164,8 @@ the same reviewed commit.
 
 - Only client CRUD is tenant-aware. Podcasts, outreach, reporting, and other
   legacy modules remain platform-administrator-only.
-- The administrator workspace view is read-only and covers clients only.
+- The administrator workspace preview reuses the tenant Clients experience but
+  is read-only and covers clients only.
 - Users cannot self-register, invite teammates, or own multiple workspaces.
 - There is no self-service password-recovery UI.
 - One-time credentials require a separately approved secure handoff channel.

@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import type { WorkspaceClient } from '@/services/clients'
+
 export interface AdminWorkspace {
   id: string
   name: string
@@ -9,17 +11,15 @@ export interface AdminWorkspace {
 
 export interface AdminWorkspaceView {
   workspace: AdminWorkspace
-  clients: AdminWorkspaceClient[]
+  viewer: AdminWorkspaceViewer
+  clients: WorkspaceClient[]
 }
 
-export interface AdminWorkspaceClient {
-  id: string
+export interface AdminWorkspaceViewer {
   workspace_id: string
-  name: string
-  email: string | null
-  contact_person: string | null
-  website: string | null
-  status: string
+  email: string
+  full_name: string | null
+  role: 'owner'
 }
 
 const WORKSPACE_CLIENT_COLUMNS = [
@@ -28,12 +28,16 @@ const WORKSPACE_CLIENT_COLUMNS = [
   'name',
   'email',
   'contact_person',
+  'linkedin_url',
   'website',
   'status',
+  'notes',
+  'created_at',
+  'updated_at',
 ].join(',')
 
 export async function listAdminWorkspaces(): Promise<AdminWorkspace[]> {
-  const { data, error } = await supabase
+  const { data: workspaceData, error: workspaceError } = await supabase
     .from('workspaces')
     .select('id,name,slug,status,is_default')
     .eq('is_default', false)
@@ -41,34 +45,90 @@ export async function listAdminWorkspaces(): Promise<AdminWorkspace[]> {
     .order('name', { ascending: true })
     .order('id', { ascending: true })
 
-  if (error) throw new Error('Client workspaces could not be loaded.')
-  return (data || []) as AdminWorkspace[]
+  if (workspaceError) throw new Error('Client workspaces could not be loaded.')
+
+  const workspaces = (workspaceData || []) as AdminWorkspace[]
+  if (workspaces.length === 0) return []
+
+  const { data: membershipData, error: membershipError } = await supabase
+    .from('workspace_memberships')
+    .select('workspace_id')
+    .in('workspace_id', workspaces.map((workspace) => workspace.id))
+    .eq('role', 'owner')
+    .eq('status', 'active')
+
+  if (membershipError) throw new Error('Client workspaces could not be loaded.')
+
+  const previewableWorkspaceIds = new Set(
+    (membershipData || []).map((membership) => membership.workspace_id),
+  )
+  return workspaces.filter((workspace) => previewableWorkspaceIds.has(workspace.id))
 }
 
-export async function getAdminWorkspaceView(workspaceId: string): Promise<AdminWorkspaceView> {
-  const { data: workspaceData, error: workspaceError } = await supabase
+export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortSignal): Promise<AdminWorkspaceView> {
+  const canonicalWorkspaceId = workspaceId.toLowerCase()
+  let workspaceQuery = supabase
     .from('workspaces')
     .select('id,name,slug,status,is_default')
-    .eq('id', workspaceId)
+    .eq('id', canonicalWorkspaceId)
     .eq('is_default', false)
-    .maybeSingle()
+  if (signal) workspaceQuery = workspaceQuery.abortSignal(signal)
+  const { data: workspaceData, error: workspaceError } = await workspaceQuery.maybeSingle()
 
   if (workspaceError) throw new Error('The client workspace could not be loaded.')
   if (!workspaceData || workspaceData.status !== 'active') {
     throw new Error('This client workspace is unavailable or no longer active.')
   }
+  if (workspaceData.id !== canonicalWorkspaceId || workspaceData.is_default) {
+    throw new Error('The workspace preview response did not match the selected workspace.')
+  }
 
-  const { data: clientsData, error: clientsError } = await supabase
+  let viewerQuery = supabase
+    .from('workspace_memberships')
+    .select('workspace_id,email_normalized,full_name,role,status')
+    .eq('workspace_id', canonicalWorkspaceId)
+    .eq('role', 'owner')
+    .eq('status', 'active')
+    .order('id', { ascending: true })
+    .limit(1)
+  if (signal) viewerQuery = viewerQuery.abortSignal(signal)
+  const { data: viewerData, error: viewerError } = await viewerQuery.maybeSingle()
+
+  if (viewerError) throw new Error('The workspace owner could not be loaded.')
+  if (
+    !viewerData
+    || viewerData.workspace_id !== canonicalWorkspaceId
+    || viewerData.role !== 'owner'
+    || viewerData.status !== 'active'
+    || !viewerData.email_normalized
+  ) {
+    throw new Error('This client workspace does not have an active owner to preview.')
+  }
+
+  let clientsQuery = supabase
     .from('clients')
     .select(WORKSPACE_CLIENT_COLUMNS)
-    .eq('workspace_id', workspaceId)
+    .eq('workspace_id', canonicalWorkspaceId)
     .order('name', { ascending: true })
     .order('id', { ascending: true })
+  if (signal) clientsQuery = clientsQuery.abortSignal(signal)
+  const { data: clientsData, error: clientsError } = await clientsQuery
 
   if (clientsError) throw new Error('The workspace clients could not be loaded.')
 
+  const clients = (clientsData || []) as unknown as WorkspaceClient[]
+  if (clients.some((client) => client.workspace_id !== canonicalWorkspaceId)) {
+    throw new Error('The workspace preview response did not match the selected workspace.')
+  }
+
   return {
     workspace: workspaceData as AdminWorkspace,
-    clients: (clientsData || []) as unknown as AdminWorkspaceClient[],
+    viewer: {
+      workspace_id: viewerData.workspace_id,
+      email: viewerData.email_normalized,
+      full_name: viewerData.full_name,
+      role: viewerData.role,
+    },
+    clients,
   }
 }

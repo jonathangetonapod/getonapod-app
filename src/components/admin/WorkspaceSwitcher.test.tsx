@@ -17,12 +17,18 @@ const Location = () => {
   return <div data-testid="location">{location.pathname}</div>
 }
 
-function renderSwitcher() {
+function renderSwitcher({
+  initialPath = '/admin/dashboard',
+  presentation = 'sidebar',
+}: {
+  initialPath?: string
+  presentation?: 'sidebar' | 'toolbar'
+} = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/admin/dashboard']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <WorkspaceSwitcher />
+      <MemoryRouter initialEntries={[initialPath]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <WorkspaceSwitcher presentation={presentation} />
         <Routes>
           <Route path="*" element={<Location />} />
         </Routes>
@@ -55,5 +61,15 @@ describe('WorkspaceSwitcher', () => {
     renderSwitcher()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     expect(mockedList).not.toHaveBeenCalled()
+  })
+
+  it('shows the selected workspace in the compact preview toolbar', async () => {
+    renderSwitcher({
+      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/clients',
+      presentation: 'toolbar',
+    })
+
+    expect(await screen.findByRole('combobox', { name: 'Select a client workspace to view' })).toHaveTextContent('Bravo')
+    expect(screen.queryByText('View client workspace')).not.toBeInTheDocument()
   })
 })

@@ -16,8 +16,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 import { listAdminWorkspaces } from '@/services/adminWorkspaces'
 
-export const WorkspaceSwitcher = () => {
-  const { isPlatformAdmin } = useAuth()
+interface WorkspaceSwitcherProps {
+  presentation?: 'sidebar' | 'toolbar'
+}
+
+export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitcherProps) => {
+  const { isPlatformAdmin, user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -25,7 +29,7 @@ export const WorkspaceSwitcher = () => {
   const selectedId = routeMatch?.params.workspaceId || ''
 
   const workspacesQuery = useQuery({
-    queryKey: ['platform', 'workspaces'],
+    queryKey: ['platform', user?.id || 'unknown', 'workspaces'],
     queryFn: listAdminWorkspaces,
     enabled: isPlatformAdmin,
     staleTime: 30_000,
@@ -37,10 +41,12 @@ export const WorkspaceSwitcher = () => {
   const selected = workspaces.find((workspace) => workspace.id === selectedId)
 
   return (
-    <div className="border-b border-border p-3">
-      <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        View client workspace
-      </p>
+    <div className={cn(presentation === 'sidebar' ? 'border-b border-border p-3' : 'w-full sm:w-72')}>
+      {presentation === 'sidebar' && (
+        <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          View client workspace
+        </p>
+      )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -98,7 +104,7 @@ export const WorkspaceSwitcher = () => {
           type="button"
           variant="ghost"
           size="sm"
-          className="mt-2 w-full"
+          className={cn('w-full', presentation === 'sidebar' && 'mt-2')}
           onClick={() => void workspacesQuery.refetch()}
         >
           Try again

@@ -70,6 +70,7 @@ const WorkspaceUsers = () => {
   const [credentialBusyId, setCredentialBusyId] = useState<string | null>(null)
   const [credentialConfirmation, setCredentialConfirmation] = useState<ManagedWorkspaceUser | null>(null)
   const [confirmation, setConfirmation] = useState<{ user: ManagedWorkspaceUser; action: PendingAction } | null>(null)
+  const platformQueryPrefix = ['platform'] as const
   const queryKey = ['platform', 'workspace-users'] as const
 
   const usersQuery = useQuery({ queryKey, queryFn: listWorkspaceUsers })
@@ -81,7 +82,7 @@ const WorkspaceUsers = () => {
       workspace_name: workspaceName.trim() || undefined,
     }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({ queryKey: platformQueryPrefix })
       setInviteOpen(false)
       setEmail('')
       setFullName('')
@@ -89,7 +90,7 @@ const WorkspaceUsers = () => {
       toast.success('Invitation sent.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to send invitation.'),
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: platformQueryPrefix }),
   })
 
   const statusMutation = useMutation({
@@ -101,7 +102,7 @@ const WorkspaceUsers = () => {
       await updateWorkspaceUserStatus(action, user.id)
     },
     onSuccess: async (_result, variables) => {
-      await queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({ queryKey: platformQueryPrefix })
       setConfirmation(null)
       toast.success(
         variables.action === 'suspend'
@@ -129,7 +130,7 @@ const WorkspaceUsers = () => {
       setConfirmation(null)
       toast.error(error instanceof Error ? error.message : 'Unable to update account.')
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: platformQueryPrefix }),
   })
 
   const clearCredential = () => {
@@ -161,13 +162,13 @@ const WorkspaceUsers = () => {
         workspace_name: manualWorkspaceName.trim() || undefined,
       })
       showCredential(result, manualWorkspaceName.trim() || undefined)
-      void queryClient.invalidateQueries({ queryKey })
       setManualEmail('')
       setManualFullName('')
       setManualWorkspaceName('')
     } catch (error) {
       setManualError(error instanceof Error ? error.message : 'The manual account could not be created.')
     } finally {
+      void queryClient.invalidateQueries({ queryKey: platformQueryPrefix })
       setManualSubmitting(false)
     }
   }
@@ -180,11 +181,11 @@ const WorkspaceUsers = () => {
         ? await retryManualWorkspaceAccount(managedUser.id, crypto.randomUUID())
         : await rotateManualWorkspacePassword(managedUser.id, crypto.randomUUID())
       showCredential(result, managedUser.workspace?.name)
-      void queryClient.invalidateQueries({ queryKey })
       setCredentialConfirmation(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'A new temporary password could not be issued.')
     } finally {
+      void queryClient.invalidateQueries({ queryKey: platformQueryPrefix })
       setCredentialBusyId(null)
     }
   }

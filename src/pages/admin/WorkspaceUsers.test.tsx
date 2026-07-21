@@ -60,6 +60,7 @@ function renderPage() {
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><WorkspaceUsers /></MemoryRouter>
     </QueryClientProvider>,
   )
+  return queryClient
 }
 
 describe('WorkspaceUsers manual account flow', () => {
@@ -84,7 +85,8 @@ describe('WorkspaceUsers manual account flow', () => {
 
   it('keeps the one-time password in memory and requires save confirmation', async () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem')
-    renderPage()
+    const queryClient = renderPage()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     fireEvent.click(screen.getByRole('button', { name: /create manually/i }))
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Owner Name' } })
@@ -95,6 +97,7 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(password.type).toBe('password')
     expect(password.value).toBe('Tmp-Abcd2345_Abcd2345_Abcd')
     expect(storageSpy).not.toHaveBeenCalled()
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['platform'] })
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
 
     fireEvent.click(screen.getByLabelText('I saved this password in a secure place.'))
@@ -116,6 +119,19 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(await screen.findByText(/credential reconciliation is pending until/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /issue new temporary password/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^revoke$/i })).toBeDisabled()
+  })
+
+  it('refreshes platform workspace state after a partial manual-create failure', async () => {
+    mockedCreate.mockRejectedValueOnce(new Error('Credential reconciliation is pending.'))
+    const queryClient = renderPage()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    fireEvent.click(screen.getByRole('button', { name: /create manually/i }))
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate account' }))
+
+    expect(await screen.findByText('Credential reconciliation is pending.')).toBeInTheDocument()
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['platform'] })
   })
 
   it('requires confirmation before revoking a manual account', async () => {

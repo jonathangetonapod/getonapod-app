@@ -10,21 +10,26 @@ password. Each user signs in and manages clients inside one private workspace.
 Pull request #1 was merged into `main` on 2026-07-21 at commit
 `3f608997522a76207ace8ebf355daf0cf3642865`. Railway automatically deployed
 that frontend to the production GOAP service. The coordinated production
-Supabase cutover was completed on 2026-07-21 from the follow-up release branch,
-whose backend deployment/configuration head was
-`b2655c36f46042d4ace56236fbd373272205e207`.
+Supabase cutover and the subsequent manual-workspace-account backend rollout
+were completed on 2026-07-21. The corrected forward migration is recorded at
+`4cbb3be4355af628d06cda914c2c57eb67c607d8`; the hardened catalog verifier and
+deployed backend source are recorded at
+`bc763431a298be26a93b2aa16de846991f8aebb1`.
 
-Production now has all six release migrations, a passing catalog verifier, and
-an exact inventory of 87 active Edge Functions with no JWT-policy drift.
-`account-context` has a valid production CORS preflight, and the six approved
-legacy shutdown targets are absent. The separate video service is a
-credential-free 410 tombstone, and obsolete Stripe Edge secrets were removed.
+Production now has all seven release migrations, a passing catalog verifier,
+and an exact inventory of 89 active Edge Functions: 75 with JWT verification
+enabled and the exact 14 reviewed public/tombstone handlers with it disabled.
+The manual-account migration and its six changed/new JWT-verified functions are
+deployed. Their production CORS preflights and anonymous-denial probes pass,
+and the six approved legacy shutdown targets remain absent. The separate video
+service is a credential-free 410 tombstone, and obsolete Stripe Edge secrets
+were removed.
 
-Pull request #2 is now merged, so `main` matches the deployed cutover source.
-The manual-account and read-only workspace-view feature described below is the
-next release and is not yet deployed. Its migration, two new Edge Functions,
-changed guarded functions, frontend, and acceptance evidence must move as one
-reviewed release. Credentials exposed through chat still require rotation.
+The administrator workspace selector now opens the same Clients experience a
+workspace owner uses, with a persistent administrator-preview banner and all
+write controls disabled. It remains a URL-scoped preview rather than Auth
+impersonation. Signed-in end-to-end browser acceptance still requires human
+confirmation. Credentials exposed through chat still require rotation.
 
 The sanitized cutover evidence and remaining gates are recorded in
 [`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md).
@@ -33,7 +38,7 @@ The sanitized cutover evidence and remaining gates are recorded in
 
 | Role | Supported access |
 | --- | --- |
-| Platform administrator | Existing internal `/admin/*` application, email invitations, manual account creation, account suspension/reactivation, and a read-only view of each private workspace's clients |
+| Platform administrator | Existing internal `/admin/*` application, email invitations, manual account creation, account suspension/reactivation, and a safe read-only preview of the tenant Clients experience for each private workspace |
 | Workspace user | `/app/clients`; create, list, edit, and delete only clients owned by the user's private workspace |
 | Client portal user | Separate `/portal/*` login and minimal bookings/resources view for a client record; this is not a SaaS workspace account |
 | Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
@@ -51,7 +56,7 @@ tenant access to every legacy operational module are deliberately out of scope.
 | `/change-password` | Mandatory first-sign-in password replacement for manually created accounts |
 | `/app/clients` | Authenticated workspace client CRUD |
 | `/admin/users` | Platform administrator invitation/lifecycle console |
-| `/admin/workspaces/:workspaceId/clients` | Platform administrator read-only view of one explicitly selected private workspace |
+| `/admin/workspaces/:workspaceId/clients` | Platform administrator read-only preview of the same Clients experience for one explicitly selected private workspace |
 | `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
 | `/portal/login` | Separate client portal login |
 | `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
@@ -102,8 +107,9 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   Edge hard lifetime; revisit the invariant before self-hosting or increasing
   worker limits.
 - The administrator workspace selector is an explicit URL-scoped, read-only
-  view. It does not impersonate the tenant, mutate the administrator's Auth
-  context, or silently fall back to another workspace.
+  preview that reuses the tenant Clients layout and page. It does not
+  impersonate the tenant, mutate the administrator's Auth context, enable
+  client mutations, or silently fall back to another workspace.
 - Suspend/reactivate uses a separate durable service-only lifecycle claim. The
   database transition commits first and remains authoritative while Auth is
   reconciled. A different request token can never steal a claim automatically;
@@ -194,16 +200,18 @@ not a place for service-role or provider credentials.
 
 ## Database rollout
 
-The six-version production rollout was completed on 2026-07-21. The procedure
-below is retained for recovery and future environments. The operator explicitly
-accepted proceeding without a dedicated staging backend or restore rehearsal;
-do not generalize that exception to later releases.
+The original six-version production cutover and the seventh manual-account
+forward migration were completed on 2026-07-21. The procedure below is retained
+for recovery and future environments. The operator explicitly accepted
+proceeding without a dedicated staging backend or restore rehearsal; do not
+generalize that exception to later releases.
 
 For future acceptance, use a dedicated staging project. Do not point synthetic
 acceptance tests at production and do not replay the repository's entire
-historical migration directory blindly. It contains 86 historical or
-noncanonical files; only the six coordinated 20260720 versions are authoritative
-for this cutover and recorded in the production migration ledger. The legacy
+historical migration directory blindly. It contains many historical or
+noncanonical files; only the six coordinated 20260720 versions and the
+20260721000100 forward migration are authoritative for this release and
+recorded in the production migration ledger. The legacy
 `scripts/deploy-edge-functions.sh` and `scripts/run-migration.cjs` helpers are
 intentionally retired and fail closed; they do not implement this release's
 target, commit, backup, manifest, or evidence controls.
@@ -231,7 +239,8 @@ portal functions can still mint credentials or sessions:
    4. `supabase/migrations/20260720000400_resend_webhook_idempotency.sql`
    5. `supabase/migrations/20260720000500_client_prospect_link_normalization.sql`
    6. `supabase/migrations/20260720000600_trigger_function_privileges.sql`
-   7. `supabase/tests/20260720_invite_only_workspace_verification.sql`
+   7. `supabase/migrations/20260721000100_manual_workspace_accounts.sql`
+   8. `supabase/tests/20260720_invite_only_workspace_verification.sql`
 
 5. Recheck the post-migration zero-token/hash-only invariants, inspect
    workspace/client ownership, deploy the remaining reviewed function manifest
@@ -246,7 +255,9 @@ links. Migration 4 makes signed Resend delivery events transactional,
 deduplicated by `svix-id`, and monotonic under out-of-order delivery. Migration
 5 canonicalizes an unlinked client-to-prospect reference to `NULL` and enforces
 strong, non-orphaned capability references. Migration 6 removes residual
-browser-role execution grants from trigger-only functions.
+browser-role execution grants from trigger-only functions. Migration 7 adds
+manual workspace-account credential state, durable claims, first-password
+replacement, revocation cleanup, and the supporting service-only routines.
 
 Important cutover effects:
 
@@ -301,10 +312,10 @@ expiry, and allows only the exact production `/accept-invite` and
 hold. A Supabase invite email is a bearer credential: anyone with the full link
 can establish the invited Auth session, so it must not be forwarded or logged.
 
-Production records the exact six-version release unit in its migration ledger.
-Apply those complete current files to a fresh dedicated staging baseline, or
-replay staging from its pre-MVP backup; do not assume that an older draft of a
-release migration has been upgraded in place.
+Production records the exact seven-version release unit in its migration
+ledger. Apply those complete current files to a fresh dedicated staging
+baseline, or replay staging from its pre-MVP backup; do not assume that an
+older draft of a release migration has been upgraded in place.
 
 ## Verification
 
@@ -318,9 +329,9 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` runs the release-shape verifier, parses the six historical
-cutover migrations, the pending manual-account migration, and the SQL verifier
-with a PostgreSQL grammar parser, runs both TypeScript checks, the zero-warning
+`check:static` runs the release-shape verifier, parses all seven release
+migrations and the SQL verifier with a PostgreSQL grammar parser, runs both
+TypeScript checks, the zero-warning
 MVP lint scope, and focused workspace UI tests, exercises the URL, telemetry,
 session-storage, retired-helper, and evidence-path tests, checks all 91 Edge
 entrypoints and shared Edge unit tests against the frozen Deno lock,
@@ -395,13 +406,13 @@ credentials are mandatory; omitting them is a configuration refusal, and any
 incomplete record outside the exact checked-in allowlist converts the run to a
 failure.
 
-For the pending manual-account release, run the database verifier only after
-the historical six migrations and
-`20260721000100_manual_workspace_accounts.sql` have been applied to the same
-staging release. Use `PG*` environment variables and prefer a project-
-specific direct database hostname rather than a hostname shared by production
-and staging. Hostnames with a trailing dot are refused. Never put the connection
-URL or password on the command line or type a password into shell history:
+For a fresh environment, run the database verifier only after the historical
+six migrations and `20260721000100_manual_workspace_accounts.sql` have been
+applied to the same release. Use `PG*` environment variables and prefer a
+project-specific direct database hostname rather than a hostname shared by
+production and staging. Hostnames with a trailing dot are refused. Never put
+the connection URL or password on the command line or type a password into
+shell history:
 
 ```bash
 export PGHOST='<staging-database-host>'
@@ -438,7 +449,7 @@ catalog verifier against the actual staging schema can validate definitions,
 ACLs, RLS, and data invariants.
 
 Latest release evidence (2026-07-21; production backend at clean deployment
-source head `b2655c36f46042d4ace56236fbd373272205e207`):
+source head `bc763431a298be26a93b2aa16de846991f8aebb1`):
 
 | Check | Result |
 | --- | --- |
@@ -448,15 +459,15 @@ source head `b2655c36f46042d4ace56236fbd373272205e207`):
 | Full and production dependency audits | Pass; zero vulnerabilities at `audit-level=low` |
 | Nested MCP clean install/build/audits | Pass; MCP SDK 1.29.0 and zero full/production vulnerabilities |
 | Docker/Railway deployment contract | Pass; exact two-stage Node/npm toolchain, required browser build arguments, non-root runtime, and secret-excluding context |
-| Release/Edge manifest shape | Pass; 89 changed functions = 87 deployed, including 17 tombstones, plus 2 tenant-environment exclusions; 94 Edge TypeScript files |
-| Production migration unit | Pass; all six versions applied and reconciled into the migration ledger with names and statement arrays |
+| Release/Edge manifest shape | Pass; 91 changed functions = 89 deployed, including 17 tombstones, plus 2 tenant-environment exclusions; 102 Edge TypeScript files |
+| Production migration unit | Pass; all seven versions applied and reconciled into the migration ledger with names and statement arrays |
 | Production database catalog verifier | Pass; exact committed verifier ran serializable/read-only and ended with `ROLLBACK` |
-| Production Edge inventory | Pass; 87 expected/active, zero missing/unexpected, 73 JWT-verified and the exact 14 reviewed non-JWT handlers |
+| Production Edge inventory | Pass; 89 expected/active, zero missing/unexpected, 75 JWT-verified and the exact 14 reviewed non-JWT handlers |
 | Hosted Auth and CORS | Pass; signup/anonymous disabled, 24-hour invite expiry, allowlist reduced to the exact two production callbacks, and `account-context` preflight 204 |
 | Fail-closed HTTP containment | Pass; protected unauthenticated requests denied, public handlers reject empty input, and five public tombstones return 410 |
 | Billing/video containment | Pass; Stripe endpoint tombstoned and Edge secrets removed; Railway video API tombstoned and service credentials removed |
-| Edge semantic type check | Pass; all 89 entrypoints on Deno 2.5.2 with frozen `deno.lock` |
-| Edge TypeScript inventory/syntax check | Pass; 94 function/shared TypeScript files |
+| Edge semantic type check | Pass; all 91 entrypoints on Deno 2.5.2 with frozen `deno.lock` |
+| Edge TypeScript inventory/syntax check | Pass; 102 function/shared TypeScript files |
 | App TypeScript | Pass; zero diagnostics |
 | Staging HTTP runner type check | Pass |
 | Focused MVP ESLint | Pass; zero warnings |
@@ -464,7 +475,7 @@ source head `b2655c36f46042d4ace56236fbd373272205e207`):
 | Release secret scan | Pass; 589 full-current-tree files including ignored dotenv/build files, built output, 23 positive and 3 negative scanner self-tests; values suppressed |
 | Staging runners with missing environment | Pass; refuse before network/artifact creation |
 | Database verifier shell syntax | Pass |
-| Local SQL grammar parse | Pass; six migrations plus verifier |
+| Local SQL grammar parse | Pass; seven migrations plus verifier |
 | Patch whitespace check | Pass |
 
 The static, catalog, inventory, hosted-configuration, and unauthenticated HTTP
@@ -516,9 +527,11 @@ The detailed rollout and acceptance matrix is in
 - Only client CRUD is tenant-enabled. Podcast operations, outreach, reporting,
   and other legacy modules remain platform-admin-only until they receive an
   explicit `workspace_id` model and isolation tests.
-- The platform administrator's private-workspace view is intentionally
-  read-only and currently shows only that workspace's clients. It is not an
-  impersonation mode and does not make legacy modules tenant-aware.
+- The platform administrator's private-workspace preview reuses the real
+  tenant Clients experience, including its layout and client states, but is
+  intentionally read-only: write controls are disabled and no mutation dialog
+  is available. It is not an impersonation mode and does not make legacy
+  modules tenant-aware.
 - Workspace users cannot invite teammates or own multiple workspaces.
 - Workspace password recovery has no product UI yet; support must perform a
   controlled Supabase Auth recovery/reset.
@@ -585,20 +598,20 @@ repository: the legacy deploy/migration helpers refuse to run. A staging backend
 rollout still needs a reviewed executor or operator procedure bound to the exact
 commit, project, backup, phased manifest, and private evidence directory.
 
-## Next-release gates
+## Remaining release gates
 
-The historical production cutover and its follow-up source merge are complete.
-The manual-account/read-only-workspace-view increment is not deployed. Follow
-the release contract in
-[`docs/manual-workspace-accounts.md`](docs/manual-workspace-accounts.md) before
-merging or deploying it.
+The historical production cutover and the manual-account backend rollout are
+complete. The remaining gates are signed-in browser/provider acceptance and
+credential incident work, not another database or Edge deployment. The release
+contract remains in
+[`docs/manual-workspace-accounts.md`](docs/manual-workspace-accounts.md).
 
-Before enabling the new manual-account action in production:
+Before declaring the manual-account and workspace-preview release accepted:
 
 1. rotate the exposed OpenAI, Podscan, Jotform, and Clay credentials and review
    provider/application logs;
-2. apply and catalog-verify the new forward migration on a disposable staging
-   project, then deploy the exact reviewed Edge manifest and frontend;
+2. confirm in a signed-in browser that production exposes the deployed manual
+   account action and the reviewed frontend;
 3. exercise create → one-time handoff → temporary sign-in → forced password
    replacement → fresh sign-in → isolated client CRUD → logout;
 4. test duplicate/concurrent creation, password rotation, expired credentials,
