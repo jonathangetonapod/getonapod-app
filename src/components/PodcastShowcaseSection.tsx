@@ -109,7 +109,7 @@ const PodcastShowcaseSection = () => {
                   </a>
                 </Button>
                 <Button variant="heroOutline" size="lg" className="rounded-full px-7" asChild>
-                  <a href="/premium-placements">View Premium Placements</a>
+                  <a href="/what-to-expect">See What to Expect</a>
                 </Button>
               </div>
             </div>

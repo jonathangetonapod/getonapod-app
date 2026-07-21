@@ -1,0 +1,171 @@
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+
+import {
+  errorResponse,
+  HttpError,
+  jsonResponse,
+  optionsResponse,
+  parseJsonObject,
+  requireOnlyKeys,
+  requirePlatformAdmin,
+  requireString,
+} from '../_shared/workspaceAuth.ts'
+
+const METHODS = ['POST'] as const
+const API_BASE = 'https://podscan.fm/api/v1'
+const SEARCH_KEYS = new Set([
+  'query',
+  'category_ids',
+  'per_page',
+  'order_by',
+  'order_dir',
+  'search_fields',
+  'language',
+  'region',
+  'min_audience_size',
+  'max_audience_size',
+  'min_episode_count',
+  'max_episode_count',
+  'min_last_episode_posted_at',
+  'max_last_episode_posted_at',
+  'has_guests',
+  'has_sponsors',
+  'page',
+])
+
+function requiredSecret(): string {
+  const value = (Deno.env.get('PODSCAN_API_KEY') || Deno.env.get('PODSCAN_TOKEN'))?.trim()
+  if (!value) throw new HttpError(500, 'SERVER_MISCONFIGURED', 'Podscan is not configured')
+  return value
+}
+
+function podcastId(value: unknown): string {
+  const id = requireString(value, 'podcast_id', { max: 200 })
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new HttpError(400, 'INVALID_FIELD', 'podcast_id is invalid')
+  }
+  return id
+}
+
+function enumValue(value: unknown, field: string, values: readonly string[]): string {
+  const result = requireString(value, field, { max: 80 })
+  if (!values.includes(result)) throw new HttpError(400, 'INVALID_FIELD', `${field} is invalid`)
+  return result
+}
+
+function searchParams(value: unknown): URLSearchParams {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, 'INVALID_FIELD', 'options must be an object')
+  }
+  const options = value as Record<string, unknown>
+  if (Object.keys(options).some((key) => !SEARCH_KEYS.has(key))) {
+    throw new HttpError(400, 'UNKNOWN_FIELD', 'options contains an unknown field')
+  }
+
+  const params = new URLSearchParams()
+  for (const [key, rawValue] of Object.entries(options)) {
+    if (rawValue === undefined || rawValue === null || rawValue === '') continue
+    if (!['string', 'number', 'boolean'].includes(typeof rawValue)) {
+      throw new HttpError(400, 'INVALID_FIELD', `${key} has an invalid value`)
+    }
+    const serialized = String(rawValue)
+    if (serialized.length > 500) {
+      throw new HttpError(400, 'INVALID_FIELD', `${key} is too long`)
+    }
+    params.set(key, serialized)
+  }
+  return params
+}
+
+async function fetchPodscan(path: string, params?: URLSearchParams): Promise<unknown> {
+  const url = new URL(`${API_BASE}${path}`)
+  if (params) url.search = params.toString()
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${requiredSecret()}`,
+      Accept: 'application/json',
+    },
+  })
+
+  const declaredLength = Number(response.headers.get('content-length') ?? '0')
+  if (Number.isFinite(declaredLength) && declaredLength > 5_000_000) {
+    throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
+  }
+
+  const raw = await response.text()
+  if (new TextEncoder().encode(raw).byteLength > 5_000_000) {
+    throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
+  }
+  if (!response.ok) {
+    throw new HttpError(
+      response.status === 429 ? 429 : 502,
+      `PODSCAN_UPSTREAM_${response.status}`,
+      `Podscan API error: ${response.status}`,
+    )
+  }
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new HttpError(502, 'PODSCAN_INVALID_RESPONSE', 'Podscan returned an invalid response')
+  }
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+
+  try {
+    if (req.method !== 'POST') {
+      throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
+    }
+    const body = await parseJsonObject(req)
+    const action = typeof body.action === 'string' ? body.action : ''
+    await requirePlatformAdmin(req)
+    let data: unknown
+
+    if (action === 'search') {
+      requireOnlyKeys(body, ['action', 'options'])
+      data = await fetchPodscan('/podcasts/search', searchParams(body.options))
+    } else if (action === 'podcast') {
+      requireOnlyKeys(body, ['action', 'podcast_id'])
+      data = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}`)
+    } else if (action === 'related') {
+      requireOnlyKeys(body, ['action', 'podcast_id'])
+      data = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`)
+    } else if (action === 'demographics') {
+      requireOnlyKeys(body, ['action', 'podcast_id'])
+      data = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics`)
+    } else if (action === 'chart_countries') {
+      requireOnlyKeys(body, ['action'])
+      data = await fetchPodscan('/charts/countries/supported')
+    } else if (action === 'chart_categories') {
+      requireOnlyKeys(body, ['action', 'platform', 'country'])
+      const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
+      const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
+      if (!/^[a-z]{2,8}$/.test(country)) throw new HttpError(400, 'INVALID_FIELD', 'country is invalid')
+      data = await fetchPodscan(`/charts/${platform}/${country}/categories`)
+    } else if (action === 'chart_top') {
+      requireOnlyKeys(body, ['action', 'platform', 'country', 'category', 'limit'])
+      const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
+      const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
+      const category = requireString(body.category, 'category', { max: 100 })
+      if (!/^[a-z]{2,8}$/.test(country) || !/^[a-zA-Z0-9_-]+$/.test(category)) {
+        throw new HttpError(400, 'INVALID_FIELD', 'chart parameters are invalid')
+      }
+      const limit = typeof body.limit === 'number' && Number.isInteger(body.limit)
+        ? Math.max(1, Math.min(body.limit, platform === 'apple' ? 200 : 50))
+        : 10
+      data = await fetchPodscan(
+        `/charts/${platform}/${country}/${encodeURIComponent(category)}/top`,
+        new URLSearchParams({ limit: String(limit) }),
+      )
+    } else {
+      throw new HttpError(400, 'INVALID_ACTION', 'Unknown Podscan action')
+    }
+
+    return jsonResponse(req, METHODS, 200, { data })
+  } catch (error) {
+    return errorResponse(req, METHODS, error)
+  }
+})

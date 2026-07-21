@@ -1,5 +1,10 @@
 # GOAP Admin Panel - Complete Feature Documentation
 
+> **Invite-only MVP warning:** the root README is authoritative for current
+> administrator routes. Billing/order/premium placement, AI Sales Director,
+> admin video, admin blog, and settings features described below are retired
+> from this release.
+
 ## Overview
 
 The GOAP (Get On A Podcast) Admin Panel is a comprehensive internal management system for GOAP staff to manage clients, bookings, outreach campaigns, and all operational aspects of the podcast placement business.
@@ -245,17 +250,11 @@ The central command center displaying real-time business metrics and requiring i
 
 ## Content Management
 
-### Blog Management (`/admin/blog`)
-- **Blog Post Creation**: Rich text editor with media support
-- **Publication Management**: Draft, published, scheduled states
-- **SEO Optimization**: Meta tags, descriptions, URL optimization
-- **Category Management**: Organize content by topics
+### Retired MVP surfaces
 
-### Video Testimonials (`/admin/videos`)
-- **Video Upload Management**: Client testimonial videos
-- **Approval Workflow**: Review and approve client submissions
-- **Display Control**: Choose which testimonials to showcase
-- **Metadata Management**: Titles, descriptions, client attribution
+The former `/admin/blog` and `/admin/videos` applications are removed from the
+invite-only MVP. Their old URLs redirect to `/admin/dashboard`; their deleted
+editors and video workers are not supported admin features.
 
 ### Guest Resources (`/admin/guest-resources`)
 - **Resource Library**: Downloadable guides, templates, media kits
@@ -337,11 +336,10 @@ The central command center displaying real-time business metrics and requiring i
 
 ## AI-Powered Tools
 
-### AI Sales Director (`/admin/ai-sales-director`)
-- **Intelligent Lead Scoring**: AI-powered lead qualification
-- **Response Recommendations**: Suggested responses for common inquiries
-- **Pipeline Optimization**: AI-driven pipeline management suggestions
-- **Conversion Prediction**: Machine learning conversion probability
+### Retired AI Sales Director
+
+The former `/admin/ai-sales-director` application is removed from the
+invite-only MVP. Its old URL redirects to `/admin/dashboard`.
 
 ### Podcast Finder (`/admin/podcast-finder`)
 

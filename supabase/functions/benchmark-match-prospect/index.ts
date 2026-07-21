@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -22,6 +23,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     let body: any
     try {
       body = await req.json()
@@ -175,7 +177,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[BenchmarkMatchProspect] Error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

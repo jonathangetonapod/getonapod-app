@@ -1,5 +1,11 @@
-const PODSCAN_API_BASE = 'https://podscan.fm/api/v1';
-const API_KEY = import.meta.env.VITE_PODSCAN_API_KEY;
+import { supabase } from '@/lib/supabase'
+import { toFunctionError } from '@/lib/functionErrors'
+
+async function invokePodscan<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('podscan-proxy', { body })
+  if (error) throw await toFunctionError(error, 'Podscan request failed.')
+  return data.data as T
+}
 
 export interface PodcastData {
   podcast_id: string;
@@ -59,7 +65,7 @@ export interface PodcastSearchResponse {
   };
 }
 
-interface SearchOptions {
+export interface SearchOptions {
   query?: string;
   category_ids?: string;
   per_page?: number;
@@ -83,32 +89,7 @@ interface SearchOptions {
  * Search for podcasts directly
  */
 export async function searchPodcasts(options: SearchOptions = {}): Promise<PodcastSearchResponse> {
-  const params = new URLSearchParams();
-
-  // Add all options to params
-  Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined) {
-      params.append(key, String(value));
-    }
-  });
-
-  const url = `${PODSCAN_API_BASE}/podcasts/search?${params}`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    console.error('❌ Podscan API error:', response.status, response.statusText);
-    throw new Error(`Podscan API error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-
-  return data;
+  return await invokePodscan<PodcastSearchResponse>({ action: 'search', options })
 }
 
 /**
@@ -229,21 +210,10 @@ export async function searchPodcastsByCategory(
  * Get a single podcast by ID
  */
 export async function getPodcastById(podcastId: string): Promise<PodcastData> {
-  const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    console.error('❌ Podscan API error:', response.status, response.statusText);
-    throw new Error(`Failed to fetch podcast: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
+  const data = await invokePodscan<{ podcast?: PodcastData } & PodcastData>({
+    action: 'podcast',
+    podcast_id: podcastId,
+  })
 
   // API returns { podcast: { ... } }, extract the podcast object
   return data.podcast || data;
@@ -356,19 +326,12 @@ export async function searchAllPodcasts(
  * Get related podcasts for a given podcast ID
  */
 export async function getRelatedPodcasts(podcastId: string): Promise<PodcastData[]> {
-  const url = `${PODSCAN_API_BASE}/podcasts/${encodeURIComponent(podcastId)}/related_podcasts`;
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  if (!response.ok) {
-    console.error('Podscan API error:', response.status, response.statusText);
-    throw new Error(`Failed to fetch related podcasts: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  return data.related_podcasts || data.podcasts || data || [];
+  const data = await invokePodscan<{
+    related_podcasts?: PodcastData[]
+    podcasts?: PodcastData[]
+  } | PodcastData[]>({ action: 'related', podcast_id: podcastId })
+  if (Array.isArray(data)) return data
+  return data.related_podcasts || data.podcasts || [];
 }
 
 /**
@@ -438,21 +401,11 @@ export interface PodcastDemographics {
  * Get podcast demographics data (only available for some podcasts)
  */
 export async function getPodcastDemographics(podcastId: string): Promise<PodcastDemographics | null> {
-  const url = `${PODSCAN_API_BASE}/podcasts/${podcastId}/demographics`
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+    const data = await invokePodscan<PodcastDemographics & { error?: string }>({
+      action: 'demographics',
+      podcast_id: podcastId,
     })
-
-    if (!response.ok) {
-      return null
-    }
-
-    const data = await response.json()
 
     // Check if we got an error response
     if (data.error || !data.episodes_analyzed) {
@@ -514,24 +467,13 @@ export interface ChartPodcast extends PodcastData {
  * Get all supported countries for chart rankings
  */
 export async function getChartCountries(): Promise<ChartCountry[]> {
-  const url = `${PODSCAN_API_BASE}/charts/countries/supported`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    console.error('❌ Podscan API error:', response.status, response.statusText);
-    throw new Error(`Failed to fetch chart countries: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
+  const data = await invokePodscan<Record<string, unknown> | ChartCountry[]>({
+    action: 'chart_countries',
+  })
 
   // Extract array from response - check various possible structures
-  const countries = data.countries || data.data || data;
+  const envelope = Array.isArray(data) ? {} : data
+  const countries = envelope.countries || envelope.data || data;
 
   // If it's an object with country codes as keys, convert to array
   if (countries && !Array.isArray(countries) && typeof countries === 'object') {
@@ -551,24 +493,15 @@ export async function getChartCategories(
   platform: 'apple' | 'spotify',
   countryCode: string
 ): Promise<ChartCategory[]> {
-  const url = `${PODSCAN_API_BASE}/charts/${platform}/${countryCode}/categories`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    console.error('❌ Podscan API error:', response.status, response.statusText);
-    throw new Error(`Failed to fetch chart categories: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
+  const data = await invokePodscan<Record<string, unknown> | ChartCategory[]>({
+    action: 'chart_categories',
+    platform,
+    country: countryCode,
+  })
 
   // Extract array from response - check various possible structures
-  const rawCategories = data.categories || data.data || data;
+  const envelope = Array.isArray(data) ? {} : data
+  const rawCategories = envelope.categories || envelope.data || data;
 
   // If it's already an array, map to ensure correct structure
   if (Array.isArray(rawCategories)) {
@@ -602,27 +535,17 @@ export async function getTopChartPodcasts(
   category: string,
   limit: number = 10
 ): Promise<ChartPodcast[]> {
-  const params = new URLSearchParams();
-  params.append('limit', String(limit));
-
-  const url = `${PODSCAN_API_BASE}/charts/${platform}/${countryCode}/${category}/top?${params}`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    console.error('❌ Podscan API error:', response.status, response.statusText);
-    throw new Error(`Failed to fetch chart podcasts: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
+  const data = await invokePodscan<Record<string, unknown> | ChartPodcast[]>({
+    action: 'chart_top',
+    platform,
+    country: countryCode,
+    category,
+    limit,
+  })
 
   // Extract array from response - check various possible structures
-  const podcasts = data.podcasts || data.data || data;
+  const envelope = Array.isArray(data) ? {} : data
+  const podcasts = envelope.podcasts || envelope.data || data;
 
   if (!Array.isArray(podcasts)) {
     console.error('❌ Unexpected response format - podcasts is not an array:', podcasts);

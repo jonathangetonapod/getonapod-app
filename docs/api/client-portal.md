@@ -1,5 +1,11 @@
 # Client Portal Documentation
 
+> **Invite-only MVP status:** client magic links and portal purchases are
+> retired. Their historical functions return HTTP 410. The supported portal
+> uses the password, PBKDF2 verifier, hash-only fixed-expiry session, and
+> tab-scoped storage flow described in the root README and
+> `docs/invite-only-mvp.md`. Historical sections below are not release guidance.
+
 ## Overview
 
 The Client Portal is a comprehensive client-facing interface where Get On A Pod (GOAP) clients can manage their podcast appearances, track their outreach campaigns, access educational resources, and purchase additional services. It serves as the central hub for clients to monitor their podcast guest journey from initial booking to published episodes.
@@ -8,9 +14,10 @@ The Client Portal is a comprehensive client-facing interface where Get On A Pod 
 
 ### Authentication Methods
 
-The client portal supports two authentication methods:
+The historical system documented two authentication methods. Only password
+authentication is supported by the invite-only MVP:
 
-#### 1. Magic Link Authentication (Passwordless)
+#### 1. Magic Link Authentication (Passwordless, retired)
 - **Process**: Clients request a magic link via email
 - **Expiry**: Magic links expire after 15 minutes
 - **Usage**: One-time use only (links become invalid after first use)
@@ -28,13 +35,15 @@ interface ClientPortalSession {
   session_token: string
   client_id: string
   expires_at: string // 24-hour session validity
-  created_at: string
 }
 ```
 
 **Features:**
-- **Auto-refresh**: Sessions automatically refresh before expiry
-- **Secure storage**: Session data stored in localStorage with encryption
+- **Fixed expiry**: Sessions do not silently refresh; the portal logs out at the
+  server-issued expiry
+- **Tab-scoped storage**: The opaque bearer is stored in `sessionStorage`, with
+  an in-memory fallback when storage is denied; legacy `localStorage` copies
+  are deleted rather than restored
 - **Expiration handling**: Automatic logout when sessions expire
 - **Validation**: Server-side session validation on each request
 

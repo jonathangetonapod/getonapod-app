@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,7 +10,6 @@ import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
-import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import confetti from 'canvas-confetti'
 import {
@@ -57,17 +56,31 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
+import type { PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
+import { toast } from 'sonner'
+import PageSEO from '@/components/seo/PageSEO'
+import { openExternalUrl } from '@/lib/externalUrl'
+
+export default function ClientApprovalView() {
+  return (
+    <>
+      <PageSEO
+        title="Private client dashboard"
+        description="A private client podcast dashboard."
+        noindex
+      />
+      <ClientApprovalViewContent />
+    </>
+  )
+}
 
 interface ClientDashboard {
   id: string
-  dashboard_slug: string
   name: string
   bio: string | null
   photo_url: string | null
-  google_sheet_url: string | null
   media_kit_url: string | null
   dashboard_tagline: string | null
   dashboard_view_count: number
@@ -127,12 +140,25 @@ type FeedbackFilter = 'all' | 'approved' | 'rejected' | 'not_reviewed'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export default function ClientApprovalView() {
+async function invokePublicClientDashboard<T>(body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/public-client-dashboard`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  })
+  const payload = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(payload.error || 'Dashboard request failed')
+  return payload as T
+}
+
+function ClientApprovalViewContent() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
   const forceTour = searchParams.get('tour') === '1'
   const queryClient = useQueryClient()
-  const viewCountUpdated = useRef(false)
 
   // UI state
   const [searchQuery, setSearchQuery] = useState('')
@@ -168,7 +194,6 @@ export default function ClientApprovalView() {
 
   // Personalized tagline state
   const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
-  const [isGeneratingTagline, setIsGeneratingTagline] = useState(false)
 
   // Tutorial modal state
   const [showTutorial, setShowTutorial] = useState(false)
@@ -178,39 +203,26 @@ export default function ClientApprovalView() {
   const [showReviewPanel, setShowReviewPanel] = useState(false)
 
   // React Query: Fetch dashboard (cached for 5 minutes)
-  // Helper to extract spreadsheet ID from URL
-  const extractSpreadsheetId = (url: string | null): string | null => {
-    if (!url) return null
-    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
-    return match ? match[1] : null
-  }
-
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useQuery({
     queryKey: ['client-dashboard', slug],
     queryFn: async () => {
       if (!slug) throw new Error('Invalid dashboard link')
 
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('dashboard_slug', slug)
-        .single()
-
-      if (error || !data) throw new Error('Dashboard not found')
-
-      return data as ClientDashboard
+      const data = await invokePublicClientDashboard<{ dashboard: ClientDashboard }>({
+        action: 'get',
+        slug,
+      })
+      return data.dashboard
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     enabled: !!slug,
   })
 
-  const spreadsheetId = extractSpreadsheetId(dashboard?.google_sheet_url || null)
-
   // React Query: Fetch podcasts (enabled when dashboard is ready)
-  const { data: podcasts = [], isLoading: podcastsLoading } = useQuery({
-    queryKey: ['client-podcasts', dashboard?.id, spreadsheetId],
+  const { data: podcasts = [], isLoading: podcastsLoading, error: podcastsError } = useQuery({
+    queryKey: ['client-podcasts', dashboard?.id],
     queryFn: async () => {
-      if (!spreadsheetId) return []
+      if (!dashboard?.id || !slug) return []
 
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-client-podcasts`, {
         method: 'POST',
@@ -219,35 +231,36 @@ export default function ClientApprovalView() {
           'apikey': SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
-          spreadsheetId: spreadsheetId,
           clientId: dashboard?.id,
           clientName: dashboard?.name,
           clientBio: dashboard?.bio,
+          dashboardSlug: slug,
           cacheOnly: true,
         }),
       })
 
-      if (!response.ok) return []
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string }
+        throw new Error(payload.error || 'Podcasts could not be loaded')
+      }
       const data = await response.json()
       console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
       return data.podcasts || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    enabled: !!dashboard?.id && !!spreadsheetId,
+    enabled: !!dashboard?.id && !!slug,
   })
 
   // React Query: Fetch feedback (refreshes more often)
-  const { data: feedbackData = [] } = useQuery({
+  const { data: feedbackData = [], error: feedbackError } = useQuery({
     queryKey: ['client-feedback', dashboard?.id],
     queryFn: async () => {
-      if (!dashboard?.id) return []
-
-      const { data } = await supabase
-        .from('client_podcast_feedback')
-        .select('*')
-        .eq('client_id', dashboard.id)
-
-      return data || []
+      if (!dashboard?.id || !slug) return []
+      const data = await invokePublicClientDashboard<{ feedback: PodcastFeedback[] }>({
+        action: 'feedback_list',
+        slug,
+      })
+      return data.feedback || []
     },
     staleTime: 30 * 1000, // 30 seconds - feedback changes more often
     enabled: !!dashboard?.id,
@@ -257,26 +270,15 @@ export default function ClientApprovalView() {
   const feedbackMap = new Map<string, PodcastFeedback>(
     feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
   )
+  const selectedFeedbackNotes = selectedPodcast
+    ? feedbackMap.get(selectedPodcast.podcast_id)?.notes || ''
+    : ''
 
   // Derived state
   const loading = dashboardLoading
   const loadingPodcasts = podcastsLoading
-  const error = dashboardError?.message || null
+  const error = dashboardError?.message || podcastsError?.message || feedbackError?.message || null
   const cacheNotReady = dashboard && dashboard.dashboard_enabled === false
-
-  // Update view count once (fire and forget)
-  useEffect(() => {
-    if (dashboard && !viewCountUpdated.current) {
-      viewCountUpdated.current = true
-      supabase
-        .from('clients')
-        .update({
-          view_count: (dashboard.view_count || 0) + 1,
-          last_viewed_at: new Date().toISOString()
-        })
-        .eq('id', dashboard.id)
-    }
-  }, [dashboard])
 
   // Debounce search query for better performance
   useEffect(() => {
@@ -291,45 +293,16 @@ export default function ClientApprovalView() {
     setCurrentPage(1)
   }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter, sortBy])
 
-  // Generate personalized tagline if not already set
+  // Public dashboards only display precomputed enrichment. Fresh paid AI work
+  // is restricted to the platform-admin pipeline.
   useEffect(() => {
-    if (!dashboard?.bio || !podcasts.length) return
+    if (!dashboard) return
     if (dashboard.dashboard_tagline) {
       setPersonalizedTagline(dashboard.dashboard_tagline)
-      return
+    } else {
+      setPersonalizedTagline(null)
     }
-    if (isGeneratingTagline || personalizedTagline) return
-
-    const generateTagline = async () => {
-      setIsGeneratingTagline(true)
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-tagline`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            prospectName: dashboard.name,
-            prospectBio: dashboard.bio,
-            podcastCount: podcasts.length,
-            // Don't pass dashboardId - let it generate without saving to DB
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setPersonalizedTagline(data.tagline)
-        }
-      } catch (err) {
-        console.error('Error generating tagline:', err)
-      } finally {
-        setIsGeneratingTagline(false)
-      }
-    }
-
-    generateTagline()
-  }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline])
+  }, [dashboard])
 
   // Show tutorial on first visit or if ?tour=1 is in URL
   useEffect(() => {
@@ -344,8 +317,12 @@ export default function ClientApprovalView() {
     }
 
     // Otherwise, check localStorage for first-time visitors
-    const tutorialKey = `prospect-tutorial-seen-${dashboard.id}`
-    const hasSeenTutorial = localStorage.getItem(tutorialKey)
+    let hasSeenTutorial: string | null = null
+    try {
+      hasSeenTutorial = window.localStorage.getItem('client-tutorial-seen-v1')
+    } catch {
+      // Continue with an in-memory tutorial when persistent storage is denied.
+    }
     if (!hasSeenTutorial) {
       const timer = setTimeout(() => {
         setShowTutorial(true)
@@ -359,7 +336,11 @@ export default function ClientApprovalView() {
     setShowTutorial(false)
     setTutorialStep(0)
     if (dashboard) {
-      localStorage.setItem(`prospect-tutorial-seen-${dashboard.id}`, 'true')
+      try {
+        window.localStorage.setItem('client-tutorial-seen-v1', 'true')
+      } catch {
+        // Closing the tutorial must still work in hardened/private browsers.
+      }
     }
   }
 
@@ -367,47 +348,49 @@ export default function ClientApprovalView() {
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    // Immediately populate analysis cache from podcast data
-    const newCache = new Map(analysisCache)
-    let addedCount = 0
+    setAnalysisCache((current) => {
+      const newCache = new Map(current)
+      let addedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
-        newCache.set(podcast.podcast_id, {
-          clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
-          fit_reasons: podcast.ai_fit_reasons || [],
-          pitch_angles: podcast.ai_pitch_angles || [],
-        })
-        addedCount++
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
+          newCache.set(podcast.podcast_id, {
+            clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
+            fit_reasons: podcast.ai_fit_reasons || [],
+            pitch_angles: podcast.ai_pitch_angles || [],
+          })
+          addedCount++
+        }
+      })
+
+      if (addedCount > 0) console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
+      return addedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
-      setAnalysisCache(newCache)
-    }
   }, [podcasts])
 
   // Populate demographics cache from database-cached data (instant, no API calls)
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    const newCache = new Map(demographicsCache)
-    let addedCount = 0
+    setDemographicsCache((current) => {
+      const newCache = new Map(current)
+      let loadedCount = 0
+      let changedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
-        newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
-        addedCount++
-      } else if (!newCache.has(podcast.podcast_id)) {
-        newCache.set(podcast.podcast_id, null) // Mark as checked but no data
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
+          newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
+          loadedCount++
+          changedCount++
+        } else if (!newCache.has(podcast.podcast_id)) {
+          newCache.set(podcast.podcast_id, null) // Mark as checked but no data
+          changedCount++
+        }
+      })
+
+      if (loadedCount > 0) console.log(`[Cache] Loaded ${loadedCount} demographics from database`)
+      return changedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} demographics from database`)
-      setDemographicsCache(newCache)
-    }
   }, [podcasts])
 
   // Analyze podcast fit when side panel opens
@@ -425,47 +408,8 @@ export default function ClientApprovalView() {
       return
     }
 
-    console.log('[Panel] ❌ Cache miss, fetching fresh analysis...')
-    const analyzefit = async () => {
-      setIsAnalyzing(true)
-      setFitAnalysis(null)
-
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            podcastId: selectedPodcast.podcast_id,
-            podcastName: selectedPodcast.podcast_name,
-            podcastDescription: selectedPodcast.podcast_description,
-            podcastUrl: selectedPodcast.podcast_url,
-            publisherName: selectedPodcast.publisher_name,
-            itunesRating: selectedPodcast.itunes_rating,
-            episodeCount: selectedPodcast.episode_count,
-            audienceSize: selectedPodcast.audience_size,
-            clientId: dashboard.id,
-            clientName: dashboard.name,
-            clientBio: dashboard.bio,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log(`[Panel] ✅ Analysis received ${data.cached ? '(DB cache)' : '(fresh Sonnet)'}`)
-          setFitAnalysis(data.analysis)
-          setAnalysisCache(prev => new Map(prev).set(selectedPodcast.podcast_id, data.analysis))
-        }
-      } catch (err) {
-        console.error('[Panel] Error analyzing fit:', err)
-      } finally {
-        setIsAnalyzing(false)
-      }
-    }
-
-    analyzefit()
+    setIsAnalyzing(false)
+    setFitAnalysis(null)
   }, [selectedPodcast, dashboard, analysisCache])
 
   // Fetch demographics when side panel opens (use cache if available)
@@ -481,32 +425,18 @@ export default function ClientApprovalView() {
       return
     }
 
-    const fetchDemographics = async () => {
-      setIsLoadingDemographics(true)
-      try {
-        const data = await getPodcastDemographics(selectedPodcast.podcast_id)
-        setDemographics(data)
-        setDemographicsCache(prev => new Map(prev).set(selectedPodcast.podcast_id, data))
-      } catch (err) {
-        console.error('Error fetching demographics:', err)
-        setDemographicsCache(prev => new Map(prev).set(selectedPodcast.podcast_id, null))
-      } finally {
-        setIsLoadingDemographics(false)
-      }
-    }
-
-    fetchDemographics()
-  }, [selectedPodcast])
+    setIsLoadingDemographics(false)
+    setDemographics(null)
+  }, [selectedPodcast, demographicsCache])
 
   // Load existing notes when podcast is selected
   useEffect(() => {
     if (selectedPodcast) {
-      const existing = feedbackMap.get(selectedPodcast.podcast_id)
-      setCurrentNotes(existing?.notes || '')
+      setCurrentNotes(selectedFeedbackNotes)
     } else {
       setCurrentNotes('')
     }
-  }, [selectedPodcast?.podcast_id])
+  }, [selectedFeedbackNotes, selectedPodcast])
 
 
   // Confetti celebration for approvals
@@ -542,23 +472,17 @@ export default function ClientApprovalView() {
 
     setIsSavingFeedback(true)
     try {
+      if (!slug) throw new Error('Dashboard link is invalid')
       const feedbackData = {
-        client_id: dashboard.id,
+        action: 'feedback_upsert',
+        slug,
         podcast_id: podcastId,
         podcast_name: podcastName || selectedPodcast?.podcast_name || null,
         status,
         notes: notes !== undefined ? notes : (currentNotes || null),
       }
 
-      const { data, error } = await supabase
-        .from('client_podcast_feedback')
-        .upsert(feedbackData, {
-          onConflict: 'client_id,podcast_id',
-        })
-        .select()
-        .single()
-
-      if (error) throw error
+      await invokePublicClientDashboard<{ feedback: PodcastFeedback }>(feedbackData)
 
       // Invalidate feedback cache to refresh the data
       queryClient.invalidateQueries({ queryKey: ['client-feedback', dashboard.id] })
@@ -569,6 +493,7 @@ export default function ClientApprovalView() {
       }
     } catch (err) {
       console.error('Error saving feedback:', err)
+      toast.error(err instanceof Error ? err.message : 'Feedback could not be saved.')
     } finally {
       setIsSavingFeedback(false)
     }
@@ -883,7 +808,7 @@ export default function ClientApprovalView() {
                   variant="outline"
                   size="sm"
                   className="gap-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:bg-white dark:hover:bg-slate-800"
-                  onClick={() => window.open(dashboard.media_kit_url!, '_blank')}
+                  onClick={() => openExternalUrl(dashboard.media_kit_url!)}
                 >
                   <FileText className="h-4 w-4" />
                   View My Media Kit
@@ -2019,7 +1944,7 @@ export default function ClientApprovalView() {
                                           tick={{ fontSize: 10, fill: '#64748b' }}
                                           width={50}
                                         />
-                                        <Tooltip
+                                        <RechartsTooltip
                                           formatter={(value: number) => [`${value}%`, 'Audience']}
                                           contentStyle={{
                                             backgroundColor: 'rgba(255,255,255,0.95)',

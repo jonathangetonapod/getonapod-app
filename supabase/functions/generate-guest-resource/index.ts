@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.71.2'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -13,25 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    // Auth check - verify user is authenticated
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const authClient = createClient(supabaseUrl, supabaseServiceKey)
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token)
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    await requirePlatformAdminOrService(req)
 
     const { topic, category, resourceType = 'guide' } = await req.json()
 
@@ -47,14 +29,17 @@ serve(async (req) => {
     })
 
     // Get category-specific context
-    const categoryContext = {
+    const categoryContexts = {
       preparation: 'helping podcast guests prepare for their interviews',
       technical_setup: 'technical setup and audio/video quality for podcast recordings',
       best_practices: 'best practices and tips for successful podcast appearances',
       promotion: 'promoting and maximizing the impact of podcast appearances',
       examples: 'real examples and case studies of successful podcast guesting',
       templates: 'templates, scripts, and frameworks for podcast guests',
-    }[category] || 'podcast guesting success'
+    }
+    const categoryContext = typeof category === 'string' && category in categoryContexts
+      ? categoryContexts[category as keyof typeof categoryContexts]
+      : 'podcast guesting success'
 
     const prompt = `You are an expert content creator for Get On A Pod, a premium podcast booking agency. Create a beautifully formatted, professional resource document about: "${topic}"
 
@@ -127,7 +112,11 @@ Generate the beautifully formatted HTML content now:`
     })
 
     // Clean up the generated content - convert special characters to ASCII equivalents
-    let generatedContent = message.content[0].text
+    const generatedBlock = message.content[0]
+    if (!generatedBlock || generatedBlock.type !== 'text') {
+      throw new Error('Claude returned an unexpected resource content block')
+    }
+    let generatedContent = generatedBlock.text
       // Fix already-corrupted UTF-8 sequences (common double-encoding issues)
       .replace(/â€"/g, '-')   // Corrupted em-dash
       .replace(/â€"/g, '-')   // Corrupted en-dash
@@ -181,7 +170,7 @@ Generate the beautifully formatted HTML content now:`
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to generate content',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to generate content',
       }),
       {
         status: 500,

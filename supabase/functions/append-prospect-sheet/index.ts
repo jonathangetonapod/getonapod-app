@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { generateMissingEmbeddings } from '../_shared/podcastCache.ts'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -15,6 +16,12 @@ interface PodcastExportData {
   episode_count?: number | null
   itunes_rating?: number | null
   podcast_url?: string | null
+  podcast_image_url?: string | null
+  podcast_email?: string | null
+  rss_feed?: string | null
+  language?: string | null
+  region?: string | null
+  podcast_categories?: Array<{ category_id: string; category_name: string }> | null
   podscan_podcast_id?: string | null
   podcast_id?: string | null
   compatibility_score?: number | null
@@ -126,6 +133,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const { dashboardId, podcasts } = await req.json() as {
       dashboardId: string
       podcasts: PodcastExportData[]

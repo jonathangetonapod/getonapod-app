@@ -28,6 +28,7 @@ import {
   Share2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import {
   getGuestResources,
   createGuestResource,
@@ -160,13 +161,33 @@ export default function GuestResourcesManagement() {
       return
     }
 
+    const resourceUrlInput = formData.url.trim()
+    const fileUrlInput = formData.file_url.trim()
+    const resourceUrl = resourceUrlInput ? safeExternalUrl(resourceUrlInput) : null
+    const fileUrl = fileUrlInput ? safeExternalUrl(fileUrlInput) : null
+
+    if (resourceUrlInput && !resourceUrl) {
+      toast.error('Resource URL must use HTTP or HTTPS')
+      return
+    }
+    if (fileUrlInput && !fileUrl) {
+      toast.error('File URL must use HTTP or HTTPS')
+      return
+    }
+
+    const normalizedFormData = {
+      ...formData,
+      url: resourceUrl || '',
+      file_url: fileUrl || '',
+    }
+
     if (editingResource) {
       updateMutation.mutate({
         id: editingResource.id,
-        updates: formData,
+        updates: normalizedFormData,
       })
     } else {
-      createMutation.mutate(formData)
+      createMutation.mutate(normalizedFormData)
     }
   }
 

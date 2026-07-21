@@ -1,32 +1,48 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Chrome, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Chrome, Loader2, Eye, EyeOff } from 'lucide-react'
-import { toast } from 'sonner'
 
-const AdminLogin = () => {
-  const { signInWithGoogle, signInWithPassword, user } = useAuth()
+const Login = () => {
+  const {
+    accountState,
+    accountError,
+    isPlatformAdmin,
+    refreshAccount,
+    signInWithGoogle,
+    signInWithPassword,
+    signOut,
+    user,
+  } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-
-  const from = location.state?.from?.pathname || '/admin/dashboard'
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const attemptedPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname
+  const adminEntry = location.pathname.startsWith('/admin') || attemptedPath?.startsWith('/admin') === true
 
   useEffect(() => {
-    // If already logged in, redirect to dashboard
-    if (user) {
-      navigate(from, { replace: true })
+    if (accountState === 'pending') {
+      navigate('/accept-invite', { replace: true })
+      return
     }
-  }, [user, navigate, from])
+
+    if (accountState === 'active') {
+      const fallback = isPlatformAdmin ? '/admin/dashboard' : '/app/clients'
+      const destination = attemptedPath && (isPlatformAdmin || !attemptedPath.startsWith('/admin'))
+        ? attemptedPath
+        : fallback
+      navigate(destination, { replace: true })
+    }
+  }, [accountState, attemptedPath, isPlatformAdmin, navigate])
 
   const handleGoogleSignIn = async () => {
     try {
@@ -37,50 +53,84 @@ const AdminLogin = () => {
     }
   }
 
-  const handlePasswordSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handlePasswordSignIn = async (event: React.FormEvent) => {
+    event.preventDefault()
     if (!email || !password) {
-      toast.error('Please enter email and password')
+      toast.error('Enter your email and password.')
       return
     }
 
-    setIsLoading(true)
+    setIsSubmitting(true)
     try {
-      await signInWithPassword(email, password)
-      toast.success('Signed in successfully')
-    } catch (error: any) {
-      console.error('Error signing in:', error)
-      if (error.message?.includes('Invalid login credentials')) {
-        toast.error('Invalid email or password')
-      } else {
-        toast.error('Failed to sign in. Please try again.')
-      }
+      await signInWithPassword(email.trim(), password)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      toast.error(message.includes('Invalid login credentials')
+        ? 'Invalid email or password.'
+        : 'Unable to sign in. Please try again.')
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
+  }
+
+  if (user && accountState === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (user && ['suspended', 'expired', 'no_membership', 'error'].includes(accountState)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Access unavailable</CardTitle>
+            <CardDescription>
+              {accountState === 'suspended'
+                ? 'Your workspace access is suspended.'
+                : accountState === 'expired'
+                  ? 'Your invitation has expired. Ask a platform administrator for a new invitation.'
+                : accountError || 'This account has not been invited to an active workspace.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">Signed in as {user.email}</p>
+            {accountState === 'error' && (
+              <Button className="w-full" onClick={() => void refreshAccount()}>
+                Try again
+              </Button>
+            )}
+            <Button variant="outline" className="w-full" onClick={() => void signOut()}>
+              Sign in with another account
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Admin Login</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Sign in</CardTitle>
           <CardDescription className="text-center">
-            Sign in to access the admin dashboard
+            Access is invite-only. Use the email address that received your invitation.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Email/Password Login */}
           <form onSubmit={handlePasswordSignIn} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@example.com"
+                autoComplete="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
+                onChange={(event) => setEmail(event.target.value)}
+                disabled={isSubmitting}
               />
             </div>
             <div className="space-y-2">
@@ -89,57 +139,48 @@ const AdminLogin = () => {
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter your password"
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={isSubmitting}
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
-            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
+            <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
+          {adminEntry && (
+            <>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center"><Separator className="w-full" /></div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Admin sign-in</span>
+                </div>
+              </div>
 
-          {/* Google OAuth */}
-          <Button
-            onClick={handleGoogleSignIn}
-            variant="outline"
-            className="w-full"
-            size="lg"
-          >
-            <Chrome className="mr-2 h-5 w-5" />
-            Continue with Google
-          </Button>
+              <Button onClick={handleGoogleSignIn} variant="outline" className="w-full" size="lg">
+                <Chrome className="mr-2 h-5 w-5" />
+                Continue with Google
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
   )
 }
 
-export default AdminLogin
+export default Login

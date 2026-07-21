@@ -1,5 +1,10 @@
 # Supabase Edge Functions API Reference (A-F)
 
+> **MVP status warning:** this file preserves historical request/response
+> detail. `docs/invite-only-edge-manifest.json` is authoritative for deployed,
+> retired (HTTP 410), and tenant-excluded functions; conflicting examples here
+> are not supported release behavior.
+
 This document provides comprehensive API documentation for all Supabase Edge Functions starting with letters A through F.
 
 ## Table of Contents
@@ -1257,10 +1262,10 @@ Based on template with columns:
 - `ONBOARDING_WEBHOOK_URL` - Client onboarding webhook URL
 
 ### CORS Headers
-All functions include CORS headers for cross-origin requests:
+Browser-facing functions allow only the configured application origin:
 ```javascript
 {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN'),
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 }
 ```

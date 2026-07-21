@@ -13,6 +13,7 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 import confetti from 'canvas-confetti'
+import { toast } from 'sonner'
 import SocialProofSection from '@/components/SocialProofSection'
 import {
   Mic,
@@ -61,20 +62,49 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { getPodcastDemographics, type PodcastDemographics } from '@/services/podscan'
+import type { PodcastDemographics } from '@/services/podscan'
 import { cn } from '@/lib/utils'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 import { FeatureDetailModal } from '@/components/pricing/FeatureDetailModal'
 import { PricingFAQ } from '@/components/pricing/PricingFAQ'
+import PageSEO from '@/components/seo/PageSEO'
+import { openExternalUrl } from '@/lib/externalUrl'
+
+const PROSPECT_TUTORIAL_STORAGE_KEY = 'prospect-tutorial-seen-v1'
+
+function hasSeenProspectTutorial(): boolean {
+  try {
+    return window.localStorage.getItem(PROSPECT_TUTORIAL_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function markProspectTutorialSeen(): void {
+  try {
+    window.localStorage.setItem(PROSPECT_TUTORIAL_STORAGE_KEY, 'true')
+  } catch {
+    // Private/hardened browser contexts may deny persistent storage.
+  }
+}
+
+export default function ProspectView() {
+  return (
+    <>
+      <PageSEO
+        title="Private podcast shortlist"
+        description="A private, personalized podcast shortlist."
+        noindex
+      />
+      <ProspectViewContent />
+    </>
+  )
+}
 
 interface ProspectDashboard {
-  id: string
-  slug: string
   prospect_name: string
   prospect_bio: string | null
   prospect_image_url: string | null
-  spreadsheet_id: string | null
-  spreadsheet_url: string | null
   is_active: boolean
   show_pricing_section: boolean
   personalized_tagline: string | null
@@ -139,7 +169,7 @@ type FeedbackFilter = 'all' | 'approved' | 'rejected' | 'not_reviewed'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export default function ProspectView() {
+function ProspectViewContent() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
   const forceTour = searchParams.get('tour') === '1'
@@ -184,7 +214,6 @@ export default function ProspectView() {
 
   // Personalized tagline state
   const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
-  const [isGeneratingTagline, setIsGeneratingTagline] = useState(false)
 
   // Tutorial modal state
   const [showTutorial, setShowTutorial] = useState(false)
@@ -227,10 +256,10 @@ export default function ProspectView() {
   const dashboard = dashboardResponse?.dashboard ?? null
 
   // React Query: Fetch podcasts (enabled when dashboard is ready)
-  const { data: podcasts = [], isLoading: podcastsLoading } = useQuery({
-    queryKey: ['prospect-podcasts', dashboard?.id, dashboard?.spreadsheet_id],
+  const { data: podcasts = [], isLoading: podcastsLoading, error: podcastsError } = useQuery({
+    queryKey: ['prospect-podcasts', slug],
     queryFn: async () => {
-      if (!dashboard?.spreadsheet_id) return []
+      if (!dashboard || !slug) return []
 
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
         method: 'POST',
@@ -240,15 +269,15 @@ export default function ProspectView() {
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          spreadsheetId: dashboard.spreadsheet_id,
-          prospectDashboardId: dashboard.id,
-          prospectName: dashboard.prospect_name,
-          prospectBio: dashboard.prospect_bio,
+          dashboardSlug: slug,
           cacheOnly: true,
         }),
       })
 
-      if (!response.ok) return []
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string }
+        throw new Error(payload.error || 'Podcasts could not be loaded')
+      }
       const data = await response.json()
 
       // Log cache performance
@@ -268,7 +297,7 @@ export default function ProspectView() {
       return data.podcasts || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    enabled: !!dashboard?.spreadsheet_id,
+    enabled: !!dashboard && !!slug,
   })
 
   // Feedback data comes from the dashboard edge function response
@@ -278,23 +307,36 @@ export default function ProspectView() {
   const feedbackMap = new Map<string, PodcastFeedback>(
     feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
   )
+  const selectedFeedbackNotes = selectedPodcast
+    ? feedbackMap.get(selectedPodcast.podcast_id)?.notes || ''
+    : ''
 
   // Derived state
   const loading = dashboardLoading
   const loadingPodcasts = podcastsLoading
-  const error = dashboardError?.message || null
+  const error = dashboardError?.message || podcastsError?.message || null
 
   // Helper function to extract Loom video ID from URL
-  const getLoomEmbedUrl = (url: string) => {
-    // Extract video ID from URLs like:
-    // https://www.loom.com/share/d1ca4850d5be49c282d7eb178efd1974
-    // https://www.loom.com/embed/d1ca4850d5be49c282d7eb178efd1974
-    const match = url.match(/loom\.com\/(share|embed)\/([a-zA-Z0-9]+)/)
-    if (match) {
-      return `https://www.loom.com/embed/${match[2]}`
+  const getLoomEmbedUrl = (url: string): string | null => {
+    try {
+      const parsedUrl = new URL(url)
+      if (
+        parsedUrl.protocol !== 'https:' ||
+        !['loom.com', 'www.loom.com'].includes(parsedUrl.hostname)
+      ) {
+        return null
+      }
+
+      const match = parsedUrl.pathname.match(/^\/(?:share|embed)\/([a-zA-Z0-9_-]{8,128})\/?$/)
+      return match ? `https://www.loom.com/embed/${match[1]}` : null
+    } catch {
+      return null
     }
-    return url
   }
+
+  const loomEmbedUrl = dashboard?.loom_video_url
+    ? getLoomEmbedUrl(dashboard.loom_video_url)
+    : null
 
   // View count is now incremented server-side by the get-prospect-dashboard edge function
 
@@ -311,51 +353,10 @@ export default function ProspectView() {
     setCurrentPage(1)
   }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter, sortBy])
 
-  // Generate personalized tagline if not already set
+  // Public dashboards display only content precomputed by an administrator.
   useEffect(() => {
-    if (!dashboard?.prospect_bio || !podcasts.length) return
-    if (dashboard.personalized_tagline) {
-      setPersonalizedTagline(dashboard.personalized_tagline)
-      return
-    }
-    if (isGeneratingTagline || personalizedTagline) return
-
-    const generateTagline = async () => {
-      setIsGeneratingTagline(true)
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-tagline`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            prospectName: dashboard.prospect_name,
-            prospectBio: dashboard.prospect_bio,
-            podcastCount: podcasts.length,
-            dashboardId: dashboard.id,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setPersonalizedTagline(data.tagline)
-          // Keep the React Query cache in sync so the tagline does not regenerate.
-          queryClient.setQueryData<{ success: true; dashboard: ProspectDashboard; feedback: PodcastFeedback[] } | undefined>(
-            ['prospect-dashboard', slug],
-            (prev) => prev ? { ...prev, dashboard: { ...prev.dashboard, personalized_tagline: data.tagline } } : prev
-          )
-        }
-      } catch (err) {
-        console.error('Error generating tagline:', err)
-      } finally {
-        setIsGeneratingTagline(false)
-      }
-    }
-
-    generateTagline()
-  }, [dashboard, podcasts.length, isGeneratingTagline, personalizedTagline, queryClient, slug])
+    setPersonalizedTagline(dashboard?.personalized_tagline ?? null)
+  }, [dashboard?.personalized_tagline])
 
   // Show tutorial on first visit or if ?tour=1 is in URL
   useEffect(() => {
@@ -370,9 +371,7 @@ export default function ProspectView() {
     }
 
     // Otherwise, check localStorage for first-time visitors
-    const tutorialKey = `prospect-tutorial-seen-${dashboard.id}`
-    const hasSeenTutorial = localStorage.getItem(tutorialKey)
-    if (!hasSeenTutorial) {
+    if (!hasSeenProspectTutorial()) {
       const timer = setTimeout(() => {
         setShowTutorial(true)
       }, 1000)
@@ -384,56 +383,56 @@ export default function ProspectView() {
   const closeTutorial = () => {
     setShowTutorial(false)
     setTutorialStep(0)
-    if (dashboard) {
-      localStorage.setItem(`prospect-tutorial-seen-${dashboard.id}`, 'true')
-    }
+    if (dashboard) markProspectTutorialSeen()
   }
 
   // Populate AI analysis cache from database-cached data (instant, no API calls needed)
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    // Immediately populate analysis cache from podcast data
-    const newCache = new Map(analysisCache)
-    let addedCount = 0
+    setAnalysisCache((current) => {
+      const newCache = new Map(current)
+      let addedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
-        newCache.set(podcast.podcast_id, {
-          clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
-          fit_reasons: podcast.ai_fit_reasons || [],
-          pitch_angles: podcast.ai_pitch_angles || [],
-        })
-        addedCount++
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
+          newCache.set(podcast.podcast_id, {
+            clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
+            fit_reasons: podcast.ai_fit_reasons || [],
+            pitch_angles: podcast.ai_pitch_angles || [],
+          })
+          addedCount++
+        }
+      })
+
+      if (addedCount > 0) console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
+      return addedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
-      setAnalysisCache(newCache)
-    }
   }, [podcasts])
 
   // Populate demographics cache from database-cached data (instant, no API calls)
   useEffect(() => {
     if (podcasts.length === 0) return
 
-    const newCache = new Map(demographicsCache)
-    let addedCount = 0
+    setDemographicsCache((current) => {
+      const newCache = new Map(current)
+      let loadedCount = 0
+      let changedCount = 0
 
-    podcasts.forEach(podcast => {
-      if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
-        newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
-        addedCount++
-      } else if (!newCache.has(podcast.podcast_id)) {
-        newCache.set(podcast.podcast_id, null) // Mark as checked but no data
-      }
+      podcasts.forEach(podcast => {
+        if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
+          newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
+          loadedCount++
+          changedCount++
+        } else if (!newCache.has(podcast.podcast_id)) {
+          newCache.set(podcast.podcast_id, null) // Mark as checked but no data
+          changedCount++
+        }
+      })
+
+      if (loadedCount > 0) console.log(`[Cache] Loaded ${loadedCount} demographics from database`)
+      return changedCount > 0 ? newCache : current
     })
-
-    if (addedCount > 0) {
-      console.log(`[Cache] Loaded ${addedCount} demographics from database`)
-      setDemographicsCache(newCache)
-    }
   }, [podcasts])
 
   // Analyze podcast fit when side panel opens
@@ -451,48 +450,9 @@ export default function ProspectView() {
       return
     }
 
-    console.log('[Panel] ❌ Cache miss, fetching fresh analysis...')
-    const analyzefit = async () => {
-      setIsAnalyzing(true)
-      setFitAnalysis(null)
-
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-podcast-fit`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            podcastId: selectedPodcast.podcast_id,
-            podcastName: selectedPodcast.podcast_name,
-            podcastDescription: selectedPodcast.podcast_description,
-            podcastUrl: selectedPodcast.podcast_url,
-            publisherName: selectedPodcast.publisher_name,
-            itunesRating: selectedPodcast.itunes_rating,
-            episodeCount: selectedPodcast.episode_count,
-            audienceSize: selectedPodcast.audience_size,
-            clientId: dashboard.id,
-            clientName: dashboard.prospect_name,
-            clientBio: dashboard.prospect_bio,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log(`[Panel] ✅ Analysis received ${data.cached ? '(DB cache)' : '(fresh Sonnet)'}`)
-          setFitAnalysis(data.analysis)
-          setAnalysisCache(prev => new Map(prev).set(selectedPodcast.podcast_id, data.analysis))
-        }
-      } catch (err) {
-        console.error('[Panel] Error analyzing fit:', err)
-      } finally {
-        setIsAnalyzing(false)
-      }
-    }
-
-    analyzefit()
+    console.log('[Panel] No precomputed fit analysis is available')
+    setIsAnalyzing(false)
+    setFitAnalysis(null)
   }, [selectedPodcast, dashboard, analysisCache])
 
   // Fetch demographics when side panel opens (use cache if available)
@@ -508,32 +468,18 @@ export default function ProspectView() {
       return
     }
 
-    const fetchDemographics = async () => {
-      setIsLoadingDemographics(true)
-      try {
-        const data = await getPodcastDemographics(selectedPodcast.podcast_id)
-        setDemographics(data)
-        setDemographicsCache(prev => new Map(prev).set(selectedPodcast.podcast_id, data))
-      } catch (err) {
-        console.error('Error fetching demographics:', err)
-        setDemographicsCache(prev => new Map(prev).set(selectedPodcast.podcast_id, null))
-      } finally {
-        setIsLoadingDemographics(false)
-      }
-    }
-
-    fetchDemographics()
-  }, [selectedPodcast])
+    setIsLoadingDemographics(false)
+    setDemographics(null)
+  }, [selectedPodcast, demographicsCache])
 
   // Load existing notes when podcast is selected
   useEffect(() => {
     if (selectedPodcast) {
-      const existing = feedbackMap.get(selectedPodcast.podcast_id)
-      setCurrentNotes(existing?.notes || '')
+      setCurrentNotes(selectedFeedbackNotes)
     } else {
       setCurrentNotes('')
     }
-  }, [selectedPodcast?.podcast_id])
+  }, [selectedFeedbackNotes, selectedPodcast])
 
 
   // Confetti celebration for approvals
@@ -560,7 +506,7 @@ export default function ProspectView() {
   }
 
   // Save feedback (approve/reject/notes)
-  const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string, podcastName?: string) => {
+  const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string) => {
     if (!dashboard) return
 
     // Check if this is a new approval (not already approved)
@@ -573,11 +519,10 @@ export default function ProspectView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         body: JSON.stringify({
-          prospect_dashboard_id: dashboard.id,
+          dashboard_slug: slug,
           podcast_id: podcastId,
           status,
-          notes: notes !== undefined ? notes : (currentNotes || null),
-          podcast_name: podcastName || selectedPodcast?.podcast_name || null
+          notes: notes !== undefined ? notes : (currentNotes || null)
         })
       })
 
@@ -595,6 +540,7 @@ export default function ProspectView() {
       }
     } catch (err) {
       console.error('Error saving feedback:', err)
+      toast.error(err instanceof Error ? err.message : 'Unable to save your feedback. Please try again.')
     } finally {
       setIsSavingFeedback(false)
     }
@@ -852,7 +798,7 @@ export default function ProspectView() {
                     variant="heroOutline"
                     size="xl"
                     className="rounded-full px-8 text-base"
-                    onClick={() => window.open(dashboard.media_kit_url!, '_blank')}
+                    onClick={() => openExternalUrl(dashboard.media_kit_url!)}
                   >
                     <FileText className="mr-2 h-4 w-4" />
                     View My Media Kit
@@ -862,7 +808,7 @@ export default function ProspectView() {
                     variant="heroOutline"
                     size="xl"
                     className="rounded-full px-8 text-base"
-                    onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                    onClick={() => openExternalUrl('https://calendly.com/getonapodjg/30min')}
                   >
                     <Calendar className="mr-2 h-4 w-4" />
                     Talk Through My Shortlist
@@ -945,7 +891,7 @@ export default function ProspectView() {
                   About the data
                 </Button>
 
-                {dashboard.loom_video_url && dashboard.show_loom_video ? (
+                {loomEmbedUrl && dashboard.show_loom_video ? (
                   <button
                     onClick={() => setShowLoomVideo(true)}
                     className="rounded-[22px] border border-[#0d1b2a]/8 bg-white p-4 text-left transition-colors hover:bg-[#f8fbff]"
@@ -1499,7 +1445,7 @@ export default function ProspectView() {
                         onClick={(e) => {
                           e.stopPropagation()
                           const currentStatus = feedbackMap.get(podcast.podcast_id)?.status
-                          saveFeedback(podcast.podcast_id, currentStatus === 'approved' ? null : 'approved', undefined, podcast.podcast_name)
+                          saveFeedback(podcast.podcast_id, currentStatus === 'approved' ? null : 'approved')
                         }}
                         className={cn(
                           "p-1.5 rounded-full transition-all duration-200",
@@ -1515,7 +1461,7 @@ export default function ProspectView() {
                         onClick={(e) => {
                           e.stopPropagation()
                           const currentStatus = feedbackMap.get(podcast.podcast_id)?.status
-                          saveFeedback(podcast.podcast_id, currentStatus === 'rejected' ? null : 'rejected', undefined, podcast.podcast_name)
+                          saveFeedback(podcast.podcast_id, currentStatus === 'rejected' ? null : 'rejected')
                         }}
                         className={cn(
                           "p-1.5 rounded-full transition-all duration-200",
@@ -1612,7 +1558,7 @@ export default function ProspectView() {
                       variant="hero"
                       size="xl"
                       className="min-h-[48px] w-full rounded-full text-sm sm:min-h-[56px] sm:w-auto sm:text-base"
-                      onClick={() => window.open('https://calendly.com/getonapodjg/30min', '_blank')}
+                      onClick={() => openExternalUrl('https://calendly.com/getonapodjg/30min')}
                     >
                       <Phone className="mr-2 h-4 w-4" />
                       Book a Call
@@ -1621,7 +1567,7 @@ export default function ProspectView() {
                       variant="outline"
                       size="xl"
                       className="min-h-[48px] w-full rounded-full border-[#0d1b2a]/10 bg-white text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
-                      onClick={() => window.open('/what-to-expect', '_blank')}
+                      onClick={() => openExternalUrl(`${window.location.origin}/what-to-expect`)}
                     >
                       See What to Expect
                     </Button>
@@ -2164,7 +2110,7 @@ export default function ProspectView() {
                                           tick={{ fontSize: 10, fill: '#64748b' }}
                                           width={50}
                                         />
-                                        <Tooltip
+                                        <RechartsTooltip
                                           formatter={(value: number) => [`${value}%`, 'Audience']}
                                           contentStyle={{
                                             backgroundColor: 'rgba(255,255,255,0.95)',
@@ -2695,7 +2641,7 @@ export default function ProspectView() {
       />
 
       {/* Loom Video Modal */}
-      {dashboard && dashboard.loom_video_url && (
+      {loomEmbedUrl && (
         <Dialog
           open={showLoomVideo}
           onOpenChange={(open) => {
@@ -2719,11 +2665,13 @@ export default function ProspectView() {
               )}
 
               <iframe
-                src={getLoomEmbedUrl(dashboard.loom_video_url)}
+                src={loomEmbedUrl}
                 frameBorder="0"
                 allowFullScreen
                 className="absolute top-0 left-0 w-full h-full rounded-lg"
                 allow="autoplay; fullscreen; picture-in-picture"
+                referrerPolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-presentation"
                 onLoad={() => setLoomVideoLoading(false)}
               />
             </div>

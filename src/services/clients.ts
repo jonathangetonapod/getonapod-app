@@ -1,7 +1,15 @@
 import { supabase } from '@/lib/supabase'
+import { toFunctionError } from '@/lib/functionErrors'
 
 export interface Client {
   id: string
+  workspace_id?: string | null
+  workspace?: {
+    id: string
+    name: string
+    slug: string
+    is_default: boolean
+  } | null
   name: string
   email: string | null
   linkedin_url: string | null
@@ -16,17 +24,101 @@ export interface Client {
   google_sheet_url: string | null
   media_kit_url: string | null
   prospect_dashboard_slug: string | null
+  dashboard_slug?: string | null
+  dashboard_enabled?: boolean
   outreach_webhook_url: string | null
   bison_campaign_id: string | null
   created_at: string
   updated_at: string
+  company?: string | null
   // Portal access fields
   portal_access_enabled?: boolean
   portal_last_login_at?: string | null
   portal_invitation_sent_at?: string | null
-  portal_password?: string | null
   password_set_at?: string | null
   password_set_by?: string | null
+}
+
+export interface WorkspaceClient {
+  id: string
+  workspace_id: string
+  name: string
+  email: string | null
+  contact_person: string | null
+  linkedin_url: string | null
+  website: string | null
+  status: 'active' | 'paused' | 'churned'
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkspaceClientInput {
+  name: string
+  email?: string
+  contact_person?: string
+  linkedin_url?: string
+  website?: string
+  status: 'active' | 'paused' | 'churned'
+  notes?: string
+}
+
+const cleanWorkspaceClientInput = (input: WorkspaceClientInput) => ({
+  name: input.name.trim(),
+  email: input.email?.trim() || null,
+  contact_person: input.contact_person?.trim() || null,
+  linkedin_url: input.linkedin_url?.trim() || null,
+  website: input.website?.trim() || null,
+  status: input.status,
+  notes: input.notes?.trim() || null,
+})
+
+export async function getWorkspaceClients(workspaceId: string): Promise<WorkspaceClient[]> {
+  const { data, error } = await supabase.functions.invoke('workspace-clients', {
+    body: { action: 'list', workspace_id: workspaceId },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to fetch clients.')
+  return (data?.clients || []) as WorkspaceClient[]
+}
+
+export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {
+  const { data, error } = await supabase.functions.invoke('workspace-clients', {
+    body: {
+      action: 'create',
+      workspace_id: workspaceId,
+      client: cleanWorkspaceClientInput(input),
+    },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to create client.')
+  return data.client as WorkspaceClient
+}
+
+export async function updateWorkspaceClient(
+  workspaceId: string,
+  clientId: string,
+  input: WorkspaceClientInput,
+): Promise<WorkspaceClient> {
+  const { data, error } = await supabase.functions.invoke('workspace-clients', {
+    body: {
+      action: 'update',
+      workspace_id: workspaceId,
+      client_id: clientId,
+      client: cleanWorkspaceClientInput(input),
+    },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to update client.')
+  return data.client as WorkspaceClient
+}
+
+export async function deleteWorkspaceClient(workspaceId: string, clientId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke('workspace-clients', {
+    body: { action: 'delete', workspace_id: workspaceId, client_id: clientId },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to delete client.')
 }
 
 export interface ClientWithStats extends Client {
@@ -48,7 +140,7 @@ export async function getClients(options?: {
 }) {
   let query = supabase
     .from('clients')
-    .select('*', { count: 'exact' })
+    .select('*, workspace:workspaces(id,name,slug,is_default)', { count: 'exact' })
 
   // Filter by status
   if (options?.status) {
@@ -86,7 +178,7 @@ export async function getClients(options?: {
 export async function getClientById(clientId: string) {
   const { data, error } = await supabase
     .from('clients')
-    .select('*')
+    .select('*, workspace:workspaces(id,name,slug,is_default)')
     .eq('id', clientId)
     .single()
 
@@ -160,17 +252,17 @@ export async function deleteClient(clientId: string) {
  * Set or update client portal password
  */
 export async function setClientPassword(clientId: string, password: string, setBy: string = 'Admin') {
-  const { error } = await supabase
-    .from('clients')
-    .update({
-      portal_password: password,
-      password_set_at: new Date().toISOString(),
-      password_set_by: setBy
-    })
-    .eq('id', clientId)
+  const { error } = await supabase.functions.invoke('manage-client-portal-password', {
+    body: {
+      action: 'set',
+      client_id: clientId,
+      password,
+      set_by: setBy,
+    },
+  })
 
   if (error) {
-    throw new Error(`Failed to set password: ${error.message}`)
+    throw await toFunctionError(error, 'Failed to set portal password.')
   }
 }
 
@@ -178,17 +270,12 @@ export async function setClientPassword(clientId: string, password: string, setB
  * Clear client portal password
  */
 export async function clearClientPassword(clientId: string) {
-  const { error } = await supabase
-    .from('clients')
-    .update({
-      portal_password: null,
-      password_set_at: null,
-      password_set_by: null
-    })
-    .eq('id', clientId)
+  const { error } = await supabase.functions.invoke('manage-client-portal-password', {
+    body: { action: 'clear', client_id: clientId },
+  })
 
   if (error) {
-    throw new Error(`Failed to clear password: ${error.message}`)
+    throw await toFunctionError(error, 'Failed to clear portal password.')
   }
 }
 
@@ -291,12 +378,26 @@ export async function uploadClientPhoto(clientId: string, file: File) {
  * Remove client photo
  */
 export async function removeClientPhoto(clientId: string, photoUrl: string) {
-  // Extract file path from URL
-  const urlParts = photoUrl.split('/client-assets/')
-  if (urlParts.length < 2) {
+  let filePath: string
+  try {
+    const parsedUrl = new URL(photoUrl)
+    const publicObjectMarker = '/storage/v1/object/public/client-assets/'
+    const markerIndex = parsedUrl.pathname.indexOf(publicObjectMarker)
+    if (markerIndex === -1) throw new Error('bucket marker not found')
+    filePath = decodeURIComponent(
+      parsedUrl.pathname.slice(markerIndex + publicObjectMarker.length),
+    )
+  } catch {
     throw new Error('Invalid photo URL')
   }
-  const filePath = `client-photos/${urlParts[1]}`
+
+  if (
+    !filePath.startsWith(`client-photos/${clientId}-`)
+    || filePath.includes('..')
+    || filePath.includes('\\')
+  ) {
+    throw new Error('Invalid photo path')
+  }
 
   // Delete from storage
   const { error: deleteError } = await supabase.storage

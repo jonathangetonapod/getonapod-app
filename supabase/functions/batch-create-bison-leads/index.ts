@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -215,7 +216,7 @@ async function processMessage(
     return {
       message_id: messageId,
       success: false,
-      error: err.message || 'Unknown error',
+      error: (err instanceof Error ? err.message : String(err)) || 'Unknown error',
     }
   }
 }
@@ -226,6 +227,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const { message_ids } = await req.json()
 
     if (!message_ids || !Array.isArray(message_ids) || message_ids.length === 0) {
@@ -287,7 +289,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       {
         status: 500,

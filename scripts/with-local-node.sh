@@ -12,6 +12,14 @@ if [[ ! -x "$BIN_DIR/node" ]]; then
   exit 1
 fi
 
+node_version="$($BIN_DIR/node --version)"
+npm_version="$($BIN_DIR/node "$NODE_DIR/lib/node_modules/npm/bin/npm-cli.js" --version)"
+if [[ "$node_version" != 'v22.22.2' || "$npm_version" != '10.9.7' ]]; then
+  echo "Local toolchain must be Node.js v22.22.2 with npm 10.9.7; found ${node_version}/${npm_version}." >&2
+  echo "Run: python3 scripts/install-local-node.py" >&2
+  exit 1
+fi
+
 export PATH="$SHIM_DIR:$BIN_DIR:$PATH"
 
 if [[ $# -eq 0 ]]; then

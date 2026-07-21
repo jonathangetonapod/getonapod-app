@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Loader2, Lock, Eye, EyeOff } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import PageSEO from '@/components/seo/PageSEO'
 
 export default function PortalLogin() {
@@ -15,13 +15,25 @@ export default function PortalLogin() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const { loginWithPassword, client } = useClientPortal()
+  const { loginWithPassword, client, loading: portalLoading } = useClientPortal()
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // If already logged in, redirect to dashboard
-  if (client) {
-    navigate('/portal/dashboard', { replace: true })
-    return null
+  useEffect(() => {
+    if (!client || portalLoading) return
+    const requestedPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname
+    const destination = requestedPath?.startsWith('/portal/') && requestedPath !== '/portal/login'
+      ? requestedPath
+      : '/portal/dashboard'
+    navigate(destination, { replace: true })
+  }, [client, location.state, navigate, portalLoading])
+
+  if (portalLoading || client) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-7 w-7 animate-spin text-primary" aria-label="Loading portal" />
+      </div>
+    )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

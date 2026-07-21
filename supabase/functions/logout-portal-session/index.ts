@@ -1,76 +1,46 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { hashPortalSessionToken } from '../_shared/portalSecurity.ts'
+import {
+  createAdminClient,
+  errorResponse,
+  HttpError,
+  jsonResponse,
+  optionsResponse,
+  parseJsonObject,
+  requireOnlyKeys,
+  requireUuid,
+} from '../_shared/workspaceAuth.ts'
+
+const METHODS = ['POST'] as const
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
   try {
-    const { sessionToken } = await req.json()
-
-    if (!sessionToken) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Session token is required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+    if (req.method !== 'POST') {
+      throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
     }
 
-    // Create Supabase client with service role to bypass RLS
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const body = await parseJsonObject(req, 1_024)
+    requireOnlyKeys(body, ['sessionToken'])
+    const sessionToken = requireUuid(body.sessionToken, 'sessionToken')
+    const sessionTokenHash = await hashPortalSessionToken(sessionToken)
+    const admin = createAdminClient()
 
-    console.log('[LOGOUT-SESSION] Logging out session')
+    const { error } = await admin.rpc('logout_client_portal_session', {
+      p_session_token_hash: sessionTokenHash,
+    })
 
-    // Get session details before deleting (for activity log)
-    const { data: session } = await supabase
-      .from('client_portal_sessions')
-      .select('id, client_id')
-      .eq('session_token', sessionToken)
-      .single()
-
-    // Delete the session
-    const { error: deleteError } = await supabase
-      .from('client_portal_sessions')
-      .delete()
-      .eq('session_token', sessionToken)
-
-    if (deleteError) {
-      console.error('[LOGOUT-SESSION] Error deleting session:', deleteError)
-      // Don't throw - logout should always succeed client-side
+    if (error) {
+      console.error('Portal session invalidation failed')
+      throw new HttpError(503, 'LOGOUT_FAILED', 'The portal session could not be invalidated')
     }
 
-    // Log the activity
-    if (session) {
-      await supabase
-        .from('client_portal_activity_log')
-        .insert({
-          client_id: session.client_id,
-          session_id: session.id,
-          action: 'logout',
-          metadata: {}
-        })
-    }
-
-    console.log('[LOGOUT-SESSION] Logout successful')
-
-    return new Response(
-      JSON.stringify({ success: true }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    // Logout is idempotent: an already-invalid token is still a successful
+    // outcome, while database failures return a non-success status above.
+    return jsonResponse(req, METHODS, 200, { success: true })
   } catch (error) {
-    console.error('[LOGOUT-SESSION] Error:', error)
-    // Return success anyway - logout should always succeed client-side
-    return new Response(
-      JSON.stringify({ success: true }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(req, METHODS, error)
   }
 })

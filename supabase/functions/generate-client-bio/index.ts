@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -33,6 +34,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const data: OnboardingData = await req.json()
 
     // Validation
@@ -160,7 +162,7 @@ Write a bio that will get them booked on top podcasts. Make it compelling, authe
 
     return new Response(
       JSON.stringify({
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

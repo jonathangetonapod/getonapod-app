@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -22,6 +23,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const { clientBio, prospectBio, podcasts } = await req.json() as {
       clientBio?: string
       prospectBio?: string
@@ -203,7 +205,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
   } catch (error) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

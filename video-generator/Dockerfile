@@ -1,26 +1,9 @@
-# Use Playwright's official image which includes Chromium and all dependencies
-FROM mcr.microsoft.com/playwright:v1.57.0-jammy
+FROM node:22.22.2-alpine
 
-# Set working directory
 WORKDIR /app
+COPY package.json server.js ./
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm ci --omit=dev
-
-# Copy application code
-COPY . .
-
-# Create recordings directory
-RUN mkdir -p recordings
-
-# Expose port
 EXPOSE 3001
-
-# Set environment to production
 ENV NODE_ENV=production
-
-# Start the server
+USER node
 CMD ["node", "server.js"]

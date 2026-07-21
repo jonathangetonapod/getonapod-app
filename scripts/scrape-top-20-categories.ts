@@ -7,7 +7,8 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Podscan API setup
 const PODSCAN_API_URL = 'https://podscan.fm/api/v1'
-const PODSCAN_TOKEN = 'tg7ZSteB27RqyNUqlIKtBK4gNAj8Hcm7z3oSzeYmd7421590'
+const PODSCAN_TOKEN = process.env.PODSCAN_TOKEN
+if (!PODSCAN_TOKEN) throw new Error('PODSCAN_TOKEN is required')
 
 // Top 20 most popular categories (ALL)
 const TOP_20_CATEGORIES = [

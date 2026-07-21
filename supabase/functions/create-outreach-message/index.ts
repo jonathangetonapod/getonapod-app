@@ -1,9 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { secretsMatch } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 }
 
 serve(async (req) => {
@@ -13,9 +14,30 @@ serve(async (req) => {
   }
 
   try {
-    const payload = await req.json()
+    if (req.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405, headers: corsHeaders })
+    }
 
-    console.log('[Create Outreach Message] Received payload:', JSON.stringify(payload, null, 2))
+    const configuredSecret = Deno.env.get('CLAY_WEBHOOK_SECRET')?.trim()
+    if (!configuredSecret) {
+      console.error('[Create Outreach Message] Webhook secret is not configured')
+      return new Response('Webhook unavailable', { status: 503, headers: corsHeaders })
+    }
+    const providedSecret = req.headers.get('x-webhook-secret') ?? ''
+    if (!providedSecret || !(await secretsMatch(providedSecret, configuredSecret))) {
+      return new Response('Invalid webhook secret', { status: 401, headers: corsHeaders })
+    }
+
+    const declaredLength = Number(req.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declaredLength) && declaredLength > 262_144) {
+      return new Response('Payload too large', { status: 413, headers: corsHeaders })
+    }
+    const rawPayload = await req.text()
+    if (new TextEncoder().encode(rawPayload).byteLength > 262_144) {
+      return new Response('Payload too large', { status: 413, headers: corsHeaders })
+    }
+    const payload = JSON.parse(rawPayload)
+    console.log('[Create Outreach Message] Received verified Clay webhook')
 
     // Validate required fields from Clay
     if (!payload.client_id) {
@@ -170,7 +192,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: error instanceof Error ? error.message : 'Internal server error',
       }),
       {
         status: 400,

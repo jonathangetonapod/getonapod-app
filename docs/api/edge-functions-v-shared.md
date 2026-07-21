@@ -1,6 +1,11 @@
 # Supabase Edge Functions API Documentation
 ## V Functions (validate-*, verify-*) & Shared Utilities
 
+> **MVP status warning:** this file preserves historical request/response
+> detail. `docs/invite-only-edge-manifest.json` is authoritative for deployed,
+> retired (HTTP 410), and tenant-excluded functions; conflicting examples here
+> are not supported release behavior.
+
 This document provides comprehensive API documentation for all Supabase Edge Functions starting with "V" and the shared utilities used across the Get On A Pod platform.
 
 ---
@@ -372,13 +377,19 @@ curl -X POST https://your-project.supabase.co/functions/v1/validate-portal-sessi
 
 #### CORS Headers
 ```http
-Access-Control-Allow-Origin: *
+Access-Control-Allow-Origin: <configured application origin>
 Access-Control-Allow-Headers: authorization, x-client-info, apikey, content-type
 ```
 
 ---
 
 ### verify-portal-token
+
+> **Retired in the invite-only MVP.** The deployed compatibility tombstone
+> returns HTTP 410. Magic-link portal authentication and its token table were
+> removed; use `login-with-password` plus the hash-only, fixed-expiry portal
+> session flow. The historical contract below is retained only for migration
+> archaeology and must not be implemented or called.
 
 **Endpoint:** `/functions/v1/verify-portal-token`  
 **Method:** `POST`  
@@ -496,7 +507,7 @@ curl -X POST https://your-project.supabase.co/functions/v1/verify-portal-token \
 
 #### CORS Headers
 ```http
-Access-Control-Allow-Origin: *
+Access-Control-Allow-Origin: <configured application origin>
 Access-Control-Allow-Headers: authorization, x-client-info, apikey, content-type
 ```
 
@@ -546,7 +557,7 @@ async function validateSession(sessionToken) {
   
   const data = await response.json()
   
-  if (data.success) {
+  if (response.ok) {
     return data.client
   } else {
     // Redirect to login
@@ -554,22 +565,26 @@ async function validateSession(sessionToken) {
   }
 }
 
-// Process magic link
-async function verifyToken(token) {
-  const response = await fetch('/functions/v1/verify-portal-token', {
+// Create a password-authenticated portal session.
+async function login(email, password) {
+  const response = await fetch('/functions/v1/login-with-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ email, password })
   })
-  
+
   const data = await response.json()
-  
+
   if (data.success) {
-    // Store session token
-    localStorage.setItem('sessionToken', data.session.session_token)
-    localStorage.setItem('client', JSON.stringify(data.client))
-    
-    // Redirect to portal
+    // Bearers are tab-scoped. Production code uses portalSessionStore so a
+    // partial/denied write safely falls back to memory and legacy localStorage
+    // values are removed.
+    sessionStorage.setItem('client_portal_session', JSON.stringify({
+      session_token: data.session_token,
+      expires_at: data.expires_at,
+      client_id: data.client.id
+    }))
+    sessionStorage.setItem('client_portal_client', JSON.stringify(data.client))
     window.location.href = '/portal'
   } else {
     alert(data.error)
@@ -577,24 +592,9 @@ async function verifyToken(token) {
 }
 ```
 
-### Email Integration
-
-```javascript
-import { getMagicLinkEmail } from '../_shared/email-templates.ts'
-
-// Send magic link email
-async function sendMagicLink(clientEmail, magicLink) {
-  const client = await getClientByEmail(clientEmail)
-  const emailTemplate = getMagicLinkEmail(client.contact_person, magicLink)
-  
-  await sendEmail({
-    to: clientEmail,
-    subject: emailTemplate.subject,
-    html: emailTemplate.html,
-    text: emailTemplate.text
-  })
-}
-```
+Magic-link email integration is retired and must not be reintroduced for this
+MVP. Portal access is provisioned by an administrator and authenticated with a
+server-side PBKDF2 password verifier.
 
 ---
 

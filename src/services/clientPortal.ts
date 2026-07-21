@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import { toFunctionError } from '@/lib/functionErrors'
+import { createPortalSessionStore } from '@/lib/portalSessionStore'
 import type { Client } from './clients'
 import type { Booking } from './bookings'
 
@@ -23,7 +25,7 @@ export async function loginWithPassword(email: string, password: string): Promis
 
   if (error) {
     console.error('Failed to login with password:', error)
-    throw new Error(error.message || 'Login failed')
+    throw await toFunctionError(error, 'Login failed.')
   }
 
   if (data.error) {
@@ -50,7 +52,7 @@ export async function validateSession(sessionToken: string): Promise<Client> {
 
   if (error) {
     console.error('Failed to validate session:', error)
-    throw new Error(error.message || 'Session expired or invalid')
+    throw await toFunctionError(error, 'Session expired or invalid.')
   }
 
   if (!data.success) {
@@ -64,22 +66,28 @@ export async function validateSession(sessionToken: string): Promise<Client> {
  * Logout and invalidate the session
  */
 export async function logout(sessionToken: string): Promise<void> {
-  try {
-    await supabase.functions.invoke('logout-portal-session', {
-      body: { sessionToken }
-    })
-  } catch (error) {
-    console.error('Failed to logout:', error)
-    // Don't throw - logout should always succeed client-side
-  }
+  const { error } = await supabase.functions.invoke('logout-portal-session', {
+    body: { sessionToken }
+  })
+  if (error) throw await toFunctionError(error, 'Failed to invalidate the portal session.')
 
-  // Clear local storage
+  // Clear tab-scoped, in-memory, and legacy persistent storage.
   sessionStorage.clear()
 }
 
 export interface ClientPortalData {
-  bookings: Booking[]
-  outreachMessages: any[]
+  bookings: Array<Pick<
+    Booking,
+    | 'id'
+    | 'podcast_name'
+    | 'podcast_url'
+    | 'host_name'
+    | 'scheduled_date'
+    | 'recording_date'
+    | 'publish_date'
+    | 'status'
+    | 'episode_url'
+  >>
 }
 
 /**
@@ -89,12 +97,13 @@ export async function getClientBookings(clientId: string): Promise<ClientPortalD
   // Get session token if exists
   const { session } = sessionStorage.get()
 
-  // Use client ID from session if available (to ensure it matches the session token)
-  const effectiveClientId = session?.client_id || clientId
+  if (session && session.client_id !== clientId) {
+    throw new Error('Portal session does not match the requested client.')
+  }
 
   // Build request body - only include sessionToken if it exists
   const requestBody: { clientId: string; sessionToken?: string } = {
-    clientId: effectiveClientId
+    clientId
   }
 
   if (session?.session_token) {
@@ -116,8 +125,7 @@ export async function getClientBookings(clientId: string): Promise<ClientPortalD
   }
 
   return {
-    bookings: data.bookings as Booking[],
-    outreachMessages: data.outreachMessages || []
+    bookings: data.bookings,
   }
 }
 
@@ -170,46 +178,6 @@ export async function updatePortalAccess(clientId: string, enabled: boolean): Pr
   if (error) {
     throw new Error(`Failed to update portal access: ${error.message}`)
   }
-}
-
-/**
- * Send portal invitation email (Admin use only)
- */
-export async function sendPortalInvitation(clientId: string): Promise<void> {
-  // Get client details
-  const { data: client, error: clientError } = await supabase
-    .from('clients')
-    .select('id, name, email, portal_access_enabled')
-    .eq('id', clientId)
-    .single()
-
-  if (clientError || !client) {
-    throw new Error('Client not found')
-  }
-
-  if (!client.email) {
-    throw new Error('Client has no email address')
-  }
-
-  if (!client.portal_access_enabled) {
-    throw new Error('Portal access is not enabled for this client')
-  }
-
-  // Send invitation email with portal login URL
-  const { error: inviteError } = await supabase.functions.invoke('send-portal-invitation', {
-    body: { clientId: client.id, email: client.email, name: client.name }
-  })
-
-  if (inviteError) {
-    console.error('Failed to send portal invitation:', inviteError)
-    throw new Error('Failed to send portal invitation')
-  }
-
-  // Update invitation sent timestamp
-  await supabase
-    .from('clients')
-    .update({ portal_invitation_sent_at: new Date().toISOString() })
-    .eq('id', clientId)
 }
 
 /**
@@ -315,30 +283,8 @@ export async function invalidatePodcastFitAnalysis(clientId: string, bookingId: 
   }
 }
 
-/**
- * Session storage helpers
- */
 export const sessionStorage = {
-  save: (session: ClientPortalSession, client: Client) => {
-    localStorage.setItem('client_portal_session', JSON.stringify(session))
-    localStorage.setItem('client_portal_client', JSON.stringify(client))
-  },
-
-  get: (): { session: ClientPortalSession | null, client: Client | null } => {
-    const sessionStr = localStorage.getItem('client_portal_session')
-    const clientStr = localStorage.getItem('client_portal_client')
-
-    return {
-      session: sessionStr ? JSON.parse(sessionStr) : null,
-      client: clientStr ? JSON.parse(clientStr) : null
-    }
-  },
-
-  clear: () => {
-    localStorage.removeItem('client_portal_session')
-    localStorage.removeItem('client_portal_client')
-  },
-
+  ...createPortalSessionStore<ClientPortalSession, Client>(),
   isExpired: (session: ClientPortalSession): boolean => {
     const expiresAt = new Date(session.expires_at)
     const now = new Date()

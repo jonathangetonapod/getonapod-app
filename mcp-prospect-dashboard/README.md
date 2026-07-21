@@ -2,6 +2,11 @@
 
 A Model Context Protocol (MCP) server that automates creating prospect dashboards through Claude Code.
 
+> Operator-only legacy tooling: this stdio process holds a Supabase service-role
+> credential and is not a tenant or browser API. Run it only on a trusted
+> administrator workstation, never expose it over HTTP, and do not include it in
+> the invite-only tenant deployment.
+
 ## Features
 
 - **Create Prospect**: Create a new prospect dashboard with just their name - automatically creates Google Sheet
@@ -16,8 +21,10 @@ cd mcp-prospect-dashboard
 ```
 
 2. Install dependencies:
+Requires Node 22.22.2 and npm 10.9.7. Install the reviewed lockfile:
+
 ```bash
-npm install
+npm ci --ignore-scripts
 ```
 
 3. Create a `.env` file from the example:

@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import {
   Mail,
   Send,
@@ -653,7 +654,7 @@ export default function OutreachPlatform() {
                             asChild
                           >
                             <a
-                              href={`https://podscan.fm/dashboard/podcasts/${viewingMessage.podcast_id}`}
+                              href={safeExternalUrl(`https://podscan.fm/dashboard/podcasts/${encodeURIComponent(viewingMessage.podcast_id)}`) ?? undefined}
                               target="_blank"
                               rel="noopener noreferrer"
                             >

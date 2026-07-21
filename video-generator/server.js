@@ -1,235 +1,68 @@
-import express from 'express';
-import { createClient } from '@supabase/supabase-js';
-import { recordDashboard } from './recorder.js';
-import fs from 'fs';
-import path from 'path';
-import cors from 'cors';
-import dotenv from 'dotenv';
+import { createServer } from 'node:http'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-dotenv.config();
+const MODULE_PATH = fileURLToPath(import.meta.url)
+const API_RESPONSE = JSON.stringify({
+  error: 'Video generation is not available',
+  code: 'VIDEO_GENERATION_DISABLED',
+})
+const HEALTH_RESPONSE = JSON.stringify({ status: 'retired' })
 
-const app = express();
-app.use(express.json());
-app.use(cors());
+function sendJson(response, statusCode, body) {
+  response.writeHead(statusCode, {
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'X-Content-Type-Options': 'nosniff',
+  })
+  response.end(body)
+}
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-app.post('/api/generate-video', async (req, res) => {
-  const { dashboardId, slug } = req.body;
-
-  console.log(`[${new Date().toISOString()}] Starting video generation for ${slug}`);
-
+function requestPath(request) {
   try {
-    // Update status to processing
-    await supabase
-      .from('prospect_dashboards')
-      .update({ background_video_status: 'processing' })
-      .eq('id', dashboardId);
-
-    // Record the dashboard
-    const outputDir = path.join(process.cwd(), 'recordings');
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    console.log(`[${new Date().toISOString()}] Recording dashboard...`);
-    const videoPath = await recordDashboard(slug, process.env.DASHBOARD_BASE_URL);
-    console.log(`[${new Date().toISOString()}] Recording complete: ${videoPath}`);
-
-    // Upload to Supabase Storage
-    const videoBuffer = fs.readFileSync(videoPath);
-    const fileName = `${dashboardId}-${Date.now()}.webm`;
-
-    console.log(`[${new Date().toISOString()}] Uploading to Supabase Storage...`);
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('prospect-videos')
-      .upload(fileName, videoBuffer, {
-        contentType: 'video/webm',
-        upsert: true
-      });
-
-    if (uploadError) throw uploadError;
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('prospect-videos')
-      .getPublicUrl(fileName);
-
-    console.log(`[${new Date().toISOString()}] Video uploaded: ${publicUrl}`);
-
-    // Update database
-    await supabase
-      .from('prospect_dashboards')
-      .update({
-        background_video_url: publicUrl,
-        background_video_generated_at: new Date().toISOString(),
-        background_video_status: 'completed'
-      })
-      .eq('id', dashboardId);
-
-    // Cleanup local file
-    fs.unlinkSync(videoPath);
-    console.log(`[${new Date().toISOString()}] Cleanup complete`);
-
-    res.json({ success: true, videoUrl: publicUrl });
-
-  } catch (error) {
-    console.error('Error generating video:', error);
-
-    await supabase
-      .from('prospect_dashboards')
-      .update({ background_video_status: 'failed' })
-      .eq('id', dashboardId);
-
-    res.status(500).json({ error: error.message });
+    return new URL(request.url ?? '/', 'http://localhost').pathname
+  } catch {
+    return request.url ?? '/'
   }
-});
+}
 
-// HeyGen Video Generation Endpoint
-app.post('/api/heygen/generate', async (req, res) => {
-  const { dashboardId, backgroundVideoUrl, firstName } = req.body;
+// The standalone recorder/HeyGen service is retired for the invite-only MVP.
+// It intentionally has no third-party dependencies and never parses a request
+// body, so malformed or oversized historical mutation requests still fail
+// closed with the same 410 response and cannot reach a provider or database.
+export function createRetiredVideoServer() {
+  return createServer((request, response) => {
+    request.resume()
+    const pathname = requestPath(request)
 
-  console.log(`[${new Date().toISOString()}] Starting HeyGen video generation for ${firstName}`);
-
-  try {
-    // Build the personalized script with strategic pauses
-    // Expanded script to fill 42-second background video and sync with visual sections
-    const script = `${firstName}, we have handpicked the best possible shows for you. At the top of your dashboard, you'll see the total potential reach across all these podcasts, the average rating showing their quality, and the exact number of shows we can reach out to on your behalf... As we scroll down, each podcast card reveals detailed insights that matter. You'll see the specific audience demographics, so you know exactly who's listening. The listener engagement metrics show you how active and loyal their audience is. Download numbers give you the real reach, and most importantly, we've included our reasoning for why each show is a perfect strategic match for your message and your goals.. Now, as you review each show, you can approve the ones you love or reject any that don't feel right, directly from this panel. It's completely in your control.... And here you can see our pricing. Simple, transparent, and designed specifically to deliver maximum return on investment for your podcast tour. When you're ready to move forward, just click the Book a Call Now button to schedule a time with our team.`;
-
-    // Call HeyGen API
-    const response = await fetch('https://api.heygen.com/v2/video/generate', {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': process.env.HEYGEN_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: `Prospect Video - ${firstName}`,
-        caption: false,
-        dimension: {
-          width: 1280,
-          height: 720,
-        },
-        video_inputs: [
-          {
-            character: {
-              type: 'avatar',
-              avatar_id: '821405cb2b04486593fd37616fee92f9',
-              avatar_style: 'circle',
-              scale: 0.35,
-              offset: {
-                x: -0.35,
-                y: 0.25,
-              },
-            },
-            voice: {
-              type: 'text',
-              input_text: script,
-              voice_id: 'ba661971758a496c9ae1d807afb4aa87',
-              speed: 0.95,
-            },
-            background: {
-              type: 'video',
-              url: backgroundVideoUrl,
-              play_style: 'once',
-              fit: 'cover',
-            },
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || `Failed to generate video: ${response.statusText}`);
+    if (pathname === '/health') {
+      // Keep the historical deployment health check green so this safe
+      // tombstone can replace a still-mutating old Railway revision.
+      sendJson(response, 200, HEALTH_RESPONSE)
+      return
     }
 
-    const data = await response.json();
-    const video_id = data.data.video_id;
+    if (pathname === '/api' || pathname.startsWith('/api/')) {
+      sendJson(response, 410, API_RESPONSE)
+      return
+    }
 
-    console.log(`[${new Date().toISOString()}] HeyGen video initiated: ${video_id}`);
+    sendJson(response, 404, JSON.stringify({ error: 'Not found' }))
+  })
+}
 
-    // Update database with HeyGen video ID
-    await supabase
-      .from('prospect_dashboards')
-      .update({
-        heygen_video_id: video_id,
-        heygen_video_status: 'pending',
-        heygen_video_generated_at: new Date().toISOString(),
-      })
-      .eq('id', dashboardId);
-
-    res.json({ video_id });
-
-  } catch (error) {
-    console.error('Error generating HeyGen video:', error);
-    res.status(500).json({ error: error.message });
+function parsePort(value) {
+  const port = Number.parseInt(value, 10)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be an integer between 1 and 65535')
   }
-});
+  return port
+}
 
-// HeyGen Video Status Endpoint (with database update)
-app.get('/api/heygen/status/:videoId/:dashboardId', async (req, res) => {
-  const { videoId, dashboardId } = req.params;
-
-  console.log(`[${new Date().toISOString()}] Checking HeyGen video status: ${videoId} for dashboard: ${dashboardId}`);
-
-  try {
-    const response = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
-      headers: {
-        accept: 'application/json',
-        'x-api-key': process.env.HEYGEN_API_KEY,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get video status: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const videoStatus = data.data;
-
-    // Update database with current status using service role key
-    const updateData = {
-      heygen_video_status: videoStatus.status,
-    };
-
-    // Add optional fields if they exist
-    if (videoStatus.video_url) {
-      updateData.heygen_video_url = videoStatus.video_url;
-    }
-    if (videoStatus.thumbnail_url) {
-      updateData.heygen_video_thumbnail_url = videoStatus.thumbnail_url;
-    }
-
-    const { error: dbError } = await supabase
-      .from('prospect_dashboards')
-      .update(updateData)
-      .eq('id', dashboardId);
-
-    if (dbError) {
-      console.error('Database update error:', dbError);
-      // Don't fail the request, but log it
-    } else {
-      console.log(`[${new Date().toISOString()}] Database updated: status=${videoStatus.status}`);
-    }
-
-    res.json(videoStatus);
-
-  } catch (error) {
-    console.error('Error getting HeyGen video status:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`🎬 Video generator service running on port ${PORT}`);
-  console.log(`🌐 Dashboard base URL: ${process.env.DASHBOARD_BASE_URL}`);
-});
+if (resolve(process.argv[1] ?? '') === MODULE_PATH) {
+  const port = parsePort(process.env.PORT ?? '3001')
+  createRetiredVideoServer().listen(port, '0.0.0.0', () => {
+    console.log(`Retired video service tombstone listening on port ${port}`)
+  })
+}

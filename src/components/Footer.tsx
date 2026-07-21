@@ -29,7 +29,7 @@ const Footer = () => {
                 <a href="/#results" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Results</a>
                 <a href="/#pricing" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Pricing</a>
                 <a href="/#faq" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">FAQ</a>
-                <Link to="/premium-placements" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Premium Placements</Link>
+                <Link to="/what-to-expect" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">What to Expect</Link>
               </nav>
             </div>
 
@@ -39,6 +39,7 @@ const Footer = () => {
                 <a href="/#how-it-works" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">How It Works</a>
                 <Link to="/resources" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Resources</Link>
                 <Link to="/blog" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Blog</Link>
+                <Link to="/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Workspace Login</Link>
                 <Link to="/portal/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Client Portal Login</Link>
               </nav>
             </div>

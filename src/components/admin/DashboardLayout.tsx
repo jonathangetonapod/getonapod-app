@@ -5,23 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   LayoutDashboard,
-  FileText,
-  Video,
   Users,
-  Settings,
+  UserPlus,
   LogOut,
   Menu,
   X,
   User,
   GripVertical,
-  Sparkles,
-  ShoppingBag,
-  BarChart3,
-  Brain,
   Calendar,
   Search,
   BookOpen,
-  Package,
   Database,
   Share2,
   ClipboardList,
@@ -60,23 +53,16 @@ interface NavItem {
 
 const defaultNavItems: NavItem[] = [
   { id: 'overview', name: 'Overview', href: '/admin/dashboard', icon: LayoutDashboard },
+  { id: 'workspace-users', name: 'Workspace Users', href: '/admin/users', icon: UserPlus },
   { id: 'onboarding', name: 'Onboarding', href: '/admin/onboarding', icon: ClipboardList },
   { id: 'podcast-finder', name: 'Podcast Finder', href: '/admin/podcast-finder', icon: Search },
   { id: 'prospect-dashboards', name: 'Prospect Dashboards', href: '/admin/prospect-dashboards', icon: Share2 },
   { id: 'podcast-database', name: 'Podcast Database', href: '/admin/podcast-database', icon: Database },
-  { id: 'ai-sales-director', name: 'AI Sales Director', href: '/admin/ai-sales-director', icon: Brain },
   { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
   { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
   { id: 'outreach-platform', name: 'Outreach Platform', href: '/admin/outreach-platform', icon: Mail },
-  { id: 'orders', name: 'Add-on Service Orders', href: '/admin/orders', icon: Package },
-  { id: 'blog', name: 'Blog Posts', href: '/admin/blog', icon: FileText },
   { id: 'guest-resources', name: 'Guest Resources', href: '/admin/guest-resources', icon: BookOpen },
-  { id: 'videos', name: 'Video Testimonials', href: '/admin/videos', icon: Video },
-  { id: 'premium', name: 'Premium Placements', href: '/admin/premium-placements', icon: Sparkles },
-  { id: 'customers', name: 'Premium Placement Orders', href: '/admin/customers', icon: ShoppingBag },
-  { id: 'analytics', name: 'Premium Placement Analytics', href: '/admin/analytics', icon: BarChart3 },
   { id: 'leads', name: 'Unibox', href: '/admin/leads', icon: Users },
-  { id: 'settings', name: 'Settings', href: '/admin/settings', icon: Settings },
 ]
 
 const STORAGE_KEY = 'admin-nav-order'
@@ -147,7 +133,12 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
   // Load nav order from localStorage
   useEffect(() => {
-    const savedOrder = localStorage.getItem(STORAGE_KEY)
+    let savedOrder: string | null = null
+    try {
+      savedOrder = window.localStorage.getItem(STORAGE_KEY)
+    } catch {
+      // The default navigation order remains usable when storage is denied.
+    }
     if (savedOrder) {
       try {
         const orderIds = JSON.parse(savedOrder) as string[]
@@ -170,7 +161,11 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   // Save nav order to localStorage
   const saveNavOrder = (items: NavItem[]) => {
     const orderIds = items.map(item => item.id)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(orderIds))
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(orderIds))
+    } catch {
+      // Dragging still updates this tab even if persistence is unavailable.
+    }
   }
 
   const sensors = useSensors(

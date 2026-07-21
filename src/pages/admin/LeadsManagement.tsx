@@ -45,6 +45,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { searchPodcasts, type PodcastData } from '@/services/podscan'
+import { openExternalUrl } from '@/lib/externalUrl'
 import { Mic, Copy, ExternalLink, PanelRightOpen, PanelRightClose, Star } from 'lucide-react'
 
 // Types
@@ -1627,7 +1628,7 @@ export default function LeadsManagement() {
                             variant="ghost"
                             size="sm"
                             className="h-6 text-xs"
-                            onClick={() => window.open(podcast.podcast_url, '_blank')}
+                            onClick={() => openExternalUrl(podcast.podcast_url)}
                           >
                             <ExternalLink className="h-3 w-3 mr-1" />
                             Open

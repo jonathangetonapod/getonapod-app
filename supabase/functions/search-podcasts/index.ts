@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 /** Escape special Supabase/PostgREST filter characters in user input */
 function sanitizeSearch(input: string): string {
@@ -26,6 +27,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const body = await req.json()
 
     const {
@@ -149,7 +151,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
       }),
       {
         status: 500,

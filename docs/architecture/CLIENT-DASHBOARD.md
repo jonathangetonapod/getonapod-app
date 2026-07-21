@@ -1,5 +1,10 @@
 # Client Dashboard System Architecture
 
+> **Invite-only MVP warning:** the magic-link flow described below is retired
+> and its same-name functions return HTTP 410. The supported portal uses the
+> hash-only password/session flow documented in the root README and
+> `docs/invite-only-mvp.md`; historical examples are not deployment guidance.
+
 ## Overview
 
 The Client Dashboard system in Authority Built provides a comprehensive portal for clients to manage their podcast booking journey. It consists of two main interfaces: a **Public Client Approval View** for reviewing podcast opportunities and a **Secure Client Portal** for managing bookings, viewing analytics, and accessing resources.
@@ -61,15 +66,19 @@ Client Credentials → Validation → Session Creation → Dashboard Access
 **Process:**
 1. Client enters email and password
 2. `loginWithPassword()` calls Edge Function
-3. Password validated against `clients.portal_password` (bcrypt hashed)
-4. Session created in `client_portal_sessions`
-5. Client data returned and stored in localStorage
+3. The Edge Function validates the password against the server-only
+   `client_portal_credentials` PBKDF2-SHA256 verifier.
+4. A session is created transactionally in `client_portal_sessions`; only a
+   SHA-256 verifier is stored in the database.
+5. A minimal client DTO and opaque token are stored in tab-scoped
+   `sessionStorage`.
 
 #### 3. Session Management
 **Context**: `src/contexts/ClientPortalContext.tsx`
 
 **Features:**
-- **Automatic session restore** from localStorage on page load
+- **Automatic session restore** from tab-scoped `sessionStorage` on page load,
+  with an in-memory fallback when browser storage is unavailable
 - **Session validation** with backend on restore
 - **Auto-logout** when session expires (24-hour default)
 - **Impersonation support** for admin testing
@@ -421,7 +430,7 @@ CREATE TABLE clients (
   
   -- Portal Access Fields
   portal_access_enabled BOOLEAN DEFAULT FALSE,
-  portal_password TEXT,  -- bcrypt hashed
+  portal_password TEXT CHECK (portal_password IS NULL), -- retired
   portal_last_login_at TIMESTAMPTZ,
   portal_invitation_sent_at TIMESTAMPTZ,
   password_set_at TIMESTAMPTZ,
@@ -432,6 +441,9 @@ CREATE TABLE clients (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
+
+Password verifiers are stored separately in `client_portal_credentials`, which
+is service-role-only and intentionally absent from frontend types.
 
 #### `bookings`
 ```sql

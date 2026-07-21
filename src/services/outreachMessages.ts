@@ -11,6 +11,7 @@ export interface OutreachMessage {
   subject_line: string
   email_body: string
   bison_campaign_id: string | null
+  bison_lead_id?: string | null
   personalization_data: Record<string, unknown> | null
   status: 'pending_review' | 'approved' | 'sent' | 'failed' | 'archived'
   priority: 'high' | 'medium' | 'low' | null

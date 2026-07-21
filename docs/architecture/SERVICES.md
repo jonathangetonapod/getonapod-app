@@ -1,5 +1,11 @@
 # Authority Built - Architecture Documentation
 
+> **Invite-only MVP status:** this document includes historical architecture.
+> Billing/Stripe, HeyGen/video generation, and client magic links are retired;
+> historical mutation endpoints return HTTP 410. AI, Podscan, email, and Google
+> credentials are server-only and never belong in `VITE_` variables. Use the
+> root `README.md` and `docs/invite-only-mvp.md` as the release contract.
+
 ## Overview
 
 Authority Built is a comprehensive podcast booking and management platform built with React, TypeScript, Supabase, and various external integrations. This document provides a complete overview of all services, hooks, stores, contexts, utilities, and external API integrations.
@@ -92,17 +98,16 @@ The application follows a modular architecture with:
 - `ClientPortalAuthResponse` - Login response with session and client data
 
 **Main API Methods:**
-- `requestMagicLink(email)` - Send magic link email via edge function
 - `loginWithPassword(email, password)` - Password-based login
-- `verifyToken(token)` - Verify magic link token
 - `validateSession(sessionToken)` - Validate existing session
 - `logout(sessionToken)` - Invalidate session
 - `getPortalBookings(sessionToken)` - Get client's bookings
 - `getPortalResources(sessionToken)` - Get client's resources
 
 **Session Storage:**
-- `sessionStorage.save(session, client)` - Store session in localStorage
-- `sessionStorage.get()` - Retrieve session from localStorage
+- `sessionStorage.save(session, client)` - Store the opaque session in
+  tab-scoped `sessionStorage`, with an in-memory fallback
+- `sessionStorage.get()` - Retrieve the tab-scoped or in-memory session
 - `sessionStorage.clear()` - Clear stored session
 - `sessionStorage.isExpired(session)` - Check if session expired
 
@@ -178,9 +183,8 @@ The application follows a modular architecture with:
 **Purpose**: AI-powered content generation using Anthropic Claude.
 
 **Configuration:**
-- Uses `VITE_ANTHROPIC_API_KEY`
-- Model: `claude-sonnet-4-5-20250929`
-- Client-side usage enabled
+- Calls a guarded Supabase Edge Function
+- Provider key remains in server-side Supabase secret storage
 
 **Main API Methods:**
 - `generatePodcastSummary(input)` - Generate "Why This Show" descriptions
@@ -191,17 +195,10 @@ The application follows a modular architecture with:
 - Tier-based feature recommendations
 - Fallback to template-based content on API failure
 
-#### `stripe.ts` - Payment Processing
-**Purpose**: Stripe integration for payment processing.
+#### Stripe payment service (retired)
 
-**Main API Methods:**
-- `createCheckoutSession(cartItems, customerEmail, customerName)` - Create Stripe checkout
-- `redirectToCheckout(sessionId)` - Redirect to Stripe hosted page
-
-**Integration:**
-- Uses Supabase Edge Functions for secure session creation
-- Handles both premium podcasts and addon services
-- Webhook processing for payment completion
+The browser service is removed. Historical checkout/webhook endpoints are 410
+tombstones and the provider webhook must be unregistered during cutover.
 
 #### `podscan.ts` - Podcast Data Provider
 **Purpose**: Integration with Podscan API for podcast metadata.
@@ -219,13 +216,10 @@ The application follows a modular architecture with:
 - Client prospect management
 - Automated reporting workflows
 
-#### `heygen.ts` - Video Generation
-**Purpose**: AI-powered video content generation.
+#### HeyGen/video service (retired)
 
-**Features:**
-- Generate promotional videos
-- Personalized video messages
-- Integration with HeyGen API
+The browser service and video worker are retired. Historical endpoints return
+HTTP 410; remove the external Railway service and its secrets during cutover.
 
 ### Specialized Services
 
@@ -395,19 +389,16 @@ const isMobile = useIsMobile()
 - `session: ClientPortalSession | null` - Portal session
 - `loading: boolean` - Session loading state
 - `isImpersonating: boolean` - Admin impersonation mode
-- `requestMagicLink(email)` - Send magic link email
-- `loginWithToken(token)` - Login via magic link
 - `loginWithPassword(email, password)` - Password login
 - `impersonateClient(client)` - Admin impersonation
 - `exitImpersonation()` - Exit impersonation mode
 - `logout()` - Sign out of portal
 
 **Key Features:**
-- Magic link authentication
-- Password-based login
+- Password-based login (magic links are retired)
 - Admin impersonation capabilities
-- Session persistence in localStorage
-- Auto-refresh before expiry
+- Tab-scoped `sessionStorage` plus a tested in-memory fallback
+- Fixed expiry with automatic logout; no silent token refresh
 - Sentry user tracking integration
 
 **Session Management:**
@@ -572,8 +563,6 @@ const isMobile = useIsMobile()
 ```env
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_STRIPE_PUBLISHABLE_KEY=your_stripe_key
-VITE_ANTHROPIC_API_KEY=your_anthropic_key
 VITE_APP_URL=your_app_url
 ```
 
@@ -582,8 +571,7 @@ VITE_APP_URL=your_app_url
 - **Styling**: Tailwind CSS, shadcn/ui components
 - **State**: Zustand for global state, React Context for auth
 - **Backend**: Supabase (PostgreSQL + Edge Functions)
-- **Payments**: Stripe
-- **AI**: Anthropic Claude
+- **AI**: guarded server-side provider integrations
 - **Monitoring**: Sentry
 
 ---
@@ -593,7 +581,8 @@ VITE_APP_URL=your_app_url
 ### Caching Strategies
 1. **Admin Email Caching** - 1-minute cache for admin authorization
 2. **Podcast Data Caching** - Reduce external API calls
-3. **Session Storage** - localStorage for client portal sessions
+3. **Session Storage** - tab-scoped `sessionStorage` with an in-memory fallback
+   for client portal sessions
 
 ### Code Splitting
 - Route-based code splitting

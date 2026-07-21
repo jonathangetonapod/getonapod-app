@@ -36,6 +36,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { supabase } from '@/lib/supabase'
+import { getPodcastById } from '@/services/podscan'
 import { toast } from 'sonner'
 import {
   Share2,
@@ -75,7 +76,17 @@ import {
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { cn } from '@/lib/utils'
-import { generateProspectVideo, pollVideoStatus } from '@/services/heygen'
+import { openExternalUrl, safeExternalUrl } from '@/lib/externalUrl'
+
+function safeUrlForDomain(value: string, rootDomain: string): string | null {
+  const normalizedUrl = safeExternalUrl(value)
+  if (!normalizedUrl) return null
+
+  const hostname = new URL(normalizedUrl).hostname.toLowerCase()
+  return hostname === rootDomain || hostname.endsWith(`.${rootDomain}`)
+    ? normalizedUrl
+    : null
+}
 
 interface ProspectDashboard {
   id: string
@@ -182,13 +193,6 @@ export default function ProspectDashboards() {
   const [savingTestimonials, setSavingTestimonials] = useState(false)
   const [togglingTestimonials, setTogglingTestimonials] = useState(false)
 
-  // Background video generation
-  const [generatingVideo, setGeneratingVideo] = useState(false)
-  const [videoProgress, setVideoProgress] = useState(0)
-
-  // HeyGen AI video generation
-  const [generatingHeyGenVideo, setGeneratingHeyGenVideo] = useState(false)
-
   // Edit prospect name
   const [editProspectName, setEditProspectName] = useState('')
   const [savingProspectName, setSavingProspectName] = useState(false)
@@ -250,27 +254,14 @@ export default function ProspectDashboards() {
 
         // Enrich feedback with podcast names from Podscan API for entries missing names
         const feedbackData = data || []
-        const podscanApiKey = import.meta.env.VITE_PODSCAN_API_KEY
-
         const enrichedFeedback = await Promise.all(
           feedbackData.map(async (fb) => {
             if (fb.podcast_name) return fb
 
             // Fetch podcast name from Podscan
             try {
-              const response = await fetch(
-                `https://podscan.fm/api/v1/podcasts/${fb.podcast_id}`,
-                {
-                  headers: {
-                    'Authorization': `Bearer ${podscanApiKey}`,
-                  },
-                }
-              )
-              if (response.ok) {
-                const podcastData = await response.json()
-                const podcast = podcastData.podcast || podcastData
-                return { ...fb, podcast_name: podcast.podcast_name || null }
-              }
+              const podcast = await getPodcastById(fb.podcast_id)
+              return { ...fb, podcast_name: podcast.podcast_name || null }
             } catch (err) {
               console.error('Error fetching podcast name:', err)
             }
@@ -432,9 +423,10 @@ export default function ProspectDashboards() {
   }
 
   const copyLink = (slug: string, includeTour: boolean = false) => {
+    const encodedSlug = encodeURIComponent(slug)
     const url = includeTour
-      ? `${appUrl}/prospect/${slug}?tour=1`
-      : `${appUrl}/prospect/${slug}`
+      ? `${appUrl}/prospect/${encodedSlug}?tour=1`
+      : `${appUrl}/prospect/${encodedSlug}`
     navigator.clipboard.writeText(url)
     toast.success(includeTour ? 'Link with welcome tour copied!' : 'Dashboard link copied!')
   }
@@ -442,8 +434,30 @@ export default function ProspectDashboards() {
   // Helper to extract spreadsheet ID from URL
   const extractSpreadsheetId = (url: string | null): string | null => {
     if (!url) return null
-    const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    const normalizedUrl = safeExternalUrl(url)
+    if (!normalizedUrl) return null
+    const parsedUrl = new URL(normalizedUrl)
+    if (parsedUrl.hostname.toLowerCase() !== 'docs.google.com') return null
+    const match = parsedUrl.pathname.match(/^\/spreadsheets\/d\/([a-zA-Z0-9-_]+)(?:\/|$)/)
     return match ? match[1] : null
+  }
+
+  const openGoogleSheet = (url: string | null) => {
+    const spreadsheetId = extractSpreadsheetId(url)
+    if (!spreadsheetId) {
+      toast.error('The stored Google Sheets URL is invalid')
+      return
+    }
+    openExternalUrl(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`)
+  }
+
+  const openLoomVideo = (url: string) => {
+    const normalizedUrl = safeUrlForDomain(url, 'loom.com')
+    if (!normalizedUrl) {
+      toast.error('The stored Loom video URL is invalid')
+      return
+    }
+    openExternalUrl(normalizedUrl)
   }
 
   const deletePodcastFromDashboard = async (podcastId: string, podcastName: string | null) => {
@@ -609,6 +623,13 @@ export default function ProspectDashboards() {
   const saveProfilePicture = async () => {
     if (!selectedDashboard) return
 
+    const imageUrlInput = editImageUrl.trim()
+    const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
+    if (imageUrlInput && !normalizedImageUrl) {
+      toast.error('Profile picture must be a valid HTTP or HTTPS URL')
+      return
+    }
+
     setSavingImage(true)
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
@@ -617,7 +638,7 @@ export default function ProspectDashboards() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
-        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_image_url: editImageUrl.trim() || null } })
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_image_url: normalizedImageUrl } })
       })
       if (!response.ok) {
         const errorData = await response.json()
@@ -628,13 +649,14 @@ export default function ProspectDashboards() {
       setDashboards(prev =>
         prev.map(d =>
           d.id === selectedDashboard.id
-            ? { ...d, prospect_image_url: editImageUrl.trim() || null }
+            ? { ...d, prospect_image_url: normalizedImageUrl }
             : d
         )
       )
       setSelectedDashboard(prev =>
-        prev ? { ...prev, prospect_image_url: editImageUrl.trim() || null } : null
+        prev ? { ...prev, prospect_image_url: normalizedImageUrl } : null
       )
+      setEditImageUrl(normalizedImageUrl || '')
 
       toast.success('Profile picture updated!')
     } catch (error) {
@@ -682,8 +704,11 @@ export default function ProspectDashboards() {
         .from('prospect-images')
         .getPublicUrl(fileName)
 
+      const normalizedPublicUrl = safeExternalUrl(publicUrl)
+      if (!normalizedPublicUrl) throw new Error('Storage returned an invalid image URL')
+
       // Update the image URL
-      setEditImageUrl(publicUrl)
+      setEditImageUrl(normalizedPublicUrl)
 
       // Save to database via edge function
       const dbResponse = await fetch(`${SUPABASE_URL}/functions/v1/update-prospect-dashboard`, {
@@ -692,7 +717,7 @@ export default function ProspectDashboards() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
-        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_image_url: publicUrl } })
+        body: JSON.stringify({ prospect_id: selectedDashboard.id, updates: { prospect_image_url: normalizedPublicUrl } })
       })
       if (!dbResponse.ok) {
         const errorData = await dbResponse.json()
@@ -703,12 +728,12 @@ export default function ProspectDashboards() {
       setDashboards(prev =>
         prev.map(d =>
           d.id === selectedDashboard.id
-            ? { ...d, prospect_image_url: publicUrl }
+            ? { ...d, prospect_image_url: normalizedPublicUrl }
             : d
         )
       )
       setSelectedDashboard(prev =>
-        prev ? { ...prev, prospect_image_url: publicUrl } : null
+        prev ? { ...prev, prospect_image_url: normalizedPublicUrl } : null
       )
 
       toast.success('Profile picture uploaded!')
@@ -725,14 +750,7 @@ export default function ProspectDashboards() {
   }
 
   // Generate a random slug
-  const generateSlug = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-    let slug = ''
-    for (let i = 0; i < 8; i++) {
-      slug += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return slug
-  }
+  const generateSlug = () => `prospect-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
 
   const createProspect = async () => {
     if (!newProspect.name.trim()) {
@@ -745,15 +763,20 @@ export default function ProspectDashboards() {
       const slug = generateSlug()
       let spreadsheetId = ''
       let spreadsheetUrl = newProspect.spreadsheetUrl.trim()
+      const imageUrlInput = newProspect.imageUrl.trim()
+      const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
+
+      if (imageUrlInput && !normalizedImageUrl) {
+        throw new Error('Profile picture must be a valid HTTP or HTTPS URL')
+      }
 
       // Extract spreadsheet ID if URL provided
       if (spreadsheetUrl) {
         const extractedId = extractSpreadsheetId(spreadsheetUrl)
-        if (extractedId) {
-          spreadsheetId = extractedId
-          // Normalize the URL
-          spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`
-        }
+        if (!extractedId) throw new Error('Enter a valid Google Sheets URL')
+        spreadsheetId = extractedId
+        // Normalize the URL
+        spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`
       }
 
       const expertiseArr = newProspect.expertise.trim()
@@ -769,7 +792,7 @@ export default function ProspectDashboards() {
           slug,
           prospect_name: newProspect.name.trim(),
           prospect_bio: newProspect.bio.trim() || null,
-          prospect_image_url: newProspect.imageUrl.trim() || null,
+          prospect_image_url: normalizedImageUrl,
           spreadsheet_id: spreadsheetId || null,
           spreadsheet_url: spreadsheetUrl || null,
           is_active: true,
@@ -795,7 +818,7 @@ export default function ProspectDashboards() {
       setSelectedDashboard(data)
     } catch (error) {
       console.error('Error creating prospect:', error)
-      toast.error('Failed to create prospect')
+      toast.error(error instanceof Error ? error.message : 'Failed to create prospect')
     } finally {
       setCreating(false)
     }
@@ -812,11 +835,10 @@ export default function ProspectDashboards() {
       // Extract spreadsheet ID if URL provided
       if (spreadsheetUrl) {
         const extractedId = extractSpreadsheetId(spreadsheetUrl)
-        if (extractedId) {
-          spreadsheetId = extractedId
-          // Normalize the URL
-          spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`
-        }
+        if (!extractedId) throw new Error('Enter a valid Google Sheets URL')
+        spreadsheetId = extractedId
+        // Normalize the URL
+        spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${extractedId}/edit`
       }
 
       const { error } = await supabase
@@ -845,7 +867,7 @@ export default function ProspectDashboards() {
       toast.success('Google Sheet URL updated!')
     } catch (error) {
       console.error('Error saving spreadsheet URL:', error)
-      toast.error('Failed to save spreadsheet URL')
+      toast.error(error instanceof Error ? error.message : 'Failed to save spreadsheet URL')
     } finally {
       setSavingSpreadsheet(false)
     }
@@ -889,11 +911,18 @@ export default function ProspectDashboards() {
   const saveMediaKitUrl = async () => {
     if (!selectedDashboard) return
 
+    const mediaKitUrlInput = editMediaKitUrl.trim()
+    const normalizedMediaKitUrl = mediaKitUrlInput ? safeExternalUrl(mediaKitUrlInput) : null
+    if (mediaKitUrlInput && !normalizedMediaKitUrl) {
+      toast.error('Media kit must be a valid HTTP or HTTPS URL')
+      return
+    }
+
     setSavingMediaKit(true)
     try {
       const { error } = await supabase
         .from('prospect_dashboards')
-        .update({ media_kit_url: editMediaKitUrl.trim() || null })
+        .update({ media_kit_url: normalizedMediaKitUrl })
         .eq('id', selectedDashboard.id)
 
       if (error) throw error
@@ -902,13 +931,14 @@ export default function ProspectDashboards() {
       setDashboards(prev =>
         prev.map(d =>
           d.id === selectedDashboard.id
-            ? { ...d, media_kit_url: editMediaKitUrl.trim() || null }
+            ? { ...d, media_kit_url: normalizedMediaKitUrl }
             : d
         )
       )
       setSelectedDashboard(prev =>
-        prev ? { ...prev, media_kit_url: editMediaKitUrl.trim() || null } : null
+        prev ? { ...prev, media_kit_url: normalizedMediaKitUrl } : null
       )
+      setEditMediaKitUrl(normalizedMediaKitUrl || '')
 
       toast.success('Media kit URL saved!')
     } catch (error) {
@@ -922,7 +952,10 @@ export default function ProspectDashboards() {
   // Re-host an external image (e.g. LinkedIn) to Supabase Storage
   const rehostImageToSupabase = async (imageUrl: string, dashboardId: string): Promise<string | null> => {
     try {
-      const response = await fetch(imageUrl)
+      const normalizedImageUrl = safeExternalUrl(imageUrl)
+      if (!normalizedImageUrl) return null
+
+      const response = await fetch(normalizedImageUrl)
       if (!response.ok) return null
 
       const blob = await response.blob()
@@ -941,23 +974,25 @@ export default function ProspectDashboards() {
       const { data: { publicUrl } } = supabase.storage
         .from('prospect-images')
         .getPublicUrl(fileName)
+      const normalizedPublicUrl = safeExternalUrl(publicUrl)
+      if (!normalizedPublicUrl) return null
 
       // Update the prospect record with the new URL
       await supabase
         .from('prospect_dashboards')
-        .update({ prospect_image_url: publicUrl })
+        .update({ prospect_image_url: normalizedPublicUrl })
         .eq('id', dashboardId)
 
       // Update local state
-      setEditImageUrl(publicUrl)
+      setEditImageUrl(normalizedPublicUrl)
       setDashboards(prev =>
-        prev.map(d => d.id === dashboardId ? { ...d, prospect_image_url: publicUrl } : d)
+        prev.map(d => d.id === dashboardId ? { ...d, prospect_image_url: normalizedPublicUrl } : d)
       )
       setSelectedDashboard(prev =>
-        prev ? { ...prev, prospect_image_url: publicUrl } : null
+        prev ? { ...prev, prospect_image_url: normalizedPublicUrl } : null
       )
 
-      return publicUrl
+      return normalizedPublicUrl
     } catch (err) {
       console.error('Error rehosting image:', err)
       return null
@@ -976,7 +1011,11 @@ export default function ProspectDashboards() {
     try {
       // Auto-rehost LinkedIn images so Google Docs can access them
       let imageUrl = selectedDashboard.prospect_image_url
-      if (imageUrl && imageUrl.includes('licdn.com')) {
+      if (imageUrl) {
+        imageUrl = safeExternalUrl(imageUrl)
+        if (!imageUrl) throw new Error('The stored profile picture URL is invalid')
+      }
+      if (imageUrl && safeUrlForDomain(imageUrl, 'licdn.com')) {
         toast.info('Re-hosting LinkedIn photo for Google Docs...')
         const rehostedUrl = await rehostImageToSupabase(imageUrl, selectedDashboard.id)
         if (rehostedUrl) {
@@ -1014,22 +1053,24 @@ export default function ProspectDashboards() {
 
       const data = await response.json()
       if (data.docUrl) {
-        setEditMediaKitUrl(data.docUrl)
+        const mediaKitUrl = safeUrlForDomain(data.docUrl, 'docs.google.com')
+        if (!mediaKitUrl) throw new Error('Document provider returned an invalid URL')
+        setEditMediaKitUrl(mediaKitUrl)
 
         // Update local state
         setDashboards(prev =>
           prev.map(d =>
             d.id === selectedDashboard.id
-              ? { ...d, media_kit_url: data.docUrl }
+              ? { ...d, media_kit_url: mediaKitUrl }
               : d
           )
         )
         setSelectedDashboard(prev =>
-          prev ? { ...prev, media_kit_url: data.docUrl } : null
+          prev ? { ...prev, media_kit_url: mediaKitUrl } : null
         )
 
         toast.success('Media kit generated! Opening Google Doc...')
-        window.open(data.docUrl, '_blank')
+        openExternalUrl(mediaKitUrl)
       }
     } catch (error) {
       console.error('Error generating media kit:', error)
@@ -1052,7 +1093,10 @@ export default function ProspectDashboards() {
     const img = doc.querySelector('img[src*="cdn.loom.com"]')
     const thumbnailUrl = img?.getAttribute('src') || ''
 
-    return { videoUrl, thumbnailUrl }
+    return {
+      videoUrl: videoUrl ? safeUrlForDomain(videoUrl, 'loom.com') || '' : '',
+      thumbnailUrl: thumbnailUrl ? safeUrlForDomain(thumbnailUrl, 'loom.com') || '' : '',
+    }
   }
 
   const handleLoomHtmlPaste = (html: string) => {
@@ -1071,14 +1115,32 @@ export default function ProspectDashboards() {
       } else {
         toast.error('Could not find Loom video URL in the HTML')
       }
-    } else if (trimmed.includes('loom.com')) {
+    } else if (trimmed) {
       // If it's just a plain URL, use it as video URL
-      setEditLoomVideoUrl(trimmed)
+      const videoUrl = safeUrlForDomain(trimmed, 'loom.com')
+      if (videoUrl) {
+        setEditLoomVideoUrl(videoUrl)
+      } else {
+        toast.error('Loom video must be a valid loom.com URL')
+      }
     }
   }
 
   const saveLoomVideoUrl = async () => {
     if (!selectedDashboard) return
+
+    const videoUrlInput = editLoomVideoUrl.trim()
+    const thumbnailUrlInput = editLoomThumbnailUrl.trim()
+    const normalizedVideoUrl = videoUrlInput ? safeUrlForDomain(videoUrlInput, 'loom.com') : null
+    const normalizedThumbnailUrl = thumbnailUrlInput ? safeUrlForDomain(thumbnailUrlInput, 'loom.com') : null
+    if (videoUrlInput && !normalizedVideoUrl) {
+      toast.error('Loom video must be a valid loom.com URL')
+      return
+    }
+    if (thumbnailUrlInput && !normalizedThumbnailUrl) {
+      toast.error('Loom thumbnail must be a valid loom.com URL')
+      return
+    }
 
     setSavingLoomVideo(true)
     try {
@@ -1091,8 +1153,8 @@ export default function ProspectDashboards() {
         body: JSON.stringify({
           prospect_id: selectedDashboard.id,
           updates: {
-            loom_video_url: editLoomVideoUrl.trim() || null,
-            loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+            loom_video_url: normalizedVideoUrl,
+            loom_thumbnail_url: normalizedThumbnailUrl,
             loom_video_title: editLoomVideoTitle.trim() || null
           }
         })
@@ -1108,8 +1170,8 @@ export default function ProspectDashboards() {
           d.id === selectedDashboard.id
             ? {
                 ...d,
-                loom_video_url: editLoomVideoUrl.trim() || null,
-                loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+                loom_video_url: normalizedVideoUrl,
+                loom_thumbnail_url: normalizedThumbnailUrl,
                 loom_video_title: editLoomVideoTitle.trim() || null
               }
             : d
@@ -1118,11 +1180,13 @@ export default function ProspectDashboards() {
       setSelectedDashboard(prev =>
         prev ? {
           ...prev,
-          loom_video_url: editLoomVideoUrl.trim() || null,
-          loom_thumbnail_url: editLoomThumbnailUrl.trim() || null,
+          loom_video_url: normalizedVideoUrl,
+          loom_thumbnail_url: normalizedThumbnailUrl,
           loom_video_title: editLoomVideoTitle.trim() || null
         } : null
       )
+      setEditLoomVideoUrl(normalizedVideoUrl || '')
+      setEditLoomThumbnailUrl(normalizedThumbnailUrl || '')
 
       toast.success('Loom video saved!')
     } catch (error) {
@@ -1240,11 +1304,15 @@ export default function ProspectDashboards() {
     setCheckingStatus(true)
 
     try {
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.')
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           spreadsheetId: selectedDashboard.spreadsheet_id,
@@ -1296,11 +1364,15 @@ export default function ProspectDashboards() {
     try {
       toast.info('Fetching missing podcasts from Podscan...')
 
+      const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+      if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.')
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           spreadsheetId: selectedDashboard.spreadsheet_id,
@@ -1516,252 +1588,6 @@ export default function ProspectDashboards() {
     }
   }
 
-  const handleGenerateBackgroundVideo = async () => {
-    if (!selectedDashboard) return
-
-    setGeneratingVideo(true)
-    setVideoProgress(0)
-
-    try {
-      // Update status to processing
-      await supabase
-        .from('prospect_dashboards')
-        .update({ background_video_status: 'processing' })
-        .eq('id', selectedDashboard.id)
-
-      // Update local state
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, background_video_status: 'processing' } : null
-      )
-
-      toast.info('Starting dashboard recording...', {
-        description: 'This will take about 45-60 seconds'
-      })
-
-      // Call video generation service
-      const videoServiceUrl = import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001'
-      const response = await fetch(`${videoServiceUrl}/api/generate-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dashboardId: selectedDashboard.id,
-          slug: selectedDashboard.slug
-        })
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to generate video')
-      }
-
-      const result = await response.json()
-
-      // Update local state with video URL
-      setDashboards(prev =>
-        prev.map(d =>
-          d.id === selectedDashboard.id
-            ? {
-                ...d,
-                background_video_url: result.videoUrl,
-                background_video_generated_at: new Date().toISOString(),
-                background_video_status: 'completed'
-              }
-            : d
-        )
-      )
-      setSelectedDashboard(prev =>
-        prev
-          ? {
-              ...prev,
-              background_video_url: result.videoUrl,
-              background_video_generated_at: new Date().toISOString(),
-              background_video_status: 'completed'
-            }
-          : null
-      )
-
-      toast.success('Dashboard video generated!', {
-        description: 'Ready to use with HeyGen'
-      })
-    } catch (error) {
-      console.error('Error generating video:', error)
-
-      // Update status to failed
-      await supabase
-        .from('prospect_dashboards')
-        .update({ background_video_status: 'failed' })
-        .eq('id', selectedDashboard.id)
-
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, background_video_status: 'failed' } : null
-      )
-
-      toast.error('Failed to generate video', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      })
-    } finally {
-      setGeneratingVideo(false)
-      setVideoProgress(0)
-    }
-  }
-
-  // HeyGen AI Video Generation
-  const handleGenerateHeyGenVideo = async () => {
-    if (!selectedDashboard) return
-
-    if (!selectedDashboard.background_video_url) {
-      toast.error('Generate dashboard recording first')
-      return
-    }
-
-    if (!selectedDashboard.first_name) {
-      toast.error('Please enter prospect first name')
-      return
-    }
-
-    try {
-      setGeneratingHeyGenVideo(true)
-
-      toast.info('Starting HeyGen AI video generation...', {
-        description: 'This may take 2-3 minutes'
-      })
-
-      // Generate the video
-      const videoId = await generateProspectVideo(
-        selectedDashboard.id,
-        selectedDashboard.background_video_url,
-        selectedDashboard.first_name
-      )
-
-      // Update local state to show pending status
-      setSelectedDashboard(prev =>
-        prev ? { ...prev, heygen_video_status: 'pending', heygen_video_id: videoId } : null
-      )
-
-      toast.success('HeyGen video queued!', {
-        description: 'Rendering in progress...'
-      })
-
-      // Poll for completion in the background
-      pollVideoStatus(videoId, selectedDashboard.id)
-        .then((videoUrl) => {
-          setSelectedDashboard(prev =>
-            prev
-              ? {
-                  ...prev,
-                  heygen_video_url: videoUrl,
-                  heygen_video_status: 'completed',
-                }
-              : null
-          )
-          toast.success('HeyGen video ready!', {
-            description: 'Your AI avatar video is complete'
-          })
-        })
-        .catch((error) => {
-          console.error('Polling error:', error)
-          toast.error('Video generation failed', {
-            description: error instanceof Error ? error.message : 'Please try again'
-          })
-        })
-        .finally(() => {
-          setGeneratingHeyGenVideo(false)
-        })
-    } catch (error) {
-      console.error('Error generating HeyGen video:', error)
-      setGeneratingHeyGenVideo(false)
-
-      toast.error('Failed to start video generation', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      })
-    }
-  }
-
-  // Refresh HeyGen Video Status (failsafe)
-  const handleRefreshVideoStatus = async () => {
-    if (!selectedDashboard?.heygen_video_id) {
-      toast.error('No video ID found')
-      return
-    }
-
-    try {
-      toast.info('Checking video status...')
-
-      const response = await fetch(
-        `${import.meta.env.VITE_VIDEO_SERVICE_URL || 'http://localhost:3001'}/api/heygen/status/${selectedDashboard.heygen_video_id}/${selectedDashboard.id}`,
-        { cache: 'no-store' }
-      )
-
-      if (!response.ok) {
-        throw new Error('Failed to check video status')
-      }
-
-      const status = await response.json()
-
-      // Update local state
-      setSelectedDashboard(prev =>
-        prev
-          ? {
-              ...prev,
-              heygen_video_status: status.status,
-              ...(status.video_url && { heygen_video_url: status.video_url }),
-              ...(status.thumbnail_url && { heygen_video_thumbnail_url: status.thumbnail_url }),
-            }
-          : null
-      )
-
-      if (status.status === 'completed') {
-        toast.success('Video is ready!')
-      } else if (status.status === 'failed') {
-        toast.error('Video generation failed')
-      } else {
-        toast.info(`Video status: ${status.status}`)
-      }
-    } catch (error) {
-      console.error('Error refreshing video status:', error)
-      toast.error('Failed to refresh status')
-    }
-  }
-
-  // Download HeyGen video as MP4
-  const handleDownloadVideo = async () => {
-    if (!selectedDashboard?.heygen_video_url) {
-      toast.error('No video URL available')
-      return
-    }
-
-    try {
-      toast.info('Downloading video...')
-
-      // Fetch the video from HeyGen URL
-      const response = await fetch(selectedDashboard.heygen_video_url)
-
-      if (!response.ok) {
-        throw new Error('Failed to download video')
-      }
-
-      // Get the video blob
-      const blob = await response.blob()
-
-      // Create a download link
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${selectedDashboard.prospect_name || 'prospect'}-heygen-video.mp4`
-      document.body.appendChild(a)
-      a.click()
-
-      // Cleanup
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast.success('Video downloaded!')
-    } catch (error) {
-      console.error('Error downloading video:', error)
-      toast.error('Failed to download video')
-    }
-  }
-
   // AI Analysis state
   const [runningAiAnalysis, setRunningAiAnalysis] = useState(false)
   const [aiStatus, setAiStatus] = useState<{
@@ -1794,11 +1620,15 @@ export default function ProspectDashboards() {
       const timeoutId = setTimeout(() => controller.abort(), 50000)
 
       try {
+        const accessToken = (await supabase.auth.getSession()).data.session?.access_token
+        if (!accessToken) throw new Error('Your admin session has expired. Please sign in again.')
+
         const response = await fetch(`${SUPABASE_URL}/functions/v1/get-prospect-podcasts`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             spreadsheetId: selectedDashboard.spreadsheet_id,
@@ -2165,7 +1995,7 @@ export default function ProspectDashboards() {
                     variant="outline"
                     size="sm"
                     className="rounded-full border-[#0d1b2a]/10 bg-white/70"
-                    onClick={() => window.open(`${appUrl}/prospect/${dashboard.slug}`, '_blank')}
+                    onClick={() => openExternalUrl(`${appUrl}/prospect/${encodeURIComponent(dashboard.slug)}`)}
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>
@@ -2177,7 +2007,7 @@ export default function ProspectDashboards() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem
-                        onClick={() => window.open(dashboard.spreadsheet_url, '_blank')}
+                        onClick={() => openGoogleSheet(dashboard.spreadsheet_url)}
                       >
                         <FileSpreadsheet className="h-4 w-4 mr-2" />
                         Edit Google Sheet
@@ -2371,7 +2201,7 @@ export default function ProspectDashboards() {
                       <div className="flex justify-center">
                         <div className="h-20 w-20 rounded-full overflow-hidden ring-2 ring-muted shadow-md">
                           <img
-                            src={editImageUrl}
+                            src={safeExternalUrl(editImageUrl) ?? undefined}
                             alt="Preview"
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -2471,7 +2301,7 @@ export default function ProspectDashboards() {
                       <Button
                         variant="link"
                         className="h-auto p-0 text-xs"
-                        onClick={() => window.open(editSpreadsheetUrl, '_blank')}
+                        onClick={() => openGoogleSheet(editSpreadsheetUrl)}
                       >
                         <ExternalLink className="h-3 w-3 mr-1" />
                         Open in Google Sheets
@@ -2613,7 +2443,7 @@ export default function ProspectDashboards() {
                       <Button
                         variant="link"
                         className="h-auto p-0 text-xs"
-                        onClick={() => window.open(editMediaKitUrl, '_blank')}
+                        onClick={() => openExternalUrl(editMediaKitUrl)}
                       >
                         <ExternalLink className="h-3 w-3 mr-1" />
                         Preview Media Kit
@@ -2696,7 +2526,7 @@ export default function ProspectDashboards() {
                       <Button
                         variant="link"
                         className="h-auto p-0 text-xs"
-                        onClick={() => window.open(editLoomVideoUrl, '_blank')}
+                        onClick={() => openLoomVideo(editLoomVideoUrl)}
                       >
                         <ExternalLink className="h-3 w-3 mr-1" />
                         Preview Video
@@ -3180,7 +3010,7 @@ export default function ProspectDashboards() {
                       <Button
                         variant="outline"
                         className="w-full justify-start"
-                        onClick={() => window.open(`${appUrl}/prospect/${selectedDashboard.slug}`, '_blank')}
+                        onClick={() => openExternalUrl(`${appUrl}/prospect/${encodeURIComponent(selectedDashboard.slug)}`)}
                       >
                         <ExternalLink className="h-4 w-4 mr-3" />
                         View Dashboard
@@ -3189,7 +3019,7 @@ export default function ProspectDashboards() {
                       <Button
                         variant="outline"
                         className="w-full justify-start"
-                        onClick={() => window.open(selectedDashboard.spreadsheet_url, '_blank')}
+                        onClick={() => openGoogleSheet(selectedDashboard.spreadsheet_url)}
                       >
                         <FileSpreadsheet className="h-4 w-4 mr-3" />
                         Edit Google Sheet

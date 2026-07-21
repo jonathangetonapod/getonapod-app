@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Calendar, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getBookings } from '@/services/bookings'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import { useState } from 'react'
 
 type TimeRange = 30 | 60 | 90 | 180
@@ -241,7 +242,7 @@ export default function UpcomingRecordings() {
                           </div>
                         </div>
                         {!booking.prep_sent && (
-                          <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-1" title="Prep not sent" />
+                          <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-1" aria-label="Prep not sent" />
                         )}
                       </div>
 
@@ -255,7 +256,7 @@ export default function UpcomingRecordings() {
                         )}
                         {booking.podcast_url && (
                           <a
-                            href={booking.podcast_url}
+                            href={safeExternalUrl(booking.podcast_url) ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-primary hover:underline"

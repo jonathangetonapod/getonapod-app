@@ -1,5 +1,10 @@
 # Authority Built - Pages Architecture
 
+> **Invite-only MVP warning:** the root README is authoritative for current
+> routes. Billing/checkout and the AI Sales Director, admin videos, admin blog,
+> customers/orders/analytics, premium placements, and settings surfaces are
+> retired or redirected in this release.
+
 This document provides a comprehensive overview of all pages in the Authority Built application, their routes, functionality, data flows, and user access controls.
 
 ## Application Overview
@@ -296,14 +301,6 @@ All admin pages require authentication via `ProtectedRoute` component and use th
 
 ---
 
-### AI Sales Director (`/admin/ai-sales-director`)
-**File**: `/src/pages/admin/AISalesDirector.tsx`  
-**Access**: Admin only
-
-**Purpose**: AI-powered sales insights and automation tools
-
----
-
 ### Calendar Dashboard (`/admin/calendar`)
 **File**: `/src/pages/admin/CalendarDashboard.tsx`  
 **Access**: Admin only
@@ -336,27 +333,11 @@ All admin pages require authentication via `ProtectedRoute` component and use th
 
 ---
 
-### Blog Management (`/admin/blog`)
-**File**: `/src/pages/admin/BlogManagement.tsx`  
-**Access**: Admin only
+### Retired administrator routes
 
-**Purpose**: Content management system for blog posts
-
----
-
-### Blog Editor (`/admin/blog/new`, `/admin/blog/:id/edit`)
-**File**: `/src/pages/admin/BlogEditor.tsx`  
-**Access**: Admin only
-
-**Purpose**: Rich text editor for creating and editing blog content
-
----
-
-### Video Management (`/admin/videos`)
-**File**: `/src/pages/admin/VideoManagement.tsx`  
-**Access**: Admin only
-
-**Purpose**: Video content management and organization
+`/admin/ai-sales-director`, `/admin/blog` (including its editor routes), and
+`/admin/videos` are removed from the invite-only MVP. Their page source files
+are deleted and the legacy URLs redirect to `/admin/dashboard`.
 
 ---
 

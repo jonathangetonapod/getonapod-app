@@ -1,9 +1,16 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { Webhook } from 'npm:svix@1.98.0'
+import { getCorsHeaders } from '../_shared/cors.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature',
+function headers(req: Request): Record<string, string> {
+  return {
+    ...getCorsHeaders(req),
+    'Access-Control-Allow-Headers': 'content-type, svix-id, svix-timestamp, svix-signature',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Vary': 'Origin',
+  }
 }
 
 /**
@@ -15,6 +22,7 @@ const corsHeaders = {
  * - email.delivery_delayed
  * - email.bounced
  * - email.complained
+ * - email.suppressed
  * - email.opened
  * - email.clicked
  *
@@ -24,202 +32,252 @@ const corsHeaders = {
 interface ResendWebhookEvent {
   type: string
   created_at: string
-  data: {
-    email_id: string
-    from: string
-    to: string[]
-    subject: string
-    created_at: string
+  data: Record<string, unknown> & {
+    email_id?: unknown
     // Event-specific fields
-    bounce_type?: string // 'hard' | 'soft' | 'spam'
-    complaint_type?: string
-    click?: {
-      link: string
-      timestamp: string
+    bounce?: {
+      type?: string
+      subType?: string
+      message?: string
     }
+  }
+}
+
+const SUPPORTED_EMAIL_EVENTS = new Set([
+  'email.sent',
+  'email.delivered',
+  'email.delivery_delayed',
+  'email.failed',
+  'email.bounced',
+  'email.complained',
+  'email.suppressed',
+  'email.opened',
+  'email.clicked',
+])
+
+type BodyReadResult =
+  | { ok: true; text: string }
+  | { ok: false; status: 400 | 413; error: string }
+
+async function readBoundedUtf8Body(req: Request, maxBytes: number): Promise<BodyReadResult> {
+  if (!req.body) return { ok: true, text: '' }
+
+  const reader = req.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        return { ok: false, status: 413, error: 'Payload too large' }
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  try {
+    return { ok: true, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
+  } catch {
+    return { ok: false, status: 400, error: 'Invalid webhook payload' }
+  }
+}
+
+function normalizeBounceType(value: unknown): 'hard' | 'soft' | 'unknown' {
+  if (typeof value !== 'string') return 'unknown'
+  switch (value.trim().toLowerCase()) {
+    case 'permanent':
+    case 'hard':
+      return 'hard'
+    case 'temporary':
+    case 'transient':
+    case 'soft':
+      return 'soft'
+    default:
+      return 'unknown'
   }
 }
 
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { status: 204, headers: headers(req) })
   }
 
   try {
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Method not allowed' }),
+        { status: 405, headers: headers(req) },
+      )
+    }
+
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const resendWebhookSecret = Deno.env.get('RESEND_WEBHOOK_SECRET')
 
-    // Initialize Supabase client with service role
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-    // TODO: Verify webhook signature using svix-* headers
-    // For now, we'll just process the event
-    if (resendWebhookSecret) {
-      const svixId = req.headers.get('svix-id')
-      const svixTimestamp = req.headers.get('svix-timestamp')
-      const svixSignature = req.headers.get('svix-signature')
-
-      if (!svixId || !svixTimestamp || !svixSignature) {
-        console.warn('[Resend Webhook] Missing Svix headers')
-        // Continue anyway for now
-      }
-    }
-
-    // Parse webhook event
-    const event: ResendWebhookEvent = await req.json()
-    console.log(`[Resend Webhook] Received event: ${event.type} for ${event.data.email_id}`)
-
-    const emailId = event.data.email_id
-    const toAddress = event.data.to[0] // Get first recipient
-
-    // Find email log entry
-    const { data: emailLog, error: findError } = await supabase
-      .from('email_logs')
-      .select('*')
-      .eq('resend_email_id', emailId)
-      .single()
-
-    if (findError) {
-      console.warn(`[Resend Webhook] Email log not found for ${emailId}:`, findError)
-      // Return success anyway - Resend doesn't need to retry
+    if (
+      !supabaseUrl || !supabaseServiceKey || !resendWebhookSecret
+      || !resendWebhookSecret.startsWith('whsec_')
+      || resendWebhookSecret.length > 512
+    ) {
+      console.error('[Resend Webhook] Required server configuration is missing')
       return new Response(
-        JSON.stringify({ received: true, warning: 'Email log not found' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ received: false, error: 'Webhook unavailable' }),
+        { status: 503, headers: headers(req) },
       )
     }
 
-    // Handle different event types
-    switch (event.type) {
-      case 'email.sent':
-        await supabase
-          .from('email_logs')
-          .update({ status: 'sent' })
-          .eq('resend_email_id', emailId)
-        console.log(`[Resend Webhook] Email sent: ${emailId}`)
-        break
+    const svixId = req.headers.get('svix-id')
+    const svixTimestamp = req.headers.get('svix-timestamp')
+    const svixSignature = req.headers.get('svix-signature')
+    if (
+      !svixId || svixId.length > 256 || svixId.trim() !== svixId
+      || !svixTimestamp || svixTimestamp.length > 64
+      || svixTimestamp.trim() !== svixTimestamp
+      || !svixSignature || svixSignature.length > 2_048
+      || svixSignature.trim() !== svixSignature
+    ) {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Invalid webhook' }),
+        { status: 400, headers: headers(req) },
+      )
+    }
 
-      case 'email.delivered':
-        await supabase
-          .from('email_logs')
-          .update({ status: 'delivered' })
-          .eq('resend_email_id', emailId)
-        console.log(`[Resend Webhook] Email delivered: ${emailId}`)
-        break
+    const declaredLength = Number(req.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declaredLength) && declaredLength > 65_536) {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Payload too large' }),
+        { status: 413, headers: headers(req) },
+      )
+    }
 
-      case 'email.delivery_delayed':
-        await supabase
-          .from('email_logs')
-          .update({
-            metadata: {
-              ...emailLog?.metadata,
-              delivery_delayed: true,
-              delayed_at: event.created_at
-            }
-          })
-          .eq('resend_email_id', emailId)
-        console.log(`[Resend Webhook] Email delayed: ${emailId}`)
-        break
+    // Resend signatures cover the exact request bytes, so verify the raw body
+    // before parsing or performing any service-role operation.
+    const bodyResult = await readBoundedUtf8Body(req, 65_536)
+    if (!bodyResult.ok) {
+      return new Response(
+        JSON.stringify({ received: false, error: bodyResult.error }),
+        { status: bodyResult.status, headers: headers(req) },
+      )
+    }
+    const payload = bodyResult.text
 
-      case 'email.bounced':
-        const bounceType = event.data.bounce_type || 'unknown'
+    let event: ResendWebhookEvent
+    let webhook: Webhook
+    try {
+      webhook = new Webhook(resendWebhookSecret)
+    } catch {
+      console.error('[Resend Webhook] Webhook secret is invalid')
+      return new Response(
+        JSON.stringify({ received: false, error: 'Webhook unavailable' }),
+        { status: 503, headers: headers(req) },
+      )
+    }
 
-        // Update email log
-        await supabase
-          .from('email_logs')
-          .update({
-            status: 'bounced',
-            bounce_type: bounceType
-          })
-          .eq('resend_email_id', emailId)
+    try {
+      event = webhook.verify(payload, {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': svixSignature,
+      }) as ResendWebhookEvent
+    } catch {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Invalid webhook' }),
+        { status: 400, headers: headers(req) },
+      )
+    }
 
-        // Record bounce for suppression
-        await supabase.rpc('record_email_bounce', {
-          email: toAddress,
-          bounce_type_param: bounceType,
-          auto_suppress: true
-        })
+    if (
+      !event || typeof event !== 'object'
+      || typeof event.type !== 'string'
+      || event.type.length < 1 || event.type.length > 128
+      || event.type.trim() !== event.type
+      || !event.data || typeof event.data !== 'object' || Array.isArray(event.data)
+      || typeof event.created_at !== 'string'
+    ) {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Invalid webhook payload' }),
+        { status: 400, headers: headers(req) },
+      )
+    }
 
-        console.log(`[Resend Webhook] Email bounced (${bounceType}): ${emailId} - ${toAddress}`)
-        break
+    const rawEmailId = event.data.email_id
+    if (
+      rawEmailId !== undefined
+      && (
+        typeof rawEmailId !== 'string'
+        || rawEmailId.length < 1 || rawEmailId.length > 256
+        || rawEmailId.trim() !== rawEmailId
+      )
+    ) {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Invalid webhook payload' }),
+        { status: 400, headers: headers(req) },
+      )
+    }
 
-      case 'email.complained':
-        const complaintType = event.data.complaint_type || 'abuse'
+    const emailId = typeof rawEmailId === 'string' ? rawEmailId : null
+    if (SUPPORTED_EMAIL_EVENTS.has(event.type) && emailId === null) {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Invalid webhook payload' }),
+        { status: 400, headers: headers(req) },
+      )
+    }
 
-        // Update email log
-        await supabase
-          .from('email_logs')
-          .update({
-            status: 'complained',
-            complaint_type: complaintType
-          })
-          .eq('resend_email_id', emailId)
+    const eventCreatedAt = new Date(event.created_at)
+    if (Number.isNaN(eventCreatedAt.getTime())) {
+      return new Response(
+        JSON.stringify({ received: false, error: 'Invalid webhook payload' }),
+        { status: 400, headers: headers(req) },
+      )
+    }
 
-        // Record as complaint bounce for suppression
-        await supabase.rpc('record_email_bounce', {
-          email: toAddress,
-          bounce_type_param: 'complaint',
-          auto_suppress: true
-        })
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const { data: result, error: processingError } = await supabase.rpc(
+      'process_resend_webhook_event',
+      {
+        p_svix_id: svixId,
+        p_event_type: event.type,
+        p_resend_email_id: emailId,
+        p_event_created_at: eventCreatedAt.toISOString(),
+        p_bounce_type: event.type === 'email.bounced'
+          ? normalizeBounceType(event.data.bounce?.type)
+          : null,
+        p_complaint_type: event.type === 'email.complained' ? 'abuse' : null,
+      },
+    )
 
-        console.log(`[Resend Webhook] Email complained (${complaintType}): ${emailId} - ${toAddress}`)
-
-        // TODO: Alert admin about spam complaint
-        break
-
-      case 'email.opened':
-        const currentOpenCount = emailLog?.open_count || 0
-        const openedAt = emailLog?.opened_at || event.created_at
-
-        await supabase
-          .from('email_logs')
-          .update({
-            opened_at: openedAt, // Keep first open time
-            open_count: currentOpenCount + 1
-          })
-          .eq('resend_email_id', emailId)
-
-        console.log(`[Resend Webhook] Email opened (#${currentOpenCount + 1}): ${emailId}`)
-        break
-
-      case 'email.clicked':
-        const currentClickCount = emailLog?.click_count || 0
-        const clickedAt = emailLog?.clicked_at || event.created_at
-        const clickedLink = event.data.click?.link
-
-        await supabase
-          .from('email_logs')
-          .update({
-            clicked_at: clickedAt, // Keep first click time
-            click_count: currentClickCount + 1,
-            metadata: {
-              ...emailLog?.metadata,
-              last_clicked_link: clickedLink
-            }
-          })
-          .eq('resend_email_id', emailId)
-
-        console.log(`[Resend Webhook] Email clicked (#${currentClickCount + 1}): ${emailId} -> ${clickedLink}`)
-        break
-
-      default:
-        console.log(`[Resend Webhook] Unknown event type: ${event.type}`)
+    if (processingError || !['processed', 'duplicate', 'ignored'].includes(result)) {
+      throw new Error('Webhook transaction failed')
     }
 
     return new Response(
-      JSON.stringify({ received: true, event_type: event.type }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ received: true, duplicate: result === 'duplicate' }),
+      { status: 200, headers: headers(req) },
     )
 
-  } catch (error) {
-    console.error('[Resend Webhook] Error:', error)
+  } catch {
+    console.error('[Resend Webhook] Processing failed')
 
-    // Return 200 anyway to avoid Resend retrying
+    // A server-side failure is retryable. Invalid signatures are rejected
+    // above with 400 and never reach service-role processing.
     return new Response(
-      JSON.stringify({ received: true, error: error.message }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ received: false, error: 'Webhook processing failed' }),
+      { status: 500, headers: headers(req) },
     )
   }
 })

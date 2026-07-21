@@ -9,7 +9,7 @@ const navLinks = [
   { href: '/#results', label: 'Results' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/resources', label: 'Resources' },
-  { href: '/portal/login', label: 'Login' },
+  { href: '/login', label: 'Workspace Login' },
 ];
 
 const Navbar = () => {

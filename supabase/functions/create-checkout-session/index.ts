@@ -1,148 +1,19 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import Stripe from 'https://esm.sh/stripe@14.10.0?target=deno'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import {
+  jsonResponse,
+  optionsResponse,
+} from '../_shared/workspaceAuth.ts'
 
-interface CartItem {
-  podcastId: string
-  podcastName: string
-  podcastImage?: string
-  price: number
-  priceDisplay: string
-}
+const METHODS = ['POST'] as const
 
-interface RequestBody {
-  cartItems: CartItem[]
-  customerEmail: string
-  customerName: string
-}
-
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
-  try {
-    // Auth check - verify user is authenticated
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const authClient = createClient(supabaseUrl, supabaseServiceKey)
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token)
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Get Stripe secret key from environment
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')
-    if (!stripeSecretKey) {
-      throw new Error('STRIPE_SECRET_KEY not configured')
-    }
-
-    // Initialize Stripe
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2023-10-16',
-      httpClient: Stripe.createFetchHttpClient(),
-    })
-
-    // Parse request body
-    const { cartItems, customerEmail, customerName }: RequestBody = await req.json()
-
-    // Validate input
-    if (!cartItems || cartItems.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Cart is empty' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
-
-    if (!customerEmail || !customerName) {
-      return new Response(
-        JSON.stringify({ error: 'Customer email and name are required' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
-
-    // Get origin for redirect URLs
-    const origin = req.headers.get('origin') || 'http://localhost:8080'
-
-    console.log('Creating Stripe Checkout Session for:', customerEmail, 'with', cartItems.length, 'items')
-
-    // Create line items for Stripe
-    const lineItems = cartItems.map((item) => ({
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: item.podcastName,
-          images: item.podcastImage ? [item.podcastImage] : [],
-          description: `Premium podcast placement on ${item.podcastName}`,
-        },
-        unit_amount: Math.round(item.price * 100), // Convert to cents
-      },
-      quantity: 1,
-    }))
-
-    // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: customerEmail,
-      line_items: lineItems,
-      success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/checkout/canceled`,
-      metadata: {
-        customerName,
-        customerEmail,
-        cartItemIds: JSON.stringify(cartItems.map((item) => item.podcastId)),
-      },
-      payment_intent_data: {
-        metadata: {
-          customerName,
-          customerEmail,
-        },
-      },
-    })
-
-    console.log('✅ Stripe Checkout Session created:', session.id)
-
-    // Return session data
-    return new Response(
-      JSON.stringify({
-        sessionId: session.id,
-        url: session.url,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
-  } catch (error) {
-    console.error('❌ Error creating checkout session:', error)
-    return new Response(
-      JSON.stringify({ error: error.message || 'Failed to create checkout session' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
-  }
+// Billing is intentionally disabled for the invite-only MVP. Keeping an
+// explicit tombstone prevents an accidentally deployed historical checkout
+// implementation from creating charges while old clients still call the URL.
+serve((req) => {
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+  return jsonResponse(req, METHODS, 410, {
+    error: 'Billing is not available',
+    code: 'BILLING_DISABLED',
+  })
 })

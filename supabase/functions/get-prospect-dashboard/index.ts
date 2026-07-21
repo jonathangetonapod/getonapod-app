@@ -1,122 +1,111 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+import {
+  createAdminClient,
+  errorResponse,
+  HttpError,
+  jsonResponse,
+  optionsResponse,
+  parseJsonObject,
+  requireOnlyKeys,
+  requireString,
+} from '../_shared/workspaceAuth.ts'
+
+const METHODS = ['POST'] as const
+const DASHBOARD_FIELDS = [
+  'id',
+  'prospect_name',
+  'prospect_bio',
+  'prospect_image_url',
+  'is_active',
+  'show_pricing_section',
+  'personalized_tagline',
+  'media_kit_url',
+  'loom_video_url',
+  'loom_thumbnail_url',
+  'loom_video_title',
+  'show_loom_video',
+  'testimonial_ids',
+  'show_testimonials',
+  'view_count',
+].join(',')
+const FEEDBACK_FIELDS = [
+  'id',
+  'podcast_id',
+  'podcast_name',
+  'status',
+  'notes',
+  'created_at',
+  'updated_at',
+].join(',')
+
+type ProspectDashboardRow = Record<string, unknown> & {
+  id: string
+  view_count: number | null
+}
+
+function requireSlug(value: unknown): string {
+  const slug = requireString(value, 'slug', { max: 180 }).toLowerCase()
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    throw new HttpError(400, 'INVALID_SLUG', 'slug is invalid')
+  }
+  return slug
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
   try {
-    const { slug } = await req.json()
-
-    if (!slug) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'slug is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (req.method !== 'POST') {
+      throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const body = await parseJsonObject(req)
+    requireOnlyKeys(body, ['slug'])
+    const slug = requireSlug(body.slug)
+    const admin = createAdminClient()
 
-    console.log(`[Get Prospect Dashboard] Fetching dashboard for slug: ${slug}`)
-
-    // Fetch prospect dashboard by slug
-    const { data: dashboard, error: dashboardError } = await supabase
+    const { data: dashboard, error: dashboardError } = await admin
       .from('prospect_dashboards')
-      .select('*')
+      .select(DASHBOARD_FIELDS)
       .eq('slug', slug)
-      .single()
+      .eq('is_active', true)
+      .maybeSingle()
 
-    if (dashboardError || !dashboard) {
-      console.log(`[Get Prospect Dashboard] Not found: ${slug}`)
-      return new Response(
-        JSON.stringify({ success: false, error: 'Dashboard not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (dashboardError) {
+      throw new HttpError(500, 'DASHBOARD_LOOKUP_FAILED', 'Dashboard could not be loaded')
     }
-
-    if (!dashboard.is_active) {
-      console.log(`[Get Prospect Dashboard] Inactive dashboard: ${slug}`)
-      return new Response(
-        JSON.stringify({ success: false, error: 'This dashboard link is no longer active' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (!dashboard) {
+      throw new HttpError(404, 'DASHBOARD_NOT_FOUND', 'Dashboard not found')
     }
+    const dashboardRow = dashboard as unknown as ProspectDashboardRow
 
-    // Fetch feedback and increment view count in parallel
-    const [feedbackResult, _viewCountResult] = await Promise.all([
-      // Fetch prospect_podcast_feedback for this dashboard
-      supabase
+    const [{ data: feedback, error: feedbackError }, { error: viewError }] = await Promise.all([
+      admin
         .from('prospect_podcast_feedback')
-        .select('*')
-        .eq('prospect_dashboard_id', dashboard.id),
-
-      // Increment view count atomically
-      supabase
-        .from('prospect_dashboards')
-        .update({
-          view_count: (dashboard.view_count || 0) + 1,
-          last_viewed_at: new Date().toISOString(),
-        })
-        .eq('id', dashboard.id),
+        .select(FEEDBACK_FIELDS)
+        .eq('prospect_dashboard_id', dashboardRow.id),
+      admin.rpc('record_public_prospect_dashboard_view', {
+        p_dashboard_id: dashboardRow.id,
+      }),
     ])
 
-    const feedback = feedbackResult.data || []
-
-    if (feedbackResult.error) {
-      console.warn(`[Get Prospect Dashboard] Feedback fetch error:`, feedbackResult.error)
+    if (feedbackError) {
+      throw new HttpError(500, 'FEEDBACK_LOOKUP_FAILED', 'Feedback could not be loaded')
     }
+    if (viewError) console.error('Public prospect dashboard view count failed')
 
-    console.log(`[Get Prospect Dashboard] Returning dashboard ${dashboard.id} with ${feedback.length} feedback entries`)
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        dashboard: {
-          id: dashboard.id,
-          slug: dashboard.slug,
-          prospect_name: dashboard.prospect_name,
-          prospect_bio: dashboard.prospect_bio,
-          prospect_image_url: dashboard.prospect_image_url,
-          spreadsheet_id: dashboard.spreadsheet_id,
-          is_active: dashboard.is_active,
-          show_pricing_section: dashboard.show_pricing_section,
-          personalized_tagline: dashboard.personalized_tagline,
-          media_kit_url: dashboard.media_kit_url,
-          loom_video_url: dashboard.loom_video_url,
-          loom_thumbnail_url: dashboard.loom_thumbnail_url,
-          loom_video_title: dashboard.loom_video_title,
-          show_loom_video: dashboard.show_loom_video,
-          testimonial_ids: dashboard.testimonial_ids,
-          show_testimonials: dashboard.show_testimonials,
-          view_count: (dashboard.view_count || 0) + 1,
-        },
-        feedback,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
+    const publicDashboard: Record<string, unknown> = { ...dashboardRow }
+    delete publicDashboard.id
+    return jsonResponse(req, METHODS, 200, {
+      success: true,
+      dashboard: {
+        ...publicDashboard,
+        view_count: (dashboardRow.view_count ?? 0) + 1,
+      },
+      feedback: feedback ?? [],
+    })
   } catch (error) {
-    console.error('[Get Prospect Dashboard] Error:', error)
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || 'Internal server error',
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    )
+    return errorResponse(req, METHODS, error)
   }
 })

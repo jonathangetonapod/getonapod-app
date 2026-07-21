@@ -1,10 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
+import {
+  HttpError,
+  parseJsonObject,
+  requireAuthenticatedUser,
+} from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Cache-Control': 'no-store',
+  'Vary': 'Origin',
 }
 
 /**
@@ -115,6 +122,7 @@ interface CachedPodcast {
   itunes_rating: number | null
   episode_count: number | null
   audience_size: number | null
+  podscan_email?: string | null
   podcast_categories: PodcastCategory[] | null
   ai_clean_description: string | null
   ai_fit_reasons: string[] | null
@@ -127,6 +135,18 @@ interface FitAnalysis {
   clean_description: string
   fit_reasons: string[]
   pitch_angles: Array<{ title: string; description: string }>
+}
+
+interface GetClientPodcastsRequest {
+  spreadsheetId?: string
+  clientId?: string
+  clientName?: string
+  clientBio?: string
+  dashboardSlug?: string
+  cacheOnly?: boolean
+  skipAiAnalysis?: boolean
+  aiAnalysisOnly?: boolean
+  checkStatusOnly?: boolean
 }
 
 /**
@@ -216,8 +236,75 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json()
-    const { spreadsheetId, clientId, clientName, clientBio, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'Only POST is allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const body = await parseJsonObject(req, 16_384) as GetClientPodcastsRequest
+    let { spreadsheetId, clientId, clientName, clientBio } = body
+    const { dashboardSlug, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
+
+    console.log('[Get Client Podcasts] Request accepted', cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    let platformAdmin = false
+    if (req.headers.get('authorization')?.match(/^Bearer\s+[^\s]+$/i)) {
+      try {
+        platformAdmin = (await requireAuthenticatedUser(req)).platformAdmin
+      } catch {
+        platformAdmin = false
+      }
+    }
+
+    if (!platformAdmin) {
+      if (cacheOnly !== true || skipAiAnalysis || aiAnalysisOnly || checkStatusOnly) {
+        return new Response(
+          JSON.stringify({ error: 'Platform administrator access is required for this operation' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (
+        typeof dashboardSlug !== 'string'
+        || !dashboardSlug.trim()
+        || typeof clientId !== 'string'
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientId)
+      ) {
+        return new Response(
+          JSON.stringify({ error: 'A valid dashboard link is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const { data: dashboard, error: dashboardError } = await supabase
+        .from('clients')
+        .select('id,name,bio,google_sheet_url,dashboard_enabled,workspace:workspaces(status)')
+        .eq('id', clientId)
+        .eq('dashboard_slug', dashboardSlug.trim().toLowerCase())
+        .eq('dashboard_enabled', true)
+        .maybeSingle()
+
+      const sheetMatch = dashboard?.google_sheet_url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+      const workspace = dashboard?.workspace as { status?: string } | null
+      if (dashboardError || !dashboard || workspace?.status !== 'active' || !sheetMatch) {
+        return new Response(
+          JSON.stringify({ error: 'Dashboard not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      spreadsheetId = sheetMatch[1]
+      clientId = dashboard.id
+      clientName = dashboard.name
+      clientBio = dashboard.bio || ''
+    }
 
     if (!spreadsheetId) {
       return new Response(
@@ -226,21 +313,31 @@ serve(async (req) => {
       )
     }
 
-    console.log('[Get Client Podcasts] Starting for dashboard:', clientId, cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
-    console.log('[Get Client Podcasts] Client name:', clientName, '| Bio length:', clientBio?.length || 0)
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
     // FAST PATH: For cacheOnly mode, skip Google Sheets entirely and return cached data directly
     if (cacheOnly && clientId) {
       console.log('[Get Client Podcasts] FAST PATH - querying cache directly, skipping Google Sheets')
       const { data: cached, error: cacheError } = await supabase
         .from('client_dashboard_podcasts')
-        .select('*')
+        .select([
+          'podcast_id',
+          'podcast_name',
+          'podcast_description',
+          'podcast_image_url',
+          'podcast_url',
+          'publisher_name',
+          'itunes_rating',
+          'episode_count',
+          'audience_size',
+          'last_posted_at',
+          'podcast_categories',
+          'ai_clean_description',
+          'ai_fit_reasons',
+          'ai_pitch_angles',
+          'ai_analyzed_at',
+          'demographics',
+        ].join(','))
         .eq('client_id', clientId)
+        .limit(500)
 
       if (cacheError) {
         console.error('[Get Client Podcasts] Cache query error:', cacheError)
@@ -382,6 +479,7 @@ serve(async (req) => {
       ai_clean_description: null,  // Will load from client_podcast_analyses if needed
       ai_fit_reasons: null,
       ai_pitch_angles: null,
+      ai_analyzed_at: null,
     }))
 
     const cachedPodcastIds = new Set<string>(centralCached.map((p: any) => p.podscan_id))
@@ -399,7 +497,7 @@ serve(async (req) => {
     if (clientId && cachedPodcasts.length > 0) {
       const { data: analyses } = await supabase
         .from('client_podcast_analyses')
-        .select('*')
+        .select('podcast_id,ai_clean_description,ai_fit_reasons,ai_pitch_angles,ai_analyzed_at')
         .eq('client_id', clientId)
         .in('podcast_id', centralCached.map((p: any) => p.id))
 
@@ -717,6 +815,7 @@ serve(async (req) => {
                 ai_clean_description: null,
                 ai_fit_reasons: null,
                 ai_pitch_angles: null,
+                ai_analyzed_at: null,
                 demographics: null,
               }
 
@@ -768,17 +867,20 @@ serve(async (req) => {
               const cacheData: PodcastCacheData = {
                 podscan_id: podcastId,
                 podcast_name: podcastData.podcast_name,
-                podcast_description: podcastData.podcast_description,
-                podcast_image_url: podcastData.podcast_image_url,
-                podcast_url: podcastData.podcast_url,
-                publisher_name: podcastData.publisher_name,
-                itunes_rating: podcastData.itunes_rating ? parseFloat(podcastData.itunes_rating as any) : undefined,
-                episode_count: podcastData.episode_count,
-                audience_size: podcastData.audience_size,
-                podscan_email: podcastData.podscan_email,
+                podcast_description: podcastData.podcast_description ?? undefined,
+                podcast_image_url: podcastData.podcast_image_url ?? undefined,
+                podcast_url: podcastData.podcast_url ?? undefined,
+                publisher_name: podcastData.publisher_name ?? undefined,
+                itunes_rating: podcastData.itunes_rating ?? undefined,
+                episode_count: podcastData.episode_count ?? undefined,
+                audience_size: podcastData.audience_size ?? undefined,
+                podscan_email: podcastData.podscan_email ?? undefined,
                 podcast_categories: podcastData.podcast_categories,
                 demographics: podcastData.demographics,
-                demographics_episodes_analyzed: podcastData.demographics?.episodes_analyzed,
+                demographics_episodes_analyzed:
+                  typeof podcastData.demographics?.episodes_analyzed === 'number'
+                    ? podcastData.demographics.episodes_analyzed
+                    : undefined,
               }
 
               const { success: cacheSuccess, podcast_id: centralPodcastId } = await upsertPodcastCache(supabase, cacheData)
@@ -883,13 +985,14 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (error) {
-    console.error('[Get Client Podcasts] Error:', error)
+    const status = error instanceof HttpError ? error.status : 500
+    if (!(error instanceof HttpError)) console.error('[Get Client Podcasts] Request failed')
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
+        error: error instanceof HttpError ? error.message : 'Internal server error',
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

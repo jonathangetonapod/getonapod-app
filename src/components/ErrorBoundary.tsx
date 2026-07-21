@@ -1,5 +1,5 @@
 import React from 'react'
-import * as Sentry from '@sentry/react'
+import { captureException } from '@/lib/sentry'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,13 +23,8 @@ class ErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[ErrorBoundary] Caught error:', error, errorInfo)
-
-    // Send to Sentry
-    Sentry.withScope((scope) => {
-      scope.setContext('errorInfo', errorInfo)
-      Sentry.captureException(error)
-    })
+    void errorInfo
+    captureException(error)
   }
 
   handleReload = () => {

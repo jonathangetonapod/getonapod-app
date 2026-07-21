@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getPortalInvitationEmail } from '../_shared/email-templates.ts'
+import { errorResponse, requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
+import { hashPortalPassword } from '../_shared/portalSecurity.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -53,13 +55,36 @@ interface ClientAccount {
   notes?: string
   portal_access_enabled: boolean
   portal_url: string
-  password?: string
   invitation_sent: boolean
+  invitation_tracking_error?: string
   google_sheet_url?: string
   google_sheet_created: boolean
   dashboard_slug?: string
   dashboard_url?: string | null
   created_at: string
+}
+
+interface ClientInsert {
+  name: string
+  email: string
+  status: 'active' | 'paused' | 'churned'
+  portal_access_enabled: boolean
+  dashboard_enabled: boolean
+  bio?: string
+  linkedin_url?: string
+  website?: string
+  calendar_link?: string
+  contact_person?: string
+  first_invoice_paid_date?: string
+  notes?: string
+}
+
+interface CreateClientResponse {
+  success: true
+  message: string
+  client: ClientAccount
+  google_sheet_error?: string
+  invitation_tracking_error?: string
 }
 
 serve(async (req) => {
@@ -68,7 +93,15 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Only POST is allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
+  }
+
   try {
+    const operatorContext = await requirePlatformAdminOrService(req)
     const {
       name,
       email,
@@ -83,9 +116,9 @@ serve(async (req) => {
       headshot_base64,
       headshot_filename,
       headshot_content_type,
-      enable_portal_access = true,
+      enable_portal_access = false,
       password,
-      send_invitation_email = true,
+      send_invitation_email = false,
       create_google_sheet = false,
       api_key,
     }: RequestBody = await req.json()
@@ -120,6 +153,21 @@ serve(async (req) => {
       )
     }
 
+    if (
+      password !== undefined
+      && (
+        typeof password !== 'string'
+        || password.length < 8
+        || password.length > 256
+        || password.trim().length === 0
+      )
+    ) {
+      return new Response(
+        JSON.stringify({ error: 'password must be between 8 and 256 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email)) {
@@ -128,6 +176,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    const normalizedEmail = email.trim().toLowerCase()
 
     // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -159,7 +209,8 @@ serve(async (req) => {
     const { data: existingClient, error: checkError } = await supabase
       .from('clients')
       .select('id, email')
-      .ilike('email', email)
+      .eq('portal_email_normalized', normalizedEmail)
+      .limit(1)
       .maybeSingle()
 
     if (checkError) {
@@ -178,11 +229,13 @@ serve(async (req) => {
     }
 
     // Create client record
-    const clientData: any = {
+    const clientData: ClientInsert = {
       name: name.trim(),
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       status,
-      portal_access_enabled: enable_portal_access,
+      // Portal access is only enabled by the atomic credential initializer
+      // below. A passwordless account must never be created as login-ready.
+      portal_access_enabled: false,
       dashboard_enabled: true, // Enable podcast approval dashboard by default
     }
 
@@ -195,11 +248,9 @@ serve(async (req) => {
     if (first_invoice_paid_date) clientData.first_invoice_paid_date = first_invoice_paid_date
     if (notes) clientData.notes = notes
 
-    // Set password if provided
+    let passwordVerifier: string | null = null
     if (password && enable_portal_access) {
-      clientData.portal_password = password
-      clientData.password_set_at = new Date().toISOString()
-      clientData.password_set_by = 'API'
+      passwordVerifier = await hashPortalPassword(password)
     }
 
     const { data: client, error: createError } = await supabase
@@ -211,6 +262,34 @@ serve(async (req) => {
     if (createError) {
       console.error('[Create Client] Error creating client:', createError)
       throw new Error(`Failed to create client: ${createError.message}`)
+    }
+
+    if (passwordVerifier) {
+      const { error: credentialError } = await supabase.rpc(
+        'initialize_client_portal_password',
+        {
+          p_client_id: client.id,
+          p_password_hash: passwordVerifier,
+          p_set_by: operatorContext?.email ?? 'API',
+          p_actor_user_id: operatorContext?.user.id ?? null,
+        },
+      )
+
+      if (credentialError) {
+        const { error: cleanupError } = await supabase
+          .from('clients')
+          .delete()
+          .eq('id', client.id)
+        if (cleanupError) {
+          console.error('[Create Client] Safe disabled client cleanup failed')
+        }
+        console.error('[Create Client] Portal credential creation failed')
+        throw new Error('Failed to configure client portal access')
+      }
+
+      client.portal_access_enabled = true
+      client.password_set_at = new Date().toISOString()
+      client.password_set_by = operatorContext?.email ?? 'API'
     }
 
     console.log(`[Create Client] Client created successfully: ${client.id}`)
@@ -293,7 +372,7 @@ serve(async (req) => {
           const sheetData = await sheetResponse.json()
           googleSheetUrl = sheetData.spreadsheetUrl
           googleSheetCreated = true
-          console.log(`[Create Client] Google Sheet created: ${googleSheetUrl}`)
+          console.log('[Create Client] Google Sheet created')
 
           // Update client with Google Sheet URL
           await supabase
@@ -301,20 +380,20 @@ serve(async (req) => {
             .update({ google_sheet_url: googleSheetUrl })
             .eq('id', client.id)
         } else {
-          const errorText = await sheetResponse.text()
-          googleSheetError = `Status ${sheetResponse.status}: ${errorText}`
-          console.error('[Create Client] Failed to create Google Sheet:', googleSheetError)
+          googleSheetError = 'Google Sheet creation failed'
+          console.error('[Create Client] Google Sheet request failed with status', sheetResponse.status)
         }
-      } catch (sheetError) {
-        googleSheetError = sheetError.message || 'Unknown error'
-        console.error('[Create Client] Error creating Google Sheet:', sheetError)
+      } catch {
+        googleSheetError = 'Google Sheet creation failed'
+        console.error('[Create Client] Google Sheet creation failed unexpectedly')
         // Don't fail the whole request if sheet creation fails
       }
     }
 
     // Send invitation email if requested and portal access is enabled
     let invitationSent = false
-    if (enable_portal_access && send_invitation_email && resendApiKey) {
+    let invitationTrackingError: string | null = null
+    if (client.portal_access_enabled && send_invitation_email && resendApiKey) {
       try {
         const portalUrl = `${portalBaseUrl}/portal/login`
         const emailTemplate = getPortalInvitationEmail(client.name, portalUrl)
@@ -336,27 +415,44 @@ serve(async (req) => {
         })
 
         if (emailResponse.ok) {
-          const emailData = await emailResponse.json()
-          console.log(`[Create Client] Invitation email sent: ${emailData.id}`)
+          const emailData = await emailResponse.json() as { id?: unknown }
+          const resendEmailId = typeof emailData.id === 'string' && emailData.id.length <= 255
+            ? emailData.id
+            : null
+          invitationSent = true
+          console.log('[Create Client] Invitation email sent')
 
           // Update portal_invitation_sent_at
-          await supabase
+          const { error: invitationTimestampError } = await supabase
             .from('clients')
             .update({ portal_invitation_sent_at: new Date().toISOString() })
             .eq('id', client.id)
+          if (invitationTimestampError) {
+            invitationTrackingError = 'Invitation sent, but its client timestamp was not recorded'
+            console.error('[Create Client] Invitation timestamp update failed')
+          }
 
-          // Log email
-          await supabase.from('email_logs').insert({
-            resend_email_id: emailData.id,
-            email_type: 'portal_invitation',
-            from_address: 'Jonathan Garces <portal@mail.getonapod.com>',
-            to_address: email,
-            subject: emailTemplate.subject,
-            status: 'sent',
-            client_id: client.id,
-          })
-
-          invitationSent = true
+          // Resend delivery webhooks match this ID. Surface a warning when the
+          // send succeeded but its receipt could not be persisted, so an
+          // operator can reconcile it instead of silently losing tracking.
+          if (!resendEmailId) {
+            invitationTrackingError = 'Invitation sent, but the provider receipt was invalid'
+            console.error('[Create Client] Invitation provider receipt was invalid')
+          } else {
+            const { error: emailLogError } = await supabase.from('email_logs').insert({
+              resend_email_id: resendEmailId,
+              email_type: 'portal_invitation',
+              from_address: 'Jonathan Garces <portal@mail.getonapod.com>',
+              to_address: email,
+              subject: emailTemplate.subject,
+              status: 'sent',
+              client_id: client.id,
+            })
+            if (emailLogError) {
+              invitationTrackingError = 'Invitation sent, but its delivery receipt was not recorded'
+              console.error('[Create Client] Invitation delivery receipt insert failed')
+            }
+          }
         } else {
           const errorText = await emailResponse.text()
           console.error('[Create Client] Failed to send invitation email:', errorText)
@@ -394,7 +490,6 @@ serve(async (req) => {
           access: {
             portal_url: `${portalBaseUrl}/portal/login`,
             portal_email: client.email,
-            portal_password: password || null,
             portal_access_enabled: client.portal_access_enabled,
           },
           dashboard: {
@@ -410,7 +505,7 @@ serve(async (req) => {
           invitation_sent: invitationSent,
         }
 
-        console.log('[Create Client] Sending webhook to:', webhookUrl)
+        console.log('[Create Client] Sending configured onboarding webhook')
         const webhookResponse = await fetch(webhookUrl, {
           method: 'POST',
           headers: {
@@ -440,6 +535,7 @@ serve(async (req) => {
       portal_access_enabled: client.portal_access_enabled,
       portal_url: `${portalBaseUrl}/portal/login`,
       invitation_sent: invitationSent,
+      invitation_tracking_error: invitationTrackingError || undefined,
       google_sheet_created: googleSheetCreated,
       created_at: client.created_at,
       dashboard_slug: client.dashboard_slug,
@@ -455,17 +551,12 @@ serve(async (req) => {
     if (client.first_invoice_paid_date) response.first_invoice_paid_date = client.first_invoice_paid_date
     if (client.notes) response.notes = client.notes
 
-    // Only include password in response if it was set
-    if (password && enable_portal_access) {
-      response.password = password
-    }
-
     // Include Google Sheet URL if created
     if (googleSheetUrl) {
       response.google_sheet_url = googleSheetUrl
     }
 
-    const responsePayload: any = {
+    const responsePayload: CreateClientResponse = {
       success: true,
       message: 'Client account created successfully',
       client: response,
@@ -477,19 +568,19 @@ serve(async (req) => {
       responsePayload.message = 'Client account created successfully, but Google Sheet creation failed'
     }
 
+    if (invitationTrackingError) {
+      responsePayload.invitation_tracking_error = invitationTrackingError
+      responsePayload.message = googleSheetError
+        ? 'Client account created, but Google Sheet creation and invitation tracking need attention'
+        : 'Client account created and invitation sent, but invitation tracking needs attention'
+    }
+
     return new Response(
       JSON.stringify(responsePayload),
       { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[Create Client] Error:', error)
-
-    return new Response(
-      JSON.stringify({
-        error: error.message || 'Internal server error',
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(req, ['POST'], error)
   }
 })

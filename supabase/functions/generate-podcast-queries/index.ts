@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -13,25 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    // Auth check - verify user is authenticated
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const authClient = createClient(supabaseUrl, supabaseServiceKey)
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token)
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    await requirePlatformAdminOrService(req)
 
     const { clientName, clientBio, clientEmail, oldQuery, prospectName, prospectBio } = await req.json()
 
@@ -147,7 +129,8 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       } catch (parseError) {
         console.error('❌ [JSON PARSE ERROR]', parseError)
         console.error('   Failed text:', jsonText)
-        throw new Error(`Failed to parse JSON: ${parseError.message}`)
+        const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+        throw new Error(`Failed to parse JSON: ${parseErrorMessage}`)
       }
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -270,7 +253,8 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       )
     } catch (parseError) {
       console.log('First parse attempt failed, trying manual extraction...')
-      console.log('Parse error:', parseError.message)
+      const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+      console.log('Parse error:', parseErrorMessage)
 
       // Second attempt: Extract array values by splitting on "," pattern
       // Match the array content between "queries": [ and ]
@@ -307,7 +291,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       console.error('Original text:', jsonText)
       return new Response(
         JSON.stringify({
-          error: `Failed to parse JSON: ${parseError.message}`,
+          error: `Failed to parse JSON: ${parseErrorMessage}`,
           raw_response: content.text,
           cleaned_text: jsonText
         }),
@@ -317,7 +301,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
   } catch (error) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

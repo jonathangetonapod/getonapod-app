@@ -36,6 +36,7 @@ import { supabase } from '@/lib/supabase'
 import { deleteClient } from '@/services/clients'
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
+import { safeExternalUrl } from '@/lib/externalUrl'
 
 interface OnboardingData {
   name: string
@@ -78,6 +79,7 @@ interface Client {
   photo_url: string | null
   created_at: string
   status: string
+  company?: string | null
 }
 
 export default function Onboarding() {
@@ -467,7 +469,7 @@ export default function Onboarding() {
                   {selectedClient?.website && (
                     <div className="flex items-center gap-2">
                       <Globe className="h-4 w-4" />
-                      <a href={selectedClient.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                      <a href={safeExternalUrl(selectedClient.website) ?? undefined} target="_blank" rel="noopener noreferrer" className="hover:underline">
                         {selectedClient.website}
                       </a>
                     </div>
@@ -646,14 +648,18 @@ export default function Onboarding() {
               {selectedClient?.calendar_link && (
                 <div>
                   <h3 className="font-semibold mb-2">Calendar Link</h3>
-                  <a
-                    href={selectedClient.calendar_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary hover:underline"
-                  >
-                    {selectedClient.calendar_link}
-                  </a>
+                  {safeExternalUrl(selectedClient.calendar_link) ? (
+                    <a
+                      href={safeExternalUrl(selectedClient.calendar_link) ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary hover:underline"
+                    >
+                      {selectedClient.calendar_link}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Invalid calendar URL</p>
+                  )}
                 </div>
               )}
 

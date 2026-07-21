@@ -111,7 +111,7 @@ export const getAllPosts = async (filters: BlogFilters = {}) => {
   const { data, error } = await query
 
   if (error) throw error
-  return data as BlogPost[]
+  return data as unknown as BlogPost[]
 }
 
 /**
@@ -384,5 +384,5 @@ export const getRelatedPosts = async (post: BlogPost, limit = 3) => {
     .limit(limit)
 
   if (error) throw error
-  return data as BlogPost[]
+  return data as unknown as BlogPost[]
 }

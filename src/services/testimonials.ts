@@ -149,27 +149,52 @@ export const toggleActive = async (id: string, isActive: boolean): Promise<Testi
   return data
 }
 
-// Helper function to extract video ID from YouTube/Vimeo URLs
+// Helper function to extract a video ID only from approved HTTPS hosts.
 export const extractVideoId = (url: string): { platform: 'youtube' | 'vimeo' | 'unknown', id: string } => {
-  // YouTube patterns
-  const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
-  const youtubeMatch = url.match(youtubeRegex)
-  if (youtubeMatch) {
-    return { platform: 'youtube', id: youtubeMatch[1] }
+  try {
+    const parsedUrl = new URL(url)
+    if (parsedUrl.protocol !== 'https:') return { platform: 'unknown', id: '' }
+
+    const hostname = parsedUrl.hostname.toLowerCase()
+    const youtubeIdPattern = /^[a-zA-Z0-9_-]{11}$/
+
+    if (hostname === 'youtu.be') {
+      const id = parsedUrl.pathname.split('/').filter(Boolean)[0] || ''
+      return youtubeIdPattern.test(id)
+        ? { platform: 'youtube', id }
+        : { platform: 'unknown', id: '' }
+    }
+
+    if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(hostname)) {
+      const pathMatch = parsedUrl.pathname.match(/^\/(?:embed|shorts|live|v)\/([a-zA-Z0-9_-]{11})\/?$/)
+      const id = pathMatch?.[1] || (parsedUrl.pathname === '/watch' ? parsedUrl.searchParams.get('v') : '') || ''
+      return youtubeIdPattern.test(id)
+        ? { platform: 'youtube', id }
+        : { platform: 'unknown', id: '' }
+    }
+
+    if (['vimeo.com', 'www.vimeo.com'].includes(hostname)) {
+      const match = parsedUrl.pathname.match(/^\/(\d{1,20})\/?$/)
+      return match
+        ? { platform: 'vimeo', id: match[1] }
+        : { platform: 'unknown', id: '' }
+    }
+
+    if (hostname === 'player.vimeo.com') {
+      const match = parsedUrl.pathname.match(/^\/video\/(\d{1,20})\/?$/)
+      return match
+        ? { platform: 'vimeo', id: match[1] }
+        : { platform: 'unknown', id: '' }
+    }
+  } catch {
+    // Invalid URLs are deliberately not embeddable.
   }
 
-  // Vimeo patterns
-  const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
-  const vimeoMatch = url.match(vimeoRegex)
-  if (vimeoMatch) {
-    return { platform: 'vimeo', id: vimeoMatch[1] }
-  }
-
-  return { platform: 'unknown', id: url }
+  return { platform: 'unknown', id: '' }
 }
 
 // Get embed URL for video platforms
-export const getEmbedUrl = (url: string): string => {
+export const getEmbedUrl = (url: string): string | null => {
   const { platform, id } = extractVideoId(url)
 
   if (platform === 'youtube') {
@@ -180,7 +205,7 @@ export const getEmbedUrl = (url: string): string => {
     return `https://player.vimeo.com/video/${id}`
   }
 
-  return url
+  return null
 }
 
 // Get thumbnail URL for video platforms

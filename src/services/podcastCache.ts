@@ -325,7 +325,14 @@ export async function getCacheStatistics(): Promise<CacheStatistics> {
       .not('podcast_id', 'is', null),
 
     // Get unique count via RPC function
-    supabase.rpc('count_unique_cached_podcasts').catch(() => ({ data: 0 })),
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('count_unique_cached_podcasts')
+        return { data: data || 0 }
+      } catch {
+        return { data: 0 }
+      }
+    })(),
 
     // Embedding coverage: total podcasts in the podcasts table
     supabase

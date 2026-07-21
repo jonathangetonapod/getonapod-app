@@ -1,10 +1,27 @@
+[auth]
+enable_signup = false
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = false
+otp_expiry = 86400
+
 [functions.stripe-webhook]
+verify_jwt = false
+
+[functions.resend-webhook]
 verify_jwt = false
 
 [functions.create-checkout-session]
 verify_jwt = true
 
 [functions.login-with-password]
+verify_jwt = false
+
+[functions.validate-portal-session]
+verify_jwt = false
+
+[functions.logout-portal-session]
 verify_jwt = false
 
 [functions.get-client-bookings]
@@ -39,13 +56,20 @@ entrypoint = "./functions/generate-client-bio/index.ts"
 # static_files = [ "./functions/generate-client-bio/*.html" ]
 
 [functions.create-outreach-message]
-verify_jwt = false
+# Excluded from the tenant release. JWT verification is deliberately left on
+# so an accidental deploy fails closed before the shared-secret handler.
+verify_jwt = true
+
+[functions.campaign-reply-webhook]
+# Excluded from the tenant release. An isolated legacy operator environment
+# must carry its own override and secrets.
+verify_jwt = true
 
 [functions.fetch-podscan-email]
-verify_jwt = false
+verify_jwt = true
 
 [functions.create-bison-lead]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-tagline]
 verify_jwt = true
@@ -58,3 +82,41 @@ verify_jwt = true
 
 [functions.generate-blog-content]
 verify_jwt = true
+
+[functions.account-context]
+verify_jwt = true
+
+[functions.manage-workspace-users]
+verify_jwt = true
+
+[functions.workspace-clients]
+verify_jwt = true
+
+[functions.podscan-proxy]
+verify_jwt = true
+
+[functions.accept-workspace-invite]
+verify_jwt = true
+
+[functions.public-client-dashboard]
+verify_jwt = false
+
+[functions.get-prospect-dashboard]
+verify_jwt = false
+
+[functions.manage-client-portal-password]
+verify_jwt = true
+
+# Release-containment tombstones. These intentionally accept unauthenticated
+# requests only to return 410 before reading a body or accessing any secret.
+[functions.send-portal-magic-link]
+verify_jwt = false
+
+[functions.verify-portal-token]
+verify_jwt = false
+
+[functions.get-outreach-podcasts-v2]
+verify_jwt = false
+
+[functions.get-client-portfolio]
+verify_jwt = false

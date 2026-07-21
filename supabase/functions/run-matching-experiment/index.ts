@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -108,7 +109,8 @@ async function scorePodcast(
       return { podcast_id: podcast.podcast_id, score: null }
     }
   } catch (error) {
-    console.warn(`[RunMatchingExperiment] Scoring error for ${podcast.podcast_name?.substring(0, 50)}:`, error.message)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.warn(`[RunMatchingExperiment] Scoring error for ${podcast.podcast_name?.substring(0, 50)}:`, errorMessage)
     return { podcast_id: podcast.podcast_id, score: null }
   }
 }
@@ -118,9 +120,10 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const startTime = Date.now()
-
   try {
+    await requirePlatformAdminOrService(req)
+    const startTime = Date.now()
+
     let body: any
     try {
       body = await req.json()
@@ -310,7 +313,8 @@ serve(async (req) => {
         console.log(`[RunMatchingExperiment] ${prospect.prospect_name}: TP=${tp} FP=${fp} FN=${fn} TN=${tn} (${aiPicks.size} AI picks out of ${scores.filter(s => s.score !== null).length} scored)`)
 
       } catch (err) {
-        console.warn(`[RunMatchingExperiment] Error evaluating ${prospectId}:`, err.message)
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        console.warn(`[RunMatchingExperiment] Error evaluating ${prospectId}:`, errorMessage)
         continue
       }
     }
@@ -386,7 +390,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[RunMatchingExperiment] Error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal error' }),
+      JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) || 'Internal error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

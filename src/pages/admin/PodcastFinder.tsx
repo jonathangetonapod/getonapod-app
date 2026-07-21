@@ -46,6 +46,7 @@ import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
 import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
 import { savePodcastsToDatabase } from '@/services/podcastDatabase'
 import { supabase } from '@/lib/supabase'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import { toast } from 'sonner'
 
 interface GeneratedQuery {
@@ -170,11 +171,16 @@ export default function PodcastFinder() {
   const clients = clientsData?.clients || []
   const selectedClientData = clients.find(c => c.id === selectedClient)
 
-  // Load persisted state from localStorage on mount
+  // Load tab-scoped state and remove legacy persistent customer data.
   useEffect(() => {
-    const savedState = localStorage.getItem('podcast-finder-state')
-    if (savedState) {
-      try {
+    try {
+      window.localStorage.removeItem('podcast-finder-state')
+    } catch {
+      // Legacy cleanup is best effort.
+    }
+    try {
+      const savedState = window.sessionStorage.getItem('podcast-finder-state')
+      if (savedState) {
         const parsed = JSON.parse(savedState)
         if (parsed.selectedTarget) setSelectedTarget(parsed.selectedTarget)
         else if (parsed.selectedClient) setSelectedTarget(parsed.selectedClient) // backwards compat
@@ -199,13 +205,13 @@ export default function PodcastFinder() {
         if (parsed.chartResults) setChartResults(parsed.chartResults)
         if (parsed.chartScores) setChartScores(parsed.chartScores)
         if (parsed.chartReasonings) setChartReasonings(parsed.chartReasonings)
-      } catch (e) {
-        console.error('Failed to load saved state:', e)
       }
+    } catch (e) {
+      console.error('Failed to load saved state:', e)
     }
   }, [])
 
-  // Save state to localStorage whenever it changes
+  // Save customer work only for the lifetime of this browser tab.
   useEffect(() => {
     const stateToSave = {
       selectedTarget,
@@ -231,7 +237,11 @@ export default function PodcastFinder() {
       chartScores,
       chartReasonings,
     }
-    localStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
+    try {
+      window.sessionStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
+    } catch {
+      // In-memory React state remains usable when storage is denied/full.
+    }
   }, [selectedTarget, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly, finderMode, chartPlatform, chartCountry, chartCategory, chartLimit, chartResults, chartScores, chartReasonings])
 
   // Fetch existing prospects on mount
@@ -357,11 +367,15 @@ export default function PodcastFinder() {
       toast.error('Prospect bio is required')
       return
     }
+    const imageUrlInput = prospectImageUrl.trim()
+    const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
+    if (imageUrlInput && !normalizedImageUrl) {
+      toast.error('Profile picture must be a valid HTTP or HTTPS URL')
+      return
+    }
     setSavingProspect(true)
     try {
-      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-      let slug = ''
-      for (let i = 0; i < 8; i++) slug += chars.charAt(Math.floor(Math.random() * chars.length))
+      const slug = `prospect-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
 
       const { data, error } = await supabase
         .from('prospect_dashboards')
@@ -369,7 +383,7 @@ export default function PodcastFinder() {
           slug,
           prospect_name: prospectName.trim(),
           prospect_bio: prospectBio.trim(),
-          prospect_image_url: prospectImageUrl.trim() || null,
+          prospect_image_url: normalizedImageUrl,
           is_active: true,
           view_count: 0,
         })
@@ -919,7 +933,11 @@ export default function PodcastFinder() {
     setExpandedQueryId(null)
     setSelectedPodcasts(new Set())
     regenerateAttemptsRef.current = {} // Clear regeneration tracking
-    localStorage.removeItem('podcast-finder-state') // Clear persisted state
+    try {
+      window.sessionStorage.removeItem('podcast-finder-state')
+    } catch {
+      // Resetting in-memory state remains sufficient for this tab.
+    }
     toast.success('Queries cleared')
   }
 
@@ -1160,6 +1178,13 @@ export default function PodcastFinder() {
       return
     }
 
+    const imageUrlInput = prospectImageUrl.trim()
+    const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
+    if (isProspectMode && imageUrlInput && !normalizedImageUrl) {
+      toast.error('Profile picture must be a valid HTTP or HTTPS URL')
+      return
+    }
+
     setIsExporting(true)
 
     try {
@@ -1231,11 +1256,13 @@ export default function PodcastFinder() {
       if (isExistingProspectMode && selectedProspectId && existingProspectHasSheet) {
         // Append to existing prospect's sheet
         const result = await appendToProspectSheet(selectedProspectId, podcastsToExport)
+        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
+        if (!spreadsheetUrl) throw new Error('Sheet provider returned an invalid URL')
         const appUrl = window.location.origin
         setLastProspectSheet({
-          url: result.spreadsheetUrl,
+          url: spreadsheetUrl,
           title: selectedExistingProspect?.prospect_name || prospectName,
-          dashboardUrl: `${appUrl}/prospect/${selectedExistingProspect?.slug}`
+          dashboardUrl: `${appUrl}/prospect/${encodeURIComponent(selectedExistingProspect?.slug || '')}`
         })
         toast.success(`Added ${result.rowsAdded} podcasts to ${selectedExistingProspect?.prospect_name}'s sheet!`)
       } else if (isExistingProspectMode && selectedProspectId && !existingProspectHasSheet) {
@@ -1244,34 +1271,39 @@ export default function PodcastFinder() {
           prospectName.trim(),
           prospectBio.trim(),
           podcastsToExport,
-          prospectImageUrl.trim() || undefined,
+          normalizedImageUrl || undefined,
           selectedProspectId
         )
+        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
+        if (!spreadsheetUrl) throw new Error('Sheet provider returned an invalid URL')
 
         // Update local state
         setExistingProspects(prev =>
           prev.map(p =>
             p.id === selectedProspectId
-              ? { ...p, spreadsheet_url: result.spreadsheetUrl }
+              ? { ...p, spreadsheet_url: spreadsheetUrl }
               : p
           )
         )
 
         const appUrl = window.location.origin
         setLastProspectSheet({
-          url: result.spreadsheetUrl,
+          url: spreadsheetUrl,
           title: selectedExistingProspect?.prospect_name || prospectName,
-          dashboardUrl: `${appUrl}/prospect/${selectedExistingProspect?.slug}`
+          dashboardUrl: `${appUrl}/prospect/${encodeURIComponent(selectedExistingProspect?.slug || '')}`
         })
         toast.success(`Created sheet for ${selectedExistingProspect?.prospect_name} with ${result.rowsAdded} podcasts!`)
       } else if (isNewProspectMode) {
         // Create new prospect sheet
-        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, prospectImageUrl.trim() || undefined)
+        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, normalizedImageUrl || undefined)
+        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
+        const dashboardUrl = safeExternalUrl(result.dashboardUrl)
+        if (!spreadsheetUrl || !dashboardUrl) throw new Error('Sheet provider returned an invalid URL')
         // Save sheet info for persistent display
         setLastProspectSheet({
-          url: result.spreadsheetUrl,
+          url: spreadsheetUrl,
           title: result.sheetTitle,
-          dashboardUrl: result.dashboardUrl
+          dashboardUrl
         })
         toast.success(`Created dashboard for ${prospectName} with ${result.rowsAdded} podcasts!`)
       } else if (isClientMode) {
@@ -1756,7 +1788,7 @@ export default function PodcastFinder() {
                       {isExistingProspectMode ? 'Podcasts Added' : 'Dashboard Created'}
                     </p>
                     <a
-                      href={lastProspectSheet.dashboardUrl}
+                      href={safeExternalUrl(lastProspectSheet.dashboardUrl) ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-green-600 dark:text-green-300 hover:underline truncate block font-medium"
@@ -1783,7 +1815,7 @@ export default function PodcastFinder() {
                 <div className="text-xs text-muted-foreground flex items-center gap-2 pl-8">
                   <span>Admin:</span>
                   <a
-                    href={lastProspectSheet.url}
+                    href={safeExternalUrl(lastProspectSheet.url) ?? undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:underline"
@@ -2388,7 +2420,7 @@ export default function PodcastFinder() {
                                     asChild
                                     title="View on Podscan"
                                   >
-                                    <a href={podcast.podcast_url} target="_blank" rel="noopener noreferrer">
+                                    <a href={safeExternalUrl(podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                                       <ExternalLink className="h-5 w-5" />
                                     </a>
                                   </Button>
@@ -2865,7 +2897,7 @@ export default function PodcastFinder() {
                                   asChild
                                   title="View on Podscan"
                                 >
-                                  <a href={podcast.podcast_url} target="_blank" rel="noopener noreferrer">
+                                  <a href={safeExternalUrl(podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                                     <ExternalLink className="h-5 w-5" />
                                   </a>
                                 </Button>
@@ -3008,7 +3040,7 @@ export default function PodcastFinder() {
                     className="flex-1"
                     asChild
                   >
-                    <a href={selectedPodcastForScore.podcast.podcast_url} target="_blank" rel="noopener noreferrer">
+                    <a href={safeExternalUrl(selectedPodcastForScore.podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4 mr-2" />
                       View on Podscan
                     </a>
@@ -3114,7 +3146,7 @@ export default function PodcastFinder() {
                     <div className="space-y-1">
                       <p className="text-sm font-semibold">Website</p>
                       <a
-                        href={selectedPodcastDetails.reach.website}
+                        href={safeExternalUrl(selectedPodcastDetails.reach.website) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-primary hover:underline flex items-center gap-1"
@@ -3139,7 +3171,7 @@ export default function PodcastFinder() {
                     <div className="space-y-1">
                       <p className="text-sm font-semibold">RSS Feed</p>
                       <a
-                        href={selectedPodcastDetails.rss_url}
+                        href={safeExternalUrl(selectedPodcastDetails.rss_url) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-primary hover:underline flex items-center gap-1 truncate"
@@ -3171,7 +3203,7 @@ export default function PodcastFinder() {
                           size="sm"
                           asChild
                         >
-                          <a href={link.url} target="_blank" rel="noopener noreferrer">
+                          <a href={safeExternalUrl(link.url) ?? undefined} target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="h-4 w-4 mr-2" />
                             {link.platform}
                           </a>
@@ -3431,7 +3463,7 @@ export default function PodcastFinder() {
                     className="flex-1"
                     asChild
                   >
-                    <a href={selectedPodcastDetails.podcast_url} target="_blank" rel="noopener noreferrer">
+                    <a href={safeExternalUrl(selectedPodcastDetails.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="h-4 w-4 mr-2" />
                       View on Podscan
                     </a>

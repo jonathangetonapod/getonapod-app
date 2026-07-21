@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -19,9 +20,8 @@ async function getGoogleAccessToken(): Promise<string> {
   let serviceAccount
   try {
     serviceAccount = JSON.parse(serviceAccountJson)
-  } catch (parseError) {
-    console.error('[Create Sheet] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:', parseError.message)
-    console.error('[Create Sheet] First 100 chars:', serviceAccountJson.substring(0, 100))
+  } catch {
+    console.error('[Create Sheet] Failed to parse service-account configuration')
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON')
   }
 
@@ -30,10 +30,6 @@ async function getGoogleAccessToken(): Promise<string> {
   if (!client_email || !private_key) {
     throw new Error(`Invalid service account credentials. Has client_email: ${!!client_email}, has private_key: ${!!private_key}`)
   }
-
-  console.log('[Create Sheet] Service account email:', client_email)
-  console.log('[Create Sheet] Private key starts with BEGIN:', private_key.startsWith('-----BEGIN'))
-  console.log('[Create Sheet] Private key length:', private_key.length)
 
   // Create JWT
   const now = Math.floor(Date.now() / 1000)
@@ -62,11 +58,7 @@ async function getGoogleAccessToken(): Promise<string> {
 
   if (userEmail) {
     jwtPayloadObj.sub = userEmail
-    console.log('[Create Sheet] Domain-wide delegation, impersonating:', userEmail)
-  } else {
-    console.log('[Create Sheet] No GOOGLE_WORKSPACE_USER_EMAIL, using service account directly')
   }
-  console.log('[Create Sheet] Service account:', client_email)
 
   const jwtPayload = base64UrlEncode(JSON.stringify(jwtPayloadObj))
 
@@ -79,14 +71,16 @@ async function getGoogleAccessToken(): Promise<string> {
     .replace(pemFooter, '')
     .replace(/\s/g, '')
 
-  console.log('[Create Sheet] PEM base64 length after stripping:', pemContents.length)
-
-  let binaryDer: Uint8Array
+  let binaryDer: ArrayBuffer
   try {
-    binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0))
-  } catch (b64Error) {
-    console.error('[Create Sheet] Failed to decode private key base64:', b64Error.message)
-    console.error('[Create Sheet] First 20 chars of PEM content:', pemContents.substring(0, 20))
+    const decodedKey = atob(pemContents)
+    binaryDer = new ArrayBuffer(decodedKey.length)
+    const keyBytes = new Uint8Array(binaryDer)
+    for (let index = 0; index < decodedKey.length; index += 1) {
+      keyBytes[index] = decodedKey.charCodeAt(index)
+    }
+  } catch {
+    console.error('[Create Sheet] Failed to decode service-account private key')
     throw new Error('Private key base64 decoding failed — key may be corrupted in env var')
   }
 
@@ -130,17 +124,17 @@ async function getGoogleAccessToken(): Promise<string> {
 
   const tokenText = await tokenResponse.text()
   console.log('[Create Sheet] Token response status:', tokenResponse.status)
-  console.log('[Create Sheet] Token response body:', tokenText)
 
   let tokenData
   try {
     tokenData = JSON.parse(tokenText)
   } catch {
-    throw new Error(`Token endpoint returned non-JSON: ${tokenText.substring(0, 200)}`)
+    throw new Error('Token endpoint returned an invalid response')
   }
 
   if (!tokenResponse.ok) {
-    throw new Error(`Failed to get access token (${tokenResponse.status}): ${tokenData.error_description || tokenData.error || tokenText}`)
+    const tokenError = tokenData.error_description || tokenData.error || 'OAuth request failed'
+    throw new Error(`Failed to get access token (${tokenResponse.status}): ${tokenError}`)
   }
 
   return tokenData.access_token
@@ -152,6 +146,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const { clientId, clientName, ownerEmail } = await req.json() as {
       clientId: string
       clientName: string
@@ -217,9 +212,6 @@ serve(async (req) => {
     const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
 
     console.log('[Create Sheet] ✅ Sheet created successfully!')
-    console.log('[Create Sheet] Spreadsheet ID:', spreadsheetId)
-    console.log('[Create Sheet] Spreadsheet URL:', spreadsheetUrl)
-    console.log('[Create Sheet] 🎉 Sheet was created in:', workspaceUserEmail, '\'s Google Drive')
     console.log('[Create Sheet] 💾 No service account storage quota used!')
     console.log('[Create Sheet] 🚀 Domain-wide delegation working perfectly!')
 
@@ -252,31 +244,8 @@ serve(async (req) => {
       }
     }
 
-    // Make the sheet publicly editable by anyone with the link
-    const publicPermissionResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'anyone',
-          role: 'writer',
-        }),
-      }
-    )
-
-    if (!publicPermissionResponse.ok) {
-      const errorText = await publicPermissionResponse.text()
-      console.error('[Create Sheet] Failed to make public:', errorText)
-      // Continue anyway - this is optional
-    } else {
-      console.log('[Create Sheet] Made sheet publicly editable via link')
-    }
-
-    // Share the sheet with the service account (so it can write to it)
+    // Keep client operational sheets private. Share only with the explicit
+    // owner above and the service identity that performs managed writes.
     const shareResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`,
       {

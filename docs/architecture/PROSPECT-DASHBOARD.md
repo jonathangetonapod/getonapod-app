@@ -469,7 +469,7 @@ WHERE prospect_dashboard_id = ?;
 -- New client account created
 INSERT INTO clients (
   name, email, bio, notes, 
-  enable_portal_access, portal_password,
+  portal_access_enabled,
   prospect_dashboard_slug  -- Link back to original dashboard
 );
 

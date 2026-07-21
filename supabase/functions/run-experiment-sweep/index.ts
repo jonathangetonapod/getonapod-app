@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -156,7 +157,8 @@ async function scorePodcast(
       return match ? parseInt(match[1], 10) : null
     }
   } catch (error) {
-    console.warn(`[RunExperimentSweep] Scoring error: ${error.message}`)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.warn(`[RunExperimentSweep] Scoring error: ${errorMessage}`)
     return null
   }
 }
@@ -166,10 +168,11 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const startTime = Date.now()
-  const TIME_LIMIT_MS = 5 * 60 * 1000 // 5 minutes
-
   try {
+    await requirePlatformAdminOrService(req)
+    const startTime = Date.now()
+    const TIME_LIMIT_MS = 5 * 60 * 1000 // 5 minutes
+
     let body: any
     try {
       body = await req.json()
@@ -499,7 +502,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[RunExperimentSweep] Error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal error' }),
+      JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) || 'Internal error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

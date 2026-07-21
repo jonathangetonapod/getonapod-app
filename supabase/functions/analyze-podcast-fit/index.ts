@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
+import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -22,6 +23,7 @@ serve(async (req) => {
   }
 
   try {
+    await requirePlatformAdminOrService(req)
     const body = await req.json()
 
     // Support both old format (from clientPortal.ts) and new format (from googleSheets.ts)
@@ -241,7 +243,8 @@ Return ONLY valid JSON, no markdown code blocks or other text.`
           }
           console.log('[Analyze Podcast Fit] Created fallback response from partial data')
         } else {
-          throw new Error(`Failed to parse analysis: ${parseError.message}`)
+          const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
+          throw new Error(`Failed to parse analysis: ${parseErrorMessage}`)
         }
       }
     }
@@ -282,7 +285,7 @@ Return ONLY valid JSON, no markdown code blocks or other text.`
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Failed to analyze podcast fit',
+        error: (error instanceof Error ? error.message : String(error)) || 'Failed to analyze podcast fit',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
