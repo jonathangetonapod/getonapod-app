@@ -3,8 +3,8 @@
   "base_commit": "b46a737631ee840f2f49270bdfbbe392833e814a",
   "generated_on": "2026-07-22",
   "scope": "Every changed or new Supabase Edge Function relative to base_commit",
-  "expected_unique_function_count": 93,
-  "expected_deploy_count": 91,
+  "expected_unique_function_count": 96,
+  "expected_deploy_count": 94,
   "retired_http_410_functions": [
     "analyze-sales-call",
     "batch-update-orders",
@@ -72,6 +72,7 @@
       "change-initial-password",
       "check-indexing-status",
       "classify-reply",
+      "client-onboarding",
       "create-bison-lead",
       "create-client-account",
       "create-client-google-sheet",
@@ -111,6 +112,7 @@
       "manage-workspace-staff",
       "manage-workspace-users",
       "podscan-proxy",
+      "process-onboarding-reminders",
       "provision-workspace-account",
       "public-client-dashboard",
       "qa-review-podcasts",
@@ -127,7 +129,8 @@
       "sync-replies",
       "update-prospect-dashboard",
       "workspace-clients",
-      "workspace-guest-resources"
+      "workspace-guest-resources",
+      "workspace-onboarding"
     ]
   },
   "excluded_from_tenant_environment": [

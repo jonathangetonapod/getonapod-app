@@ -17,7 +17,6 @@ import WhatToExpect from "./pages/WhatToExpect";
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
-import AdminOnboarding from "./pages/admin/Onboarding";
 import PodcastFinder from "./pages/admin/PodcastFinder";
 import ProspectDashboards from "./pages/admin/ProspectDashboards";
 import PodcastDatabase from "./pages/admin/PodcastDatabase";
@@ -39,11 +38,14 @@ import AcceptInvite from "./pages/admin/AcceptInvite";
 import WorkspaceUsers from "./pages/admin/WorkspaceUsers";
 import WorkspaceClients from "./pages/app/WorkspaceClients";
 import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
+import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
 import WorkspaceStaff from "./pages/app/WorkspaceStaff";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
 import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
+import AdminWorkspaceOnboarding from "./pages/admin/AdminWorkspaceOnboarding";
 import AdminWorkspaceStaff from "./pages/admin/AdminWorkspaceStaff";
 import ChangeInitialPassword from "./pages/account/ChangeInitialPassword";
+import ClientOnboarding from "./pages/onboarding/ClientOnboarding";
 
 const KeyedProspectView = () => {
   const { slug } = useParams()
@@ -77,7 +79,8 @@ const App = () => (
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/course" element={<Course />} />
             <Route path="/what-to-expect" element={<WhatToExpect />} />
-            <Route path="/onboarding" element={<Navigate to="/admin/onboarding" replace />} />
+            <Route path="/onboarding" element={<Navigate to="/" replace />} />
+            <Route path="/onboarding/:token" element={<ClientOnboarding />} />
 
             {/* Invite-only workspace account routes */}
             <Route path="/login" element={<AdminLogin />} />
@@ -91,6 +94,14 @@ const App = () => (
                 <WorkspaceStaffRoute>
                   <WorkspaceStaff />
                 </WorkspaceStaffRoute>
+              }
+            />
+            <Route
+              path="/app/onboarding"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceOnboarding />
+                </ProtectedRoute>
               }
             />
             <Route
@@ -172,14 +183,7 @@ const App = () => (
                 </PlatformAdminRoute>
               }
             />
-            <Route
-              path="/admin/onboarding"
-              element={
-                <PlatformAdminRoute>
-                  <AdminOnboarding />
-                </PlatformAdminRoute>
-              }
-            />
+            <Route path="/admin/onboarding" element={<Navigate to="/admin/users" replace />} />
             <Route
               path="/admin/podcast-finder"
               element={
@@ -241,6 +245,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <ClientDetail />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/workspaces/:workspaceId/onboarding"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceOnboarding />
                 </PlatformAdminRoute>
               }
             />

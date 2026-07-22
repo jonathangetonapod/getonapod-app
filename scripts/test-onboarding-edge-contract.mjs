@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const staff = readFileSync('supabase/functions/workspace-onboarding/index.ts', 'utf8')
+const client = readFileSync('supabase/functions/client-onboarding/index.ts', 'utf8')
+const reminders = readFileSync('supabase/functions/process-onboarding-reminders/index.ts', 'utf8')
+const shared = readFileSync('supabase/functions/_shared/workspaceOnboarding.ts', 'utf8')
+const migration = readFileSync('supabase/migrations/20260722000500_workspace_onboarding.sql', 'utf8')
+const config = readFileSync('supabase/config.toml', 'utf8')
+const publicPage = readFileSync('src/pages/onboarding/ClientOnboarding.tsx', 'utf8')
+const routes = readFileSync('src/App.tsx', 'utf8')
+
+assert.match(config, /\[functions\.workspace-onboarding\]\s+verify_jwt = true/u)
+assert.match(config, /\[functions\.client-onboarding\]\s+verify_jwt = false/u)
+assert.match(config, /\[functions\.process-onboarding-reminders\]\s+verify_jwt = false/u)
+
+assert.match(staff, /requireAuthenticatedUser\(req\)/u)
+assert.match(staff, /workspaceCredentialIsFresh\(context\)/u)
+assert.match(staff, /workspace_onboarding_staff_list_v1/u)
+assert.match(staff, /workspace_onboarding_start_v1/u)
+assert.match(staff, /workspace_onboarding_approve_v1/u)
+assert.match(staff, /record_workspace_onboarding_change_request_v1/u)
+assert.match(staff, /kind: 'changes_requested'/u)
+assert.match(staff, /p_action: 'purge_paths'/u)
+assert.match(staff, /No database records were deleted/u)
+assert.match(staff, /listPrivateOnboardingFiles/u)
+assert.doesNotMatch(staff, /console\.(?:log|error)\([^)]*(?:token|recipient|email)/iu)
+
+assert.match(client, /verifyOnboardingCapability\(token, capabilitySecret\(\)\)/u)
+assert.match(client, /validateOnboardingAnswers/u)
+assert.match(client, /hasExpectedSignature/u)
+assert.match(client, /createSignedUrl\(path, 900\)/u)
+assert.doesNotMatch(client, /console\.(?:log|error)/u)
+
+assert.match(shared, /name: 'HMAC', hash: 'SHA-256'/u)
+assert.match(shared, /crypto\.subtle\.digest\('SHA-256'/u)
+assert.match(shared, /timingSafeText/u)
+assert.doesNotMatch(shared, /localStorage|sessionStorage/u)
+
+assert.match(reminders, /x-onboarding-reminder-secret/u)
+assert.match(reminders, /secretsMatch\(provided, expected\)/u)
+assert.match(reminders, /claim_workspace_onboarding_reminders_v1/u)
+assert.match(reminders, /complete_workspace_onboarding_notification_v1/u)
+
+assert.match(migration, /'workspace-onboarding-assets',[\s\S]*?false,[\s\S]*?10485760/u)
+assert.match(migration, /REVOKE ALL PRIVILEGES ON TABLE public\.workspace_onboarding_instances FROM PUBLIC, anon, authenticated/u)
+assert.match(migration, /workspace_onboarding_template_versions_immutable/u)
+assert.match(migration, /workspace_onboarding_answer_revisions_immutable/u)
+assert.match(migration, /portal_access_changed', false/u)
+assert.match(migration, /client_record_retained', true/u)
+assert.doesNotMatch(migration, /GRANT (?:SELECT|INSERT|UPDATE|DELETE|ALL)[^;]+workspace_onboarding[^;]+ TO (?:anon|authenticated)/iu)
+
+assert.doesNotMatch(publicPage, /localStorage|sessionStorage/u)
+assert.match(publicPage, /meta\.name = 'referrer'/u)
+assert.match(publicPage, /meta\.content = 'no-referrer'/u)
+assert.match(publicPage, /<PageSEO[\s\S]*?noindex/u)
+assert.match(publicPage, /CAPABILITY_SCOPE_PATTERN/u)
+assert.ok(routes.includes('path="/onboarding/:token" element={<ClientOnboarding />}'))
+assert.ok(routes.includes('path="/app/onboarding"'))
+assert.ok(routes.includes('path="/admin/workspaces/:workspaceId/onboarding"'))
+
+console.log('Workspace onboarding Edge and browser contracts passed')

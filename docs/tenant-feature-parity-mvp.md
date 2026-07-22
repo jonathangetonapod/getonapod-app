@@ -28,6 +28,13 @@ staff temporary-password migration 11 plus audited workspace-logo migration 12.
 Migrations 11–12, the changed Edge Functions, frontend, and live acceptance
 remain incomplete for this increment.
 
+The current working tree also implements the workspace Onboarding vertical
+slice as migration 13 plus three Edge Functions and native tenant/platform
+routes. Its isolated PostgreSQL behavior suite passes locally, but migration,
+function, scheduler, frontend deployment, and production acceptance are not
+yet authorized or complete. See `docs/workspace-onboarding.md` for its exact
+boundary and release order.
+
 ## Product goal
 
 An administrator provisions one private workspace and its agency owner. The
@@ -100,7 +107,7 @@ boundary, platform-owner management path, and isolation tests.
 | 1 | Settings / Workspace users foundation | Workspace-logo branding; exactly one transferable owner; admins/members; email or generated-password staff setup; role hierarchy; employee lifecycle; stale-token revocation; and owner-level platform management of a selected workspace |
 | 2 | Client Podcast System | Workspace-scoped booking/calendar management and portal-credential controls for workspace-owned clients |
 | 3 | Podcast Database | Read-only browse/search/filter over a narrow projection of the shared podcast catalog; no global writes, contact export, cost analytics, or live paid lookups |
-| 4 | Onboarding | Workspace-owned submissions behind expiring capability links; no legacy client deletion behavior |
+| 4 | Onboarding | Implemented release candidate: versioned workspace forms, expiring capability links, server autosave, private uploads, review revisions, editable AI pitch drafts, explicit approval mappings, reminders, and archive-before-purge retention; production deployment remains pending |
 | 5 | Podcast Finder | Search for a verified workspace client, server-loaded bio, per-workspace usage limits, and an idempotent export workflow |
 | 6 | Prospect Dashboard | Workspace-owned dashboards, child rows, images, public capabilities, AI work, and Google Sheet operations |
 | 7 | Outreach Platform | Workspace/integration/campaign ownership, provider event ledger, outbox state machine, and idempotent individual approval |

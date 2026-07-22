@@ -9,8 +9,8 @@ const AUTH_PARAMETER_NAMES = new Set([
 ])
 
 const AUTH_ROUTE_PATTERN = /^\/(?:accept-invite|admin\/callback)(?:\/|$)/i
-const CAPABILITY_ROUTE_PATTERN = /^\/(?:client|prospect)(?:\/|$)/i
-const CAPABILITY_TOKEN_PATH_PATTERN = /^\/(client|prospect)\/[^/]+/i
+const CAPABILITY_ROUTE_PATTERN = /^\/(?:client|prospect|onboarding)(?:\/|$)/i
+const CAPABILITY_TOKEN_PATH_PATTERN = /^\/(client|prospect|onboarding)\/[^/]+/i
 
 function hashParameters(hash: string): URLSearchParams {
   const value = hash.startsWith('#') ? hash.slice(1) : hash
@@ -73,7 +73,7 @@ export function redactSensitiveUrl(
 
 export function redactSensitiveText(value: string): string {
   return value
-    .replace(/\/(client|prospect)\/[^\s?#/]+/gi, '/$1/[redacted]')
+    .replace(/\/(client|prospect|onboarding)\/[^\s?#/]+/gi, '/$1/[redacted]')
     .replace(
       /\b(access_token|refresh_token|provider_token|provider_refresh_token|token|token_hash|code)=([^&\s#]+)/gi,
       '$1=[redacted]',

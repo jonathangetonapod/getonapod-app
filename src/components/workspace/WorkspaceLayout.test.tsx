@@ -62,16 +62,17 @@ describe('WorkspaceLayout', () => {
     expect(labels).toEqual(expectedNavigation)
 
     const links = within(navigation).getAllByRole('link')
-    expect(links).toHaveLength(3)
+    expect(links).toHaveLength(4)
     expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/app/settings',
     )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
+    expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute('href', '/app/onboarding')
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
 
     const disabledModules = within(navigation).getAllByRole('button')
-    expect(disabledModules).toHaveLength(8)
+    expect(disabledModules).toHaveLength(7)
     disabledModules.forEach((module) => expect(module).toBeDisabled())
     expect(screen.getAllByText('Acme Workspace')).toHaveLength(2)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
@@ -125,6 +126,10 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute(
       'href',
       `/admin/workspaces/${workspaceId}/clients`,
+    )
+    expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute(
+      'href',
+      `/admin/workspaces/${workspaceId}/onboarding`,
     )
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute(
       'href',

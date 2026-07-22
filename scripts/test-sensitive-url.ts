@@ -31,6 +31,7 @@ assert.equal(
 assert.equal(isSensitiveTelemetryLocation(locationFor('https://app.example.test/client/capability')), true)
 assert.equal(isSensitiveTelemetryLocation(locationFor('https://app.example.test/prospect/capability/')), true)
 assert.equal(isSensitiveTelemetryLocation(locationFor('https://app.example.test/CLIENT/capability/extra')), true)
+assert.equal(isSensitiveTelemetryLocation(locationFor('https://app.example.test/onboarding/private-capability')), true)
 assert.equal(isSensitiveTelemetryLocation(locationFor('https://app.example.test/admin/callback/')), true)
 assert.equal(isSensitiveTelemetryLocation(applicationLocation), false)
 
@@ -43,6 +44,10 @@ assert.equal(
   '/prospect/[redacted]/extra',
 )
 assert.equal(
+  redactSensitiveUrl('/onboarding/instance.generation.secret', applicationLocation),
+  '/onboarding/[redacted]',
+)
+assert.equal(
   redactSensitiveUrl('https://outside.example/prospect/secret#access_token=value', applicationLocation),
   'https://outside.example/prospect/[redacted]',
 )
@@ -53,6 +58,10 @@ assert.equal(
 assert.equal(
   redactSensitiveText('open /client/secret for customer@example.test and token=secret-value'),
   'open /client/[redacted] for [redacted-email] and token=[redacted]',
+)
+assert.equal(
+  redactSensitiveText('continue /onboarding/raw-capability now'),
+  'continue /onboarding/[redacted] now',
 )
 
 console.log('Sensitive URL redaction checks passed')
