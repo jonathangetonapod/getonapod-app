@@ -55,7 +55,9 @@ interface AuthContextType {
   membership: WorkspaceMembership | null
   workspace: Workspace | null
   canWriteClients: boolean
-  refreshAccount: () => Promise<void>
+  canManageWorkspaceStaff: boolean
+  refreshAccount: () => Promise<boolean>
+  refreshSession: () => Promise<boolean>
   signInWithGoogle: () => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -100,25 +102,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const refreshAccount = useCallback(async () => {
     const requestId = ++accountRequestRef.current
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-    if (requestId !== accountRequestRef.current) return
+    if (requestId !== accountRequestRef.current) return false
 
     if (sessionError) {
       clearAccount('error')
       setAccountError(sessionError.message)
-      return
+      return false
     }
 
     if (!sessionData.session) {
       clearAccount('signed_out')
-      return
+      return false
     }
-    if (sessionData.session.user.id !== lastUserIdRef.current) return
+    if (sessionData.session.user.id !== lastUserIdRef.current) return false
 
     setAccountState('loading')
     setAccountError(null)
 
     const { data, error } = await supabase.functions.invoke<AccountContextResponse>('account-context')
-    if (requestId !== accountRequestRef.current) return
+    if (requestId !== accountRequestRef.current) return false
 
     if (error || !data) {
       setAccountState('error')
@@ -126,7 +128,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsPlatformAdmin(false)
       setMembership(null)
       setWorkspace(null)
-      return
+      return false
     }
 
     setIsPlatformAdmin(Boolean(data.platform_admin))
@@ -136,6 +138,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Platform admins retain access to the legacy operational dashboard even
     // when they do not have a tenant membership.
     setAccountState(data.platform_admin ? 'active' : data.state)
+    return true
   }, [clearAccount])
 
   const applySession = useCallback((nextSession: Session | null) => {
@@ -156,6 +159,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(nextSession?.user ?? null)
     if (!nextSession) clearAccount('signed_out')
   }, [clearAccount])
+
+  const refreshSession = useCallback(async () => {
+    const { data, error } = await supabase.auth.refreshSession()
+    if (error || !data.session) return false
+    applySession(data.session)
+    return true
+  }, [applySession])
 
   useEffect(() => {
     let mounted = true
@@ -227,7 +237,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     membership,
     workspace,
     canWriteClients: isPlatformAdmin || membership?.role === 'owner' || membership?.role === 'admin',
+    canManageWorkspaceStaff: !isPlatformAdmin && (membership?.role === 'owner' || membership?.role === 'admin'),
     refreshAccount,
+    refreshSession,
     signInWithGoogle,
     signInWithPassword,
     signOut,
@@ -240,6 +252,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     membership,
     workspace,
     refreshAccount,
+    refreshSession,
     signInWithGoogle,
     signInWithPassword,
     signOut,

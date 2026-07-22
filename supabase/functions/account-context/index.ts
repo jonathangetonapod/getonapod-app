@@ -37,6 +37,7 @@ const ACCOUNT_WORKSPACE_COLUMNS = [
   'slug',
   'status',
   'is_default',
+  'access_not_before_epoch',
 ].join(',')
 
 type MembershipRow = AccountMembershipRecord & {
@@ -46,7 +47,9 @@ type MembershipRow = AccountMembershipRecord & {
   workspace_access_not_before_epoch: number | string
 }
 
-type WorkspaceRow = AccountWorkspaceRecord
+type WorkspaceRow = AccountWorkspaceRecord & {
+  access_not_before_epoch: number | string
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
@@ -126,6 +129,10 @@ serve(async (req) => {
       throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
     }
     const workspace = workspaceData as unknown as WorkspaceRow
+    const workspaceAccessNotBefore = Number(workspace.access_not_before_epoch)
+    const workspaceTokenIsFresh = Number.isSafeInteger(workspaceAccessNotBefore)
+      && workspaceAccessNotBefore >= 0
+      && authContext.tokenIssuedAt >= workspaceAccessNotBefore
 
     let state:
       | 'active'
@@ -140,6 +147,8 @@ serve(async (req) => {
         : Number.NaN
       if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() || workspace.status !== 'active') {
         state = 'expired'
+      } else if (!workspaceTokenIsFresh) {
+        state = 'reauthentication_required'
       } else if (membership.password_change_required) {
         const accessNotBefore = Number(membership.workspace_access_not_before_epoch)
         const temporaryTokenIsFresh = Number.isSafeInteger(accessNotBefore)
@@ -159,7 +168,9 @@ serve(async (req) => {
       const accessTokenIsFresh = Number.isSafeInteger(accessNotBefore)
         && accessNotBefore >= 0
         && authContext.tokenIssuedAt >= accessNotBefore
-      state = accessTokenIsFresh && workspaceCredentialIsFresh(authContext)
+      state = accessTokenIsFresh
+          && workspaceTokenIsFresh
+          && workspaceCredentialIsFresh(authContext)
         ? 'active'
         : 'reauthentication_required'
     } else {

@@ -46,8 +46,16 @@ const AcceptInvite = () => {
       toast.error('No pending invitation was found for this account.')
       return
     }
-    if (password.length < 8) {
-      toast.error('Password must be at least 8 characters.')
+    if (password.length < 12 || new TextEncoder().encode(password).length > 72) {
+      toast.error('Use at least 12 characters and no more than 72 UTF-8 bytes.')
+      return
+    }
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      toast.error('Use uppercase, lowercase, number, and symbol characters.')
+      return
+    }
+    if (password.startsWith('Tmp-')) {
+      toast.error('Choose a new password instead of using a temporary-password format.')
       return
     }
     if (password !== confirmPassword) {
@@ -70,7 +78,8 @@ const AcceptInvite = () => {
         throw await toFunctionError(acceptanceError, 'Unable to accept this invitation.')
       }
 
-      await refreshAccount()
+      const refreshed = await refreshAccount()
+      if (!refreshed) throw new Error('Your invitation was accepted. Sign in again to refresh access.')
       toast.success('Invitation accepted.')
       navigate('/app/clients', { replace: true })
     } catch (error) {
@@ -107,7 +116,7 @@ const AcceptInvite = () => {
             <CardDescription>
               {accountState === 'expired'
                 ? `The invitation for ${user.email} has expired.`
-                : `No active invitation matches ${user.email}.`} Ask a platform administrator to send a new invitation.
+                : `No active invitation matches ${user.email}.`} Ask a workspace administrator to send a new invitation.
             </CardDescription>
           </CardHeader>
           <CardContent><Button asChild variant="outline" className="w-full"><Link to="/login">Back to sign in</Link></Button></CardContent>
@@ -136,7 +145,8 @@ const AcceptInvite = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="invite-password">Create password</Label>
-              <Input id="invite-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" />
+              <Input id="invite-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" aria-describedby="invite-password-requirements" />
+              <p id="invite-password-requirements" className="text-xs text-muted-foreground">12+ characters with uppercase, lowercase, a number, and a symbol; 72 UTF-8 bytes maximum.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="invite-password-confirm">Confirm password</Label>

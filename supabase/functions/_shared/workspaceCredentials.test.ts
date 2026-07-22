@@ -34,6 +34,8 @@ Deno.test('permanent passwords reject temporary and weak formats', () => {
     'ALL UPPERCASE PASSWORD 42!',
     'NoNumbersInThisPassword!',
     'No-symbol-in-this-password-42'.replaceAll('-', ''),
+    `Aa1!${'x'.repeat(69)}`,
+    `Aa1!${'🚀'.repeat(18)}`,
   ]) {
     let rejected = false
     try {

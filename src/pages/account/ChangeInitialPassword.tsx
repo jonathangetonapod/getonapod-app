@@ -58,8 +58,8 @@ const ChangeInitialPassword = () => {
       setError('The temporary-password account could not be found.')
       return
     }
-    if (password.length < 12 || password.length > 128) {
-      setError('Use a password between 12 and 128 characters.')
+    if (password.length < 12 || new TextEncoder().encode(password).length > 72) {
+      setError('Use at least 12 characters and no more than 72 UTF-8 bytes.')
       return
     }
     if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
@@ -168,7 +168,7 @@ const ChangeInitialPassword = () => {
                 </Button>
               </div>
               <p id="password-requirements" className="text-xs text-muted-foreground">
-                12+ characters with uppercase, lowercase, a number, and a symbol.
+                12+ characters with uppercase, lowercase, a number, and a symbol; 72 UTF-8 bytes maximum.
               </p>
             </div>
             <div className="space-y-2">

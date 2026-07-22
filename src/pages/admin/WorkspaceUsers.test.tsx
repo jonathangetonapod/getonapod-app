@@ -253,7 +253,32 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(screen.queryByText('superseded-cleanup@example.com')).not.toBeInTheDocument()
   })
 
-  it('shows passive operator review for interrupted invitation deletion', async () => {
+  it('keeps provider reconciliation controls out of the admin UX', async () => {
+    mockedList.mockResolvedValue([
+      {
+        ...manualUser,
+        status: 'active',
+        password_change_required: false,
+      },
+      {
+        ...manualUser,
+        id: '91111111-1111-4111-8111-111111111111',
+        user_id: '93333333-3333-4333-8333-333333333333',
+        email: 'suspended-owner@example.com',
+        status: 'suspended',
+        password_change_required: false,
+      },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('suspended-owner@example.com')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reactivate' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /verify auth/i })).not.toBeInTheDocument()
+  })
+
+  it('hides interrupted invitation deletion from the account UX', async () => {
     mockedList.mockResolvedValue([{
       ...manualUser,
       status: 'revoked',
@@ -266,9 +291,9 @@ describe('WorkspaceUsers manual account flow', () => {
 
     renderPage()
 
-    expect(await screen.findByText('deletion pending')).toBeInTheDocument()
-    expect(await screen.findByText('Deletion requires operator review.')).toBeInTheDocument()
-    expect(screen.queryByText(/auth cleanup/i)).not.toBeInTheDocument()
+    expect(await screen.findByText('No workspace accounts')).toBeInTheDocument()
+    expect(screen.queryByText(manualUser.email)).not.toBeInTheDocument()
+    expect(screen.queryByText(/operator review/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
   })
 })

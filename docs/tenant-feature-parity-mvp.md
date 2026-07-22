@@ -16,17 +16,24 @@ deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. A second,
 post-deployment Cloudflare purge was completed, and the hardened recursive live
 verifier passed with all six retired asset paths returning 404, `no-store`,
 `text/plain`, and `noindex`. Safe rotation of the exposed legacy service-role
-key remains a separate incident task. Production has no private workspace with
-which to run signed-in tenant, administrator-preview, or private-client portal
-acceptance, so that controlled acceptance remains outstanding.
+key remains a separate incident task. That earlier increment did not capture a
+controlled signed-in tenant, administrator-preview, or private-client portal
+acceptance run; current production state must be inventoried and tested again
+rather than relying on the historical “no private workspace” observation.
+
+The Sub-agency Workspace Foundation is now the reviewed release candidate. It
+adds one transferable owner plus admins/members, workspace-managed staff,
+read-only platform roster preview, and independent employee/workspace
+lifecycles. It remains pre-production until migration 9, the new/changed Edge
+Functions, hosted Auth policy, frontend, and live acceptance complete.
 
 ## Product goal
 
-An administrator provisions one private workspace and one account for each
-agency user. That user signs in under `/app/*`, adds their own clients, and uses
-the supported podcast-placement modules without seeing another workspace's
-records. Billing, public registration, teams, and visual white-labeling remain
-out of scope.
+An administrator provisions one private workspace and its agency owner. The
+owner can add admins and members; that agency team signs in under `/app/*`, adds
+its own clients, and uses supported podcast-placement modules without seeing
+another workspace's records. Billing, public registration, multi-workspace
+tenant identities, and visual white-labeling remain out of scope.
 
 The downstream client portal is a separate identity layer. A workspace account
 manages work for many clients; each client portal login sees only that client's
@@ -76,8 +83,9 @@ with a read-only banner and selector while preserving the administrator's own
 session.
 
 The shell may name a planned module before its backend is ready, but that entry
-must remain a disabled control rather than a route. Only Clients and Guest
-Resources currently satisfy the shared tenant contract. Each remaining entry
+must remain a disabled control rather than a route. Workspace Users, Clients,
+and Guest Resources satisfy the shared tenant contract in the current release
+candidate. Each remaining entry
 becomes a link only in the same release unit as its migration, narrow service
 boundary, preview mode, and isolation tests.
 
@@ -85,7 +93,7 @@ boundary, preview mode, and isolation tests.
 
 | Order | Module | MVP boundary |
 | --- | --- | --- |
-| 1 | Guest Resources | Workspace-owned catalog, draft/publish/archive, ordering, featured state, all-clients or selected-clients visibility, and session-resolved client portal output |
+| 1 | Workspace Users foundation | Exactly one transferable owner, admins/members, role hierarchy, employee lifecycle, stale-token revocation, and read-only platform preview |
 | 2 | Client Podcast System | Workspace-scoped booking/calendar management and portal-credential controls for workspace-owned clients |
 | 3 | Podcast Database | Read-only browse/search/filter over a narrow projection of the shared podcast catalog; no global writes, contact export, cost analytics, or live paid lookups |
 | 4 | Onboarding | Workspace-owned submissions behind expiring capability links; no legacy client deletion behavior |
@@ -93,6 +101,10 @@ boundary, preview mode, and isolation tests.
 | 6 | Prospect Dashboard | Workspace-owned dashboards, child rows, images, public capabilities, AI work, and Google Sheet operations |
 | 7 | Outreach Platform | Workspace/integration/campaign ownership, provider event ledger, outbox state machine, and idempotent individual approval |
 | 8 | Unibox | Campaign-bound ingestion, quarantined unknown events, read-only inbox first, then AI drafts and idempotent sends |
+
+Clients and customizable Guest Resources are already tenant-scoped foundation
+modules. Client Podcast System is the next implementation slice after Workspace
+Users reaches production.
 
 Outreach and Unibox come last because their current provider accounts and event
 records are global. `campaign_replies` cannot presently identify a workspace,
@@ -186,10 +198,10 @@ Functions. The 2026-07-22 backend increment followed that rule:
    post-deployment Cloudflare purge was completed; the hardened live verifier
    passed, and all six retired asset paths returned 404 with `no-store`,
    `text/plain`, and `noindex`; and
-7. the remaining step is to provision a controlled private workspace and
-   complete signed-in tenant, read-only administrator-preview, and
-   private-client portal audience acceptance. Production currently has no
-   private workspace, so these checks remain outstanding.
+7. that increment left signed-in tenant, read-only administrator-preview, and
+   private-client portal audience acceptance outstanding. Re-inventory current
+   production workspaces and run those checks with controlled accounts; do not
+   reuse the historical assumption that no private workspace exists.
 
 `scripts/run-workspace-guest-resources-behavior.sh` is non-production-only and
 ends all fixture mutations with `ROLLBACK`. `check:static` grammar-parses that

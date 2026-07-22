@@ -1,6 +1,6 @@
 -- Read-only verification for the invite-only workspace migrations.
--- Run after the complete 20260720 migration set, including webhook
--- idempotency hardening. Any failed invariant raises.
+-- Run after the complete migration set through the 20260722 sub-agency
+-- workspace foundation. Any failed invariant raises.
 
 DO $$
 DECLARE
@@ -19,9 +19,16 @@ DECLARE
   missing_workspace_policy_count BIGINT;
   missing_gate_count BIGINT;
   unsafe_view_count BIGINT;
+  claim_lifecycle_definition TEXT;
+  complete_lifecycle_definition TEXT;
   lifecycle_pair_definition TEXT;
+  provider_claim_guard_definition TEXT;
+  provider_lock_definition TEXT;
   resend_function_definition TEXT;
   resend_suppressed_upsert_definition TEXT;
+  transition_lifecycle_definition TEXT;
+  workspace_client_v2_definition TEXT;
+  helper_signature TEXT;
   null_action_rejected BOOLEAN := false;
   null_client_action_rejected BOOLEAN := false;
 BEGIN
@@ -223,29 +230,38 @@ BEGIN
       ON membership.workspace_id = workspace.id
     WHERE NOT workspace.is_default
     GROUP BY workspace.id, workspace.status
-    HAVING count(membership.id) <> 1
-      OR count(membership.id) FILTER (
-        WHERE (
-          membership.status IN ('provisioning', 'invited', 'active')
-          AND workspace.status = 'active'
-        ) OR (
-          membership.status = 'suspended'
-          AND workspace.status = 'suspended'
-        ) OR (
-          membership.status = 'revoked'
-          AND workspace.status = 'archived'
-        )
-      ) <> 1
+    HAVING (
+        workspace.status = 'archived'
+        AND count(membership.id) FILTER (
+          WHERE membership.status IN (
+            'provisioning', 'invited', 'active', 'suspended'
+          )
+        ) <> 0
+      ) OR (
+        workspace.status <> 'archived'
+        AND count(membership.id) FILTER (
+          WHERE membership.role = 'owner'
+            AND membership.status IN (
+              'provisioning', 'invited', 'active', 'suspended'
+            )
+        ) <> 1
+      ) OR (
+        workspace.status = 'active'
+        AND count(membership.id) FILTER (
+          WHERE membership.role = 'owner'
+            AND membership.status IN ('provisioning', 'invited', 'active')
+        ) <> 1
+      )
   ) AS invalid_workspace;
 
   IF invalid_private_workspace_count <> 0 THEN
     RAISE EXCEPTION
-      '% private workspaces lack exactly one lifecycle-matched membership',
+      '% private workspaces violate the exactly-one-live-owner lifecycle',
       invalid_private_workspace_count;
   END IF;
 
   SELECT pg_get_functiondef(
-    to_regprocedure('public.enforce_private_workspace_lifecycle_pair()')
+    to_regprocedure('public.enforce_private_workspace_staff_invariants()')
   )
   INTO lifecycle_pair_definition;
 
@@ -255,17 +271,16 @@ BEGIN
     OR lifecycle_pair_definition NOT ILIKE '%NEW.id%'
     OR lifecycle_pair_definition NOT ILIKE '%OLD.workspace_id%'
     OR lifecycle_pair_definition NOT ILIKE '%NEW.workspace_id%'
-    OR lifecycle_pair_definition NOT ILIKE '%LEFT JOIN public.workspace_memberships%'
-    OR lifecycle_pair_definition NOT ILIKE '%count(membership.id)%'
-    OR lifecycle_pair_definition NOT ILIKE '%FILTER%matching_lifecycle_count%'
-    OR lifecycle_pair_definition NOT ILIKE '%membership_count <> 1%'
-    OR lifecycle_pair_definition NOT ILIKE '%matching_lifecycle_count <> 1%'
-    OR lifecycle_pair_definition NOT ILIKE '%private workspace requires exactly one lifecycle-matched membership%'
+    OR lifecycle_pair_definition NOT ILIKE '%FOR UPDATE%'
+    OR lifecycle_pair_definition NOT ILIKE '%live_owner_count%'
+    OR lifecycle_pair_definition NOT ILIKE '%eligible_owner_count%'
+    OR lifecycle_pair_definition NOT ILIKE '%workspace_status <> ''archived''%live_owner_count <> 1%'
+    OR lifecycle_pair_definition NOT ILIKE '%workspace_status = ''active''%eligible_owner_count <> 1%'
     OR EXISTS (
       SELECT 1
       FROM (VALUES
-        ('workspaces', 'workspaces_lifecycle_pair_check'),
-        ('workspace_memberships', 'workspace_memberships_lifecycle_pair_check')
+        ('workspaces', 'workspaces_private_staff_invariant'),
+        ('workspace_memberships', 'workspace_memberships_private_staff_invariant')
       ) AS required_trigger(table_name, trigger_name)
       WHERE NOT EXISTS (
         SELECT 1
@@ -276,15 +291,15 @@ BEGIN
           )::regclass
           AND trigger_definition.tgname = required_trigger.trigger_name
           AND trigger_definition.tgfoid =
-            'public.enforce_private_workspace_lifecycle_pair()'::regprocedure
+            'public.enforce_private_workspace_staff_invariants()'::regprocedure
           AND trigger_definition.tgtype = 29
           AND trigger_definition.tgdeferrable
           AND trigger_definition.tginitdeferred
           AND trigger_definition.tgenabled <> 'D'
       )
-    )
+  )
   THEN
-    RAISE EXCEPTION 'private workspace lifecycle pairing is not deferred and enforced';
+    RAISE EXCEPTION 'private workspace owner lifecycle is not deferred and enforced';
   END IF;
 
   IF NOT EXISTS (
@@ -1125,8 +1140,8 @@ BEGIN
     FROM unnest(ARRAY[
       'public.workspace_touch_updated_at()',
       'public.assign_client_workspace()',
-      'public.enforce_private_workspace_single_live_member()',
-      'public.enforce_private_workspace_lifecycle_pair()',
+      'public.enforce_private_workspace_staff_invariants()',
+      'public.advance_workspace_access_epoch_on_status_change()',
       'public.prevent_workspace_audit_mutation()',
       'public.generate_client_dashboard_slug()',
       'public.generate_prospect_dashboard_capability_slug()',
@@ -1330,6 +1345,32 @@ BEGIN
 
   IF EXISTS (
     SELECT 1
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'public'
+      AND policy.tablename = 'clients'
+      AND policy.policyname IN (
+        'clients_workspace_insert',
+        'clients_workspace_insert_isolation',
+        'clients_workspace_update',
+        'clients_workspace_update_isolation',
+        'clients_workspace_delete',
+        'clients_workspace_delete_isolation'
+      )
+      AND (
+        COALESCE(policy.qual, '') || ' ' || COALESCE(policy.with_check, '')
+          NOT ILIKE '%is_platform_admin%'
+        OR COALESCE(policy.qual, '') || ' ' || COALESCE(policy.with_check, '')
+          NOT ILIKE '%is_default%'
+        OR COALESCE(policy.qual, '') || ' ' || COALESCE(policy.with_check, '')
+          NOT ILIKE '%status = ''active''%'
+      )
+  ) THEN
+    RAISE EXCEPTION
+      'direct client writes are not restricted to the active default workspace';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
     FROM pg_class AS relation
     JOIN pg_namespace AS namespace
       ON namespace.oid = relation.relnamespace
@@ -1363,20 +1404,70 @@ BEGIN
     RAISE EXCEPTION 'workspace audit append-only trigger is missing or disabled';
   END IF;
 
+  IF EXISTS (
+    SELECT required_trigger.name
+    FROM (VALUES
+      ('workspace_memberships_private_staff_invariant'),
+      ('workspaces_private_staff_invariant')
+    ) AS required_trigger(name)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger AS trigger_definition
+      WHERE trigger_definition.tgname = required_trigger.name
+        AND trigger_definition.tgenabled <> 'D'
+        AND trigger_definition.tgtype = 29
+        AND trigger_definition.tgdeferrable
+        AND trigger_definition.tginitdeferred
+        AND trigger_definition.tgfoid =
+          'public.enforce_private_workspace_staff_invariants()'::regprocedure
+    )
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_index AS index_definition
+    JOIN pg_class AS index_relation
+      ON index_relation.oid = index_definition.indexrelid
+    WHERE index_definition.indrelid = 'public.workspace_memberships'::regclass
+      AND index_relation.relname = 'workspace_memberships_one_live_owner_idx'
+      AND index_definition.indisunique
+      AND index_definition.indisvalid
+  )
+  THEN
+    RAISE EXCEPTION 'private-workspace exactly-one-owner enforcement is missing';
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
+    FROM information_schema.columns AS column_definition
+    WHERE column_definition.table_schema = 'public'
+      AND column_definition.table_name = 'workspaces'
+      AND column_definition.column_name = 'access_not_before_epoch'
+      AND column_definition.data_type = 'bigint'
+      AND column_definition.is_nullable = 'NO'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_definition
+    WHERE constraint_definition.conrelid = 'public.workspaces'::regclass
+      AND constraint_definition.conname = 'workspaces_access_epoch_check'
+      AND constraint_definition.contype = 'c'
+      AND constraint_definition.convalidated
+      AND pg_get_constraintdef(constraint_definition.oid)
+        ILIKE '%access_not_before_epoch >= 0%'
+  ) OR NOT EXISTS (
+    SELECT 1
     FROM pg_trigger AS trigger_definition
-    WHERE trigger_definition.tgrelid = 'public.workspace_memberships'::regclass
-      AND trigger_definition.tgname = 'workspace_memberships_enforce_private_single_live'
+    WHERE trigger_definition.tgrelid = 'public.workspaces'::regclass
+      AND trigger_definition.tgname = 'workspaces_advance_access_epoch'
+      AND NOT trigger_definition.tgisinternal
       AND trigger_definition.tgenabled <> 'D'
-      AND trigger_definition.tgtype = 31
       AND trigger_definition.tgfoid =
-        'public.enforce_private_workspace_single_live_member()'::regprocedure
+        'public.advance_workspace_access_epoch_on_status_change()'::regprocedure
+      AND pg_get_triggerdef(trigger_definition.oid)
+        ILIKE '%BEFORE UPDATE OF status ON public.workspaces%'
   ) OR pg_get_functiondef(
-    'public.enforce_private_workspace_single_live_member()'::regprocedure
-  ) NOT ILIKE '%TG_OP%OLD.workspace_id%NEW.workspace_id%FOR UPDATE%existing_membership.workspace_id = target_workspace_id%existing_membership.id <> NEW.id%private workspaces support exactly one membership%'
+    'public.advance_workspace_access_epoch_on_status_change()'::regprocedure
+  ) NOT ILIKE '%OLD.status IS DISTINCT FROM NEW.status%NEW.access_not_before_epoch := GREATEST(%clock_timestamp()%+ 1%'
   THEN
-    RAISE EXCEPTION 'private-workspace single-member trigger is missing or disabled';
+    RAISE EXCEPTION 'workspace-wide access-token epoch enforcement is missing';
   END IF;
 
   IF EXISTS (
@@ -2430,12 +2521,12 @@ BEGIN
     'anon',
     'public.transition_workspace_membership(uuid,text,uuid)',
     'EXECUTE'
-  ) OR NOT has_function_privilege(
+  ) OR has_function_privilege(
     'service_role',
     'public.transition_workspace_membership(uuid,text,uuid)',
     'EXECUTE'
   ) THEN
-    RAISE EXCEPTION 'transition_workspace_membership EXECUTE grants are incorrect';
+    RAISE EXCEPTION 'tokenless transition_workspace_membership remains executable';
   END IF;
 
   IF to_regclass('public.workspace_auth_lifecycle_claims') IS NULL
@@ -2833,33 +2924,117 @@ BEGIN
     RAISE EXCEPTION 'workspace Auth lifecycle claim EXECUTE grants are incorrect';
   END IF;
 
-  IF pg_get_functiondef(
-      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%p_action NOT IN (%''suspend''%''reactivate''%''reconcile_active''%''reconcile_suspended''%FOR UPDATE%workspace_auth_lifecycle_claims%lock_token IS DISTINCT FROM p_lock_token%workspace Auth lifecycle is busy%existing_claim.action IS DISTINCT FROM p_action%existing_claim.desired_status IS DISTINCT FROM desired_status%existing_claim.actor_user_id IS DISTINCT FROM p_actor_user_id%IF FOUND THEN%membership.status IS DISTINCT FROM desired_status%RETURN membership%'
-    OR pg_get_functiondef(
-      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) ILIKE '%existing_claim.review_after > now()%'
-    OR pg_get_functiondef(
-      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) ILIKE '%ON CONFLICT%'
-    OR pg_get_functiondef(
-      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%p_action IN (''reactivate'', ''reconcile_active'')%auth_email IS DISTINCT FROM membership.email_normalized%identity mismatch requires manual review%'
-    OR pg_get_functiondef(
-      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%p_action = ''suspend'' AND membership.status <> ''active''%p_action = ''reactivate'' AND membership.status <> ''suspended''%p_action = ''reconcile_active'' AND membership.status <> ''active''%status no longer matches active reconciliation%p_action = ''reconcile_suspended'' AND membership.status <> ''suspended''%status no longer matches suspended reconciliation%INSERT INTO public.workspace_auth_lifecycle_claims%action%desired_status%IF p_action = ''suspend'' THEN%transition_workspace_membership%ELSIF p_action = ''reactivate'' THEN%transition_workspace_membership%'
-    OR pg_get_functiondef(
-      'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%FROM public.workspaces AS workspace%workspace.id = membership.workspace_id%NOT workspace.is_default%workspace.status = CASE membership.status%WHEN ''provisioning'' THEN ''active''%WHEN ''invited'' THEN ''active''%WHEN ''active'' THEN ''active''%WHEN ''suspended'' THEN ''suspended''%WHEN ''revoked'' THEN ''archived''%NOT EXISTS%other_membership.workspace_id = membership.workspace_id%other_membership.id <> membership.id%FOR SHARE%private workspace lifecycle does not match its membership%SELECT claim.*%workspace_auth_lifecycle_claims%'
-    OR pg_get_functiondef(
-      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%is_platform_admin_identity%md5(p_lock_token::text)%workspace_memberships%FOR UPDATE%workspace_auth_lifecycle_claims%FOR UPDATE%IF NOT FOUND THEN%workspace_audit_log%workspace.membership.auth_reconciled%audit.request_id = completion_request_id%audit.metadata = jsonb_build_object(%''action'', p_action%''desired_status'', desired_status%RETURN membership%claim is required%existing_claim.lock_token IS DISTINCT FROM p_lock_token%existing_claim.action IS DISTINCT FROM p_action%existing_claim.desired_status IS DISTINCT FROM desired_status%existing_claim.actor_user_id IS DISTINCT FROM p_actor_user_id%membership.status IS DISTINCT FROM desired_status%INSERT INTO public.workspace_audit_log%''workspace.membership.auth_reconciled''%jsonb_build_object(%''action'', existing_claim.action%''desired_status'', existing_claim.desired_status%completion_request_id%DELETE FROM public.workspace_auth_lifecycle_claims%claim.lock_token = p_lock_token%IF NOT FOUND THEN%claim was lost%RETURN membership%'
-    OR pg_get_functiondef(
-      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) NOT ILIKE '%FROM public.workspaces AS workspace%workspace.id = membership.workspace_id%NOT workspace.is_default%workspace.status = CASE membership.status%WHEN ''provisioning'' THEN ''active''%WHEN ''invited'' THEN ''active''%WHEN ''active'' THEN ''active''%WHEN ''suspended'' THEN ''suspended''%WHEN ''revoked'' THEN ''archived''%NOT EXISTS%other_membership.workspace_id = membership.workspace_id%other_membership.id <> membership.id%FOR SHARE%private workspace lifecycle does not match its membership%SELECT claim.*%workspace_auth_lifecycle_claims%'
-    OR pg_get_functiondef(
-      'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
-    ) ~* 'jsonb_build_object[[:space:]]*\([^;]*p_lock_token'
+  claim_lifecycle_definition := pg_get_functiondef(
+    'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+  );
+  complete_lifecycle_definition := pg_get_functiondef(
+    'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'::regprocedure
+  );
+  transition_lifecycle_definition := pg_get_functiondef(
+    'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
+  );
+  provider_lock_definition := pg_get_functiondef(
+    'public.lock_workspace_provider_lifecycle_v1(uuid)'::regprocedure
+  );
+  provider_claim_guard_definition := pg_get_functiondef(
+    'public.workspace_has_provider_claim_v1(uuid,uuid)'::regprocedure
+  );
+
+  FOREACH helper_signature IN ARRAY ARRAY[
+    'public.lock_workspace_provider_lifecycle_v1(uuid)',
+    'public.workspace_user_has_provider_claim_v1(uuid)',
+    'public.workspace_membership_has_provider_claim_v1(uuid)',
+    'public.workspace_has_provider_claim_v1(uuid,uuid)',
+    'public.workspace_staff_actor_role_v1(uuid,uuid,bigint,boolean)'
+  ]
+  LOOP
+    IF to_regprocedure(helper_signature) IS NULL
+      OR has_function_privilege('anon', helper_signature, 'EXECUTE')
+      OR has_function_privilege('authenticated', helper_signature, 'EXECUTE')
+      OR has_function_privilege('service_role', helper_signature, 'EXECUTE')
+      OR NOT EXISTS (
+        SELECT 1
+        FROM pg_proc AS function_definition
+        WHERE function_definition.oid = to_regprocedure(helper_signature)
+          AND function_definition.prosecdef
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(function_definition.proconfig) AS setting(value)
+            WHERE setting.value IN ('search_path=', 'search_path=""')
+          )
+      )
+    THEN
+      RAISE EXCEPTION
+        'workspace provider helper % is missing or directly executable',
+        helper_signature;
+    END IF;
+  END LOOP;
+
+  FOREACH helper_signature IN ARRAY ARRAY[
+    'public.claim_workspace_staff_invite_delivery_v1(uuid,uuid,uuid,bigint,uuid)',
+    'public.finalize_workspace_staff_invite_v1(uuid,uuid,uuid,bigint,uuid,uuid)',
+    'public.revoke_workspace_staff_account_v1(uuid,uuid,uuid,bigint,uuid)',
+    'public.claim_workspace_staff_auth_lifecycle_v1(uuid,uuid,text,uuid,bigint,uuid)',
+    'public.complete_workspace_staff_auth_lifecycle_v1(uuid,uuid,text,uuid,bigint,uuid)',
+    'public.update_workspace_staff_role_v1(uuid,uuid,text,uuid,bigint)',
+    'public.transfer_workspace_owner_v1(uuid,uuid,uuid,bigint)',
+    'public.transition_workspace_membership(uuid,text,uuid)',
+    'public.claim_workspace_auth_lifecycle(uuid,text,uuid,uuid)',
+    'public.complete_workspace_auth_lifecycle(uuid,text,uuid,uuid)'
+  ]
+  LOOP
+    IF to_regprocedure(helper_signature) IS NULL
+      OR pg_get_functiondef(to_regprocedure(helper_signature))
+        NOT ILIKE '%lock_workspace_provider_lifecycle_v1(%'
+    THEN
+      RAISE EXCEPTION
+        'workspace provider operation % does not take the shared lock',
+        helper_signature;
+    END IF;
+  END LOOP;
+
+  IF provider_lock_definition
+      NOT ILIKE '%pg_advisory_xact_lock(%hashtextextended(%goap:workspace-provider-lifecycle:%p_workspace_id::text%'
+    OR provider_claim_guard_definition
+      NOT ILIKE '%workspace_invite_delivery_claims%membership.workspace_id = p_workspace_id%workspace_auth_lifecycle_claims%p_excluded_auth_membership_id%workspace_account_credential_claims%membership.workspace_id = p_workspace_id%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%p_action NOT IN (%''suspend''%''reactivate''%''reconcile_active''%''reconcile_suspended''%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%PERFORM public.lock_workspace_provider_lifecycle_v1(initial_workspace_id)%SELECT existing_membership.*%WHERE existing_membership.id = p_membership_id%FOR UPDATE%membership.workspace_id <> initial_workspace_id%SELECT existing_workspace.*%WHERE existing_workspace.id = initial_workspace_id%FOR UPDATE%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%is_platform_admin_identity(p_actor_user_id, actor_email)%membership.role <> ''owner''%auth_email IS DISTINCT FROM membership.email_normalized%is_platform_admin_email(auth_email)%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%SELECT claim.*%workspace_auth_lifecycle_claims%FOR UPDATE%existing_claim.lock_token IS DISTINCT FROM p_lock_token%existing_claim.action IS DISTINCT FROM p_action%existing_claim.desired_status IS DISTINCT FROM desired_status%existing_claim.actor_user_id IS DISTINCT FROM p_actor_user_id%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%workspace_has_provider_claim_v1(%workspace.id%CASE WHEN FOUND THEN membership.id ELSE NULL END%workspace provider lifecycle is busy%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%IF FOUND THEN%workspace.status IS DISTINCT FROM desired_status%membership.status IS DISTINCT FROM desired_status%RETURN membership%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%p_action = ''suspend'' AND (%workspace.status <> ''active'' OR membership.status <> ''active''%p_action = ''reactivate'' AND (%workspace.status <> ''suspended'' OR membership.status <> ''suspended''%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%INSERT INTO public.workspace_auth_lifecycle_claims (%membership_id%lock_token%action%desired_status%actor_user_id%acquired_at%review_after%membership.id%p_lock_token%p_action%desired_status%p_actor_user_id%'
+    OR claim_lifecycle_definition
+      NOT ILIKE '%IF p_action = ''suspend'' THEN%transition_workspace_membership(%membership.id, ''suspend''%ELSIF p_action = ''reactivate'' THEN%membership.id, ''reactivate''%'
+    OR claim_lifecycle_definition ILIKE '%existing_claim.review_after > now()%'
+    OR claim_lifecycle_definition ILIKE '%ON CONFLICT%'
+    OR claim_lifecycle_definition ILIKE '%other_membership%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%PERFORM public.lock_workspace_provider_lifecycle_v1(initial_workspace_id)%SELECT existing_membership.*%WHERE existing_membership.id = p_membership_id%FOR UPDATE%membership.workspace_id <> initial_workspace_id%SELECT existing_workspace.*%WHERE existing_workspace.id = initial_workspace_id%FOR UPDATE%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%is_platform_admin_identity(p_actor_user_id, actor_email)%membership.role <> ''owner''%auth_email IS DISTINCT FROM membership.email_normalized%is_platform_admin_email(auth_email)%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%completion_request_id := ''auth-lifecycle:'' || md5(p_lock_token::text)%workspace.status IS DISTINCT FROM desired_status%membership.status IS DISTINCT FROM desired_status%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%SELECT claim.*%workspace_auth_lifecycle_claims%FOR UPDATE%workspace_has_provider_claim_v1(%workspace.id%CASE WHEN FOUND THEN membership.id ELSE NULL END%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%IF NOT FOUND THEN%workspace_audit_log%workspace.membership.auth_reconciled%audit.request_id = completion_request_id%audit.metadata = jsonb_build_object(%''action'', p_action%''desired_status'', desired_status%RETURN membership%claim is required%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%existing_claim.lock_token IS DISTINCT FROM p_lock_token%existing_claim.action IS DISTINCT FROM p_action%existing_claim.desired_status IS DISTINCT FROM desired_status%existing_claim.actor_user_id IS DISTINCT FROM p_actor_user_id%'
+    OR complete_lifecycle_definition
+      NOT ILIKE '%INSERT INTO public.workspace_audit_log%''workspace.membership.auth_reconciled''%jsonb_build_object(%''action'', existing_claim.action%''desired_status'', existing_claim.desired_status%completion_request_id%DELETE FROM public.workspace_auth_lifecycle_claims%claim.membership_id = membership.id%claim.lock_token = p_lock_token%IF NOT FOUND THEN%claim was lost%RETURN membership%'
+    OR complete_lifecycle_definition
+      ~* 'jsonb_build_object[[:space:]]*\([^;]*p_lock_token'
+    OR complete_lifecycle_definition ILIKE '%other_membership%'
     OR pg_get_function_result(
       'public.list_workspace_auth_lifecycle_pending()'::regprocedure
     ) NOT ILIKE '%membership_id uuid%review_after timestamp with time zone%'
@@ -2911,50 +3086,64 @@ BEGIN
   -- action against an already-desired state is rejected, while a same-token
   -- lost-response retry returns the original claim/completion exactly once.
 
-  IF EXISTS (SELECT 1 FROM public.workspace_auth_lifecycle_claims) THEN
-    RAISE EXCEPTION 'an unresolved workspace Auth lifecycle claim remains';
+  -- Match the migration cutover's deterministic provider-claim lock order.
+  -- This makes the empty-claim release gate race-free while it runs, including
+  -- under default_transaction_read_only=on.
+  LOCK TABLE public.workspace_account_credential_claims
+    IN SHARE ROW EXCLUSIVE MODE;
+  LOCK TABLE public.workspace_auth_lifecycle_claims
+    IN SHARE ROW EXCLUSIVE MODE;
+  LOCK TABLE public.workspace_invite_delivery_claims
+    IN SHARE ROW EXCLUSIVE MODE;
+
+  IF EXISTS (SELECT 1 FROM public.workspace_auth_lifecycle_claims)
+    OR EXISTS (SELECT 1 FROM public.workspace_invite_delivery_claims)
+    OR EXISTS (SELECT 1 FROM public.workspace_account_credential_claims)
+  THEN
+    RAISE EXCEPTION 'an unresolved workspace provider claim remains';
   END IF;
 
-  IF pg_get_functiondef(
-    'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-  ) NOT ILIKE '%p_action IS NULL%p_action NOT IN (''suspend'', ''reactivate'')%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) NOT ILIKE '%p_action = ''suspend''%DELETE FROM public.client_portal_sessions%DELETE FROM public.client_portal_tokens%audit_action := ''workspace.membership.suspended''%ELSIF p_action = ''reactivate''%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) NOT ILIKE '%p_action = ''suspend''%RETURNING * INTO membership;%IF NOT FOUND THEN%workspace account transition failed%UPDATE public.workspaces%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) NOT ILIKE '%ELSIF p_action = ''reactivate''%RETURNING * INTO membership;%IF NOT FOUND THEN%workspace account transition failed%UPDATE public.workspaces%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) NOT ILIKE '%bound_auth_email%IF NOT FOUND THEN%Auth identity is missing%admin_users%bound_auth_email%platform administrators cannot be changed here%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) ILIKE '%bound_auth_email IS DISTINCT FROM membership.email_normalized%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) ILIKE '%revoke_pending%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) ILIKE '%workspace_invite_delivery_claims%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) ILIKE '%workspace.membership.revoked%'
-    OR pg_get_functiondef(
-      'public.transition_workspace_membership(uuid,text,uuid)'::regprocedure
-    ) ILIKE '%status = ''revoked''%'
+  IF transition_lifecycle_definition
+      NOT ILIKE '%p_action IS NULL OR p_action NOT IN (''suspend'', ''reactivate'')%'
+    OR transition_lifecycle_definition
+      NOT ILIKE '%PERFORM public.lock_workspace_provider_lifecycle_v1(initial_workspace_id)%SELECT existing_membership.*%WHERE existing_membership.id = p_membership_id%FOR UPDATE%membership.workspace_id <> initial_workspace_id%SELECT existing_workspace.*%WHERE existing_workspace.id = initial_workspace_id%FOR UPDATE%'
+    OR transition_lifecycle_definition
+      NOT ILIKE '%is_platform_admin_identity(p_actor_user_id, actor_email)%membership.role <> ''owner''%bound_auth_email IS DISTINCT FROM membership.email_normalized%is_platform_admin_email(bound_auth_email)%'
+    OR transition_lifecycle_definition
+      NOT ILIKE '%p_action = ''suspend'' THEN%workspace.status <> ''active'' OR membership.status <> ''active''%status = ''suspended''%role = ''owner''%status = ''active''%UPDATE public.workspaces%SET status = ''suspended''%'
+    OR transition_lifecycle_definition
+      NOT ILIKE '%DELETE FROM public.client_portal_sessions%client.workspace_id = workspace.id%DELETE FROM public.client_portal_tokens%client.workspace_id = workspace.id%workspace.membership.suspended%'
+    OR transition_lifecycle_definition
+      NOT ILIKE '%workspace.status <> ''suspended'' OR membership.status <> ''suspended''%status = ''active''%role = ''owner''%status = ''suspended''%UPDATE public.workspaces%SET status = ''active''%workspace.membership.reactivated%'
+    OR transition_lifecycle_definition
+      NOT ILIKE '%workspace_access_not_before_epoch = GREATEST(%clock_timestamp()%+ 1%INSERT INTO public.workspace_audit_log%jsonb_build_object(%''role'', ''owner''%'
+    OR transition_lifecycle_definition ILIKE '%other_membership%'
+    OR transition_lifecycle_definition ILIKE '%revoke_pending%'
+    OR transition_lifecycle_definition ILIKE '%workspace_invite_delivery_claims%'
+    OR transition_lifecycle_definition ILIKE '%workspace.membership.revoked%'
+    OR transition_lifecycle_definition ILIKE '%status = ''revoked''%'
+    OR has_function_privilege(
+      'service_role',
+      'public.transition_workspace_membership(uuid,text,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'authenticated',
+      'public.transition_workspace_membership(uuid,text,uuid)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.transition_workspace_membership(uuid,text,uuid)',
+      'EXECUTE'
+    )
   THEN
     RAISE EXCEPTION 'workspace lifecycle transition exposes an unsafe revocation path';
   END IF;
 
-  -- Staging fixture requirement: use a real non-admin Auth user in an active
-  -- private workspace with zero client_portal_sessions/client_portal_tokens.
-  -- As service_role, suspend then reactivate that membership and assert both
-  -- returned membership/workspace states plus their audit actions. Pending
-  -- invitation revocation must be tested only through revoke_workspace_invite,
-  -- including its durable revoke_cleanup claim and verified Auth deletion.
+  -- Workspace-wide suspension still revokes client portal artifacts. Tenant
+  -- staff suspension/removal is intentionally independent and is covered by
+  -- the rollback-only sub-agency foundation behavior suite.
 
   IF EXISTS (
     SELECT 1
@@ -2964,12 +3153,6 @@ BEGIN
     JOIN public.workspaces AS workspace
       ON workspace.id = client.workspace_id
     WHERE workspace.status <> 'active'
-      OR EXISTS (
-        SELECT 1
-        FROM public.workspace_memberships AS membership
-        WHERE membership.workspace_id = workspace.id
-          AND membership.status IN ('suspended', 'revoked')
-      )
   ) OR EXISTS (
     SELECT 1
     FROM public.client_portal_tokens AS token
@@ -2978,12 +3161,6 @@ BEGIN
     JOIN public.workspaces AS workspace
       ON workspace.id = client.workspace_id
     WHERE workspace.status <> 'active'
-      OR EXISTS (
-        SELECT 1
-        FROM public.workspace_memberships AS membership
-        WHERE membership.workspace_id = workspace.id
-          AND membership.status IN ('suspended', 'revoked')
-      )
   ) THEN
     RAISE EXCEPTION 'a non-active workspace retains client portal sessions or tokens';
   END IF;
@@ -3009,12 +3186,12 @@ BEGIN
     'anon',
     'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)',
     'EXECUTE'
-  ) OR NOT has_function_privilege(
+  ) OR has_function_privilege(
     'service_role',
     'public.workspace_client_operation(text,uuid,uuid,jsonb,uuid)',
     'EXECUTE'
   ) THEN
-    RAISE EXCEPTION 'workspace_client_operation EXECUTE grants are incorrect';
+    RAISE EXCEPTION 'tokenless workspace_client_operation is still executable';
   END IF;
 
   IF NOT EXISTS (
@@ -3060,6 +3237,45 @@ BEGIN
     ) ILIKE '%billing\_%' ESCAPE '\'
   THEN
     RAISE EXCEPTION 'workspace_client_operation authorization, field allowlist, or audit shape is unsafe';
+  END IF;
+
+  IF to_regprocedure(
+    'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)'
+  ) IS NULL
+    OR has_function_privilege(
+      'authenticated',
+      'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)',
+      'EXECUTE'
+    )
+    OR has_function_privilege(
+      'anon',
+      'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)',
+      'EXECUTE'
+    )
+    OR NOT has_function_privilege(
+      'service_role',
+      'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)',
+      'EXECUTE'
+    )
+  THEN
+    RAISE EXCEPTION 'workspace_client_operation_v2 EXECUTE grants are incorrect';
+  END IF;
+
+  workspace_client_v2_definition := pg_get_functiondef(
+    'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)'::regprocedure
+  );
+
+  IF workspace_client_v2_definition
+      NOT ILIKE '%is_platform_admin_identity(p_actor_user_id, actor_email)%workspace_staff_actor_role_v1(%true%normalized_action <> ''list''%platform administrator preview is read-only%'
+    OR workspace_client_v2_definition
+      NOT ILIKE '%membership.role IN (''owner'', ''admin'', ''member'')%workspace.status = ''active''%NOT workspace.is_default%p_token_issued_at >= membership.workspace_access_not_before_epoch%p_token_issued_at >= workspace.access_not_before_epoch%'
+    OR workspace_client_v2_definition
+      NOT ILIKE '%normalized_action <> ''list'' AND actor_role = ''member''%active workspace manager access is required%'
+    OR workspace_client_v2_definition
+      NOT ILIKE '%normalized_action = ''list''%to_jsonb(safe_client)%workspace_id = p_workspace_id%workspace_client_operation(%normalized_action%'
+  THEN
+    RAISE EXCEPTION
+      'workspace client v2 preview, role, or token-epoch contract is unsafe';
   END IF;
 
   IF has_function_privilege(
@@ -3496,13 +3712,19 @@ BEGIN
     OR pg_get_functiondef('public.current_workspace_id()'::regprocedure)
       NOT ILIKE '%workspace_access_not_before_epoch%'
     OR pg_get_functiondef('public.current_workspace_id()'::regprocedure)
+      NOT ILIKE '%workspace.access_not_before_epoch%'
+    OR pg_get_functiondef('public.current_workspace_id()'::regprocedure)
       NOT ILIKE '%current_auth_token_iat%'
     OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
       NOT ILIKE '%workspace_access_not_before_epoch%'
+    OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%workspace.access_not_before_epoch%'
     OR pg_get_functiondef('public.can_access_workspace(uuid)'::regprocedure)
       NOT ILIKE '%current_auth_token_iat%'
     OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
       NOT ILIKE '%workspace_access_not_before_epoch%'
+    OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
+      NOT ILIKE '%workspace.access_not_before_epoch%'
     OR pg_get_functiondef('public.can_manage_workspace(uuid)'::regprocedure)
       NOT ILIKE '%current_auth_token_iat%'
     OR to_regprocedure('public.workspace_auth_credential_is_fresh(uuid)') IS NULL
@@ -3536,7 +3758,7 @@ BEGIN
     ) NOT ILIKE '%workspace_credential_attempt_id%workspace_credential_execution_id%p_execution_id%temporary_password_rotated%'
     OR pg_get_functiondef(
       'public.workspace_client_operation_v2(text,uuid,uuid,jsonb,uuid,bigint)'::regprocedure
-    ) NOT ILIKE '%p_token_issued_at >= membership.workspace_access_not_before_epoch%FOR SHARE OF membership%workspace_client_operation%'
+    ) NOT ILIKE '%p_token_issued_at >= membership.workspace_access_not_before_epoch%p_token_issued_at >= workspace.access_not_before_epoch%FOR SHARE OF membership, workspace%workspace_client_operation%'
   THEN
     RAISE EXCEPTION 'manual credential finalization or token-epoch enforcement is malformed';
   END IF;
@@ -3632,6 +3854,7 @@ BEGIN
       AND (
         COALESCE(qual, '') NOT ILIKE '%current_auth_token_iat%'
         OR COALESCE(qual, '') NOT ILIKE '%workspace_auth_credential_is_fresh%'
+        OR COALESCE(qual, '') NOT ILIKE '%workspace.access_not_before_epoch%'
       )
   ) THEN
     RAISE EXCEPTION 'workspace membership reads do not enforce the access-token epoch';
@@ -4225,7 +4448,9 @@ BEGIN
   END IF;
 
   management_definition := pg_get_functiondef(
-    to_regprocedure(management_signature)
+    to_regprocedure(
+      'public.workspace_guest_resource_operation_manager_v1(text,uuid,uuid,jsonb,uuid,bigint)'
+    )
   );
   portal_definition := pg_get_functiondef(to_regprocedure(portal_signature));
   clone_definition := pg_get_functiondef(to_regprocedure(clone_signature));

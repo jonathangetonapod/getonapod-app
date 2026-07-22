@@ -20,12 +20,12 @@ const CONFIG_PATH = path.join(REPOSITORY_ROOT, 'supabase', 'config.toml')
 const FUNCTIONS_ROOT = path.join(REPOSITORY_ROOT, 'supabase', 'functions')
 
 const EXPECTED_COUNTS = Object.freeze({
-  changedFunctions: 92,
-  deployedFunctions: 90,
+  changedFunctions: 93,
+  deployedFunctions: 91,
   excludedFunctions: 2,
   retiredFunctions: 17,
   unauthenticatedTombstones: 5,
-  edgeTypeScriptFiles: 105,
+  edgeTypeScriptFiles: 106,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -95,6 +95,7 @@ const EXPECTED_EXPLICIT_JWT_FUNCTIONS = Object.freeze([
   'create-client-account',
   'create-prospect-sheet',
   'manage-client-portal-password',
+  'manage-workspace-staff',
   'manage-workspace-users',
   'podscan-proxy',
   'provision-workspace-account',
@@ -676,6 +677,12 @@ function main() {
   const config = parseTomlAssignments(readFileSync(CONFIG_PATH, 'utf8'))
   assertConfigValue(config, 'auth.enable_signup', 'false')
   assertConfigValue(config, 'auth.enable_anonymous_sign_ins', 'false')
+  assertConfigValue(config, 'auth.minimum_password_length', '12')
+  assertConfigValue(
+    config,
+    'auth.password_requirements',
+    '"lower_upper_letters_digits_symbols"',
+  )
   assertConfigValue(config, 'auth.email.enable_signup', 'false')
   assertConfigValue(config, 'auth.email.otp_expiry', '86400')
 

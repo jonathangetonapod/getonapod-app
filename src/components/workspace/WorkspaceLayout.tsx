@@ -129,10 +129,14 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
                 const Icon = item.icon
                 const href = `${baseHref}/${item.segment}`
                 const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
+                const isWorkspaceUsers = item.id === 'workspace-users'
+                const itemEnabled = isWorkspaceUsers
+                  ? Boolean(preview || membership?.role === 'owner' || membership?.role === 'admin')
+                  : item.enabled
 
                 return (
                   <li key={item.id}>
-                    {item.enabled ? (
+                    {itemEnabled ? (
                       <Link
                         to={href}
                         onClick={() => setSidebarOpen(false)}
@@ -154,7 +158,7 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
                       >
                         <Icon className="h-5 w-5 shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">Soon</Badge>
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{isWorkspaceUsers ? 'Owner/Admin' : 'Soon'}</Badge>
                       </button>
                     )}
                   </li>

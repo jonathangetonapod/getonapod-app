@@ -784,6 +784,7 @@ serve(async (req) => {
       const { data, error } = await admin
         .from('workspace_memberships')
         .select(`${MEMBERSHIP_COLUMNS}, workspace:workspaces(id,name,slug,status,is_default)`)
+        .eq('role', 'owner')
         .order('invited_at', { ascending: false })
 
       if (error) {
@@ -844,7 +845,7 @@ serve(async (req) => {
         users: membershipRows
           .filter((row) => {
             const workspace = (row as { workspace?: { is_default?: boolean } | null }).workspace
-            return workspace?.is_default === false
+            return row.role === 'owner' && workspace?.is_default === false
           })
           .map((row) => {
             const reviewAfter = pendingByMembership.get(row.id) ?? null
@@ -911,6 +912,9 @@ serve(async (req) => {
         throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Workspace invitation not found')
       }
       const membership = data as unknown as MembershipRow & { workspace?: WorkspaceRow | null }
+      if (membership.role !== 'owner') {
+        throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Workspace invitation not found')
+      }
       if (membership.provisioning_method === 'admin_temporary_password') {
         throw new HttpError(
           409,
@@ -968,6 +972,9 @@ serve(async (req) => {
       }
 
       const row = membership as unknown as MembershipRow
+      if (row.role !== 'owner') {
+        throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Workspace account not found')
+      }
       if (
         action === 'revoke_pending'
         && row.provisioning_method === 'admin_temporary_password'

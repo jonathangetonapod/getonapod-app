@@ -29,6 +29,8 @@ credentials.json
 *service-account*.json
 supabase/.temp/
 .tools/
+__pycache__/
+*.py[cod]
 
 # Video generator service (local only)
 video-generator/

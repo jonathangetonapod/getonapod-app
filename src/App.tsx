@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
-import { PlatformAdminRoute, ProtectedRoute } from "@/components/ProtectedRoute";
+import { PlatformAdminRoute, ProtectedRoute, WorkspaceStaffRoute } from "@/components/ProtectedRoute";
 import { queryClient } from "@/lib/queryClient";
 import { ClientProtectedRoute } from "@/components/ClientProtectedRoute";
 import Index from "./pages/Index";
@@ -39,8 +39,10 @@ import AcceptInvite from "./pages/admin/AcceptInvite";
 import WorkspaceUsers from "./pages/admin/WorkspaceUsers";
 import WorkspaceClients from "./pages/app/WorkspaceClients";
 import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
+import WorkspaceStaff from "./pages/app/WorkspaceStaff";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
 import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
+import AdminWorkspaceStaff from "./pages/admin/AdminWorkspaceStaff";
 import ChangeInitialPassword from "./pages/account/ChangeInitialPassword";
 
 const KeyedProspectView = () => {
@@ -77,6 +79,14 @@ const App = () => (
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/change-password" element={<ChangeInitialPassword />} />
             <Route path="/app" element={<Navigate to="/app/clients" replace />} />
+            <Route
+              path="/app/workspace-users"
+              element={
+                <WorkspaceStaffRoute>
+                  <WorkspaceStaff />
+                </WorkspaceStaffRoute>
+              }
+            />
             <Route
               path="/app/clients"
               element={
@@ -233,6 +243,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceClients />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/workspaces/:workspaceId/workspace-users"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceStaff />
                 </PlatformAdminRoute>
               }
             />

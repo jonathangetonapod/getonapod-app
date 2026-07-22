@@ -43,8 +43,12 @@ export function requirePermanentPassword(value: unknown): string {
   if (typeof value !== 'string') {
     throw new HttpError(400, 'INVALID_PASSWORD', 'new_password must be a string')
   }
-  if (value.length < 12 || value.length > 128) {
-    throw new HttpError(400, 'WEAK_PASSWORD', 'Use a password between 12 and 128 characters')
+  if (value.length < 12 || new TextEncoder().encode(value).length > 72) {
+    throw new HttpError(
+      400,
+      'WEAK_PASSWORD',
+      'Use at least 12 characters and no more than 72 UTF-8 bytes',
+    )
   }
   if (value.startsWith(TEMPORARY_PASSWORD_PREFIX)) {
     throw new HttpError(400, 'TEMPORARY_PASSWORD_REUSE', 'Choose a new password, not a temporary password')

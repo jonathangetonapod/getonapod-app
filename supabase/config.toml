@@ -1,6 +1,8 @@
 [auth]
 enable_signup = false
 enable_anonymous_sign_ins = false
+minimum_password_length = 12
+password_requirements = "lower_upper_letters_digits_symbols"
 
 [auth.email]
 enable_signup = false
@@ -96,6 +98,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.manage-workspace-users]
+verify_jwt = true
+
+[functions.manage-workspace-staff]
 verify_jwt = true
 
 [functions.provision-workspace-account]

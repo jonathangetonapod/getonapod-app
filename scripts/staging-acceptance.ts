@@ -159,6 +159,8 @@ const REQUEST_TIMEOUT_MS = 30_000
 const RELEASE_BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,159}$/
 const RELEASE_INPUT_PATHS = [
   'docs/invite-only-edge-manifest.json',
+  'scripts/hosted_auth_password_policy.py',
+  'scripts/run-subagency-workspace-foundation-behavior.sh',
   'scripts/staging-acceptance.ts',
   'supabase/migrations/20260720000100_invite_only_workspace_core.sql',
   'supabase/migrations/20260720000200_invite_only_workspace_rls.sql',
@@ -168,7 +170,15 @@ const RELEASE_INPUT_PATHS = [
   'supabase/migrations/20260720000600_trigger_function_privileges.sql',
   'supabase/migrations/20260721000100_manual_workspace_accounts.sql',
   'supabase/migrations/20260721000200_workspace_guest_resources.sql',
+  'supabase/migrations/20260722000100_subagency_workspace_foundation.sql',
+  'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
+  'supabase/functions/account-context/index.ts',
+  'supabase/functions/manage-workspace-staff/index.ts',
+  'supabase/functions/manage-workspace-users/index.ts',
+  'supabase/functions/provision-workspace-account/index.ts',
+  'supabase/functions/workspace-clients/index.ts',
+  'supabase/functions/_shared/workspaceCredentials.ts',
 ] as const
 const ACCEPTANCE_ENV_ALLOWLIST = new Set([
   'ACCEPTANCE_ADMIN_EMAIL',

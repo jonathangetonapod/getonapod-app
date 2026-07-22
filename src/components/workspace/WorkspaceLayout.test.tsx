@@ -52,7 +52,7 @@ describe('WorkspaceLayout', () => {
     } as never)
   })
 
-  it('matches the complete admin navigation order without exposing unsafe tenant routes', () => {
+  it('matches the complete navigation order and enables workspace users for an owner', () => {
     renderLayout()
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
@@ -62,16 +62,50 @@ describe('WorkspaceLayout', () => {
     expect(labels).toEqual(expectedNavigation)
 
     const links = within(navigation).getAllByRole('link')
-    expect(links).toHaveLength(2)
+    expect(links).toHaveLength(3)
+    expect(within(navigation).getByRole('link', { name: 'Workspace Users' })).toHaveAttribute(
+      'href',
+      '/app/workspace-users',
+    )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
 
     const disabledModules = within(navigation).getAllByRole('button')
-    expect(disabledModules).toHaveLength(9)
+    expect(disabledModules).toHaveLength(8)
     disabledModules.forEach((module) => expect(module).toBeDisabled())
     expect(screen.getAllByText('Acme Workspace')).toHaveLength(2)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+  })
+
+  it('enables workspace users for an admin and keeps it unavailable to a member', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { email: 'admin@example.com' },
+      workspace: { name: 'Acme Workspace' },
+      membership: { full_name: 'Agency Admin', role: 'admin' },
+      signOut,
+    } as never)
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/app/clients']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <WorkspaceLayout><div>Module content</div></WorkspaceLayout>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: 'Workspace Users' })).toHaveAttribute('href', '/app/workspace-users')
+
+    unmount()
+    mockedUseAuth.mockReturnValue({
+      user: { email: 'member@example.com' },
+      workspace: { name: 'Acme Workspace' },
+      membership: { full_name: 'Agency Member', role: 'member' },
+      signOut,
+    } as never)
+    renderLayout()
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).queryByRole('link', { name: 'Workspace Users' })).not.toBeInTheDocument()
+    const workspaceUsers = within(navigation).getByText('Workspace Users').closest('button')
+    expect(workspaceUsers).toBeDisabled()
+    expect(within(workspaceUsers as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
   })
 
   it('keeps enabled navigation inside the selected read-only admin preview', () => {
@@ -86,6 +120,10 @@ describe('WorkspaceLayout', () => {
     renderLayout(preview)
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Workspace Users' })).toHaveAttribute(
+      'href',
+      `/admin/workspaces/${workspaceId}/workspace-users`,
+    )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute(
       'href',
       `/admin/workspaces/${workspaceId}/clients`,

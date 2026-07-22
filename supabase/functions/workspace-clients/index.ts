@@ -68,7 +68,13 @@ function clientPayload(value: unknown): Record<string, string | null> {
 
 function rpcError(error: { message?: string }): never {
   const message = (error.message ?? '').toLowerCase()
-  if (message.includes('active workspace manager')) {
+  if (message.includes('preview is read-only')) {
+    throw new HttpError(403, 'PREVIEW_READ_ONLY', 'Administrator workspace preview is read-only')
+  }
+  if (
+    message.includes('active workspace manager')
+    || message.includes('active workspace staff')
+  ) {
     throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Active workspace access is required')
   }
   if (message.includes('not found')) {

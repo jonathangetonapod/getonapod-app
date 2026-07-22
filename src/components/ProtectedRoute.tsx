@@ -88,3 +88,13 @@ export const PlatformAdminRoute = ({ children }: ProtectedRouteProps) => {
     </ProtectedRoute>
   )
 }
+
+export const WorkspaceStaffRoute = ({ children }: ProtectedRouteProps) => {
+  const { canManageWorkspaceStaff } = useAuth()
+
+  return (
+    <ProtectedRoute>
+      {canManageWorkspaceStaff ? children : <Navigate to="/app/clients" replace />}
+    </ProtectedRoute>
+  )
+}

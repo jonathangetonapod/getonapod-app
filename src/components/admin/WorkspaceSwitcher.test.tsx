@@ -86,4 +86,18 @@ describe('WorkspaceSwitcher', () => {
       '/admin/workspaces/11111111-1111-4111-8111-111111111111/guest-resources',
     ))
   })
+
+  it('preserves the workspace users module when switching read-only previews', async () => {
+    renderSwitcher({
+      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/workspace-users',
+      presentation: 'toolbar',
+    })
+
+    const trigger = await screen.findByRole('combobox', { name: 'Select a client workspace to view' })
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByText('Acme'))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
+      '/admin/workspaces/11111111-1111-4111-8111-111111111111/workspace-users',
+    ))
+  })
 })

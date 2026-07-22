@@ -35,6 +35,7 @@ Deno.test('account workspace DTO omits creator and lifecycle metadata', () => {
     slug: 'private-workspace',
     status: 'active',
     is_default: false,
+    access_not_before_epoch: 1,
     created_by: '44444444-4444-4444-8444-444444444444',
     created_at: '2026-07-21T00:00:00.000Z',
     updated_at: '2026-07-21T00:00:00.000Z',

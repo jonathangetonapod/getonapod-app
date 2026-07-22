@@ -17,6 +17,13 @@ handlers. `get-guest-resources` v14 (`verify_jwt=false`) and
 deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The production
 tenant routes now expose Clients and Guest Resources.
 
+The Sub-agency Workspace Foundation is the current release candidate, not yet
+production-active in this document. It adds migration 9,
+`manage-workspace-staff`, one transferable owner plus admins/members,
+`/app/workspace-users`, and read-only platform staff preview. Hosted Auth
+password-policy verification, the production migration/Edge cutover, and live
+acceptance remain release gates.
+
 The privileged browser key was replaced by the project publishable key. After
 the frontend deployment, a second Cloudflare purge was completed and the
 hardened recursive live verifier passed; all six retired asset paths now return
@@ -28,25 +35,34 @@ historical cutover and the sanitized 2026-07-22 increment evidence.
 
 ## Release objective
 
-A platform administrator can invite an account, and the invitee can accept the
-email invitation, set a password, sign in, and manage clients inside one private
-workspace. Existing client rows are assigned to the default Get On A Pod
+A platform administrator can invite or manually create an agency owner. The
+owner accepts the invitation or replaces a temporary password, signs in to one
+private workspace, and can add agency admins and members. That agency team
+manages its own clients; each downstream client remains a separate portal
+identity. Existing client rows are assigned to the default Get On A Pod
 workspace; other legacy data remains administrator-only.
 
 The target MVP intentionally has:
 
 - no public account registration;
 - no billing, checkout, paid add-ons, or order management;
-- no user-managed teams or multiple private-workspace members;
+- exactly one transferable owner per private workspace, with optional admins
+  and members and a 100-person live-staff cap;
+- no tenant identity belonging to multiple private workspaces;
 - no tenant access to legacy modules that are not workspace-aware; and
 - no invitation of real users before email delivery and end-to-end acceptance
   are verified.
 
-The platform administrator uses the existing `/admin/*` application. Invited
-workspace accounts use `/app/clients`. Client portal users are separate client
-records and use `/portal/*`; they are not workspace accounts.
+The platform administrator uses the existing `/admin/*` application. Workspace
+staff use `/app/workspace-users`, `/app/clients`, and
+`/app/guest-resources`. The matching platform preview routes are
+`/admin/workspaces/:workspaceId/workspace-users`,
+`/admin/workspaces/:workspaceId/clients`, and
+`/admin/workspaces/:workspaceId/guest-resources`; every preview is read-only.
+Client portal users are separate client records and use `/portal/*`; they are
+not workspace accounts.
 
-## Account lifecycle
+## Platform-provisioned agency-owner lifecycle
 
 | State | Meaning | Server behavior |
 | --- | --- | --- |
@@ -89,6 +105,15 @@ log before the token-bound claim is removed. The administrator UI disables all
 conflicting lifecycle/invite actions while the service-only safe projection
 reports a pending claim.
 
+Agency employee lifecycle is separate from the table above. A workspace owner
+can invite admins or members, manage non-owner roles, suspend/remove staff, and
+transfer ownership. An admin can invite and manage members only. A member has
+no staff controls and currently receives read-only Clients and Guest Resources.
+Suspending/removing a non-owner affects only that membership and exact Auth
+identity: it does not suspend or archive the workspace and does not revoke
+client portal sessions. The current owner cannot be demoted, suspended, or
+removed; ownership must be transferred atomically first.
+
 Historical same-email invitation cleanup is also fail-closed. Any newer
 membership permanently supersedes an older revoked invitation, and another
 unresolved delivery/cleanup claim blocks historical cleanup. Provider deletion
@@ -104,11 +129,15 @@ not forward them.
 ## Tenant boundary
 
 `workspace_id` is required on every client. Existing clients are backfilled to
-the default Get On A Pod workspace. Each new invitation creates a distinct
-private workspace and one owner membership.
+the default Get On A Pod workspace. Each platform agency-owner invitation
+creates a distinct private workspace and one owner membership. Workspace-staff
+invitations add a live membership to the existing workspace and never create
+another workspace. Revoked historical rows may remain for
+audit/reconciliation, while every non-archived private workspace has exactly
+one live owner.
 
-Workspace client CRUD goes through `workspace-clients`, which invokes the
-service-only `workspace_client_operation` RPC. That transaction:
+Workspace client operations go through `workspace-clients`, which invokes the
+service-only `workspace_client_operation_v2` RPC. That transaction:
 
 1. locks and verifies the active membership and workspace;
 2. permits only `list`, `create`, `update`, or `delete`;
@@ -224,15 +253,24 @@ an external integration.
    optional browser-safe telemetry values in the frontend environment.
 5. Configure service-role/provider/webhook secrets in Supabase secret storage.
 6. Apply hosted Auth settings: public and anonymous signup disabled, invite/OTP
-   expiry 86,400 seconds, and an exact allowlist of staging callback URLs.
+   expiry 86,400 seconds, an exact allowlist of callback URLs, minimum password
+   length 12, and uppercase/lowercase/digit/symbol requirements. Permanent
+   passwords are also capped at 72 UTF-8 bytes by the application boundary.
 7. Rotate every credential exposed in chat or repository history before using
    the environment. Source cleanup does not revoke a credential.
 8. Review Sentry, hosting, proxy, and support logs for captured invite, recovery,
    or capability URLs. Revoke affected sessions/links and purge retained
    telemetry under the incident process.
-9. For a fresh staging baseline, apply the six historical cutover migrations,
-   the manual-account seventh migration, and the Guest Resources eighth
-   migration in order. An older draft is not an in-place upgrade path.
+9. For a fresh non-production baseline, apply the six historical cutover
+   migrations, the manual-account seventh migration, the Guest Resources eighth
+   migration, and the Sub-agency Workspace Foundation ninth migration in
+   order. An older draft is not an in-place upgrade path.
+
+For hosted production Auth, use `npm run verify:hosted-auth -- --project-ref
+ysjwveqnwjysldpfqzov` in read-only mode first. If it reports drift, the
+explicitly confirmed `--apply` mode PATCHes only the two password-policy fields
+and verifies that every unrelated Auth setting remained identical. Do not run
+broad `supabase config push` during this cutover.
 
 ## Deployment order
 
@@ -364,7 +402,7 @@ Administrator credentials are required, and any unexpected incomplete record
 converts the run to a failure. Exact variable names and a safe command template
 are in the root README.
 
-Run `scripts/staging-database-verifier.sh` after all eight migrations. Provide
+Run `scripts/staging-database-verifier.sh` after all nine migrations. Provide
 the connection only through `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `PGPASSWORD`, and `PGSSLMODE=verify-full`, plus
 `STAGING_DB_EXPECTED_PGHOST`, mandatory
@@ -417,8 +455,9 @@ For a reviewed recovery:
 4. In one controlled database-owner transaction, lock the exact membership and
    claim row, verify the recorded token/state have not changed, and delete only
    that claim. Do not grant direct claim-table access to `service_role`.
-5. Use **Retry** or **Verify Auth** in the administrator UI, rerun the database
-   verifier, and attach the sanitized result to the release evidence.
+5. Use only an allowed user-facing **Retry** action, or complete an exact
+   service-only Auth reconciliation through the controlled operator path. Rerun
+   the database verifier and attach the sanitized result to release evidence.
 
 If identity, provider-delivery, or invocation state is ambiguous, leave the
 claim in place and escalate; availability is preferable to issuing or deleting
@@ -502,11 +541,12 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` verifies the exact manifest/release shape; parses all eight
-migrations and both SQL verification files with a PostgreSQL grammar parser; checks app and
+`check:static` verifies the exact manifest/release shape; parses all nine
+migrations, the catalog verifier, and both rollback behavior suites with a
+PostgreSQL grammar parser; checks app and
 staging TypeScript; enforces zero warnings on the MVP lint scope; tests
 sensitive URLs, telemetry, session storage, retired helpers, and staging-path
-containment; semantically checks all 92 Edge entrypoints/105 Edge TypeScript
+containment; semantically checks all 93 Edge entrypoints/106 Edge TypeScript
 files with Deno 2.5.2 and a
 frozen `deno.lock`; checks the database-runner shell; performs an isolated
 static build; clean-installs, builds, and audits the nested MCP server; exercises
@@ -533,8 +573,9 @@ remain unavailable until a controlled private workspace is provisioned.
 - The production frontend currently exposes Clients and Guest Resources. Every
   other legacy module needs an explicit ownership model and cross-account tests
   before tenant exposure.
-- Workspace users cannot invite teammates or self-manage workspace/account
-  settings.
+- Workspace owners can invite admins or members; workspace admins can invite
+  members. Tenant identities cannot belong to multiple private workspaces, and
+  workspace profile/account settings remain operator-managed.
 - There is no workspace forgot-password UI; support uses a controlled Supabase
   Auth recovery/reset.
 - Client portal onboarding uses manually coordinated secure password delivery;
@@ -599,11 +640,12 @@ post-deployment Cloudflare purge was completed, and the hardened live verifier
 passed with all six retired asset paths failing closed as 404, `no-store`,
 `text/plain`, and `noindex`.
 
-Production currently has no private workspace. Provision one controlled
-private workspace, then complete signed-in workspace customization, read-only
-administrator preview, selected-client private-portal visibility, and
-malformed/stale-access acceptance. These checks remain outstanding; add a
-second disposable workspace for the full cross-tenant denial matrix.
+Re-inventory current production workspaces and use controlled accounts to
+complete signed-in workspace customization, read-only administrator preview,
+selected-client private-portal visibility, and malformed/stale-access
+acceptance. These checks remain outstanding; use a second disposable workspace
+for the full cross-tenant denial matrix. Do not reuse the historical assumption
+that no private workspace exists.
 
 Merging source is separate from opening onboarding. Do not invite real users
 until custom SMTP, exposed-credential rotation, a complete invitation/password

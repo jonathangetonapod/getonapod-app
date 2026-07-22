@@ -28,8 +28,6 @@ import {
 type PendingAction =
   | 'suspend'
   | 'reactivate'
-  | 'reconcile_active'
-  | 'reconcile_suspended'
   | 'revoke_pending'
   | 'revoke_manual'
   | 'retry_invite'
@@ -116,10 +114,6 @@ const WorkspaceUsers = () => {
           ? 'Account suspended.'
           : variables.action === 'reactivate'
             ? 'Account reactivated.'
-            : variables.action === 'reconcile_active'
-              ? 'Active Auth state verified.'
-              : variables.action === 'reconcile_suspended'
-                ? 'Suspended Auth state verified.'
             : variables.action === 'revoke_manual'
               ? variables.user.status === 'revoked'
                 ? 'Account deletion completed.'
@@ -209,15 +203,7 @@ const WorkspaceUsers = () => {
     }
   }
 
-  const users = (usersQuery.data || []).filter((managedUser) => (
-    managedUser.status !== 'revoked'
-    || (
-      managedUser.invite_reconciliation_pending
-      && managedUser.invite_reconciliation_claim_kind === 'revoke_cleanup'
-      && !managedUser.invite_cleanup_blocked
-      && !managedUser.has_newer_membership
-    )
-  ))
+  const users = (usersQuery.data || []).filter((managedUser) => managedUser.status !== 'revoked')
 
   return (
     <DashboardLayout>
@@ -229,7 +215,7 @@ const WorkspaceUsers = () => {
             <Button variant="outline" onClick={() => { clearCredential(); setManualOpen(true) }}>
               <KeyRound className="mr-2 h-4 w-4" />Create workspace
             </Button>
-            <Button onClick={() => setInviteOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Invite user</Button>
+            <Button onClick={() => setInviteOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Invite agency owner</Button>
           </div>
         </div>
 
@@ -247,7 +233,7 @@ const WorkspaceUsers = () => {
                 </Button>
               </div>
             ) : users.length === 0 ? (
-              <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center"><Send className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No workspace accounts</p><p className="text-sm text-muted-foreground">Create an account manually or invite the first user.</p></div></div>
+              <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center"><Send className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No workspace accounts</p><p className="text-sm text-muted-foreground">Create a workspace manually or invite its agency owner.</p></div></div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -276,14 +262,7 @@ const WorkspaceUsers = () => {
                       const inviteBlocked = managedUser.invite_reconciliation_pending && !inviteReviewReady
                       const manualSetupRetryBlocked = managedUser.invite_reconciliation_pending
                         || rotationBlocked
-                      const manualCleanupPending = managedUser.credential_reconciliation_pending
-                        || managedUser.invite_reconciliation_pending
-                      const manualCleanupReviewAfter = managedUser.invite_reconciliation_review_after
-                        || managedUser.credential_reconciliation_review_after
-                      const manualCleanupReady = reconciliationReady(manualCleanupReviewAfter)
-                      const statusLabel = managedUser.status === 'revoked'
-                        ? 'deletion pending'
-                        : inviteExpired
+                      const statusLabel = inviteExpired
                           ? 'expired'
                           : managedUser.password_change_required
                             ? 'password change required'
@@ -302,15 +281,11 @@ const WorkspaceUsers = () => {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {managedUser.status === 'active' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={`/admin/workspaces/${managedUser.workspace.id}/clients`}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'reconcile_active' })}><RefreshCw className="mr-2 h-4 w-4" />Verify Auth</Button><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'suspend' })}><PauseCircle className="mr-2 h-4 w-4" />Suspend</Button></div>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Auth reconciliation pending — operator review required.</p>}</div>}
-                          {managedUser.status === 'suspended' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex gap-2"><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'reconcile_suspended' })}><RefreshCw className="mr-2 h-4 w-4" />Verify Auth</Button><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'reactivate' })}><PlayCircle className="mr-2 h-4 w-4" />Reactivate</Button></div>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Auth reconciliation pending — operator review required.</p>}</div>}
+                          {managedUser.status === 'active' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={`/admin/workspaces/${managedUser.workspace.id}/clients`}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'suspend' })}><PauseCircle className="mr-2 h-4 w-4" />Suspend</Button></div>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
+                          {managedUser.status === 'suspended' && <div className="inline-flex flex-col items-end gap-2"><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'reactivate' })}><PlayCircle className="mr-2 h-4 w-4" />Reactivate</Button>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
                           {managedUser.status === 'provisioning' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{isManualAccount ? <><Button size="sm" variant="outline" disabled={manualSetupRetryBlocked} onClick={() => void issueManualCredential(managedUser)}>{credentialBusyId === managedUser.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Retry manual setup</Button><Button size="sm" variant="outline" className="text-destructive" disabled={inviteBlocked || revocationCredentialBlocked} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_manual' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></> : <><Button size="sm" variant="outline" disabled={managedUser.invite_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'retry_invite' })}><RefreshCw className="mr-2 h-4 w-4" />Retry</Button><Button size="sm" variant="outline" className="text-destructive" disabled={managedUser.invite_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_pending' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></>}</div>{managedUser.invite_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">{inviteReviewReady ? 'Manual setup cannot resume. Delete this account, then create it again.' : `Manual setup reconciliation is pending until ${formatAccountDate(managedUser.invite_reconciliation_review_after)}.`}</p>}{managedUser.credential_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Credential reconciliation {credentialReviewReady ? 'is ready for an allowed recovery action.' : `is pending until ${formatAccountDate(managedUser.credential_reconciliation_review_after)}.`}</p>}</div>}
                           {managedUser.status === 'invited' && isManualAccount && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={`/admin/workspaces/${managedUser.workspace.id}/clients`}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={rotationBlocked} onClick={() => setCredentialConfirmation(managedUser)}>{credentialBusyId === managedUser.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Issue new temporary password</Button><Button size="sm" variant="outline" className="text-destructive" disabled={revocationCredentialBlocked} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_manual' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></div>{managedUser.credential_reconciliation_pending ? <p className="max-w-64 text-xs font-medium text-destructive">{credentialReviewReady ? managedUser.credential_reconciliation_claim_kind === 'initial_password_change' ? 'The user may retry password setup, or you may delete this account.' : 'Credential rotation is ready to retry.' : `Credential reconciliation is pending until ${formatAccountDate(managedUser.credential_reconciliation_review_after)}.`}</p> : <p className="max-w-64 text-xs text-muted-foreground">Issuing a replacement immediately invalidates the previous temporary password.</p>}</div>}
                           {managedUser.status === 'invited' && !isManualAccount && <div className="inline-flex flex-col items-end gap-2"><Button size="sm" variant="outline" className="text-destructive" disabled={managedUser.invite_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_pending' })}><Trash2 className="mr-2 h-4 w-4" />{inviteExpired ? 'Delete expired invite' : 'Delete'}</Button>{managedUser.invite_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Invitation removal requires operator review.</p>}</div>}
-                          {managedUser.status === 'revoked' && isManualAccount && (manualCleanupPending
-                            ? <div className="inline-flex flex-col items-end gap-2"><Button size="sm" variant="outline" className="text-destructive" disabled={statusMutation.isPending || !manualCleanupReady} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_manual' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button><p className="max-w-64 text-xs font-medium text-destructive">Deletion {manualCleanupReady ? 'is ready to finish.' : `is pending until ${formatAccountDate(manualCleanupReviewAfter)}.`}</p></div>
-                            : null)}
-                          {managedUser.status === 'revoked' && !isManualAccount && managedUser.invite_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Deletion requires operator review.</p>}
                         </TableCell>
                       </TableRow>
                       )
@@ -479,7 +454,7 @@ const WorkspaceUsers = () => {
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Invite a workspace user</DialogTitle><DialogDescription>Confirm production invite email delivery is configured before sending. The invitee receives one private workspace and cannot invite additional users in this MVP.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Invite an agency owner</DialogTitle><DialogDescription>Confirm production invite email delivery is configured before sending. The invitee receives a private workspace as its owner and can add their agency team after activation.</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); inviteMutation.mutate() }}>
             <div className="space-y-2"><Label htmlFor="invite-email">Email</Label><Input id="invite-email" type="email" required autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="invite-name">Full name</Label><Input id="invite-name" value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>
@@ -491,7 +466,7 @@ const WorkspaceUsers = () => {
 
       <Dialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open) setConfirmation(null) }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{confirmation?.action === 'suspend' ? 'Suspend account?' : confirmation?.action === 'reactivate' ? 'Reactivate account?' : confirmation?.action === 'reconcile_active' ? 'Verify active Auth state?' : confirmation?.action === 'reconcile_suspended' ? 'Verify suspended Auth state?' : confirmation?.action === 'retry_invite' ? 'Retry invitation?' : confirmation?.action === 'revoke_manual' ? confirmation.user.status === 'revoked' ? 'Finish account deletion?' : 'Delete account?' : confirmation?.user.status === 'revoked' ? 'Finish invitation deletion?' : confirmation && isExpiredInvite(confirmation.user) ? 'Delete expired invitation?' : 'Delete invitation?'}</DialogTitle><DialogDescription>This action applies to {confirmation?.user.email} and their private workspace.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{confirmation?.action === 'suspend' ? 'Suspend account?' : confirmation?.action === 'reactivate' ? 'Reactivate account?' : confirmation?.action === 'retry_invite' ? 'Retry invitation?' : confirmation?.action === 'revoke_manual' ? confirmation.user.status === 'revoked' ? 'Finish account deletion?' : 'Delete account?' : confirmation?.user.status === 'revoked' ? 'Finish invitation deletion?' : confirmation && isExpiredInvite(confirmation.user) ? 'Delete expired invitation?' : 'Delete invitation?'}</DialogTitle><DialogDescription>This action applies to {confirmation?.user.email} and their private workspace.</DialogDescription></DialogHeader>
           {confirmation && confirmation.action === 'revoke_pending' && isExpiredInvite(confirmation.user) && (
             <p className="text-sm text-muted-foreground">Expired provider links cannot be resent safely. Delete this account, then create a fresh invitation for the same email. If removal is interrupted, operator review is required.</p>
           )}

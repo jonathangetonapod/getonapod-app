@@ -27,6 +27,7 @@ type MembershipRow = Record<string, unknown> & {
   user_id: string | null
   email_normalized: string
   full_name: string | null
+  role: string
   status: string
   provisioning_method: string
 }
@@ -52,8 +53,10 @@ function provisioningFromRpc(data: unknown): Provisioning | null {
   const value = data as { membership?: unknown; workspace?: unknown }
   if (!value.membership || typeof value.membership !== 'object') return null
   if (!value.workspace || typeof value.workspace !== 'object') return null
+  const membership = value.membership as MembershipRow
+  if (membership.role !== 'owner') return null
   return {
-    membership: value.membership as MembershipRow,
+    membership,
     workspace: value.workspace as WorkspaceRow,
   }
 }
@@ -186,6 +189,7 @@ async function loadProvisioning(
   const row = data as unknown as MembershipRow & { workspace?: WorkspaceRow | null }
   if (
     row.status !== 'provisioning'
+    || row.role !== 'owner'
     || row.provisioning_method !== 'admin_temporary_password'
     || !row.workspace
     || row.workspace.is_default
@@ -382,7 +386,10 @@ async function issueInitialTemporaryPassword(
     actorUserId,
     attemptId,
   )
-  if (claimedMembership.workspace_id !== provisioning.workspace.id) {
+  if (
+    claimedMembership.workspace_id !== provisioning.workspace.id
+    || claimedMembership.role !== 'owner'
+  ) {
     throw new HttpError(409, 'ACCOUNT_WORKSPACE_MISMATCH', 'The account workspace requires operator review')
   }
 
@@ -556,6 +563,7 @@ async function rotateTemporaryPassword(
   const claimedMembership = claim.membership
   if (
     claimedMembership.id !== membershipId
+    || claimedMembership.role !== 'owner'
     || claimedMembership.provisioning_method !== 'admin_temporary_password'
     || claimedMembership.status !== 'invited'
     || claimedMembership.password_change_required !== true
@@ -751,6 +759,9 @@ async function revokeManualWorkspaceAccount(
     if (!claimError && claimed) break
   }
   if (claimError || !claimed) revocationError(claimError)
+  if (claimed.role !== 'owner') {
+    throw new HttpError(404, 'ACCOUNT_NOT_FOUND', 'Manual workspace account not found')
+  }
 
   const lookup = await admin.rpc('find_workspace_password_account_auth_user', {
     p_membership_id: claimed.id,
