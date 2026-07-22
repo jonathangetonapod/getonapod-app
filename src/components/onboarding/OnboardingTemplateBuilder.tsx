@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  DEFAULT_ONBOARDING_ACCENT,
   onboardingWorkspaceInitials,
   onboardingWorkspaceName,
   renderOnboardingBrandText,
@@ -55,6 +56,7 @@ interface Props {
   open: boolean
   template: OnboardingTemplate | null
   workspaceName: string
+  workspaceLogoUrl?: string | null
   saving: boolean
   onOpenChange: (open: boolean) => void
   onSave: (draft: OnboardingTemplateDraft, publish: boolean, makeDefault: boolean) => void
@@ -210,13 +212,47 @@ const PreviewControl = ({ question, workspaceName }: { question: OnboardingQuest
   )
 }
 
-const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOpenChange, onSave }: Props) => {
+const PreviewBrandMark = ({
+  workspaceName,
+  logoUrl,
+  logoUnavailable,
+  onLogoError,
+  compact = false,
+}: {
+  workspaceName: string
+  logoUrl?: string | null
+  logoUnavailable: boolean
+  onLogoError: () => void
+  compact?: boolean
+}) => logoUrl && !logoUnavailable ? (
+  <div className={cn(
+    'relative flex shrink-0 items-center justify-center rounded-2xl border border-white/30 bg-white shadow-xl',
+    compact ? 'h-16 w-32 p-3' : 'h-24 w-full max-w-xs p-4 sm:w-64',
+  )}>
+    <img
+      src={logoUrl}
+      alt={`${onboardingWorkspaceName(workspaceName)} logo`}
+      className="max-h-full max-w-full object-contain"
+      onError={onLogoError}
+    />
+  </div>
+) : (
+  <div className={cn(
+    'relative flex shrink-0 items-center justify-center rounded-2xl bg-white/15 font-black ring-1 ring-white/25',
+    compact ? 'h-14 w-14 text-lg' : 'h-20 w-20 text-2xl',
+  )}>
+    {onboardingWorkspaceInitials(workspaceName)}
+  </div>
+)
+
+const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLogoUrl, saving, onOpenChange, onSave }: Props) => {
   const [draft, setDraft] = useState<OnboardingTemplateDraft>(() => emptyDraft(workspaceName))
   const [mode, setMode] = useState<BuilderMode>('build')
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null)
   const [makeDefault, setMakeDefault] = useState(false)
   const [builderError, setBuilderError] = useState<string | null>(null)
+  const [workspaceLogoUnavailable, setWorkspaceLogoUnavailable] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -235,7 +271,8 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOp
     setActiveSectionId(firstSection?.id ?? null)
     setActiveQuestionId(firstSection?.questions[0]?.id ?? null)
     setBuilderError(null)
-  }, [open, template, workspaceName])
+    setWorkspaceLogoUnavailable(false)
+  }, [open, template, workspaceName, workspaceLogoUrl])
 
   const questionCount = useMemo(
     () => draft.definition.sections.reduce((total, section) => total + section.questions.length, 0),
@@ -248,7 +285,6 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOp
   )
   const activeSection = draft.definition.sections[activeSectionIndex]
   const brandedWorkspaceName = onboardingWorkspaceName(workspaceName)
-  const workspaceInitials = onboardingWorkspaceInitials(workspaceName)
 
   const setDefinition = (updater: (definition: OnboardingDefinition) => OnboardingDefinition) => {
     setDraft((current) => ({ ...current, definition: updater(current.definition) }))
@@ -878,9 +914,6 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOp
                             <div><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p></div>
                           </div>
                         ))}
-                        <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                          No automated reminder emails are sent to your clients.
-                        </p>
                       </CardContent>
                     </Card>
                   </div>
@@ -937,13 +970,14 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOp
                       <aside className="h-fit rounded-2xl border bg-muted/30 p-4 lg:sticky lg:top-0">
                         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live message preview</p>
                         <div className="mt-3 overflow-hidden rounded-2xl border bg-background shadow-sm">
-                          <div className="bg-primary/10 p-5">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">{workspaceInitials}</span>
-                              <div><p className="text-sm font-semibold">{brandedWorkspaceName}</p><p className="text-xs text-muted-foreground">Client onboarding</p></div>
+                          <div className="relative overflow-hidden p-5 text-white" style={{ background: `linear-gradient(135deg, #111827 0%, ${DEFAULT_ONBOARDING_ACCENT} 100%)` }}>
+                            <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                            <div className="relative flex items-center gap-3">
+                              <PreviewBrandMark workspaceName={workspaceName} logoUrl={workspaceLogoUrl} logoUnavailable={workspaceLogoUnavailable} onLogoError={() => setWorkspaceLogoUnavailable(true)} compact />
+                              <div className="min-w-0"><p className="truncate text-sm font-semibold">{brandedWorkspaceName}</p><p className="text-xs text-white/75">Client onboarding</p></div>
                             </div>
                             <h3 className="mt-5 text-lg font-semibold">{renderOnboardingBrandText(draft.definition.intro_title, workspaceName) || 'Welcome headline'}</h3>
-                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName) || 'Your welcome message will appear here.'}</p>
+                            <p className="mt-2 text-sm leading-relaxed text-white/80">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName) || 'Your welcome message will appear here.'}</p>
                           </div>
                           <div className="border-t p-4">
                             <p className="text-xs font-semibold text-muted-foreground">After submission</p>
@@ -956,13 +990,24 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOp
                 </div>
               </div>
             ) : (
-              <div className="h-full overflow-y-auto bg-muted/20" role="tabpanel" aria-label="Client form preview">
+              <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,#665CF21A,transparent_34%),linear-gradient(to_bottom,#f8fafc,#f1f5f9)]" role="tabpanel" aria-label="Client form preview">
                 <div className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
-                  <div className="overflow-hidden rounded-3xl border bg-background shadow-sm">
-                    <div className="border-b bg-primary/5 px-5 py-8 sm:px-8 sm:py-10">
-                      <Badge variant="secondary">{brandedWorkspaceName} · Client preview</Badge>
+                  <header className="relative overflow-hidden rounded-3xl p-5 text-white shadow-2xl shadow-slate-950/20 sm:p-7" style={{ background: `linear-gradient(135deg, #111827 0%, ${DEFAULT_ONBOARDING_ACCENT} 100%)` }}>
+                    <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+                    <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+                      <PreviewBrandMark workspaceName={workspaceName} logoUrl={workspaceLogoUrl} logoUnavailable={workspaceLogoUnavailable} onLogoError={() => setWorkspaceLogoUnavailable(true)} />
+                      <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{brandedWorkspaceName}</h1><p className="mt-1 text-sm text-white/80">Secure podcast guest intake</p></div>
+                    </div>
+                  </header>
+
+                  <div className="mt-6 overflow-hidden rounded-3xl border-0 bg-background shadow-2xl shadow-slate-900/10">
+                    <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${DEFAULT_ONBOARDING_ACCENT}, ${DEFAULT_ONBOARDING_ACCENT}99, ${DEFAULT_ONBOARDING_ACCENT}55)` }} />
+                    <div className="border-b px-5 py-8 sm:px-8 sm:py-10">
+                      <Badge variant="outline" style={{ borderColor: `${DEFAULT_ONBOARDING_ACCENT}33`, color: DEFAULT_ONBOARDING_ACCENT, backgroundColor: `${DEFAULT_ONBOARDING_ACCENT}0D` }}>Private client intake</Badge>
                       <h2 className="mt-4 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">{renderOnboardingBrandText(draft.definition.intro_title, workspaceName)}</h2>
                       <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName)}</p>
+                      <div className="mt-6 space-y-2"><div className="flex items-center justify-between text-sm"><span className="font-medium">Form overview</span><span className="text-slate-500">{draft.definition.sections.length} sections</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${100 / Math.max(draft.definition.sections.length, 1)}%`, backgroundColor: DEFAULT_ONBOARDING_ACCENT }} /></div></div>
+                      <div className="mt-4 flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-3.5 w-3.5" />Your answers save securely to {brandedWorkspaceName}.</div>
                       <div className="mt-6 flex flex-wrap gap-2">
                         {draft.definition.sections.map((section, index) => (
                           <span key={section.id} className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
@@ -976,7 +1021,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOp
                       {draft.definition.sections.map((section, sectionIndex) => (
                         <section key={section.id} className="rounded-2xl border p-4 sm:p-6">
                           <div className="mb-5">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-primary">Section {sectionIndex + 1} of {draft.definition.sections.length}</p>
+                            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: DEFAULT_ONBOARDING_ACCENT }}>Section {sectionIndex + 1} of {draft.definition.sections.length}</p>
                             <h3 className="mt-1 text-xl font-semibold">{renderOnboardingBrandText(section.title, workspaceName) || 'Untitled section'}</h3>
                             {section.description && <p className="mt-1 text-sm text-muted-foreground">{renderOnboardingBrandText(section.description, workspaceName)}</p>}
                           </div>

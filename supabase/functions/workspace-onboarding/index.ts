@@ -359,7 +359,7 @@ serve(async (req) => {
       const recipientEmail = requireEmail(body.recipient_email)
       const expiresInDays = integerValue(body.expires_in_days, 'expires_in_days', 1, 90)
       const assignedIds = uuidArray(body.assigned_membership_ids ?? [], 'assigned_membership_ids')
-      const sendEmail = booleanValue(body.send_email, 'send_email')
+      booleanValue(body.send_email, 'send_email')
       const experience = experiencePayload(body.experience)
       let newClient: Record<string, unknown> | null = null
       if (!clientId) {
@@ -389,8 +389,6 @@ serve(async (req) => {
       if (workspace.id !== workspaceId || listResponse.can_manage !== true) {
         throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Workspace manager access is required')
       }
-      const workspaceName = responseString(workspace.name, 'workspace name', 200)
-
       const instanceId = crypto.randomUUID()
       const generation = 1
       const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
@@ -436,17 +434,7 @@ serve(async (req) => {
       }
       const instance = ensureWorkspaceResponse(data, workspaceId)
       const link = onboardingUrl(capability.token)
-      const delivery = sendEmail
-        ? await sendOnboardingEmail({
-          kind: 'invitation',
-          workspaceName,
-          recipientName,
-          recipientEmail,
-          url: link,
-          expiresAt,
-          accentColor: experience.accentColor,
-        })
-        : { status: 'skipped' as const, providerMessageId: null, error: null }
+      const delivery = { status: 'skipped' as const, providerMessageId: null, error: null }
       await recordDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 201, {
         instance,
@@ -526,8 +514,6 @@ serve(async (req) => {
     const operation = action
     let payload: Record<string, unknown> = {}
     let link: string | null = null
-    let sendEmail = false
-
     if (action === 'request_changes') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'comments'])
       if (!Array.isArray(body.comments) || body.comments.length < 1 || body.comments.length > 100) {
@@ -550,7 +536,7 @@ serve(async (req) => {
     } else if (action === 'rotate') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'expires_in_days', 'send_email'])
       const expiresInDays = integerValue(body.expires_in_days, 'expires_in_days', 1, 90)
-      sendEmail = booleanValue(body.send_email, 'send_email')
+      booleanValue(body.send_email, 'send_email')
       const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
         p_workspace_id: workspaceId,
         p_instance_id: instanceId,
@@ -673,24 +659,7 @@ serve(async (req) => {
       })
     }
     if (action === 'rotate' && link) {
-      const listResult = await admin.rpc('workspace_onboarding_staff_list_v1', {
-        p_workspace_id: workspaceId,
-        p_actor_user_id: user.id,
-        p_token_issued_at: tokenIssuedAt,
-      })
-      if (listResult.error) rpcError(listResult.error)
-      const workspace = responseRecord(responseRecord(listResult.data).workspace, 'workspace')
-      const delivery = sendEmail
-        ? await sendOnboardingEmail({
-          kind: 'invitation',
-          workspaceName: responseString(workspace.name, 'workspace name', 200),
-          recipientName: responseString(instance.recipient_name, 'recipient name', 200),
-          recipientEmail: normalizeEmail(responseString(instance.recipient_email, 'recipient email', 254)),
-          url: link,
-          expiresAt: responseString(instance.capability_expires_at, 'capability expiry', 64),
-          accentColor: responseString(instance.accent_color, 'accent color', 7),
-        })
-        : { status: 'skipped' as const, providerMessageId: null, error: null }
+      const delivery = { status: 'skipped' as const, providerMessageId: null, error: null }
       await recordDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 200, {
         instance,

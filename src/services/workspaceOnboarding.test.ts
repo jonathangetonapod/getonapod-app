@@ -124,12 +124,12 @@ describe('workspaceOnboarding service', () => {
     )
   })
 
-  it('creates one scoped invitation and keeps its link available after email failure', async () => {
+  it('creates one scoped invitation without requesting platform email delivery', async () => {
     invoke.mockResolvedValueOnce({
       data: {
         instance: detail,
         onboarding_url: 'https://getonapod.com/onboarding/redacted-test-token',
-        delivery: { status: 'failed' },
+        delivery: { status: 'skipped' },
       },
       error: null,
     })
@@ -141,7 +141,6 @@ describe('workspaceOnboarding service', () => {
       recipient_email: 'casey@example.com',
       expires_in_days: 14,
       assigned_membership_ids: [],
-      send_email: true,
       experience: {
         intro_title: 'Welcome, Casey',
         intro_body: 'Tell Agency about yourself.',
@@ -150,7 +149,7 @@ describe('workspaceOnboarding service', () => {
       },
     }
     await expect(startWorkspaceOnboarding(workspaceId, input)).resolves.toMatchObject({
-      delivery: { status: 'failed' },
+      delivery: { status: 'skipped' },
       onboarding_url: expect.stringContaining('/onboarding/'),
     })
     expect(invoke).toHaveBeenCalledWith('workspace-onboarding', {
@@ -158,6 +157,7 @@ describe('workspaceOnboarding service', () => {
         action: 'start',
         workspace_id: workspaceId,
         ...input,
+        send_email: false,
         experience: {
           ...input.experience,
           brand_logo: null,

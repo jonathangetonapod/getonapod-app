@@ -438,7 +438,6 @@ export interface StartOnboardingInput {
   recipient_email: string
   expires_in_days: number
   assigned_membership_ids: string[]
-  send_email: boolean
   experience: {
     intro_title: string
     intro_body: string
@@ -466,6 +465,7 @@ export async function startWorkspaceOnboarding(
     action: 'start',
     workspace_id: canonicalWorkspaceId,
     ...invitation,
+    send_email: false,
     experience: {
       intro_title: experience.intro_title,
       intro_body: experience.intro_body,
@@ -536,10 +536,9 @@ export const rotateOnboardingLink = (
   workspaceId: string,
   instanceId: string,
   expiresInDays: number,
-  sendEmail: boolean,
 ) => instanceAction(workspaceId, instanceId, 'rotate', {
   expires_in_days: expiresInDays,
-  send_email: sendEmail,
+  send_email: false,
 })
 
 export const extendOnboardingLink = (

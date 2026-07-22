@@ -55,9 +55,12 @@ function sectionError(view: ClientOnboardingView, answers: Record<string, unknow
   return null
 }
 
-const ClientBrandHead = ({ view }: { view: ClientOnboardingView }) => {
+const ClientBrandHead = ({ view, logoUnavailable }: { view: ClientOnboardingView; logoUnavailable: boolean }) => {
   const accent = onboardingAccentColor(view.accent_color)
   const title = `${view.workspace.name} · Client onboarding`
+  const favicon = view.workspace.logo_url && !logoUnavailable
+    ? view.workspace.logo_url
+    : onboardingFaviconDataUrl(view.workspace.name, accent)
   return (
     <Helmet>
       <title>{title}</title>
@@ -68,7 +71,7 @@ const ClientBrandHead = ({ view }: { view: ClientOnboardingView }) => {
       <meta name="theme-color" content={accent} />
       <meta property="og:title" content={title} />
       <meta property="og:site_name" content={view.workspace.name} />
-      <link rel="icon" href={view.workspace.logo_url || onboardingFaviconDataUrl(view.workspace.name, accent)} />
+      <link rel="icon" href={favicon} />
     </Helmet>
   )
 }
@@ -85,6 +88,7 @@ const ClientOnboarding = () => {
   const [dirty, setDirty] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [brandLogoUnavailable, setBrandLogoUnavailable] = useState(false)
   const initializedVersion = useRef<string | null>(null)
   const editVersion = useRef(0)
 
@@ -133,6 +137,8 @@ const ClientOnboarding = () => {
     gcTime: 0,
   })
   const view = onboardingQuery.data
+
+  useEffect(() => setBrandLogoUnavailable(false), [view?.workspace.logo_url])
 
   useEffect(() => {
     if (!view || !view.definition || view.lock_version === undefined) return
@@ -254,6 +260,16 @@ const ClientOnboarding = () => {
     return () => window.clearTimeout(timeout)
   }, [answers, currentSection, deleteUploadMutation.isPending, dirty, saveMutation, submitMutation.isPending, uploadMutation.isPending, view?.definition, view?.lock_version])
 
+  useEffect(() => {
+    if (!dirty) return
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeLeaving)
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
+  }, [dirty])
+
   const questionSection = useMemo(() => {
     const result = new Map<string, number>()
     view?.definition?.sections.forEach((section, sectionIndex) => {
@@ -323,9 +339,9 @@ const ClientOnboarding = () => {
           : { title: 'This secure link was revoked', body: `Contact ${workspaceName} if you still need to complete onboarding.`, icon: <LockKeyhole className="h-9 w-9 text-red-600" /> }
     return (
       <div className="min-h-screen bg-slate-50 px-4 py-10" style={brandStyle}>
-        <ClientBrandHead view={view} />
+        <ClientBrandHead view={view} logoUnavailable={brandLogoUnavailable} />
         <div className="mx-auto max-w-2xl">
-          <BrandHeader workspace={view.workspace} accent={accent} />
+          <BrandHeader workspace={view.workspace} accent={accent} logoUnavailable={brandLogoUnavailable} onLogoError={() => setBrandLogoUnavailable(true)} />
           <Card className="mt-6 border-0 text-center shadow-xl shadow-slate-900/10"><CardHeader className="p-8"><div className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">{content.icon}</div><CardTitle className="text-2xl">{content.title}</CardTitle><CardDescription className="mx-auto max-w-lg text-base leading-7">{content.body}</CardDescription></CardHeader></Card>
         </div>
       </div>
@@ -333,25 +349,29 @@ const ClientOnboarding = () => {
   }
 
   if (!view.definition || view.lock_version === undefined) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4" style={brandStyle}><ClientBrandHead view={view} /><Card><CardHeader><CardTitle>Onboarding unavailable</CardTitle><CardDescription>The form could not be loaded. Contact {workspaceName} for help.</CardDescription></CardHeader></Card></div>
+    return <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4" style={brandStyle}><ClientBrandHead view={view} logoUnavailable={brandLogoUnavailable} /><Card><CardHeader><CardTitle>Onboarding unavailable</CardTitle><CardDescription>The form could not be loaded. Contact {workspaceName} for help.</CardDescription></CardHeader></Card></div>
   }
 
   const section = view.definition.sections[currentSection]
   const progress = ((currentSection + 1) / view.definition.sections.length) * 100
   const activeComments = view.comments ?? []
+  const expiresAt = new Date(view.expires_at)
+  const expiryLabel = Number.isFinite(expiresAt.valueOf())
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(expiresAt)
+    : null
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34%),linear-gradient(to_bottom,#f8fafc,#f1f5f9)] pb-14" style={brandStyle}>
-      <ClientBrandHead view={view} />
+      <ClientBrandHead view={view} logoUnavailable={brandLogoUnavailable} />
       <div className="mx-auto max-w-4xl px-4 py-6 sm:py-10">
-        <BrandHeader workspace={view.workspace} accent={accent} />
+        <BrandHeader workspace={view.workspace} accent={accent} logoUnavailable={brandLogoUnavailable} onLogoError={() => setBrandLogoUnavailable(true)} />
 
         <Card className="mt-6 overflow-hidden border-0 shadow-2xl shadow-slate-900/10">
           <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}99, ${accent}55)` }} />
           <CardHeader className="space-y-4 p-5 sm:p-8">
-            <div><Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary">Private client intake</Badge><CardTitle className="text-2xl sm:text-3xl">{renderOnboardingBrandText(view.definition.intro_title, workspaceName)}</CardTitle><CardDescription className="mt-2 max-w-2xl text-base leading-7">{renderOnboardingBrandText(view.definition.intro_body, workspaceName)}</CardDescription></div>
-            <div className="space-y-2"><div className="flex items-center justify-between text-sm"><span className="font-medium">Section {currentSection + 1} of {view.definition.sections.length}</span><span className="text-slate-500">{Math.round(progress)}%</span></div><Progress value={progress} className="h-2" /></div>
-            <div className="flex items-center gap-2 text-xs text-slate-500"><LockKeyhole className="h-3.5 w-3.5" />Your answers save securely to {workspaceName}. This page does not store them in your browser.</div>
+            <div><Badge variant="outline" className="mb-3 border-primary/20 bg-primary/5 text-primary">Private client intake</Badge>{view.recipient_name && <p className="mb-1 text-sm font-medium text-slate-500">Hi {view.recipient_name},</p>}<CardTitle className="text-2xl sm:text-3xl">{renderOnboardingBrandText(view.definition.intro_title, workspaceName)}</CardTitle><CardDescription className="mt-2 max-w-2xl text-base leading-7">{renderOnboardingBrandText(view.definition.intro_body, workspaceName)}</CardDescription></div>
+            <div className="space-y-2"><div className="flex items-center justify-between text-sm"><span className="font-medium">Section {currentSection + 1} of {view.definition.sections.length}</span><span className="text-slate-500">{Math.round(progress)}% · {section.questions.length} {section.questions.length === 1 ? 'question' : 'questions'}</span></div><Progress value={progress} className="h-2" /></div>
+            <div className="flex items-start gap-2 text-xs leading-5 text-slate-500"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Your progress saves automatically and stays private with {workspaceName}.{expiryLabel ? ` You can return with this link through ${expiryLabel}.` : ''}</span></div>
           </CardHeader>
 
           <CardContent className="space-y-6 border-t bg-white p-5 sm:p-8">
@@ -380,7 +400,7 @@ const ClientOnboarding = () => {
             <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
               <Button variant="outline" disabled={currentSection === 0 || saveMutation.isPending || uploadMutation.isPending || deleteUploadMutation.isPending || submitMutation.isPending} onClick={() => { editVersion.current += 1; setCurrentSection((value) => Math.max(0, value - 1)); setDirty(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }}><ArrowLeft className="mr-2 h-4 w-4" />Previous</Button>
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-                <span className={`inline-flex items-center justify-center gap-1.5 text-xs ${saveState === 'error' ? 'text-red-600' : 'text-slate-500'}`}>{saveMutation.isPending || saveState === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveState === 'saved' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Save className="h-3.5 w-3.5" />}{saveMutation.isPending || saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Save failed' : dirty ? 'Unsaved changes' : 'Progress saved'}</span>
+                <span aria-live="polite" className={`inline-flex items-center justify-center gap-1.5 text-xs ${saveState === 'error' ? 'text-red-600' : 'text-slate-500'}`}>{saveMutation.isPending || saveState === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saveState === 'saved' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Save className="h-3.5 w-3.5" />}{saveMutation.isPending || saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'All changes saved' : saveState === 'error' ? 'Save failed — try again' : dirty ? 'Saving shortly…' : 'All changes saved'}</span>
                 {currentSection < view.definition.sections.length - 1 ? <Button disabled={saveMutation.isPending || uploadMutation.isPending || deleteUploadMutation.isPending || submitMutation.isPending} onClick={() => void goNext()}>Save & continue<ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button disabled={saveMutation.isPending || uploadMutation.isPending || deleteUploadMutation.isPending || submitMutation.isPending} onClick={() => submitMutation.mutate()}>{submitMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Submit for review</Button>}
               </div>
             </div>
@@ -391,11 +411,11 @@ const ClientOnboarding = () => {
   )
 }
 
-const BrandHeader = ({ workspace, accent }: { workspace: ClientOnboardingView['workspace']; accent: string }) => (
+const BrandHeader = ({ workspace, accent, logoUnavailable, onLogoError }: { workspace: ClientOnboardingView['workspace']; accent: string; logoUnavailable: boolean; onLogoError: () => void }) => (
   <header className="relative overflow-hidden rounded-3xl p-5 text-white shadow-2xl shadow-slate-950/20 sm:p-7" style={{ background: `linear-gradient(135deg, #111827 0%, ${accent} 100%)` }}>
     <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
     <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-      {workspace.logo_url ? <div className="relative flex h-28 w-full max-w-xs items-center justify-center rounded-2xl border border-white/30 bg-white p-4 shadow-xl sm:h-24 sm:w-64"><img src={workspace.logo_url} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" /></div> : <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(workspace.name)}</div>}
+      {workspace.logo_url && !logoUnavailable ? <div className="relative flex h-28 w-full max-w-xs items-center justify-center rounded-2xl border border-white/30 bg-white p-4 shadow-xl sm:h-24 sm:w-64"><img src={workspace.logo_url} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" onError={onLogoError} /></div> : <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(workspace.name)}</div>}
       <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{workspace.name}</h1><p className="mt-1 text-sm text-white/80">Secure podcast guest intake</p></div>
     </div>
   </header>

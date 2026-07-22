@@ -64,7 +64,6 @@ interface StartForm {
   recipient_email: string
   expires_in_days: string
   assigned_membership_ids: string[]
-  send_email: boolean
   experience_title: string
   experience_body: string
   experience_completion_message: string
@@ -83,7 +82,6 @@ const blankStartForm: StartForm = {
   recipient_email: '',
   expires_in_days: '14',
   assigned_membership_ids: [],
-  send_email: false,
   experience_title: '',
   experience_body: '',
   experience_completion_message: '',
@@ -146,6 +144,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const [startOpen, setStartOpen] = useState(false)
   const [startForm, setStartForm] = useState<StartForm>(blankStartForm)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+  const [agencyLogoUnavailable, setAgencyLogoUnavailable] = useState(false)
   const [invitation, setInvitation] = useState<OnboardingInvitationResult | null>(null)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<OnboardingTemplate | null>(null)
@@ -165,6 +164,22 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     () => data?.templates.filter((template) => template.status === 'published') ?? [],
     [data?.templates],
   )
+  const selectedStartTemplate = useMemo(
+    () => publishedTemplates.find((template) => template.id === startForm.template_id),
+    [publishedTemplates, startForm.template_id],
+  )
+  const selectedQuestionCount = selectedStartTemplate?.definition.sections.reduce(
+    (total, section) => total + section.questions.length,
+    0,
+  ) ?? 0
+  const agencyLogoUrl = workspaceLogoUrl(
+    data?.workspace.id,
+    data?.workspace.logo_path,
+    data?.workspace.logo_updated_at,
+  )
+  const activePreviewLogoUrl = logoPreviewUrl || (agencyLogoUnavailable ? null : agencyLogoUrl)
+
+  useEffect(() => setAgencyLogoUnavailable(false), [agencyLogoUrl])
 
   useEffect(() => {
     if (!startOpen || !data) return
@@ -260,7 +275,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
   const linkMutation = useMutation({
     mutationFn: async ({ action, instance }: { action: 'rotate' | 'extend'; instance: OnboardingInstanceSummary }) => action === 'rotate'
-      ? rotateOnboardingLink(workspaceId, instance.id, 14, true)
+      ? rotateOnboardingLink(workspaceId, instance.id, 14)
       : extendOnboardingLink(workspaceId, instance.id, 14),
     onSuccess: async (result, variables) => {
       await refresh()
@@ -386,7 +401,6 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       recipient_email: startForm.recipient_email,
       expires_in_days: expiry,
       assigned_membership_ids: startForm.assigned_membership_ids,
-      send_email: startForm.send_email,
       experience: {
         intro_title: startForm.experience_title,
         intro_body: startForm.experience_body,
@@ -411,11 +425,6 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   }
 
   const effectiveWorkspace = data?.workspace
-  const agencyLogoUrl = workspaceLogoUrl(
-    effectiveWorkspace?.id,
-    effectiveWorkspace?.logo_path,
-    effectiveWorkspace?.logo_updated_at,
-  )
   const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
@@ -430,7 +439,9 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div><h1 className="text-3xl font-bold tracking-tight">Client Onboarding</h1><p className="mt-1 text-muted-foreground">Create branded intake forms, invite clients, review answers, and finalize podcast pitch profiles.</p></div>
-          {canManage && <Button disabled={publishedTemplates.length === 0} onClick={() => setStartOpen(true)}><Send className="mr-2 h-4 w-4" />Start onboarding</Button>}
+          {canManage && (publishedTemplates.length > 0
+            ? <Button onClick={() => setStartOpen(true)}><Send className="mr-2 h-4 w-4" />Start onboarding</Button>
+            : <Button onClick={() => { setEditingTemplate(data?.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Set up a template</Button>)}
         </div>
 
         {!validWorkspaceId ? (
@@ -469,7 +480,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                               <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{statusLabels[instance.status]}</Badge>{instance.open_comment_count > 0 && <p className="mt-1 text-xs text-muted-foreground">{instance.open_comment_count} open notes</p>}</TableCell>
                               <TableCell className="text-sm text-muted-foreground">{new Date(instance.updated_at).toLocaleDateString()}</TableCell>
                               <TableCell className="text-right"><div className="inline-flex items-center gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedInstanceId(instance.id)}>View</Button>{canManage && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate link & email</DropdownMenuItem>}
+                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
                                 {!['submitted', 'approved', 'revoked'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'extend', instance })}>Extend 14 days</DropdownMenuItem>}
                                 {!['approved', 'revoked'].includes(instance.status) && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'revoke', instance })}>Revoke link</DropdownMenuItem>}
                                 <DropdownMenuSeparator />
@@ -514,9 +525,11 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2"><Label>Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-2 sm:col-span-2"><Label>Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
-                  {startForm.client_choice === 'new' && <><div className="space-y-2"><Label htmlFor="new-client-name">Client name</Label><Input id="new-client-name" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="new-contact">Contact person</Label><Input id="new-contact" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div></>}
-                  <div className="space-y-2"><Label htmlFor="recipient-name">Invited contact name</Label><Input id="recipient-name" value={startForm.recipient_name} onChange={(event) => setStartForm((current) => ({ ...current, recipient_name: event.target.value }))} /></div>
-                  <div className="space-y-2"><Label htmlFor="recipient-email">Invited contact email</Label><Input id="recipient-email" type="email" value={startForm.recipient_email} onChange={(event) => setStartForm((current) => ({ ...current, recipient_email: event.target.value }))} /></div>
+                  {startForm.client_choice === 'new' ? <>
+                    <div className="space-y-2"><Label htmlFor="new-client-name">Client or company name</Label><Input id="new-client-name" placeholder="Acme Company" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div>
+                    <div className="space-y-2"><Label htmlFor="new-contact">Contact name</Label><Input id="new-contact" placeholder="Jane Smith" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div>
+                  </> : <div className="space-y-2 sm:col-span-2"><Label htmlFor="recipient-name">Contact name</Label><Input id="recipient-name" value={startForm.recipient_name} onChange={(event) => setStartForm((current) => ({ ...current, recipient_name: event.target.value }))} /></div>}
+                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="recipient-email">Contact email</Label><Input id="recipient-email" type="email" placeholder="jane@example.com" value={startForm.recipient_email} onChange={(event) => setStartForm((current) => ({ ...current, recipient_email: event.target.value }))} /></div>
                 </div>
               </section>
 
@@ -534,7 +547,6 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
               <section className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2"><Label htmlFor="expiry-days">Link expires in days</Label><Input id="expiry-days" type="number" min={1} max={90} value={startForm.expires_in_days} onChange={(event) => setStartForm((current) => ({ ...current, expires_in_days: event.target.value }))} /></div>
-                <div className="rounded-xl border p-3"><label className="flex items-start gap-3"><Checkbox id="send-email" checked={startForm.send_email} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><span><span className="block text-sm font-medium">Send branded invitation email</span><span className="mt-1 block text-xs text-muted-foreground">Optional. No automated reminder or follow-up emails are sent.</span></span></label></div>
                 {data?.assignable_members.length ? <div className="space-y-2 sm:col-span-2"><Label>Assign read-only team members</Label><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></div> : null}
               </section>
             </div>
@@ -542,10 +554,11 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
             <aside className="lg:sticky lg:top-0 lg:self-start">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-muted-foreground">Client preview</p>
               <div className="overflow-hidden rounded-3xl border bg-white shadow-xl shadow-slate-900/10">
-                <div className="p-5 text-white" style={{ background: `linear-gradient(135deg, #171827 0%, ${startForm.accent_color} 100%)` }}>
-                  <div className="flex items-center gap-3">{logoPreviewUrl || agencyLogoUrl ? <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl bg-white p-2"><img src={logoPreviewUrl || agencyLogoUrl || ''} alt="Onboarding logo preview" className="max-h-full max-w-full object-contain" /></div> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 font-bold ring-1 ring-white/20">{onboardingWorkspaceInitials(data?.workspace.name ?? '')}</div>}<div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><p className="truncate font-semibold">{data?.workspace.name || 'Your team'}</p></div></div>
+                <div className="relative overflow-hidden p-5 text-white" style={{ background: `linear-gradient(135deg, #171827 0%, ${startForm.accent_color} 100%)` }}>
+                  <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                  <div className="relative flex flex-col items-center gap-3 text-center">{activePreviewLogoUrl ? <div className="flex h-20 w-full max-w-56 items-center justify-center rounded-xl border border-white/25 bg-white p-3 shadow-lg"><img src={activePreviewLogoUrl} alt="Onboarding logo preview" className="max-h-full max-w-full object-contain" onError={() => { if (!logoPreviewUrl) setAgencyLogoUnavailable(true) }} /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white/15 text-xl font-bold ring-1 ring-white/20">{onboardingWorkspaceInitials(data?.workspace.name ?? '')}</div>}<div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><p className="truncate text-lg font-semibold">{data?.workspace.name || 'Your team'}</p><p className="mt-0.5 text-xs text-white/75">Secure podcast guest intake</p></div></div>
                 </div>
-                <div className="space-y-4 p-5"><Badge variant="outline" style={{ borderColor: `${startForm.accent_color}55`, color: startForm.accent_color, backgroundColor: `${startForm.accent_color}0D` }}>Private intake</Badge><div><p className="text-sm text-slate-500">Hi {startForm.recipient_name.trim() || 'there'},</p><h4 className="mt-1 text-xl font-bold leading-tight text-slate-950">{startForm.experience_title || 'Your welcome title'}</h4><p className="mt-2 text-sm leading-6 text-slate-600">{startForm.experience_body || 'Your welcome message will appear here.'}</p></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-1/6 rounded-full" style={{ backgroundColor: startForm.accent_color }} /></div><div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">The client continues through the template one clear section at a time, with secure autosave.</div></div>
+                <div className="space-y-4 p-5"><Badge variant="outline" style={{ borderColor: `${startForm.accent_color}55`, color: startForm.accent_color, backgroundColor: `${startForm.accent_color}0D` }}>Private client intake</Badge><div><p className="text-sm text-slate-500">Hi {startForm.recipient_name.trim() || 'there'},</p><h4 className="mt-1 text-xl font-bold leading-tight text-slate-950">{startForm.experience_title || 'Your welcome title'}</h4><p className="mt-2 text-sm leading-6 text-slate-600">{startForm.experience_body || 'Your welcome message will appear here.'}</p></div><div className="space-y-2"><div className="flex items-center justify-between text-xs"><span className="font-medium text-slate-700">{selectedStartTemplate?.definition.sections[0]?.title || 'First section'}</span><span className="text-slate-500">{selectedStartTemplate?.definition.sections.length ?? 0} sections · {selectedQuestionCount} questions</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${100 / Math.max(selectedStartTemplate?.definition.sections.length ?? 1, 1)}%`, backgroundColor: startForm.accent_color }} /></div></div><div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Answers save automatically. Your client can leave and return with the same secure link.</div></div>
               </div>
             </aside>
           </div>
@@ -556,13 +569,13 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
       <Dialog open={Boolean(invitation)} onOpenChange={(open) => { if (!open) setInvitation(null) }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Secure onboarding link ready</DialogTitle><DialogDescription>{invitation?.delivery.status === 'sent' ? 'The branded email was sent. Keep the link available in case the client needs it directly.' : invitation?.delivery.status === 'failed' ? 'Email delivery failed, but the invitation is active. Copy and send the link securely.' : 'Email was skipped. Copy and send the link securely.'}</DialogDescription></DialogHeader>
-          {invitation && <div className="space-y-3"><Label htmlFor="onboarding-link">Private link</Label><div className="flex gap-2"><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><Button size="icon" aria-label="Copy secure onboarding link" onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="h-4 w-4" /></Button></div><p className="text-xs text-muted-foreground">Anyone with this link can act as the invited contact until it expires or is revoked. Do not post it publicly.</p><Button variant="outline" asChild><a href={invitation.onboarding_url} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open client form</a></Button></div>}
-          <DialogFooter><Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
+          <DialogHeader><DialogTitle>Secure onboarding link ready</DialogTitle><DialogDescription>{invitation?.delivery.status === 'sent' ? 'The client was notified. Keep the link available in case they need it directly.' : invitation?.delivery.status === 'failed' ? 'The notification could not be delivered, but the link is active. Copy and send it securely.' : 'Copy this link and send it to your client through your preferred channel.'}</DialogDescription></DialogHeader>
+          {invitation && <div className="space-y-4"><div className="rounded-xl border bg-muted/30 p-4"><p className="text-sm font-semibold">Ready for {invitation.instance.recipient_name}</p><p className="mt-1 text-xs text-muted-foreground">Send this private link through the client communication channel you already use.</p></div><div className="space-y-2"><Label htmlFor="onboarding-link">Private onboarding link</Label><div className="flex flex-col gap-2 sm:flex-row"><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><Button onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div></div><p className="text-xs text-muted-foreground">Anyone with this link can act as the invited contact until it expires or is revoked. Do not post it publicly.</p></div>}
+          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={invitation.onboarding_url} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Preview client form</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <OnboardingTemplateBuilder open={builderOpen} template={editingTemplate} workspaceName={data?.workspace.name ?? ''} saving={templateMutation.isPending} onOpenChange={(open) => { setBuilderOpen(open); if (!open) setEditingTemplate(null) }} onSave={(draft, publish, makeDefault) => templateMutation.mutate({ draft, publish, makeDefault })} />
+      <OnboardingTemplateBuilder open={builderOpen} template={editingTemplate} workspaceName={data?.workspace.name ?? ''} workspaceLogoUrl={agencyLogoUrl} saving={templateMutation.isPending} onOpenChange={(open) => { setBuilderOpen(open); if (!open) setEditingTemplate(null) }} onSave={(draft, publish, makeDefault) => templateMutation.mutate({ draft, publish, makeDefault })} />
 
       <OnboardingReviewDialog
         open={Boolean(selectedInstanceId)}

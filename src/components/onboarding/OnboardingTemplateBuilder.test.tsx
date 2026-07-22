@@ -74,6 +74,7 @@ const renderBuilder = (onSave = vi.fn()) => {
       open
       template={template}
       workspaceName="Iveth Gonzalez"
+      workspaceLogoUrl="https://cdn.example.com/iveth-logo.webp"
       saving={false}
       onOpenChange={vi.fn()}
       onSave={onSave}
@@ -108,10 +109,11 @@ describe('OnboardingTemplateBuilder', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
     expect(screen.getByDisplayValue('Podcast Guest Onboarding')).toBeInTheDocument()
     expect(screen.getByText('Clients never see this note.')).toBeInTheDocument()
-    expect(screen.getByText('No automated reminder emails are sent to your clients.')).toBeInTheDocument()
     expect(screen.queryByLabelText(/Reminder days/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }))
+    expect(screen.getByRole('img', { name: 'Iveth Gonzalez logo' })).toHaveAttribute('src', 'https://cdn.example.com/iveth-logo.webp')
+    expect(screen.getByText('Secure podcast guest intake')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Basic information' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Professional profile' })).toBeInTheDocument()
     expect(screen.getByText('Current professional bio')).toBeInTheDocument()

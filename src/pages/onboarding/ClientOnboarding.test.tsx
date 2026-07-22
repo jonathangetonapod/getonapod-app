@@ -76,6 +76,8 @@ describe('ClientOnboarding white-label experience', () => {
       'https://assets.example.test/client-logo.webp',
     )
     expect(screen.getByText(/Iveth Gonzalez will use this information/u)).toBeInTheDocument()
+    expect(screen.getByText('Hi Casey,')).toBeInTheDocument()
+    expect(screen.getByText(/Your progress saves automatically and stays private with Iveth Gonzalez/u)).toBeInTheDocument()
     expect(screen.queryByText(/your agency|Get On A Pod/iu)).not.toBeInTheDocument()
     await waitFor(() => expect(document.title).toBe('Iveth Gonzalez · Client onboarding'))
   })
