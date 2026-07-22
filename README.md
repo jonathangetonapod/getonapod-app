@@ -12,16 +12,19 @@ module, and read-only administrator workspace preview are deployed. The
 workspace-customizable Guest Resources backend was added on 2026-07-22:
 migration `20260721000200_workspace_guest_resources.sql` is the eighth
 production migration, and the exact `workspace-guest-resources` v1 and
-`get-guest-resources` v14 Edge revisions are active. The reviewed frontend is
-still local and has not been pushed to `main` or deployed by Railway, so the
-live tenant navigation continues to expose Clients only.
+`get-guest-resources` v14 Edge revisions are active. The reviewed frontend at
+commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` is on `main`, and Railway
+deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The live tenant
+navigation now exposes both Clients and Guest Resources.
 
 The privileged-browser-key containment gate is complete. Railway now supplies
-the project publishable key, Cloudflare was purged, and the recursive live
-browser-asset credential scan passed. The exposed legacy service-role key
-remains compromised: inventorying its non-browser consumers, reviewing the
-exposure window, and safely rotating it are separate incident work. Do not
-disable it before retained Edge and external consumers are migrated.
+the project publishable key. After the frontend deployment, a second
+Cloudflare purge was completed and the hardened recursive live browser verifier
+passed. All six retired asset paths now fail closed with 404, `no-store`,
+`text/plain`, and `noindex`. The exposed legacy service-role key remains
+compromised: inventorying its non-browser consumers, reviewing the exposure
+window, and safely rotating it are separate incident work. Do not disable it
+before retained Edge and external consumers are migrated.
 
 Credentials previously exposed through chat also still require provider-side
 rotation.
@@ -312,11 +315,15 @@ the historical cutover above:
    inventory is 90 active functions: 75 JWT-verified and 15 reviewed
    public/custom-auth functions. CORS, fail-closed, and default-client narrow
    portal projection probes passed.
-6. The reviewed frontend still must be pushed directly to `main`, allowed to
-   deploy through Railway, and rechecked with the live asset verifier. No
-   private workspace currently exists in production, so signed-in tenant,
-   read-only administrator-preview, and private-client audience acceptance
-   must follow creation of a controlled private workspace.
+6. Frontend commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` was pushed
+   directly to `main`, and Railway deployment
+   `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. After a second,
+   post-deployment Cloudflare purge, the hardened recursive live verifier
+   passed and all six retired asset paths returned 404 with `no-store`,
+   `text/plain`, and `noindex`. No private workspace currently exists in
+   production, so signed-in tenant, read-only administrator-preview, and
+   private-client audience acceptance must follow creation of a controlled
+   private workspace.
 
 `scripts/run-workspace-guest-resources-behavior.sh` is for an explicitly
 confirmed non-production local/staging database only. Its SQL opens one
@@ -595,11 +602,10 @@ The detailed rollout and acceptance matrix is in
 
 ## Known MVP limitations
 
-- The deployed tenant frontend currently exposes Clients only. The reviewed
-  local frontend adds Guest Resources, and its production backend is already
-  active; Podcast operations, outreach, reporting, and every other legacy
-  module remain platform-admin-only until they receive an explicit
-  `workspace_id` model and isolation tests.
+- The deployed tenant frontend currently exposes Clients and Guest Resources.
+  Podcast operations, outreach, reporting, and every other legacy module remain
+  platform-admin-only until they receive an explicit `workspace_id` model and
+  isolation tests.
 - The platform administrator's private-workspace preview reuses the real
   tenant Clients experience, including its layout and client states, but is
   intentionally read-only: write controls are disabled and no mutation dialog
@@ -644,10 +650,14 @@ The detailed rollout and acceptance matrix is in
 ## Credential incident and repository controls
 
 The browser-key containment step completed on 2026-07-22: Railway now uses the
-project publishable key, a clean rebuild was deployed, Cloudflare was purged,
-and `npm run verify:production-browser` passed across the live referenced asset
-graph. Do not reproduce or use the formerly exposed privileged value; it
-remains compromised even though it is no longer shipped to browsers.
+project publishable key, a clean rebuild was deployed, and the original
+Cloudflare purge removed the credential-bearing cache entries. After the final
+frontend deployment, a second Cloudflare purge was completed and the hardened
+`npm run verify:production-browser` passed across the live referenced asset
+graph. The six retired asset paths now return 404 with `no-store`,
+`text/plain`, and `noindex`. Do not reproduce or use the formerly exposed
+privileged value; it remains compromised even though it is no longer shipped
+to browsers.
 
 Long-term incident work remains open. Audit Supabase/API/hosting logs for the
 exposure window and inventory every Edge, server, webhook, database, and
@@ -685,18 +695,13 @@ commit, project, backup, phased manifest, and private evidence directory.
 
 ## Remaining release gates
 
-The account/Clients rollout and Guest Resources backend rollout are complete.
-The remaining feature-release work is:
-
-1. review the final verifier/documentation delta and run the complete static
-   release suite against the exact commit;
-2. push the reviewed commit directly to `main` and allow Railway to deploy the
-   Guest Resources frontend;
-3. rerun the recursive live browser-asset scan and production route/header
-   checks, including real 404/no-store responses for retired asset paths; and
-4. provision one controlled private workspace, then complete signed-in tenant
-   customization, read-only administrator preview, selected-client portal
-   visibility, draft/archive denial, and malformed/stale access acceptance.
+The account/Clients and Guest Resources backend/frontend production rollouts
+are complete. The remaining feature-acceptance work is to provision one
+controlled private workspace, then complete signed-in tenant customization,
+read-only administrator preview, selected-client private-portal visibility,
+draft/archive denial, and malformed/stale access acceptance. Production has no
+private workspace today, so none of those signed-in tenant,
+administrator-preview, or private-portal checks can yet be claimed.
 
 Separate incident and operations work remains: inventory and rotate the legacy
 service-role key safely, rotate the other exposed provider credentials and

@@ -9,11 +9,16 @@ are active with their reviewed JWT settings. Production catalog, CORS,
 fail-closed, and default-client portal-projection checks passed.
 
 The browser-key containment gate also passed: Railway uses the project
-publishable key, Cloudflare was purged, and the recursive live-asset credential
-scan is clean. Safe rotation of the exposed legacy service-role key remains a
-separate incident task. The Guest Resources frontend has not yet been pushed to
-`main` or deployed, and production has no private workspace with which to run
-signed-in tenant, administrator-preview, or private-client acceptance.
+publishable key, and the original Cloudflare purge removed the cached
+credential-bearing assets. The Guest Resources frontend at commit
+`bc418e72e0b95e2b64d6632e58d880e65065b2b6` is now on `main`; Railway
+deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. A second,
+post-deployment Cloudflare purge was completed, and the hardened recursive live
+verifier passed with all six retired asset paths returning 404, `no-store`,
+`text/plain`, and `noindex`. Safe rotation of the exposed legacy service-role
+key remains a separate incident task. Production has no private workspace with
+which to run signed-in tenant, administrator-preview, or private-client portal
+acceptance, so that controlled acceptance remains outstanding.
 
 ## Product goal
 
@@ -160,10 +165,16 @@ Functions. The 2026-07-22 backend increment followed that rule:
    inventory is 90 active functions: 75 JWT-verified and 15 reviewed
    public/custom-auth functions. OPTIONS/CORS, fail-closed, and default-client
    narrow portal projection probes passed; and
-6. the remaining step is to push the reviewed frontend directly to `main`, let
-   Railway deploy it, rerun the live asset/route checks, provision a controlled
-   private workspace, and complete signed-in tenant, read-only administrator-
-   preview, and private-client audience acceptance.
+6. frontend commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` was pushed
+   directly to `main`, and Railway deployment
+   `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. A second,
+   post-deployment Cloudflare purge was completed; the hardened live verifier
+   passed, and all six retired asset paths returned 404 with `no-store`,
+   `text/plain`, and `noindex`; and
+7. the remaining step is to provision a controlled private workspace and
+   complete signed-in tenant, read-only administrator-preview, and
+   private-client portal audience acceptance. Production currently has no
+   private workspace, so these checks remain outstanding.
 
 `scripts/run-workspace-guest-resources-behavior.sh` is non-production-only and
 ends all fixture mutations with `ROLLBACK`. `check:static` grammar-parses that

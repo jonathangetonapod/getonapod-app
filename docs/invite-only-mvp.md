@@ -12,14 +12,17 @@ The workspace-customizable Guest Resources backend increment completed on
 2026-07-22. Production now records eight coordinated migrations and exactly 90
 active Edge Functions: 75 JWT-verified and 15 reviewed public/custom-auth
 handlers. `get-guest-resources` v14 (`verify_jwt=false`) and
-`workspace-guest-resources` v1 (`verify_jwt=true`) are active. The frontend
-routes remain local; they have not yet been pushed to `main` or deployed by
-Railway.
+`workspace-guest-resources` v1 (`verify_jwt=true`) are active. Frontend commit
+`bc418e72e0b95e2b64d6632e58d880e65065b2b6` is on `main`, and Railway
+deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The production
+tenant routes now expose Clients and Guest Resources.
 
-The privileged browser key was replaced by the project publishable key,
-Cloudflare was purged, and the recursive live-asset credential scan passed.
-The exposed legacy service-role key remains compromised, but consumer migration,
-exposure-window review, and safe rotation are separate incident work. See
+The privileged browser key was replaced by the project publishable key. After
+the frontend deployment, a second Cloudflare purge was completed and the
+hardened recursive live verifier passed; all six retired asset paths now return
+404 with `no-store`, `text/plain`, and `noindex`. The exposed legacy
+service-role key remains compromised, but consumer migration, exposure-window
+review, and safe rotation are separate incident work. See
 [`production-cutover-2026-07-21.md`](production-cutover-2026-07-21.md) for the
 historical cutover and the sanitized 2026-07-22 increment evidence.
 
@@ -315,8 +318,12 @@ inside a serializable read-only transaction; its SHA-256 is
 `53f59f3593eb3753729d37422fc3e6965ef3a1e38abdce73cba51bc509704137`.
 Only `get-guest-resources` v14 and `workspace-guest-resources` v1 were deployed.
 OPTIONS/CORS and fail-closed probes passed, as did the default-client narrow
-portal RPC projection. The reviewed frontend remains pending for the approved
-direct-`main` push and Railway deployment.
+portal RPC projection. Frontend commit
+`bc418e72e0b95e2b64d6632e58d880e65065b2b6` was subsequently pushed through
+the approved direct-`main` workflow, and Railway deployment
+`ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. After a second,
+post-deployment Cloudflare purge, the hardened live verifier passed and all six
+retired asset paths returned 404 with `no-store`, `text/plain`, and `noindex`.
 
 The rollback behavior runner is restricted to a confirmed non-production
 local/staging database and ends with `ROLLBACK`. The staging catalog runner is
@@ -523,10 +530,9 @@ remain unavailable until a controlled private workspace is provisioned.
 
 ## Accepted limitations and follow-up
 
-- The production frontend currently exposes Clients only. The reviewed local
-  frontend adds Guest Resources and its backend is active; every other legacy
-  module needs an explicit ownership model and cross-account tests before
-  tenant exposure.
+- The production frontend currently exposes Clients and Guest Resources. Every
+  other legacy module needs an explicit ownership model and cross-account tests
+  before tenant exposure.
 - Workspace users cannot invite teammates or self-manage workspace/account
   settings.
 - There is no workspace forgot-password UI; support uses a controlled Supabase
@@ -561,11 +567,15 @@ remain unavailable until a controlled private workspace is provisioned.
 ## Known credential incident
 
 Browser containment completed on 2026-07-22. Railway now uses the project
-publishable key, the public bundle was rebuilt, Cloudflare was purged, and
+publishable key, the public bundle was rebuilt, and the original Cloudflare
+purge removed the cached credential-bearing assets. After the final frontend
+deployment, a second Cloudflare purge was completed and the hardened
 `npm run verify:production-browser` passed over the live referenced asset
-graph. The formerly exposed service-role value remains compromised even though
-it is no longer shipped to browsers. Audit the exposure window and migrate all
-retained server/Edge/external consumers before disabling or rotating it.
+graph. All six retired asset paths now return 404 with `no-store`,
+`text/plain`, and `noindex`. The formerly exposed service-role value remains
+compromised even though it is no longer shipped to browsers. Audit the exposure
+window and migrate all retained server/Edge/external consumers before disabling
+or rotating it.
 
 The current-tree scan passes, but repository-history review also found
 non-placeholder Podscan and BridgeKit credentials. OpenAI, Podscan, Jotform,
@@ -580,19 +590,20 @@ logs; a rewrite never substitutes for credential rotation.
 
 ## Direct-main frontend gate
 
-The account/Clients and Guest Resources backend cutovers are complete. The
-repository owner selected a direct-`main` workflow for this slice; no release
-branch or pull request is required. Before the remaining push, review the final
-verifier/documentation delta and run the complete static suite against the
-exact feature source. Then push the exact reviewed commit directly to
-`main`, allow Railway to deploy it, and repeat the live asset and route/header
-checks.
+The account/Clients and Guest Resources backend/frontend production cutovers
+are complete. The repository owner selected a direct-`main` workflow for this
+slice; frontend commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` was pushed
+under that approval, and Railway deployment
+`ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. A second,
+post-deployment Cloudflare purge was completed, and the hardened live verifier
+passed with all six retired asset paths failing closed as 404, `no-store`,
+`text/plain`, and `noindex`.
 
 Production currently has no private workspace. Provision one controlled
-private workspace after the frontend deploy, then complete signed-in workspace
-customization, read-only administrator preview, selected-client portal
-visibility, and malformed/stale-access acceptance. Add a second disposable
-workspace for the full cross-tenant denial matrix.
+private workspace, then complete signed-in workspace customization, read-only
+administrator preview, selected-client private-portal visibility, and
+malformed/stale-access acceptance. These checks remain outstanding; add a
+second disposable workspace for the full cross-tenant denial matrix.
 
 Merging source is separate from opening onboarding. Do not invite real users
 until custom SMTP, exposed-credential rotation, a complete invitation/password

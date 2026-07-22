@@ -57,16 +57,15 @@ assert.deepEqual(KNOWN_COMPROMISED_ASSET_PATHS, [
   '/assets/ErrorBoundary-CAwUNoYN.js',
 ])
 
-const retiredPaths = ['/assets/retired.js', '/assets/clean-fallback.js']
+const retiredPaths = ['/assets/retired.js', '/assets/other-retired.js']
 const retiredCalls = []
 const retirement = await verifyRetiredBrowserAssets(origin, {
   paths: retiredPaths,
   fetchImpl: async (url, options) => {
     retiredCalls.push({ url: url.href, options })
-    const missing = url.pathname === retiredPaths[0]
     return fakeResponse({
-      body: missing ? 'Not Found' : '<!doctype html><title>Clean fallback</title>',
-      status: missing ? 404 : 200,
+      body: 'Not Found',
+      status: 404,
       url: url.href,
     })
   },
@@ -75,7 +74,7 @@ assert.deepEqual(retirement, { checkedCount: 2 })
 assert.deepEqual(retiredCalls.map((call) => call.url), retiredPaths.map((pathname) => `${origin}${pathname}`))
 for (const call of retiredCalls) {
   assert.equal(call.options.headers['cache-control'], 'no-cache')
-  assert.equal(call.options.redirect, 'follow')
+  assert.equal(call.options.redirect, 'manual')
 }
 
 const syntheticServiceRoleJwt = [
@@ -105,7 +104,41 @@ await assert.rejects(
     paths: ['/assets/unavailable.js'],
     fetchImpl: async (url) => fakeResponse({ body: 'temporary failure', status: 503, url: url.href }),
   }),
-  /could not be verified/u,
+  /not fail-closed/u,
+)
+
+await assert.rejects(
+  verifyRetiredBrowserAssets(origin, {
+    paths: ['/assets/redirected.js'],
+    fetchImpl: async (url, options) => {
+      assert.equal(options.redirect, 'manual')
+      return fakeResponse({ body: '', status: 302, url: url.href })
+    },
+  }),
+  /expected HTTP 404, received HTTP 302/u,
+)
+
+await assert.rejects(
+  verifyRetiredBrowserAssets(origin, {
+    paths: ['/assets/clean-spa-fallback.js'],
+    fetchImpl: async (url) => fakeResponse({
+      body: '<!doctype html><title>Clean fallback</title>',
+      status: 200,
+      url: url.href,
+      headers: {
+        'cache-control': 'max-age=14400',
+        'content-type': 'text/html; charset=utf-8',
+        'x-robots-tag': '',
+      },
+    }),
+  }),
+  (error) => {
+    assert.match(error.message, /expected HTTP 404, received HTTP 200/u)
+    assert.match(error.message, /missing Cache-Control no-store/u)
+    assert.match(error.message, /expected text\/plain response/u)
+    assert.match(error.message, /missing X-Robots-Tag noindex/u)
+    return true
+  },
 )
 
 let crossOriginFetched = false
@@ -121,8 +154,15 @@ await assert.rejects(
 )
 assert.equal(crossOriginFetched, false)
 
-function fakeResponse({ body, status, url }) {
+function fakeResponse({ body, status, url, headers = {} }) {
+  const responseHeaders = new Headers({
+    'cache-control': 'no-store',
+    'content-type': 'text/plain; charset=utf-8',
+    'x-robots-tag': 'noindex, nofollow, noarchive',
+    ...headers,
+  })
   return {
+    headers: responseHeaders,
     ok: status >= 200 && status < 300,
     status,
     text: async () => body,

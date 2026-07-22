@@ -65,7 +65,7 @@ export async function verifyRetiredBrowserAssets(
           'cache-control': 'no-cache',
           'user-agent': 'GOAP-production-browser-retirement-verifier',
         },
-        redirect: 'follow',
+        redirect: 'manual',
       })
     } catch {
       throw new Error(`Retired production browser asset could not be fetched: ${target.pathname}`)
@@ -89,7 +89,22 @@ export async function verifyRetiredBrowserAssets(
 
     const categories = findingsFor(source)
     if (categories.length > 0) failures.push(`${target.pathname}: ${categories.join(',')}`)
-    if (!response.ok && response.status !== 404) unavailable.push(`${target.pathname}: HTTP ${response.status}`)
+
+    const cacheControl = response.headers.get('cache-control') ?? ''
+    const contentType = response.headers.get('content-type') ?? ''
+    const robots = response.headers.get('x-robots-tag') ?? ''
+    if (response.status !== 404) {
+      unavailable.push(`${target.pathname}: expected HTTP 404, received HTTP ${response.status}`)
+    }
+    if (!/(?:^|,)\s*no-store(?:\s*,|$)/iu.test(cacheControl)) {
+      unavailable.push(`${target.pathname}: missing Cache-Control no-store`)
+    }
+    if (!/^text\/plain(?:\s*;|$)/iu.test(contentType)) {
+      unavailable.push(`${target.pathname}: expected text/plain response`)
+    }
+    if (!/(?:^|,)\s*noindex(?:\s*,|$)/iu.test(robots)) {
+      unavailable.push(`${target.pathname}: missing X-Robots-Tag noindex`)
+    }
   }
 
   if (failures.length > 0) {
@@ -98,7 +113,7 @@ export async function verifyRetiredBrowserAssets(
     )
   }
   if (unavailable.length > 0) {
-    throw new Error(`Retired production browser assets could not be verified:\n${unavailable.join('\n')}`)
+    throw new Error(`Retired production browser assets are not fail-closed:\n${unavailable.join('\n')}`)
   }
 
   return { checkedCount: paths.length }

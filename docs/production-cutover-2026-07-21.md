@@ -89,11 +89,15 @@ two-account isolation acceptance, and exposed-credential rotation remain open.
 - Production-origin OPTIONS/CORS checks and unauthenticated fail-closed probes
   passed. The default-workspace client portal RPC returned its expected narrow
   projection.
-- The reviewed Guest Resources frontend has not yet been pushed to `main` or
-  deployed by Railway. Production currently has no private workspace, so
-  signed-in private-tenant management, read-only administrator preview, and
-  private-client audience acceptance cannot run until a controlled workspace
-  is provisioned.
+- The reviewed Guest Resources frontend at commit
+  `bc418e72e0b95e2b64d6632e58d880e65065b2b6` was pushed directly to `main`,
+  and Railway deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded.
+  A second, post-deployment Cloudflare purge was completed. The hardened
+  recursive live verifier passed, and all six retired asset paths returned 404
+  with `no-store`, `text/plain`, and `noindex`.
+- Production currently has no private workspace, so signed-in private-tenant
+  management, read-only administrator preview, and private-client portal
+  audience acceptance cannot run until a controlled workspace is provisioned.
 
 ## Production data effects
 
@@ -119,19 +123,17 @@ restored.
    not use the Invite user action before this is complete.
 3. Run a signed-in administrator smoke test for dashboard, users, global
    clients, legacy records, and logout.
-4. Push the reviewed Guest Resources frontend directly to `main`, allow Railway
-   to deploy it, and rerun the live asset plus route/header checks.
-5. Provision one controlled private workspace and complete invitation/password
+4. Provision one controlled private workspace and complete invitation/password
    creation, acceptance, login, isolated client and resource management,
    read-only administrator preview, selected-client portal visibility, logout,
    suspension, and reactivation. Add a second disposable workspace for the
    complete cross-tenant denial matrix.
-6. Confirm provider-side removal of the external Stripe webhook and every
+5. Confirm provider-side removal of the external Stripe webhook and every
    obsolete caller/schedule. Retain the 410 tombstones until that evidence is
    complete.
-7. Decide whether to delete the credential-free Railway video tombstone
+6. Decide whether to delete the credential-free Railway video tombstone
    project after its audit/caller-observation value is no longer needed.
-8. Branch protection and required checks remain recommended future repository
+7. Branch protection and required checks remain recommended future repository
    hardening; their absence was explicitly accepted for this direct-`main`
    increment and is not a release-branch prerequisite.
 
