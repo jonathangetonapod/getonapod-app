@@ -22,6 +22,25 @@ export interface AdminWorkspaceViewer {
   role: 'owner'
 }
 
+interface AdminWorkspaceOwnerCandidate {
+  workspace_id: string
+  email_normalized?: string
+  full_name?: string | null
+  role: 'owner'
+  status: 'provisioning' | 'invited' | 'active' | 'suspended' | 'revoked'
+  provisioning_method: 'platform_bootstrap' | 'email_invite' | 'admin_temporary_password'
+  password_change_required: boolean
+}
+
+function isPreviewableOwner(owner: AdminWorkspaceOwnerCandidate): boolean {
+  return owner.status === 'active'
+    || (
+      owner.status === 'invited'
+      && owner.provisioning_method === 'admin_temporary_password'
+      && owner.password_change_required
+    )
+}
+
 const WORKSPACE_CLIENT_COLUMNS = [
   'id',
   'workspace_id',
@@ -52,15 +71,17 @@ export async function listAdminWorkspaces(): Promise<AdminWorkspace[]> {
 
   const { data: membershipData, error: membershipError } = await supabase
     .from('workspace_memberships')
-    .select('workspace_id')
+    .select('workspace_id,status,provisioning_method,password_change_required')
     .in('workspace_id', workspaces.map((workspace) => workspace.id))
     .eq('role', 'owner')
-    .eq('status', 'active')
+    .in('status', ['active', 'invited'])
 
   if (membershipError) throw new Error('Client workspaces could not be loaded.')
 
   const previewableWorkspaceIds = new Set(
-    (membershipData || []).map((membership) => membership.workspace_id),
+    ((membershipData || []) as AdminWorkspaceOwnerCandidate[])
+      .filter(isPreviewableOwner)
+      .map((membership) => membership.workspace_id),
   )
   return workspaces.filter((workspace) => previewableWorkspaceIds.has(workspace.id))
 }
@@ -85,24 +106,26 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
 
   let viewerQuery = supabase
     .from('workspace_memberships')
-    .select('workspace_id,email_normalized,full_name,role,status')
+    .select('workspace_id,email_normalized,full_name,role,status,provisioning_method,password_change_required')
     .eq('workspace_id', canonicalWorkspaceId)
     .eq('role', 'owner')
-    .eq('status', 'active')
+    .in('status', ['active', 'invited'])
     .order('id', { ascending: true })
-    .limit(1)
   if (signal) viewerQuery = viewerQuery.abortSignal(signal)
-  const { data: viewerData, error: viewerError } = await viewerQuery.maybeSingle()
+  const { data: viewerData, error: viewerError } = await viewerQuery
 
   if (viewerError) throw new Error('The workspace owner could not be loaded.')
+  const previewableOwners = ((viewerData || []) as AdminWorkspaceOwnerCandidate[])
+    .filter(isPreviewableOwner)
+  const viewer = previewableOwners.length === 1 ? previewableOwners[0] : null
   if (
-    !viewerData
-    || viewerData.workspace_id !== canonicalWorkspaceId
-    || viewerData.role !== 'owner'
-    || viewerData.status !== 'active'
-    || !viewerData.email_normalized
+    !viewer
+    || viewer.workspace_id !== canonicalWorkspaceId
+    || viewer.role !== 'owner'
+    || !isPreviewableOwner(viewer)
+    || !viewer.email_normalized
   ) {
-    throw new Error('This client workspace does not have an active owner to preview.')
+    throw new Error('This client workspace does not have an available owner to preview.')
   }
 
   let clientsQuery = supabase
@@ -124,10 +147,10 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
   return {
     workspace: workspaceData as AdminWorkspace,
     viewer: {
-      workspace_id: viewerData.workspace_id,
-      email: viewerData.email_normalized,
-      full_name: viewerData.full_name,
-      role: viewerData.role,
+      workspace_id: viewer.workspace_id,
+      email: viewer.email_normalized,
+      full_name: viewer.full_name ?? null,
+      role: viewer.role,
     },
     clients,
   }

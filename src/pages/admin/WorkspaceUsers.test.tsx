@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceUsers from '@/pages/admin/WorkspaceUsers'
 import {
@@ -11,6 +11,9 @@ import {
 
 vi.mock('@/components/admin/DashboardLayout', () => ({
   DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
+  WorkspaceSwitcher: () => <div>Workspace selector</div>,
 }))
 vi.mock('@/services/workspaceUsers', () => ({
   createManualWorkspaceAccount: vi.fn(),
@@ -25,6 +28,11 @@ vi.mock('@/services/workspaceUsers', () => ({
 const mockedCreate = vi.mocked(createManualWorkspaceAccount)
 const mockedList = vi.mocked(listWorkspaceUsers)
 const mockedRevoke = vi.mocked(revokeManualWorkspaceAccount)
+
+const Location = () => {
+  const location = useLocation()
+  return <div data-testid="location">{location.pathname}</div>
+}
 
 const manualUser = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -57,7 +65,10 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><WorkspaceUsers /></MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <WorkspaceUsers />
+        <Location />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
   return queryClient
@@ -87,11 +98,11 @@ describe('WorkspaceUsers manual account flow', () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem')
     const queryClient = renderPage()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-    fireEvent.click(screen.getByRole('button', { name: /create manually/i }))
+    fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Owner Name' } })
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Acme Workspace' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Generate account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace & generate password' }))
 
     const password = await screen.findByLabelText('Temporary password') as HTMLInputElement
     expect(password.type).toBe('password')
@@ -99,11 +110,16 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(storageSpy).not.toHaveBeenCalled()
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['platform'] })
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Open workspace' })).toBeDisabled()
 
     fireEvent.click(screen.getByLabelText('I saved this password in a secure place.'))
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    expect(screen.getByRole('button', { name: 'Open workspace' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open workspace' }))
     await waitFor(() => expect(screen.queryByText('Save the temporary password')).not.toBeInTheDocument())
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/admin/workspaces/22222222-2222-4222-8222-222222222222/clients',
+    )
   })
 
   it('surfaces credential reconciliation and blocks conflicting actions', async () => {
@@ -118,7 +134,7 @@ describe('WorkspaceUsers manual account flow', () => {
 
     expect(await screen.findByText(/credential reconciliation is pending until/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /issue new temporary password/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^revoke$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled()
   })
 
   it('refreshes platform workspace state after a partial manual-create failure', async () => {
@@ -126,21 +142,21 @@ describe('WorkspaceUsers manual account flow', () => {
     const queryClient = renderPage()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-    fireEvent.click(screen.getByRole('button', { name: /create manually/i }))
+    fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Generate account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace & generate password' }))
 
     expect(await screen.findByText('Credential reconciliation is pending.')).toBeInTheDocument()
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['platform'] })
   })
 
-  it('requires confirmation before revoking a manual account', async () => {
+  it('requires confirmation before deleting a manual account', async () => {
     mockedList.mockResolvedValue([manualUser])
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: /^revoke$/i }))
-    expect(screen.getByText('Revoke manual account?')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^delete$/i }))
+    expect(screen.getByText('Delete account?')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(mockedRevoke).toHaveBeenCalledWith(
       manualUser.id,
@@ -148,7 +164,7 @@ describe('WorkspaceUsers manual account flow', () => {
     ))
   })
 
-  it('offers only revoke after an interrupted manual setup reaches review', async () => {
+  it('offers only delete after an interrupted manual setup reaches review', async () => {
     mockedList.mockResolvedValue([{
       ...manualUser,
       user_id: null,
@@ -162,6 +178,39 @@ describe('WorkspaceUsers manual account flow', () => {
 
     expect(await screen.findByText(/manual setup cannot resume/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry manual setup/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^revoke$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^delete$/i })).toBeEnabled()
+  })
+
+  it('shows no cleanup action for a settled deleted invitation', async () => {
+    mockedList.mockResolvedValue([{
+      ...manualUser,
+      status: 'revoked',
+      provisioning_method: 'email_invite',
+      password_change_required: false,
+    }])
+
+    renderPage()
+
+    expect(await screen.findByText('deleted')).toBeInTheDocument()
+    expect(screen.queryByText(/auth cleanup/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
+  })
+
+  it('shows passive operator review for interrupted invitation deletion', async () => {
+    mockedList.mockResolvedValue([{
+      ...manualUser,
+      status: 'revoked',
+      provisioning_method: 'email_invite',
+      password_change_required: false,
+      invite_reconciliation_pending: true,
+      invite_reconciliation_claim_kind: 'revoke_cleanup',
+      invite_reconciliation_review_after: '2099-07-21T00:15:00Z',
+    }])
+
+    renderPage()
+
+    expect(await screen.findByText('Deletion requires operator review.')).toBeInTheDocument()
+    expect(screen.queryByText(/auth cleanup/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
   })
 })

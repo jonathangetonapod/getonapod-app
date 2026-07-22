@@ -20,12 +20,24 @@ const workspace: AdminWorkspaceView['workspace'] = {
   status: 'active',
   is_default: false,
 }
-const ownerRow = {
+interface ViewerRow {
+  workspace_id: string
+  email_normalized: string
+  full_name: string | null
+  role: 'owner'
+  status: 'active' | 'invited'
+  provisioning_method: 'email_invite' | 'admin_temporary_password'
+  password_change_required: boolean
+}
+
+const ownerRow: ViewerRow = {
   workspace_id: workspaceId,
   email_normalized: 'owner@acme.example',
   full_name: 'Acme Owner',
-  role: 'owner' as const,
+  role: 'owner',
   status: 'active',
+  provisioning_method: 'email_invite',
+  password_change_required: false,
 }
 const clients: WorkspaceClient[] = [{
   id: 'c3333333-3333-4333-8333-33333333333c',
@@ -46,14 +58,23 @@ describe('listAdminWorkspaces', () => {
     vi.clearAllMocks()
   })
 
-  it('returns only active private workspaces with an active owner', async () => {
-    const invitedWorkspaceId = 'e5555555-5555-4555-8555-55555555555e'
+  it('returns active-owner and valid manual-password workspaces only', async () => {
+    const manualWorkspaceId = 'e5555555-5555-4555-8555-55555555555e'
+    const emailInviteWorkspaceId = 'f6666666-6666-4666-8666-66666666666f'
+    const manualWorkspace: AdminWorkspace = {
+      id: manualWorkspaceId,
+      name: 'Manual Workspace',
+      slug: 'manual',
+      status: 'active',
+      is_default: false,
+    }
     const workspaces: AdminWorkspace[] = [
       workspace,
+      manualWorkspace,
       {
-        id: invitedWorkspaceId,
-        name: 'Invited Workspace',
-        slug: 'invited',
+        id: emailInviteWorkspaceId,
+        name: 'Email Invite Workspace',
+        slug: 'email-invite',
         status: 'active',
         is_default: false,
       },
@@ -71,7 +92,26 @@ describe('listAdminWorkspaces', () => {
       .mockReturnValueOnce(workspaceResult)
 
     const membershipResult = Promise.resolve({
-      data: [{ workspace_id: workspaceId }],
+      data: [
+        {
+          workspace_id: workspaceId,
+          status: 'active',
+          provisioning_method: 'email_invite',
+          password_change_required: false,
+        },
+        {
+          workspace_id: manualWorkspaceId,
+          status: 'invited',
+          provisioning_method: 'admin_temporary_password',
+          password_change_required: true,
+        },
+        {
+          workspace_id: emailInviteWorkspaceId,
+          status: 'invited',
+          provisioning_method: 'email_invite',
+          password_change_required: false,
+        },
+      ],
       error: null,
     })
     const membershipBuilder = {
@@ -80,22 +120,23 @@ describe('listAdminWorkspaces', () => {
       eq: vi.fn(),
     }
     membershipBuilder.select.mockReturnValue(membershipBuilder)
-    membershipBuilder.in.mockReturnValue(membershipBuilder)
-    membershipBuilder.eq
+    membershipBuilder.in
       .mockReturnValueOnce(membershipBuilder)
       .mockReturnValueOnce(membershipResult)
+    membershipBuilder.eq.mockReturnValue(membershipBuilder)
 
     from.mockImplementation((table: string) => (
       table === 'workspaces' ? workspaceBuilder : membershipBuilder
     ))
 
-    await expect(listAdminWorkspaces()).resolves.toEqual([workspace])
-    expect(membershipBuilder.in).toHaveBeenCalledWith(
+    await expect(listAdminWorkspaces()).resolves.toEqual([workspace, manualWorkspace])
+    expect(membershipBuilder.in).toHaveBeenNthCalledWith(
+      1,
       'workspace_id',
-      [workspaceId, invitedWorkspaceId],
+      [workspaceId, manualWorkspaceId, emailInviteWorkspaceId],
     )
-    expect(membershipBuilder.eq).toHaveBeenNthCalledWith(1, 'role', 'owner')
-    expect(membershipBuilder.eq).toHaveBeenNthCalledWith(2, 'status', 'active')
+    expect(membershipBuilder.eq).toHaveBeenCalledWith('role', 'owner')
+    expect(membershipBuilder.in).toHaveBeenNthCalledWith(2, 'status', ['active', 'invited'])
   })
 })
 
@@ -112,21 +153,25 @@ function makeWorkspaceBuilder(data: AdminWorkspaceView['workspace'] | null) {
   return builder
 }
 
-function makeViewerBuilder(data: typeof ownerRow | null) {
+function makeViewerBuilder(data: ViewerRow[]) {
+  const abortSignal = vi.fn()
+  const terminalQuery = Object.assign(
+    Promise.resolve({ data, error: null }),
+    { abortSignal },
+  )
+  abortSignal.mockReturnValue(terminalQuery)
+
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
+    in: vi.fn(),
     order: vi.fn(),
-    limit: vi.fn(),
-    abortSignal: vi.fn(),
-    maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
   }
   builder.select.mockReturnValue(builder)
   builder.eq.mockReturnValue(builder)
-  builder.order.mockReturnValue(builder)
-  builder.limit.mockReturnValue(builder)
-  builder.abortSignal.mockReturnValue(builder)
-  return builder
+  builder.in.mockReturnValue(builder)
+  builder.order.mockReturnValue(terminalQuery)
+  return { builder, abortSignal }
 }
 
 function makeClientsBuilder(data: WorkspaceClient[]) {
@@ -152,7 +197,7 @@ function makeClientsBuilder(data: WorkspaceClient[]) {
 
 interface ArrangeOptions {
   workspaceData?: AdminWorkspaceView['workspace'] | null
-  viewerData?: typeof ownerRow | null
+  viewerData?: ViewerRow | ViewerRow[] | null
   clientsData?: WorkspaceClient[]
 }
 
@@ -160,8 +205,15 @@ function arrange(options: ArrangeOptions = {}) {
   const workspaceBuilder = makeWorkspaceBuilder(
     options.workspaceData === undefined ? workspace : options.workspaceData,
   )
-  const viewerBuilder = makeViewerBuilder(
-    options.viewerData === undefined ? ownerRow : options.viewerData,
+  const viewerRows = options.viewerData === undefined
+    ? [ownerRow]
+    : options.viewerData === null
+      ? []
+      : Array.isArray(options.viewerData)
+        ? options.viewerData
+        : [options.viewerData]
+  const { builder: viewerBuilder, abortSignal: viewerAbortSignal } = makeViewerBuilder(
+    viewerRows,
   )
   const { builder: clientsBuilder, abortSignal: clientsAbortSignal } = makeClientsBuilder(
     options.clientsData === undefined ? clients : options.clientsData,
@@ -173,7 +225,7 @@ function arrange(options: ArrangeOptions = {}) {
     return clientsBuilder
   })
 
-  return { workspaceBuilder, viewerBuilder, clientsBuilder, clientsAbortSignal }
+  return { workspaceBuilder, viewerBuilder, viewerAbortSignal, clientsBuilder, clientsAbortSignal }
 }
 
 describe('getAdminWorkspaceView', () => {
@@ -182,7 +234,7 @@ describe('getAdminWorkspaceView', () => {
   })
 
   it('loads the exact active owner and client projection with one canonical workspace ID', async () => {
-    const { workspaceBuilder, viewerBuilder, clientsBuilder, clientsAbortSignal } = arrange()
+    const { workspaceBuilder, viewerBuilder, viewerAbortSignal, clientsBuilder, clientsAbortSignal } = arrange()
     const controller = new AbortController()
 
     const result = await getAdminWorkspaceView(workspaceId.toUpperCase(), controller.signal)
@@ -196,19 +248,18 @@ describe('getAdminWorkspaceView', () => {
     expect(workspaceBuilder.eq).toHaveBeenNthCalledWith(1, 'id', workspaceId)
     expect(workspaceBuilder.eq).toHaveBeenNthCalledWith(2, 'is_default', false)
     expect(viewerBuilder.select).toHaveBeenCalledWith(
-      'workspace_id,email_normalized,full_name,role,status',
+      'workspace_id,email_normalized,full_name,role,status,provisioning_method,password_change_required',
     )
     expect(viewerBuilder.eq).toHaveBeenNthCalledWith(1, 'workspace_id', workspaceId)
     expect(viewerBuilder.eq).toHaveBeenNthCalledWith(2, 'role', 'owner')
-    expect(viewerBuilder.eq).toHaveBeenNthCalledWith(3, 'status', 'active')
+    expect(viewerBuilder.in).toHaveBeenCalledWith('status', ['active', 'invited'])
     expect(viewerBuilder.order).toHaveBeenCalledWith('id', { ascending: true })
-    expect(viewerBuilder.limit).toHaveBeenCalledWith(1)
     expect(clientsBuilder.select).toHaveBeenCalledWith(
       'id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,created_at,updated_at',
     )
     expect(clientsBuilder.eq).toHaveBeenCalledWith('workspace_id', workspaceId)
     expect(workspaceBuilder.abortSignal).toHaveBeenCalledWith(controller.signal)
-    expect(viewerBuilder.abortSignal).toHaveBeenCalledWith(controller.signal)
+    expect(viewerAbortSignal).toHaveBeenCalledWith(controller.signal)
     expect(clientsAbortSignal).toHaveBeenCalledWith(controller.signal)
     expect(result).toEqual({
       workspace,
@@ -220,6 +271,59 @@ describe('getAdminWorkspaceView', () => {
       },
       clients,
     })
+  })
+
+  it('allows a manual-password owner to preview before first sign-in', async () => {
+    arrange({
+      viewerData: {
+        ...ownerRow,
+        status: 'invited',
+        provisioning_method: 'admin_temporary_password',
+        password_change_required: true,
+      },
+    })
+
+    await expect(getAdminWorkspaceView(workspaceId)).resolves.toMatchObject({
+      workspace: { id: workspaceId },
+      viewer: { workspace_id: workspaceId, email: ownerRow.email_normalized },
+    })
+  })
+
+  it('filters non-previewable historical owner rows before selecting the owner', async () => {
+    arrange({
+      viewerData: [
+        {
+          ...ownerRow,
+          status: 'invited',
+          provisioning_method: 'email_invite',
+          password_change_required: false,
+        },
+        ownerRow,
+      ],
+    })
+
+    await expect(getAdminWorkspaceView(workspaceId)).resolves.toMatchObject({
+      viewer: { workspace_id: workspaceId, email: ownerRow.email_normalized },
+    })
+  })
+
+  it('fails closed when more than one owner is previewable', async () => {
+    const { clientsBuilder } = arrange({
+      viewerData: [
+        ownerRow,
+        {
+          ...ownerRow,
+          status: 'invited',
+          provisioning_method: 'admin_temporary_password',
+          password_change_required: true,
+        },
+      ],
+    })
+
+    await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
+      'This client workspace does not have an available owner to preview.',
+    )
+    expect(clientsBuilder.select).not.toHaveBeenCalled()
   })
 
   it.each<{
@@ -260,13 +364,29 @@ describe('getAdminWorkspaceView', () => {
     expect(clientsBuilder.select).not.toHaveBeenCalled()
   })
 
-  it('requires an active owner bound to the selected workspace', async () => {
+  it('requires a previewable owner bound to the selected workspace', async () => {
     const { clientsBuilder } = arrange({
       viewerData: { ...ownerRow, workspace_id: otherWorkspaceId },
     })
 
     await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
-      'This client workspace does not have an active owner to preview.',
+      'This client workspace does not have an available owner to preview.',
+    )
+    expect(clientsBuilder.select).not.toHaveBeenCalled()
+  })
+
+  it('rejects an ordinary unaccepted email invitation', async () => {
+    const { clientsBuilder } = arrange({
+      viewerData: {
+        ...ownerRow,
+        status: 'invited',
+        provisioning_method: 'email_invite',
+        password_change_required: false,
+      },
+    })
+
+    await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
+      'This client workspace does not have an available owner to preview.',
     )
     expect(clientsBuilder.select).not.toHaveBeenCalled()
   })

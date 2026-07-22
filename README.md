@@ -107,9 +107,12 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   Edge hard lifetime; revisit the invariant before self-hosting or increasing
   worker limits.
 - The administrator workspace selector is an explicit URL-scoped, read-only
-  preview that reuses the tenant Clients and Guest Resources layout/pages. It does not
-  impersonate the tenant, mutate the administrator's Auth context, enable
-  client mutations, or silently fall back to another workspace.
+  preview that reuses the tenant Clients and Guest Resources layout/pages. It
+  includes active owners and newly created manual-password accounts that are
+  pending first sign-in, but excludes ordinary unaccepted email invitations,
+  revoked memberships, and inactive workspaces. It does not impersonate the
+  tenant, mutate the administrator's Auth context, enable client mutations, or
+  silently fall back to another workspace.
 - Suspend/reactivate uses a separate durable service-only lifecycle claim. The
   database transition commits first and remains authoritative while Auth is
   reconciled. A different request token can never steal a claim automatically;

@@ -22,7 +22,9 @@ A platform administrator can:
 - create one private workspace and account without sending an email;
 - receive a server-generated temporary password exactly once;
 - issue a replacement temporary password when the prior value is lost;
-- select a private workspace whose owner account is active from the administrator navigation; and
+- select an active-owner workspace or a newly created manual-password
+  workspace that is pending first sign-in from the administrator navigation;
+  and
 - open the same Clients experience that workspace's owner uses, in a visibly
   read-only administrator preview without impersonating the owner.
 
@@ -46,7 +48,11 @@ The administrator workspace route is
 `/admin/workspaces/:workspaceId/clients`. The route parameter is the selected
 view; it never overwrites `AuthContext.workspace`, Auth/JWT metadata, or a
 membership. Unknown, malformed, default, archived, suspended, or unauthorized
-workspace IDs fail closed. The view is deliberately read-only.
+workspace IDs fail closed. Ordinary unaccepted email invitations are not
+previewable. A manual-password workspace becomes previewable after its
+one-time credential is successfully issued, even though the owner remains
+unable to access tenant data until replacing that password. The view is
+deliberately read-only.
 It reuses the tenant workspace layout and Clients page, including the same
 client rows and loading, empty, and error states. A persistent preview banner
 and workspace selector preserve administrator context; write controls are
@@ -81,6 +87,10 @@ administrator console.
 - Revocation denies database access and archives the private workspace before
   deleting the exact marked Auth identity. Interrupted deletion remains under
   a visible, retryable cleanup claim and never re-enables workspace access.
+- Completed revoked invitation records remain in the audit history but expose
+  no repeated cleanup action in the administrator UI. A genuinely interrupted
+  deletion is shown only as passive operator-review state unless the dedicated
+  manual-account deletion workflow can safely resume it.
 
 ## Production backend release unit
 
@@ -136,6 +146,9 @@ still be verified together on the reviewed frontend commit.
 - The administrator selector changes only the explicit URL. The selected route
   renders the same tenant Clients experience with mutations disabled. Back,
   reload, and workspace A → B changes never show cached A data under B.
+- A successfully issued manual-password account appears in the selector before
+  first sign-in; an ordinary unaccepted email invitation, provisioning failure,
+  revoked membership, or archived workspace never appears.
 - Invalid and stale workspace IDs never fall back to the default workspace or
   an unfiltered client query.
 - Duplicate-email and concurrent creates produce at most one live workspace

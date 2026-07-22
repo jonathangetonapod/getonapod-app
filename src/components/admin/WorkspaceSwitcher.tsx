@@ -79,7 +79,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
           <Command>
             <CommandInput placeholder="Search workspaces…" />
             <CommandList>
-              <CommandEmpty>No active client workspace found.</CommandEmpty>
+              <CommandEmpty>No available client workspace found.</CommandEmpty>
               <CommandGroup>
                 {workspaces.map((workspace) => (
                   <CommandItem
