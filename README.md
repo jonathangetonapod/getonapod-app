@@ -26,9 +26,10 @@ The Sub-agency Workspace Foundation is the current release candidate. It adds
 exactly one transferable owner per private workspace, admins and members,
 `/app/workspace-users`, native platform-owner management of a selected
 workspace, independent employee lifecycle controls, and workspace-wide token
-revocation. Its ninth migration,
-new Edge Function, stronger hosted Auth password policy, and frontend are not
-production-active until the cutover checks in this document pass. Client
+revocation. Its ninth foundation migration, tenth forward platform-owner
+management migration, new Edge Function, stronger hosted Auth password policy,
+and frontend are not production-active until the cutover checks in this
+document pass. Client
 Podcast System is the next tenant module after that foundation is stable.
 
 The privileged-browser-key containment gate is complete. Railway now supplies
@@ -440,11 +441,14 @@ for this cutover; it can overwrite unrelated hosted Auth settings.
 
 Before the foundation cutover, the production migration ledger records eight
 coordinated versions. Migration
-`20260722000100_subagency_workspace_foundation.sql` becomes the ninth only after
-the reviewed production apply and catalog verification succeed.
-Apply those complete current files to a fresh dedicated staging baseline, or
-replay staging from its pre-MVP backup; do not assume that an older draft of a
-release migration has been upgraded in place.
+`20260722000100_subagency_workspace_foundation.sql` becomes the ninth and
+`20260722000200_platform_owner_workspace_management.sql` becomes the tenth only
+after their reviewed, ordered production apply and catalog verification
+succeed. The tenth migration is also the forward upgrade for any controlled
+environment that applied the foundation while selected-workspace platform
+access was still read-only. Apply the complete current files to a fresh
+dedicated staging baseline, or apply the tenth migration after the recorded
+ninth version; never assume edits to an already-applied migration were replayed.
 
 ## Verification
 
@@ -458,7 +462,7 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` runs the release-shape verifier, parses all nine release
+`check:static` runs the release-shape verifier, parses all ten release
 migrations, the catalog verifier, and both rollback behavior suites with a
 PostgreSQL grammar parser, runs both
 TypeScript checks, the zero-warning

@@ -46,7 +46,13 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
   const selected = workspaces.find((workspace) => workspace.id === selectedId)
 
   return (
-    <div className={cn(presentation === 'sidebar' ? 'border-b border-border p-3' : 'w-full sm:w-72')}>
+    <div
+      data-testid="workspace-switcher"
+      className={cn(
+        'min-w-0',
+        presentation === 'sidebar' ? 'border-b border-border p-3' : 'w-full max-w-full',
+      )}
+    >
       {presentation === 'sidebar' && (
         <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Switch workspace
@@ -59,10 +65,10 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
             role="combobox"
             aria-expanded={open}
             aria-label="Select a workspace"
-            className="w-full justify-between"
+            className="w-full min-w-0 justify-between overflow-hidden"
             disabled={workspacesQuery.isLoading || Boolean(workspacesQuery.error)}
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               {workspacesQuery.isLoading
                 ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                 : <Building2 className="h-4 w-4 shrink-0" />}
@@ -93,7 +99,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
                     }}
                   >
                     <Check className={cn('mr-2 h-4 w-4', selectedId === workspace.id ? 'opacity-100' : 'opacity-0')} />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1 overflow-hidden">
                       <span className="block truncate">{workspace.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">{workspace.slug}</span>
                     </span>

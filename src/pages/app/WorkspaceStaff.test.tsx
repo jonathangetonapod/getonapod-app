@@ -249,9 +249,40 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
 
     expect(await screen.findByText('Workspace users unavailable')).toBeInTheDocument()
-    expect(screen.getByText('The workspace staff response did not match the signed-in account.')).toBeInTheDocument()
+    expect(screen.getByText('The workspace staff response did not match the selected workspace.')).toBeInTheDocument()
     expect(mockedInvite).not.toHaveBeenCalled()
     expect(mockedMutate).not.toHaveBeenCalled()
+  })
+
+  it('identifies a stale read-only backend without blaming the platform-owner session', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'platform@example.com' },
+      workspace: null,
+      membership: null,
+      isPlatformAdmin: true,
+      refreshAccount,
+      refreshSession,
+      signOut,
+    } as never)
+    mockedList.mockResolvedValue({
+      ...ownerView,
+      capabilities: {
+        read_only: true,
+        invite_roles: [],
+        can_update_roles: false,
+        can_transfer_owner: false,
+      },
+      members: [
+        { ...owner, allowed_actions: [] },
+        { ...admin, allowed_actions: [] },
+      ],
+    })
+
+    renderPage(workspaceId)
+
+    expect(await screen.findByText('Workspace users unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Platform-owner workspace management is not active on the backend yet.')).toBeInTheDocument()
+    expect(screen.queryByText(/did not match the signed-in account/i)).not.toBeInTheDocument()
   })
 
   it('does not call the service for an invalid selected workspace address', async () => {

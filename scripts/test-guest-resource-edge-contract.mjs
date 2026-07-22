@@ -8,6 +8,10 @@ const migration = readFileSync(
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql',
   'utf8',
 )
+const forwardMigration = readFileSync(
+  'supabase/migrations/20260722000200_platform_owner_workspace_management.sql',
+  'utf8',
+)
 
 for (const [name, source] of [
   ['get-guest-resources', portal],
@@ -68,6 +72,9 @@ assert.match(management, /data === null \? null : resourceDto\(data\)/u, 'delete
 assert.match(migration, /CREATE OR REPLACE FUNCTION public\.platform_workspace_guest_resource_mutation_v1\([\s\S]*?actor_role := public\.workspace_staff_actor_role_v1\([\s\S]*?IF actor_role <> 'platform_admin'/u)
 assert.match(migration, /IF public\.is_platform_admin_identity\(p_actor_user_id, actor_email\) THEN[\s\S]*?IF normalized_action = 'list' THEN[\s\S]*?workspace_guest_resource_operation_manager_v1[\s\S]*?platform_workspace_guest_resource_mutation_v1/u)
 assert.match(migration, /REVOKE ALL ON FUNCTION public\.platform_workspace_guest_resource_mutation_v1\([\s\S]*?FROM PUBLIC, anon, authenticated, service_role/u)
+assert.match(forwardMigration, /CREATE OR REPLACE FUNCTION public\.platform_workspace_guest_resource_mutation_v1\([\s\S]*?IF actor_role <> 'platform_admin'/u)
+assert.match(forwardMigration, /CREATE OR REPLACE FUNCTION public\.workspace_guest_resource_operation_v1\([\s\S]*?platform_workspace_guest_resource_mutation_v1/u)
+assert.match(forwardMigration, /REVOKE ALL ON FUNCTION public\.platform_workspace_guest_resource_mutation_v1\([\s\S]*?FROM PUBLIC, anon, authenticated, service_role/u)
 assert.match(management, /optionalCanonicalGuestResourceContent\(input\.content\)/u, 'workspace writes must reject non-canonical resource content at the Edge boundary')
 assert.match(management, /title: requireResourceText\(input\.title, "title", 200\)/u, 'workspace title input must use the Unicode code-point contract')
 assert.match(management, /description: requireResourceText\(input\.description, "description", 2_000\)/u, 'workspace description input must use the Unicode code-point contract')

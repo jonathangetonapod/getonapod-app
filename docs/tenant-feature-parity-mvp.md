@@ -25,8 +25,8 @@ The Sub-agency Workspace Foundation is now the reviewed release candidate. It
 adds one transferable owner plus admins/members, workspace-managed staff,
 native platform-owner selected-workspace management, and independent
 employee/workspace lifecycles. It remains pre-production until migration 9,
-the new/changed Edge Functions, hosted Auth policy, frontend, and live
-acceptance complete.
+the forward platform-owner management migration 10, the new/changed Edge
+Functions, hosted Auth policy, frontend, and live acceptance complete.
 
 ## Product goal
 

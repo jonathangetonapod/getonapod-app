@@ -57,12 +57,21 @@ const emptyInvite: WorkspaceStaffInviteInput = {
 function validateView(
   view: WorkspaceStaffView,
   workspaceId: string,
+  isPlatformWorkspace: boolean,
 ): WorkspaceStaffView {
-  if (
-    view.workspace.id !== workspaceId
-    || view.capabilities.read_only
-  ) {
-    throw new Error('The workspace staff response did not match the signed-in account.')
+  if (view.workspace.id !== workspaceId) {
+    throw new Error(
+      isPlatformWorkspace
+        ? 'The workspace staff response did not match the selected workspace.'
+        : 'The workspace staff response did not match the signed-in account.',
+    )
+  }
+  if (view.capabilities.read_only) {
+    throw new Error(
+      isPlatformWorkspace
+        ? 'Platform-owner workspace management is not active on the backend yet.'
+        : 'The workspace staff response did not match the signed-in account.',
+    )
   }
   return view
 }
@@ -137,6 +146,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     queryFn: async () => validateView(
       await listWorkspaceStaff(workspaceId),
       workspaceId,
+      isPlatformWorkspace,
     ),
     enabled: validWorkspaceId,
     retry: false,

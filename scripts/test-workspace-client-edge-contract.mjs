@@ -7,6 +7,10 @@ const migration = readFileSync(
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql',
   'utf8',
 )
+const forwardMigration = readFileSync(
+  'supabase/migrations/20260722000200_platform_owner_workspace_management.sql',
+  'utf8',
+)
 
 assert.match(edge, /if \(req\.method === 'OPTIONS'\) return optionsResponse\(req, METHODS\)/u)
 assert.match(edge, /return errorResponse\(req, METHODS, error\)/u)
@@ -28,5 +32,8 @@ assert.match(migration, /IF normalized_action <> 'list' AND actor_role = 'member
 assert.match(migration, /'workspace\.client\.(?:created|updated|deleted)'[\s\S]*?'client'[\s\S]*?p_actor_user_id/u)
 assert.match(migration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?TEXT, UUID, UUID, JSONB, UUID, BIGINT[\s\S]*?\) FROM PUBLIC, anon, authenticated;/u)
 assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?TEXT, UUID, UUID, JSONB, UUID, BIGINT[\s\S]*?\) TO service_role;/u)
+assert.match(forwardMigration, /CREATE OR REPLACE FUNCTION public\.workspace_client_operation\([\s\S]*?actor_is_authorized := public\.is_platform_admin_identity/u)
+assert.match(forwardMigration, /CREATE OR REPLACE FUNCTION public\.workspace_client_operation_v2\([\s\S]*?IF public\.is_platform_admin_identity\(p_actor_user_id, actor_email\) THEN[\s\S]*?p_token_issued_at,[\s\S]*?true/u)
+assert.doesNotMatch(forwardMigration, /platform administrator preview is read-only/u)
 
 process.stdout.write('Workspace Client Edge contract checks passed\n')

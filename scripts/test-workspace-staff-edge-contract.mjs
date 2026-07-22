@@ -7,6 +7,10 @@ const migration = readFileSync(
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql',
   'utf8',
 )
+const forwardMigration = readFileSync(
+  'supabase/migrations/20260722000200_platform_owner_workspace_management.sql',
+  'utf8',
+)
 
 const cutoverGuardIndex = migration.indexOf('DO $cutover_claim_guard$')
 assert.ok(cutoverGuardIndex > 0, 'provider-claim cutover guard must remain installed')
@@ -51,7 +55,20 @@ for (const rpc of [
   'transfer_workspace_owner_v1',
 ]) {
   assert.match(source, new RegExp(`"${rpc}"`, 'u'), `${rpc} must remain version-pinned`)
+  assert.match(
+    forwardMigration,
+    new RegExp(`CREATE OR REPLACE FUNCTION public\\.${rpc}\\(`, 'u'),
+    `${rpc} must be upgraded for already-applied foundation databases`,
+  )
 }
+
+assert.match(forwardMigration, /'read_only', false/u)
+assert.match(forwardMigration, /WHEN 'platform_admin' THEN jsonb_build_array\('admin', 'member'\)/u)
+assert.doesNotMatch(
+  forwardMigration,
+  /workspace_staff_actor_role_v1\([\s\S]{0,180}?p_token_issued_at, false/u,
+  'every upgraded staff operation must explicitly permit platform-owner management',
+)
 
 for (const edgeCall of [
   /"workspace_staff_list_v1", \{\s*p_workspace_id: workspaceId,\s*p_actor_user_id: actorUserId,\s*p_token_issued_at: tokenIssuedAt/u,

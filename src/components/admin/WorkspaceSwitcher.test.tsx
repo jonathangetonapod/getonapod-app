@@ -69,7 +69,11 @@ describe('WorkspaceSwitcher', () => {
       presentation: 'toolbar',
     })
 
-    expect(await screen.findByRole('combobox', { name: 'Select a workspace' })).toHaveTextContent('Bravo')
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
+    expect(trigger).toHaveTextContent('Bravo')
+    expect(trigger).toHaveClass('w-full', 'min-w-0', 'overflow-hidden')
+    expect(screen.getByTestId('workspace-switcher')).toHaveClass('w-full', 'min-w-0', 'max-w-full')
+    expect(screen.getByTestId('workspace-switcher')).not.toHaveClass('sm:w-72')
     expect(screen.queryByText('Switch workspace')).not.toBeInTheDocument()
   })
 

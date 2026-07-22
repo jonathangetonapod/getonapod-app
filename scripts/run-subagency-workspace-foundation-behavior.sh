@@ -11,6 +11,7 @@ readonly PRODUCTION_PROJECT_REF='ysjwveqnwjysldpfqzov'
 readonly -a SOURCE_INPUTS=(
   'scripts/run-subagency-workspace-foundation-behavior.sh'
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql'
+  'supabase/migrations/20260722000200_platform_owner_workspace_management.sql'
   "${BEHAVIOR_TEST}"
 )
 readonly -a REQUIRED_ENV=(

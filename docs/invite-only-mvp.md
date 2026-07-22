@@ -18,7 +18,8 @@ deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The production
 tenant routes now expose Clients and Guest Resources.
 
 The Sub-agency Workspace Foundation is the current release candidate, not yet
-production-active in this document. It adds migration 9,
+production-active in this document. It adds foundation migration 9 and the
+forward platform-owner management migration 10,
 `manage-workspace-staff`, one transferable owner plus admins/members,
 `/app/workspace-users`, and native platform-owner management of a selected
 workspace. Hosted Auth
@@ -269,8 +270,11 @@ an external integration.
    telemetry under the incident process.
 9. For a fresh non-production baseline, apply the six historical cutover
    migrations, the manual-account seventh migration, the Guest Resources eighth
-   migration, and the Sub-agency Workspace Foundation ninth migration in
-   order. An older draft is not an in-place upgrade path.
+   migration, the Sub-agency Workspace Foundation ninth migration, and
+   `20260722000200_platform_owner_workspace_management.sql` as migration 10 in
+   order. On a controlled environment that already recorded migration 9, apply
+   migration 10 as the forward upgrade; edits to migration 9 are not an
+   in-place upgrade path.
 
 For hosted production Auth, use `npm run verify:hosted-auth -- --project-ref
 ysjwveqnwjysldpfqzov` in read-only mode first. If it reports drift, the
@@ -408,7 +412,7 @@ Administrator credentials are required, and any unexpected incomplete record
 converts the run to a failure. Exact variable names and a safe command template
 are in the root README.
 
-Run `scripts/staging-database-verifier.sh` after all nine migrations. Provide
+Run `scripts/staging-database-verifier.sh` after all ten migrations. Provide
 the connection only through `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `PGPASSWORD`, and `PGSSLMODE=verify-full`, plus
 `STAGING_DB_EXPECTED_PGHOST`, mandatory
@@ -547,7 +551,7 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` verifies the exact manifest/release shape; parses all nine
+`check:static` verifies the exact manifest/release shape; parses all ten
 migrations, the catalog verifier, and both rollback behavior suites with a
 PostgreSQL grammar parser; checks app and
 staging TypeScript; enforces zero warnings on the MVP lint scope; tests
