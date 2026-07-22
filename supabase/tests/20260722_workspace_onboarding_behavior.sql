@@ -64,9 +64,7 @@ BEGIN
     'public.workspace_onboarding_client_operation_v1(text,uuid,text,jsonb)',
     'public.set_workspace_onboarding_ai_profile_v1(uuid,integer,text,jsonb,text)',
     'public.record_workspace_onboarding_invitation_v1(uuid,text,text,text)',
-    'public.record_workspace_onboarding_change_request_v1(uuid,text,text,text)',
-    'public.claim_workspace_onboarding_reminders_v1(integer)',
-    'public.complete_workspace_onboarding_notification_v1(uuid,text,text,text)'
+    'public.record_workspace_onboarding_change_request_v1(uuid,text,text,text)'
   ]
   LOOP
     IF to_regprocedure(required_function) IS NULL
@@ -77,6 +75,14 @@ BEGIN
       RAISE EXCEPTION 'onboarding RPC % is missing or exposed', required_function;
     END IF;
   END LOOP;
+
+  IF to_regprocedure('public.claim_workspace_onboarding_reminders_v1(integer)') IS NOT NULL
+    OR to_regprocedure(
+      'public.complete_workspace_onboarding_notification_v1(uuid,text,text,text)'
+    ) IS NOT NULL
+  THEN
+    RAISE EXCEPTION 'automated onboarding reminder RPCs were not retired';
+  END IF;
 
   IF NOT EXISTS (
     SELECT 1
@@ -243,7 +249,6 @@ DECLARE
   instance_id UUID := gen_random_uuid();
   rotated_instance_id UUID := gen_random_uuid();
   asset_id UUID := gen_random_uuid();
-  reminder_id UUID;
   asset_path TEXT;
   response JSONB;
   profile JSONB := jsonb_build_object(
@@ -272,6 +277,14 @@ BEGIN
     WHERE workspace_id = workspace_a_id
   ) <> 1 THEN
     RAISE EXCEPTION 'new private workspace did not receive one default template';
+  END IF;
+
+  IF (
+    SELECT cardinality(template.reminder_days)
+    FROM public.workspace_onboarding_templates AS template
+    WHERE template.id = template_id
+  ) <> 0 THEN
+    RAISE EXCEPTION 'new workspace template still schedules reminders';
   END IF;
 
   SELECT version.id
@@ -345,7 +358,14 @@ BEGIN
       'recipient_name', 'Client Contact',
       'recipient_email', 'client-contact@example.invalid',
       'new_client', NULL,
-      'assigned_membership_ids', jsonb_build_array(member_a_membership_id)
+      'assigned_membership_ids', jsonb_build_array(member_a_membership_id),
+      'experience', jsonb_build_object(
+        'intro_title', 'Welcome, Client Contact',
+        'intro_body', 'A custom message from Onboarding Workspace A.',
+        'completion_message', 'Thanks. Onboarding Workspace A will review this.',
+        'accent_color', '#0F766E',
+        'logo_path', NULL
+      )
     ),
     owner_a_id,
     token_epoch
@@ -353,42 +373,26 @@ BEGIN
   IF response ->> 'id' IS DISTINCT FROM instance_id::TEXT
     OR response ->> 'workspace_id' IS DISTINCT FROM workspace_a_id::TEXT
     OR (response ->> 'client_created')::BOOLEAN IS DISTINCT FROM false
+    OR response ->> 'experience_title' IS DISTINCT FROM 'Welcome, Client Contact'
+    OR response ->> 'accent_color' IS DISTINCT FROM '#0F766E'
     OR (
       SELECT count(*)
       FROM public.workspace_onboarding_notifications AS notification
       WHERE notification.instance_id = workflow.instance_id
-    ) <> 4
+    ) <> 1
   THEN
     RAISE EXCEPTION 'workspace onboarding invitation was not created correctly';
   END IF;
 
-  SELECT notification.id
-  INTO reminder_id
-  FROM public.workspace_onboarding_notifications AS notification
-  WHERE notification.instance_id = workflow.instance_id
-    AND notification.kind = 'reminder'
-  ORDER BY notification.schedule_offset_days
-  LIMIT 1;
-  UPDATE public.workspace_onboarding_notifications
-  SET next_attempt_at = now()
-  WHERE id = reminder_id;
-  response := public.claim_workspace_onboarding_reminders_v1(10);
-  IF jsonb_array_length(response) <> 1
-    OR response -> 0 ->> 'notification_id' IS DISTINCT FROM reminder_id::TEXT
+  response := public.workspace_onboarding_client_operation_v1(
+    'get', instance_id, repeat('a', 64), '{}'::JSONB
+  );
+  IF response -> 'definition' ->> 'intro_title' IS DISTINCT FROM 'Welcome, Client Contact'
+    OR response -> 'definition' ->> 'completion_message'
+      IS DISTINCT FROM 'Thanks. Onboarding Workspace A will review this.'
+    OR response ->> 'accent_color' IS DISTINCT FROM '#0F766E'
   THEN
-    RAISE EXCEPTION 'due reminder was not claimed atomically';
-  END IF;
-  UPDATE public.workspace_onboarding_notifications
-  SET attempted_at = now() - interval '20 minutes'
-  WHERE id = reminder_id;
-  response := public.claim_workspace_onboarding_reminders_v1(10);
-  IF jsonb_array_length(response) <> 1
-    OR response -> 0 ->> 'notification_id' IS DISTINCT FROM reminder_id::TEXT
-    OR NOT public.complete_workspace_onboarding_notification_v1(
-      reminder_id, 'skipped', NULL, NULL
-    )
-  THEN
-    RAISE EXCEPTION 'stale reminder claim recovery was incorrect';
+    RAISE EXCEPTION 'per-client white-label experience was not snapshotted';
   END IF;
 
   response := public.workspace_onboarding_staff_list_v1(

@@ -277,22 +277,6 @@ export function validateOnboardingDefinition(value: unknown): OnboardingDefiniti
   }
 }
 
-export function validateReminderDays(value: unknown): number[] {
-  if (!Array.isArray(value) || value.length > 10) {
-    throw new HttpError(400, 'INVALID_FIELD', 'reminder_days must contain at most 10 days')
-  }
-  const result = value.map((day) => {
-    if (typeof day !== 'number' || !Number.isSafeInteger(day) || day < 1 || day > 89) {
-      throw new HttpError(400, 'INVALID_FIELD', 'reminder days must be integers from 1 to 89')
-    }
-    return day
-  })
-  if (new Set(result).size !== result.length) {
-    throw new HttpError(400, 'INVALID_FIELD', 'reminder days must be unique')
-  }
-  return [...result].sort((left, right) => left - right)
-}
-
 function emptyAnswer(value: unknown): boolean {
   return value === undefined
     || value === null
@@ -516,50 +500,46 @@ function escapeHtml(value: string): string {
 }
 
 export async function sendOnboardingEmail(input: {
-  kind: 'invitation' | 'reminder' | 'changes_requested'
+  kind: 'invitation' | 'changes_requested'
   workspaceName: string
   recipientName: string
   recipientEmail: string
   url: string
   expiresAt: string
+  accentColor?: string
 }): Promise<{ status: 'sent' | 'failed' | 'skipped'; providerMessageId: string | null; error: string | null }> {
   const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
   if (!apiKey) return { status: 'skipped', providerMessageId: null, error: null }
-  const from = Deno.env.get('RESEND_FROM_EMAIL')?.trim() || 'Get On A Pod <noreply@getonapod.com>'
+  const from = whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), input.workspaceName)
+  if (!from) return { status: 'skipped', providerMessageId: null, error: null }
   const workspaceName = escapeHtml(input.workspaceName)
   const recipientName = escapeHtml(input.recipientName)
   const url = escapeHtml(input.url)
+  const accentColor = /^#[0-9a-f]{6}$/iu.test(input.accentColor ?? '')
+    ? (input.accentColor as string).toUpperCase()
+    : '#665CF2'
   const expiry = new Date(input.expiresAt).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     timeZone: 'UTC',
   })
-  const reminder = input.kind === 'reminder'
   const changesRequested = input.kind === 'changes_requested'
-  const subject = reminder
-    ? `Reminder: finish your onboarding for ${input.workspaceName}`
-    : changesRequested
-      ? `${input.workspaceName} requested onboarding updates`
-      : `${input.workspaceName} invited you to complete onboarding`
-  const heading = reminder
-    ? 'Your onboarding is waiting'
-    : changesRequested
-      ? 'A few onboarding updates are needed'
-      : 'Let’s build your podcast profile'
-  const lead = reminder
-    ? 'This is a friendly reminder that your onboarding is still waiting for you.'
-    : changesRequested
-      ? `${workspaceName} left question-level notes for you. Open your secure form to review them and submit a new revision.`
-      : `${workspaceName} has invited you to complete a secure podcast guest onboarding.`
-  const button = reminder ? 'Continue onboarding' : changesRequested ? 'Review requested changes' : 'Start onboarding'
-  const textLead = reminder
-    ? 'Reminder: your onboarding is still waiting.'
-    : changesRequested
-      ? `${input.workspaceName} requested updates to your onboarding.`
-      : `${input.workspaceName} invited you to complete onboarding.`
+  const subject = changesRequested
+    ? `${input.workspaceName} requested onboarding updates`
+    : `${input.workspaceName} invited you to complete onboarding`
+  const heading = changesRequested
+    ? 'A few onboarding updates are needed'
+    : 'Let’s build your podcast profile'
+  const lead = changesRequested
+    ? `${workspaceName} left question-level notes for you. Open your secure form to review them and submit a new revision.`
+    : `${workspaceName} has invited you to complete a secure podcast guest onboarding.`
+  const button = changesRequested ? 'Review requested changes' : 'Start onboarding'
+  const textLead = changesRequested
+    ? `${input.workspaceName} requested updates to your onboarding.`
+    : `${input.workspaceName} invited you to complete onboarding.`
   const text = `${textLead}\n\nContinue securely: ${input.url}\n\nThis private link expires ${expiry}. Do not forward it.`
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f3ff;font-family:Arial,sans-serif;color:#19172d"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:linear-gradient(135deg,#201c50,#665cf2);border-radius:20px 20px 0 0;padding:32px;color:#fff"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">${workspaceName}</div><h1 style="margin:10px 0 0;font-size:28px">${heading}</h1></div><div style="background:#fff;border:1px solid #e4e1f5;border-top:0;border-radius:0 0 20px 20px;padding:32px"><p style="font-size:17px">Hi ${recipientName},</p><p style="line-height:1.65;color:#514d68">${lead}</p><div style="padding:20px 0;text-align:center"><a href="${url}" style="display:inline-block;background:#665cf2;color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:10px">${button}</a></div><p style="font-size:13px;color:#77728e">This private link expires ${escapeHtml(expiry)}. Please do not forward it.</p></div></div></body></html>`
+  const html = `<!doctype html><html><body style="margin:0;background:#f5f6f8;font-family:Arial,sans-serif;color:#19172d"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:linear-gradient(135deg,#171827,${accentColor});border-radius:20px 20px 0 0;padding:32px;color:#fff"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">${workspaceName}</div><h1 style="margin:10px 0 0;font-size:28px">${heading}</h1></div><div style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 20px 20px;padding:32px"><p style="font-size:17px">Hi ${recipientName},</p><p style="line-height:1.65;color:#514d68">${lead}</p><div style="padding:20px 0;text-align:center"><a href="${url}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:10px">${button}</a></div><p style="font-size:13px;color:#77728e">This private link expires ${escapeHtml(expiry)}. Please do not forward it.</p></div></div></body></html>`
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -577,6 +557,20 @@ export async function sendOnboardingEmail(input: {
   } catch {
     return { status: 'failed', providerMessageId: null, error: 'Email provider was unavailable' }
   }
+}
+
+export function whiteLabelOnboardingSender(configuredSender: string | undefined, workspaceName: string): string | null {
+  const configured = configuredSender?.trim() ?? ''
+  const bracketed = configured.match(/<([^<>]+)>\s*$/u)?.[1]?.trim()
+  const address = bracketed || configured
+  const safeAddress = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/u.test(address) ? address : null
+  if (!safeAddress) return null
+  const safeName = workspaceName
+    .replace(/[\r\n]/gu, ' ')
+    .replace(/["\\]/gu, '')
+    .trim()
+    .slice(0, 120) || 'Client Services'
+  return `"${safeName}" <${safeAddress}>`
 }
 
 export async function generatePitchProfile(

@@ -64,6 +64,13 @@ try {
     assert.equal(response.headers.get('cache-control'), 'private, no-store', route)
   }
 
+  const onboardingShell = await fetch(`${origin}/onboarding/11111111-1111-4111-8111-111111111111.1.private-capability`)
+  const onboardingHtml = await onboardingShell.text()
+  assert.match(onboardingHtml, /<title>Secure client onboarding<\/title>/u)
+  assert.match(onboardingHtml, /Private and secure client onboarding\./u)
+  assert.doesNotMatch(onboardingHtml, /Get On A Pod|getonapod\.com/iu)
+  assert.doesNotMatch(onboardingHtml, /application\/ld\+json|property="og:|name="twitter:/iu)
+
   let indexHtml = ''
   for (const route of ['/', '/resources', '/blog/example-post', '/course', '/what-to-expect']) {
     const response = await fetch(`${origin}${route}`)

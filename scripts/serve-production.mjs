@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { lstat } from 'node:fs/promises'
+import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,6 +11,27 @@ const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', '
 const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|resources\/?$|blog(?:\/[^/]+)?\/?$|course\/?$|what-to-expect\/?$)/
 const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
 const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
+const ONBOARDING_ROUTE_PATTERN = /^\/onboarding\/[^/]+\/?$/u
+
+export function whiteLabelOnboardingShell(source) {
+  const withoutStructuredData = source.replace(
+    /\s*<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/giu,
+    '',
+  )
+  const withoutMarketingMeta = withoutStructuredData
+    .replace(/\s*<meta\s+(?:name=["'](?:theme-color|application-name|apple-mobile-web-app-title|msapplication-TileColor|title|description|keywords|author|robots|twitter:[^"']+)["']|property=["']og:[^"']+["'])[^>]*\/>/giu, '')
+    .replace(/\s*<link\s+rel=["'](?:canonical|manifest|icon|apple-touch-icon)["'][^>]*\/>/giu, '')
+    .replace(/<title>[\s\S]*?<\/title>/iu, '<title>Secure client onboarding</title>')
+
+  const privateMetadata = `
+    <meta name="theme-color" content="#334155" />
+    <meta name="application-name" content="Client onboarding" />
+    <meta name="apple-mobile-web-app-title" content="Client onboarding" />
+    <meta name="description" content="Private and secure client onboarding." />
+    <meta name="author" content="Client Services" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />`
+  return withoutMarketingMeta.replace('</head>', `${privateMetadata}\n  </head>`)
+}
 
 export function isPrivateApplicationPath(pathname) {
   return !PUBLIC_FILE_PATTERN.test(pathname) && !INDEXABLE_ROUTE_PATTERN.test(pathname)
@@ -81,6 +102,17 @@ export function createProductionServer({ publicDirectory = DEFAULT_PUBLIC_DIRECT
           cleanUrls: false,
           directoryListing: false,
         })
+        return
+      }
+
+      if (ONBOARDING_ROUTE_PATTERN.test(pathname)) {
+        const source = await readFile(path.join(publicDirectory, 'index.html'), 'utf8')
+        const html = whiteLabelOnboardingShell(source)
+        response.statusCode = 200
+        response.setHeader('Content-Type', 'text/html; charset=utf-8')
+        response.setHeader('Content-Length', Buffer.byteLength(html))
+        if (request.method === 'HEAD') response.end()
+        else response.end(html)
         return
       }
 

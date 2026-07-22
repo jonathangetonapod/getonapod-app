@@ -124,6 +124,11 @@ export interface OnboardingInstanceSummary {
   draft_lock_version: number
   open_comment_count: number
   profile_status: 'pending' | 'generated' | 'failed' | 'edited' | 'approved' | null
+  experience_title?: string
+  experience_body?: string
+  experience_completion_message?: string
+  accent_color?: string
+  experience_logo_path?: string | null
 }
 
 export interface OnboardingComment {
@@ -218,6 +223,7 @@ export interface OnboardingInvitationResult {
 export interface ClientOnboardingView {
   id: string
   workspace: { name: string; logo_url: string | null }
+  accent_color: string
   recipient_name?: string
   status: OnboardingStatus
   expires_at: string
@@ -433,6 +439,13 @@ export interface StartOnboardingInput {
   expires_in_days: number
   assigned_membership_ids: string[]
   send_email: boolean
+  experience: {
+    intro_title: string
+    intro_body: string
+    completion_message: string
+    accent_color: string
+    logo_file?: File | null
+  }
 }
 
 export async function startWorkspaceOnboarding(
@@ -440,10 +453,30 @@ export async function startWorkspaceOnboarding(
   input: StartOnboardingInput,
 ): Promise<OnboardingInvitationResult> {
   const canonicalWorkspaceId = uuid(workspaceId)
+  const { experience, ...invitation } = input
+  const logoFile = experience.logo_file
+  if (logoFile && (
+    !['image/jpeg', 'image/png', 'image/webp'].includes(logoFile.type)
+    || logoFile.size < 1
+    || logoFile.size > 2_097_152
+  )) {
+    throw new Error('The client logo must be a PNG, JPEG, or WebP image up to 2 MB.')
+  }
   const data = record(await staffInvoke<unknown>({
     action: 'start',
     workspace_id: canonicalWorkspaceId,
-    ...input,
+    ...invitation,
+    experience: {
+      intro_title: experience.intro_title,
+      intro_body: experience.intro_body,
+      completion_message: experience.completion_message,
+      accent_color: experience.accent_color,
+      brand_logo: logoFile ? {
+        filename: logoFile.name,
+        mime_type: logoFile.type,
+        file_base64: await fileBase64(logoFile),
+      } : null,
+    },
   }, 'The onboarding invitation could not be created.'))
   return {
     instance: detailValue(data.instance, canonicalWorkspaceId),
@@ -551,6 +584,9 @@ function clientViewValue(value: unknown): ClientOnboardingView {
       name: stringValue(workspace.name) as string,
       logo_url: stringValue(workspace.logo_url, true),
     },
+    accent_color: typeof source.accent_color === 'string' && /^#[0-9a-f]{6}$/iu.test(source.accent_color)
+      ? source.accent_color.toUpperCase()
+      : '#665CF2',
     status: source.status as OnboardingStatus,
     answers: record(source.answers),
     comments: Array.isArray(source.comments) ? source.comments as ClientOnboardingView['comments'] : [],

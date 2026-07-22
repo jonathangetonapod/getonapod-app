@@ -110,6 +110,19 @@ async function presentClientView(
   }
   const workspace = responseRecord(result.workspace, 'workspace')
   const status = responseString(result.status, 'status', 32)
+  const accentColor = typeof result.accent_color === 'string' && /^#[0-9A-F]{6}$/u.test(result.accent_color)
+    ? result.accent_color
+    : '#665CF2'
+  let presentedLogoUrl = logoUrl(workspace.logo_path)
+  if (result.experience_logo_path !== null && result.experience_logo_path !== undefined) {
+    const experienceLogoPath = responseString(result.experience_logo_path, 'experience logo path', 500)
+    const expectedPath = new RegExp(`^[0-9a-f-]{36}/${instanceId}/brand-[0-9a-f-]{36}\\.(?:png|jpg|webp)$`, 'u')
+    if (!expectedPath.test(experienceLogoPath) || experienceLogoPath.includes('..')) {
+      throw new HttpError(500, 'INVALID_ONBOARDING_RESPONSE', 'The client logo was invalid')
+    }
+    const signedLogo = await admin.storage.from(BUCKET).createSignedUrl(experienceLogoPath, 3600)
+    if (!signedLogo.error) presentedLogoUrl = signedLogo.data.signedUrl
+  }
   if (['expired', 'revoked', 'approved', 'submitted'].includes(status)) {
     let completionMessage = ''
     if (result.definition && typeof result.definition === 'object' && !Array.isArray(result.definition)) {
@@ -120,8 +133,9 @@ async function presentClientView(
       id: instanceId,
       workspace: {
         name: responseString(workspace.name, 'workspace name', 200),
-        logo_url: logoUrl(workspace.logo_path),
+        logo_url: presentedLogoUrl,
       },
+      accent_color: accentColor,
       status,
       expires_at: result.expires_at,
       current_revision: result.current_revision,
@@ -157,17 +171,19 @@ async function presentClientView(
   }))
   return {
     ...result,
+    experience_logo_path: undefined,
     workspace: {
       name: responseString(workspace.name, 'workspace name', 200),
-      logo_url: logoUrl(workspace.logo_path),
+      logo_url: presentedLogoUrl,
     },
+    accent_color: accentColor,
     assets,
   }
 }
 
 function assertEditableStatus(view: Record<string, unknown>): void {
   if (view.status === 'expired') {
-    throw new HttpError(410, 'ONBOARDING_EXPIRED', 'This onboarding link has expired. Contact your agency for a new link')
+    throw new HttpError(410, 'ONBOARDING_EXPIRED', 'This onboarding link has expired. Contact the person who sent it for a new link')
   }
   if (view.status === 'revoked') {
     throw new HttpError(410, 'ONBOARDING_REVOKED', 'This onboarding link has been revoked')

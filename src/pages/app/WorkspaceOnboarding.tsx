@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, Link2, Loader2, MoreHorizontal, Plus, RefreshCw, Send, ShieldAlert, Sparkles } from 'lucide-react'
+import { Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, MoreHorizontal, Palette, Plus, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import OnboardingReviewDialog from '@/components/onboarding/OnboardingReviewDialog'
 import OnboardingTemplateBuilder, { type OnboardingTemplateDraft } from '@/components/onboarding/OnboardingTemplateBuilder'
@@ -18,7 +18,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
+import { DEFAULT_ONBOARDING_ACCENT, onboardingWorkspaceInitials, renderOnboardingBrandText } from '@/lib/onboardingBrand'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
   approveOnboarding,
@@ -63,6 +65,11 @@ interface StartForm {
   expires_in_days: string
   assigned_membership_ids: string[]
   send_email: boolean
+  experience_title: string
+  experience_body: string
+  experience_completion_message: string
+  accent_color: string
+  logo_file: File | null
 }
 
 type ConfirmationAction = 'revoke' | 'archive' | 'purge'
@@ -76,7 +83,29 @@ const blankStartForm: StartForm = {
   recipient_email: '',
   expires_in_days: '14',
   assigned_membership_ids: [],
-  send_email: true,
+  send_email: false,
+  experience_title: '',
+  experience_body: '',
+  experience_completion_message: '',
+  accent_color: DEFAULT_ONBOARDING_ACCENT,
+  logo_file: null,
+}
+
+const ACCENT_PRESETS = ['#665CF2', '#2563EB', '#0F766E', '#C2410C', '#BE185D', '#334155'] as const
+
+function experienceFromTemplate(template: OnboardingTemplate | undefined, workspaceName: string) {
+  return {
+    experience_title: renderOnboardingBrandText(template?.definition.intro_title ?? 'Welcome', workspaceName),
+    experience_body: renderOnboardingBrandText(
+      template?.definition.intro_body ?? 'Please share a few details so we can prepare your profile.',
+      workspaceName,
+    ),
+    experience_completion_message: renderOnboardingBrandText(
+      template?.definition.completion_message ?? `Thank you. ${workspaceName || 'Our team'} will review your answers and follow up.`,
+      workspaceName,
+    ),
+    accent_color: DEFAULT_ONBOARDING_ACCENT,
+  }
 }
 
 const statusLabels: Record<OnboardingInstanceSummary['status'], string> = {
@@ -116,6 +145,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const queryKey = [isPlatformWorkspace ? 'platform' : 'tenant', user?.id || 'unknown', 'workspace', workspaceId, 'onboarding'] as const
   const [startOpen, setStartOpen] = useState(false)
   const [startForm, setStartForm] = useState<StartForm>(blankStartForm)
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
   const [invitation, setInvitation] = useState<OnboardingInvitationResult | null>(null)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<OnboardingTemplate | null>(null)
@@ -139,7 +169,12 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   useEffect(() => {
     if (!startOpen || !data) return
     const defaultTemplate = publishedTemplates.find((template) => template.is_default) ?? publishedTemplates[0]
-    setStartForm({ ...blankStartForm, template_id: defaultTemplate?.id ?? '' })
+    setLogoPreviewUrl(null)
+    setStartForm({
+      ...blankStartForm,
+      template_id: defaultTemplate?.id ?? '',
+      ...experienceFromTemplate(defaultTemplate, data.workspace.name),
+    })
   }, [data, publishedTemplates, startOpen])
 
   const detailQuery = useQuery({
@@ -268,11 +303,21 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
   const handleClientChoice = (choice: string) => {
     if (choice === 'new') {
-      setStartForm((current) => ({ ...blankStartForm, template_id: current.template_id }))
+      setLogoPreviewUrl(null)
+      setStartForm((current) => ({
+        ...current,
+        client_choice: 'new',
+        client_name: '',
+        contact_person: '',
+        recipient_name: '',
+        recipient_email: '',
+        logo_file: null,
+      }))
       return
     }
     const client = data?.clients.find((candidate) => candidate.id === choice)
     if (!client) return
+    setLogoPreviewUrl(null)
     setStartForm((current) => ({
       ...current,
       client_choice: choice,
@@ -280,7 +325,33 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       contact_person: client.contact_person || '',
       recipient_name: client.contact_person || client.name,
       recipient_email: client.email || '',
+      logo_file: null,
     }))
+  }
+
+  const handleTemplateChoice = (templateId: string) => {
+    const template = publishedTemplates.find((candidate) => candidate.id === templateId)
+    setStartForm((current) => ({
+      ...current,
+      template_id: templateId,
+      ...experienceFromTemplate(template, data?.workspace.name ?? ''),
+    }))
+  }
+
+  const handleLogoChoice = (file: File | undefined) => {
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size < 1 || file.size > 2_097_152) {
+      toast.error('Choose a PNG, JPEG, or WebP logo up to 2 MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = () => toast.error('The logo preview could not be opened.')
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return
+      setLogoPreviewUrl(reader.result)
+      setStartForm((current) => ({ ...current, logo_file: file }))
+    }
+    reader.readAsDataURL(file)
   }
 
   const submitStart = () => {
@@ -297,6 +368,14 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       toast.error('Enter the new client name.')
       return
     }
+    if (
+      !startForm.experience_title.trim()
+      || !startForm.experience_body.trim()
+      || !startForm.experience_completion_message.trim()
+    ) {
+      toast.error('Complete the client-facing welcome and completion messages.')
+      return
+    }
     startMutation.mutate({
       template_id: startForm.template_id,
       client_id: startForm.client_choice === 'new' ? null : startForm.client_choice,
@@ -308,6 +387,13 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       expires_in_days: expiry,
       assigned_membership_ids: startForm.assigned_membership_ids,
       send_email: startForm.send_email,
+      experience: {
+        intro_title: startForm.experience_title,
+        intro_body: startForm.experience_body,
+        completion_message: startForm.experience_completion_message,
+        accent_color: startForm.accent_color,
+        logo_file: startForm.logo_file,
+      },
     })
   }
 
@@ -325,6 +411,11 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   }
 
   const effectiveWorkspace = data?.workspace
+  const agencyLogoUrl = workspaceLogoUrl(
+    effectiveWorkspace?.id,
+    effectiveWorkspace?.logo_path,
+    effectiveWorkspace?.logo_updated_at,
+  )
   const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
@@ -399,7 +490,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                 <div className="grid gap-4 lg:grid-cols-2">{data.templates.map((template) => (
                   <Card key={template.id} className={template.status === 'archived' ? 'opacity-60' : undefined}>
                     <CardHeader><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle>{template.name}</CardTitle>{template.is_default && <Badge>Default</Badge>}<Badge variant="outline" className="capitalize">{template.status}</Badge></div><CardDescription className="mt-2">{template.description || 'No internal description'}</CardDescription></div></div></CardHeader>
-                    <CardContent><div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground"><span>{template.definition.sections.length} sections</span><span>{template.definition.sections.reduce((total, section) => total + section.questions.length, 0)} questions</span><span>Version {template.published_version || 'draft'}</span><span>{template.reminder_days.length ? `Reminders: days ${template.reminder_days.join(', ')}` : 'No reminders'}</span></div>{template.status !== 'archived' && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingTemplate(template); setBuilderOpen(true) }}>Edit builder</Button><Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'duplicate', template })}><Copy className="mr-2 h-4 w-4" />Duplicate</Button>{template.status === 'published' && !template.is_default && <Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'default', template })}>Make default</Button>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => templateActionMutation.mutate({ action: 'archive', template })}>Archive</Button></div>}</CardContent>
+                    <CardContent><div className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground"><span>{template.definition.sections.length} sections</span><span>{template.definition.sections.reduce((total, section) => total + section.questions.length, 0)} questions</span><span>Version {template.published_version || 'draft'}</span></div>{template.status !== 'archived' && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingTemplate(template); setBuilderOpen(true) }}>Edit builder</Button><Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'duplicate', template })}><Copy className="mr-2 h-4 w-4" />Duplicate</Button>{template.status === 'published' && !template.is_default && <Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'default', template })}>Make default</Button>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => templateActionMutation.mutate({ action: 'archive', template })}>Archive</Button></div>}</CardContent>
                   </Card>
                 ))}</div>
               </TabsContent>}
@@ -410,19 +501,56 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       </div>
 
       <Dialog open={startOpen} onOpenChange={setStartOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Start client onboarding</DialogTitle><DialogDescription>Create a private, expiring link for one client contact. A copyable link is always shown even if email delivery is unavailable.</DialogDescription></DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2"><Label>Template</Label><Select value={startForm.template_id} onValueChange={(value) => setStartForm((current) => ({ ...current, template_id: value }))}><SelectTrigger><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2 sm:col-span-2"><Label>Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
-            {startForm.client_choice === 'new' && <><div className="space-y-2"><Label htmlFor="new-client-name">Client name</Label><Input id="new-client-name" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="new-contact">Contact person</Label><Input id="new-contact" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div></>}
-            <div className="space-y-2"><Label htmlFor="recipient-name">Invited contact name</Label><Input id="recipient-name" value={startForm.recipient_name} onChange={(event) => setStartForm((current) => ({ ...current, recipient_name: event.target.value }))} /></div>
-            <div className="space-y-2"><Label htmlFor="recipient-email">Invited contact email</Label><Input id="recipient-email" type="email" value={startForm.recipient_email} onChange={(event) => setStartForm((current) => ({ ...current, recipient_email: event.target.value }))} /></div>
-            <div className="space-y-2"><Label htmlFor="expiry-days">Link expires in days</Label><Input id="expiry-days" type="number" min={1} max={90} value={startForm.expires_in_days} onChange={(event) => setStartForm((current) => ({ ...current, expires_in_days: event.target.value }))} /></div>
-            <div className="flex items-center gap-2 pt-7"><Checkbox id="send-email" checked={startForm.send_email} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><Label htmlFor="send-email">Send branded invitation email</Label></div>
-            {data?.assignable_members.length ? <div className="space-y-2 sm:col-span-2"><Label>Assign read-only team members</Label><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></div> : null}
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto p-0">
+          <DialogHeader className="border-b px-6 pb-5 pt-6">
+            <DialogTitle>Start client onboarding</DialogTitle>
+            <DialogDescription>Choose the client and personalize the exact branded experience they will receive.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-6 px-6 py-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
+            <div className="space-y-6">
+              <section className="space-y-4">
+                <div><h3 className="font-semibold">Invitation details</h3><p className="text-sm text-muted-foreground">The form questions stay pinned to this published template version.</p></div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2"><Label>Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2 sm:col-span-2"><Label>Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
+                  {startForm.client_choice === 'new' && <><div className="space-y-2"><Label htmlFor="new-client-name">Client name</Label><Input id="new-client-name" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="new-contact">Contact person</Label><Input id="new-contact" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div></>}
+                  <div className="space-y-2"><Label htmlFor="recipient-name">Invited contact name</Label><Input id="recipient-name" value={startForm.recipient_name} onChange={(event) => setStartForm((current) => ({ ...current, recipient_name: event.target.value }))} /></div>
+                  <div className="space-y-2"><Label htmlFor="recipient-email">Invited contact email</Label><Input id="recipient-email" type="email" value={startForm.recipient_email} onChange={(event) => setStartForm((current) => ({ ...current, recipient_email: event.target.value }))} /></div>
+                </div>
+              </section>
+
+              <section className="space-y-4 rounded-2xl border bg-muted/20 p-4 sm:p-5">
+                <div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2 text-primary"><Palette className="h-5 w-5" /></div><div><h3 className="font-semibold">Customize this client’s experience</h3><p className="text-sm text-muted-foreground">These choices apply only to this secure link. The client sees your branding, never the platform brand.</p></div></div>
+                <div className="space-y-2"><Label htmlFor="experience-title">Welcome title</Label><Input id="experience-title" maxLength={300} value={startForm.experience_title} onChange={(event) => setStartForm((current) => ({ ...current, experience_title: event.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor="experience-body">Welcome message</Label><Textarea id="experience-body" rows={4} maxLength={3000} value={startForm.experience_body} onChange={(event) => setStartForm((current) => ({ ...current, experience_body: event.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor="experience-completion">Completion message</Label><Textarea id="experience-completion" rows={3} maxLength={2000} value={startForm.experience_completion_message} onChange={(event) => setStartForm((current) => ({ ...current, experience_completion_message: event.target.value }))} /></div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2"><Label>Accent color</Label><div className="flex flex-wrap items-center gap-2">{ACCENT_PRESETS.map((color) => <button key={color} type="button" aria-label={`Use accent ${color}`} aria-pressed={startForm.accent_color === color} className="h-8 w-8 rounded-full border-2 border-background shadow ring-offset-2 transition focus-visible:outline-none focus-visible:ring-2" style={{ backgroundColor: color, boxShadow: startForm.accent_color === color ? `0 0 0 2px ${color}` : undefined }} onClick={() => setStartForm((current) => ({ ...current, accent_color: color }))} />)}<Input aria-label="Custom accent color" type="color" value={startForm.accent_color} className="h-9 w-12 cursor-pointer p-1" onChange={(event) => setStartForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))} /></div></div>
+                  <div className="space-y-2"><Label htmlFor="client-onboarding-logo">Client logo override</Label><div className="flex flex-wrap items-center gap-2"><Button type="button" variant="outline" size="sm" asChild><label htmlFor="client-onboarding-logo" className="cursor-pointer"><ImagePlus className="mr-2 h-4 w-4" />{startForm.logo_file ? 'Replace logo' : 'Upload logo'}</label></Button>{startForm.logo_file && <Button type="button" variant="ghost" size="sm" onClick={() => { setLogoPreviewUrl(null); setStartForm((current) => ({ ...current, logo_file: null })) }}><X className="mr-1 h-4 w-4" />Use agency logo</Button>}</div><Input id="client-onboarding-logo" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { handleLogoChoice(event.target.files?.[0]); event.currentTarget.value = '' }} /><p className="text-xs text-muted-foreground">PNG, JPEG, or WebP up to 2 MB. Leave empty to use {data?.workspace.name}’s logo.</p></div>
+                </div>
+              </section>
+
+              <section className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2"><Label htmlFor="expiry-days">Link expires in days</Label><Input id="expiry-days" type="number" min={1} max={90} value={startForm.expires_in_days} onChange={(event) => setStartForm((current) => ({ ...current, expires_in_days: event.target.value }))} /></div>
+                <div className="rounded-xl border p-3"><label className="flex items-start gap-3"><Checkbox id="send-email" checked={startForm.send_email} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><span><span className="block text-sm font-medium">Send branded invitation email</span><span className="mt-1 block text-xs text-muted-foreground">Optional. No automated reminder or follow-up emails are sent.</span></span></label></div>
+                {data?.assignable_members.length ? <div className="space-y-2 sm:col-span-2"><Label>Assign read-only team members</Label><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></div> : null}
+              </section>
+            </div>
+
+            <aside className="lg:sticky lg:top-0 lg:self-start">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-muted-foreground">Client preview</p>
+              <div className="overflow-hidden rounded-3xl border bg-white shadow-xl shadow-slate-900/10">
+                <div className="p-5 text-white" style={{ background: `linear-gradient(135deg, #171827 0%, ${startForm.accent_color} 100%)` }}>
+                  <div className="flex items-center gap-3">{logoPreviewUrl || agencyLogoUrl ? <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl bg-white p-2"><img src={logoPreviewUrl || agencyLogoUrl || ''} alt="Onboarding logo preview" className="max-h-full max-w-full object-contain" /></div> : <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 font-bold ring-1 ring-white/20">{onboardingWorkspaceInitials(data?.workspace.name ?? '')}</div>}<div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><p className="truncate font-semibold">{data?.workspace.name || 'Your team'}</p></div></div>
+                </div>
+                <div className="space-y-4 p-5"><Badge variant="outline" style={{ borderColor: `${startForm.accent_color}55`, color: startForm.accent_color, backgroundColor: `${startForm.accent_color}0D` }}>Private intake</Badge><div><p className="text-sm text-slate-500">Hi {startForm.recipient_name.trim() || 'there'},</p><h4 className="mt-1 text-xl font-bold leading-tight text-slate-950">{startForm.experience_title || 'Your welcome title'}</h4><p className="mt-2 text-sm leading-6 text-slate-600">{startForm.experience_body || 'Your welcome message will appear here.'}</p></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-1/6 rounded-full" style={{ backgroundColor: startForm.accent_color }} /></div><div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">The client continues through the template one clear section at a time, with secure autosave.</div></div>
+              </div>
+            </aside>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setStartOpen(false)}>Cancel</Button><Button disabled={startMutation.isPending} onClick={submitStart}>{startMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create secure link</Button></DialogFooter>
+
+          <DialogFooter className="border-t bg-background px-6 py-4"><Button variant="outline" onClick={() => setStartOpen(false)}>Cancel</Button><Button disabled={startMutation.isPending} onClick={submitStart}>{startMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create secure link</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -434,7 +562,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         </DialogContent>
       </Dialog>
 
-      <OnboardingTemplateBuilder open={builderOpen} template={editingTemplate} saving={templateMutation.isPending} onOpenChange={(open) => { setBuilderOpen(open); if (!open) setEditingTemplate(null) }} onSave={(draft, publish, makeDefault) => templateMutation.mutate({ draft, publish, makeDefault })} />
+      <OnboardingTemplateBuilder open={builderOpen} template={editingTemplate} workspaceName={data?.workspace.name ?? ''} saving={templateMutation.isPending} onOpenChange={(open) => { setBuilderOpen(open); if (!open) setEditingTemplate(null) }} onSave={(draft, publish, makeDefault) => templateMutation.mutate({ draft, publish, makeDefault })} />
 
       <OnboardingReviewDialog
         open={Boolean(selectedInstanceId)}

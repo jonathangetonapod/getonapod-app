@@ -21,11 +21,11 @@ import {
   sendOnboardingEmail,
   validateOnboardingDefinition,
   validatePitchProfile,
-  validateReminderDays,
 } from '../_shared/workspaceOnboarding.ts'
 
 const METHODS = ['POST'] as const
 const BUCKET = 'workspace-onboarding-assets'
+const BRAND_LOGO_MAX_BYTES = 2_097_152
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 type AdminClient = Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']
 
@@ -103,7 +103,58 @@ function templatePayload(value: unknown): Record<string, unknown> {
     name: requireString(input.name, 'name', { max: 120 }),
     description: typeof input.description === 'string' ? input.description.trim().slice(0, 1000) : '',
     definition: validateOnboardingDefinition(input.definition),
-    reminder_days: validateReminderDays(input.reminder_days),
+    reminder_days: [],
+  }
+}
+
+function decodeBrandLogo(value: unknown): { bytes: Uint8Array; mimeType: string; extension: string } | null {
+  if (value === null || value === undefined) return null
+  const input = requestRecord(value, 'experience.brand_logo')
+  requireOnlyKeys(input, ['filename', 'mime_type', 'file_base64'])
+  requireString(input.filename, 'experience.brand_logo.filename', { max: 255 })
+  const mimeType = requireString(input.mime_type, 'experience.brand_logo.mime_type', { max: 100 }).toLowerCase()
+  const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : ''
+  if (!extension) throw new HttpError(400, 'INVALID_FILE_TYPE', 'The client logo must be a PNG, JPEG, or WebP image')
+  if (typeof input.file_base64 !== 'string' || input.file_base64.length < 1 || input.file_base64.length > 2_800_000 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(input.file_base64)) {
+    throw new HttpError(400, 'INVALID_FILE', 'The client logo could not be read')
+  }
+  let bytes: Uint8Array
+  try {
+    const binary = atob(input.file_base64)
+    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
+  } catch {
+    throw new HttpError(400, 'INVALID_FILE', 'The client logo could not be read')
+  }
+  const signatureMatches = mimeType === 'image/jpeg'
+    ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    : mimeType === 'image/png'
+      ? bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+      : bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP'
+  if (bytes.length < 1 || bytes.length > BRAND_LOGO_MAX_BYTES || !signatureMatches) {
+    throw new HttpError(400, 'INVALID_FILE', 'The client logo must match its file type and be 2 MB or smaller')
+  }
+  return { bytes, mimeType, extension }
+}
+
+function experiencePayload(value: unknown): {
+  introTitle: string
+  introBody: string
+  completionMessage: string
+  accentColor: string
+  logo: ReturnType<typeof decodeBrandLogo>
+} {
+  const input = requestRecord(value, 'experience')
+  requireOnlyKeys(input, ['intro_title', 'intro_body', 'completion_message', 'accent_color', 'brand_logo'])
+  const accentColor = requireString(input.accent_color, 'experience.accent_color', { max: 7 }).toUpperCase()
+  if (!/^#[0-9A-F]{6}$/u.test(accentColor)) {
+    throw new HttpError(400, 'INVALID_FIELD', 'experience.accent_color must be a six-digit hex color')
+  }
+  return {
+    introTitle: requireString(input.intro_title, 'experience.intro_title', { max: 300 }),
+    introBody: requireString(input.intro_body, 'experience.intro_body', { max: 3000 }),
+    completionMessage: requireString(input.completion_message, 'experience.completion_message', { max: 2000 }),
+    accentColor,
+    logo: decodeBrandLogo(input.brand_logo),
   }
 }
 
@@ -207,7 +258,7 @@ serve(async (req) => {
       throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
     }
 
-    const body = await parseJsonObject(req, 1_500_000)
+    const body = await parseJsonObject(req, 3_200_000)
     const action = typeof body.action === 'string' ? body.action : ''
     const context = await requireAuthenticatedUser(req)
     if (!workspaceCredentialIsFresh(context)) {
@@ -300,6 +351,7 @@ serve(async (req) => {
         'expires_in_days',
         'assigned_membership_ids',
         'send_email',
+        'experience',
       ])
       const templateId = requireUuid(body.template_id, 'template_id')
       const clientId = optionalUuid(body.client_id, 'client_id')
@@ -308,6 +360,7 @@ serve(async (req) => {
       const expiresInDays = integerValue(body.expires_in_days, 'expires_in_days', 1, 90)
       const assignedIds = uuidArray(body.assigned_membership_ids ?? [], 'assigned_membership_ids')
       const sendEmail = booleanValue(body.send_email, 'send_email')
+      const experience = experiencePayload(body.experience)
       let newClient: Record<string, unknown> | null = null
       if (!clientId) {
         const source = requestRecord(body.new_client, 'new_client')
@@ -325,10 +378,34 @@ serve(async (req) => {
         throw new HttpError(400, 'INVALID_FIELD', 'new_client must be empty when an existing client is selected')
       }
 
+      const listResult = await admin.rpc('workspace_onboarding_staff_list_v1', {
+        p_workspace_id: workspaceId,
+        p_actor_user_id: user.id,
+        p_token_issued_at: tokenIssuedAt,
+      })
+      if (listResult.error) rpcError(listResult.error)
+      const listResponse = responseRecord(listResult.data, 'workspace list')
+      const workspace = responseRecord(listResponse.workspace, 'workspace')
+      if (workspace.id !== workspaceId || listResponse.can_manage !== true) {
+        throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Workspace manager access is required')
+      }
+      const workspaceName = responseString(workspace.name, 'workspace name', 200)
+
       const instanceId = crypto.randomUUID()
       const generation = 1
       const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
       const expiresAt = new Date(Date.now() + expiresInDays * 86_400_000).toISOString()
+      const brandLogoPath = experience.logo
+        ? `${workspaceId}/${instanceId}/brand-${crypto.randomUUID()}.${experience.logo.extension}`
+        : null
+      if (brandLogoPath && experience.logo) {
+        const uploaded = await admin.storage.from(BUCKET).upload(brandLogoPath, experience.logo.bytes, {
+          contentType: experience.logo.mimeType,
+          upsert: false,
+          cacheControl: '3600',
+        })
+        if (uploaded.error) throw new HttpError(503, 'ONBOARDING_LOGO_UPLOAD_FAILED', 'The client logo could not be uploaded')
+      }
       const { data, error } = await admin.rpc('workspace_onboarding_start_v1', {
         p_workspace_id: workspaceId,
         p_template_id: templateId,
@@ -342,28 +419,32 @@ serve(async (req) => {
           recipient_email: recipientEmail,
           new_client: newClient,
           assigned_membership_ids: assignedIds,
+          experience: {
+            intro_title: experience.introTitle,
+            intro_body: experience.introBody,
+            completion_message: experience.completionMessage,
+            accent_color: experience.accentColor,
+            logo_path: brandLogoPath,
+          },
         },
         p_actor_user_id: user.id,
         p_token_issued_at: tokenIssuedAt,
       })
-      if (error) rpcError(error)
+      if (error) {
+        if (brandLogoPath) await admin.storage.from(BUCKET).remove([brandLogoPath])
+        rpcError(error)
+      }
       const instance = ensureWorkspaceResponse(data, workspaceId)
       const link = onboardingUrl(capability.token)
-      const listResult = await admin.rpc('workspace_onboarding_staff_list_v1', {
-        p_workspace_id: workspaceId,
-        p_actor_user_id: user.id,
-        p_token_issued_at: tokenIssuedAt,
-      })
-      const workspace = listResult.error ? null : responseRecord(listResult.data).workspace
-      const workspaceName = responseRecord(workspace, 'workspace').name
       const delivery = sendEmail
         ? await sendOnboardingEmail({
           kind: 'invitation',
-          workspaceName: responseString(workspaceName, 'workspace name', 200),
+          workspaceName,
           recipientName,
           recipientEmail,
           url: link,
           expiresAt,
+          accentColor: experience.accentColor,
         })
         : { status: 'skipped' as const, providerMessageId: null, error: null }
       await recordDelivery(admin, instanceId, delivery)
@@ -582,6 +663,7 @@ serve(async (req) => {
         recipientEmail: normalizeEmail(responseString(instance.recipient_email, 'recipient email', 254)),
         url: link,
         expiresAt: responseString(instance.capability_expires_at, 'capability expiry', 64),
+        accentColor: responseString(instance.accent_color, 'accent color', 7),
       })
       await recordChangeRequestDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 200, {
@@ -606,6 +688,7 @@ serve(async (req) => {
           recipientEmail: normalizeEmail(responseString(instance.recipient_email, 'recipient email', 254)),
           url: link,
           expiresAt: responseString(instance.capability_expires_at, 'capability expiry', 64),
+          accentColor: responseString(instance.accent_color, 'accent color', 7),
         })
         : { status: 'skipped' as const, providerMessageId: null, error: null }
       await recordDelivery(admin, instanceId, delivery)

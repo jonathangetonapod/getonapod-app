@@ -90,7 +90,7 @@ const listResponse = {
     description: '',
     status: 'published',
     definition,
-    reminder_days: [3, 7],
+    reminder_days: [],
     published_version: 1,
     is_default: true,
     created_at: '2026-07-22T00:00:00.000Z',
@@ -142,13 +142,27 @@ describe('workspaceOnboarding service', () => {
       expires_in_days: 14,
       assigned_membership_ids: [],
       send_email: true,
+      experience: {
+        intro_title: 'Welcome, Casey',
+        intro_body: 'Tell Agency about yourself.',
+        completion_message: 'Thanks. Agency will review this.',
+        accent_color: '#0F766E',
+      },
     }
     await expect(startWorkspaceOnboarding(workspaceId, input)).resolves.toMatchObject({
       delivery: { status: 'failed' },
       onboarding_url: expect.stringContaining('/onboarding/'),
     })
     expect(invoke).toHaveBeenCalledWith('workspace-onboarding', {
-      body: { action: 'start', workspace_id: workspaceId, ...input },
+      body: {
+        action: 'start',
+        workspace_id: workspaceId,
+        ...input,
+        experience: {
+          ...input.experience,
+          brand_logo: null,
+        },
+      },
     })
   })
 
@@ -156,6 +170,7 @@ describe('workspaceOnboarding service', () => {
     const clientView = {
       id: instanceId,
       workspace: { name: 'Agency', logo_url: null },
+      accent_color: '#0F766E',
       recipient_name: 'Casey',
       status: 'in_progress',
       expires_at: '2026-08-05T00:00:00.000Z',

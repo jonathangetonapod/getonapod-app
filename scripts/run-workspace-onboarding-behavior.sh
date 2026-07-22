@@ -12,6 +12,7 @@ readonly -a SOURCE_INPUTS=(
   'scripts/run-workspace-onboarding-behavior.sh'
   'supabase/migrations/20260722000400_workspace_branding.sql'
   'supabase/migrations/20260722000500_workspace_onboarding.sql'
+  'supabase/migrations/20260722000600_workspace_onboarding_white_label.sql'
   "${BEHAVIOR_TEST}"
 )
 readonly -a REQUIRED_ENV=(

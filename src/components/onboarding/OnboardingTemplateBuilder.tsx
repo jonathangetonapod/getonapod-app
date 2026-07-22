@@ -9,6 +9,7 @@ import {
   LayoutList,
   Plus,
   Settings2,
+  ShieldCheck,
   Trash2,
   UploadCloud,
 } from 'lucide-react'
@@ -28,6 +29,11 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  onboardingWorkspaceInitials,
+  onboardingWorkspaceName,
+  renderOnboardingBrandText,
+} from '@/lib/onboardingBrand'
 import { cn } from '@/lib/utils'
 import type {
   OnboardingDefinition,
@@ -48,6 +54,7 @@ export interface OnboardingTemplateDraft {
 interface Props {
   open: boolean
   template: OnboardingTemplate | null
+  workspaceName: string
   saving: boolean
   onOpenChange: (open: boolean) => void
   onSave: (draft: OnboardingTemplateDraft, publish: boolean, makeDefault: boolean) => void
@@ -107,11 +114,11 @@ const blankSection = (): OnboardingSection => ({
   questions: [blankQuestion()],
 })
 
-const blankDefinition = (): OnboardingDefinition => ({
+const blankDefinition = (workspaceName: string): OnboardingDefinition => ({
   schema_version: 1,
   intro_title: 'Let’s build your podcast guest profile',
   intro_body: 'Share the experience, stories, and ideas that make you a compelling podcast guest.',
-  completion_message: 'Thank you. Your agency will review your answers and follow up if anything needs clarification.',
+  completion_message: 'Thank you. ' + onboardingWorkspaceName(workspaceName) + ' will review your answers and follow up if anything needs clarification.',
   sections: [{
     id: generatedId('section'),
     title: 'About you',
@@ -120,11 +127,11 @@ const blankDefinition = (): OnboardingDefinition => ({
   }],
 })
 
-const emptyDraft = (): OnboardingTemplateDraft => ({
+const emptyDraft = (workspaceName: string): OnboardingTemplateDraft => ({
   name: 'Podcast Guest Onboarding',
   description: '',
-  definition: blankDefinition(),
-  reminder_days: [3, 7, 12],
+  definition: blankDefinition(workspaceName),
+  reminder_days: [],
 })
 
 function move<T>(values: T[], from: number, to: number): T[] {
@@ -157,11 +164,11 @@ function duplicateSection(section: OnboardingSection): OnboardingSection {
   }
 }
 
-const PreviewControl = ({ question }: { question: OnboardingQuestion }) => {
+const PreviewControl = ({ question, workspaceName }: { question: OnboardingQuestion; workspaceName: string }) => {
   if (question.type === 'long_text') {
     return (
       <div className="h-24 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-        {question.placeholder || 'Long-form response'}
+        {renderOnboardingBrandText(question.placeholder, workspaceName) || 'Long-form response'}
       </div>
     )
   }
@@ -171,7 +178,7 @@ const PreviewControl = ({ question }: { question: OnboardingQuestion }) => {
       <div className="flex flex-wrap gap-2">
         {(question.options ?? []).map((option) => (
           <span key={option.id} className="rounded-full border bg-background px-3 py-1.5 text-sm text-muted-foreground">
-            {option.label || 'Untitled option'}
+            {renderOnboardingBrandText(option.label, workspaceName) || 'Untitled option'}
           </span>
         ))}
       </div>
@@ -198,18 +205,17 @@ const PreviewControl = ({ question }: { question: OnboardingQuestion }) => {
 
   return (
     <div className="rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-      {question.placeholder || typeLabels[question.type]}
+      {renderOnboardingBrandText(question.placeholder, workspaceName) || typeLabels[question.type]}
     </div>
   )
 }
 
-const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSave }: Props) => {
-  const [draft, setDraft] = useState<OnboardingTemplateDraft>(emptyDraft)
+const OnboardingTemplateBuilder = ({ open, template, workspaceName, saving, onOpenChange, onSave }: Props) => {
+  const [draft, setDraft] = useState<OnboardingTemplateDraft>(() => emptyDraft(workspaceName))
   const [mode, setMode] = useState<BuilderMode>('build')
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null)
   const [makeDefault, setMakeDefault] = useState(false)
-  const [reminderText, setReminderText] = useState('3, 7, 12')
   const [builderError, setBuilderError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -221,16 +227,15 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
           definition: structuredClone(template.definition),
           reminder_days: [...template.reminder_days],
         }
-      : emptyDraft()
+      : emptyDraft(workspaceName)
     const firstSection = next.definition.sections[0]
     setDraft(next)
-    setReminderText(next.reminder_days.join(', '))
     setMakeDefault(template?.is_default ?? false)
     setMode('build')
     setActiveSectionId(firstSection?.id ?? null)
     setActiveQuestionId(firstSection?.questions[0]?.id ?? null)
     setBuilderError(null)
-  }, [open, template])
+  }, [open, template, workspaceName])
 
   const questionCount = useMemo(
     () => draft.definition.sections.reduce((total, section) => total + section.questions.length, 0),
@@ -242,9 +247,20 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
     draft.definition.sections.findIndex((section) => section.id === activeSectionId),
   )
   const activeSection = draft.definition.sections[activeSectionIndex]
+  const brandedWorkspaceName = onboardingWorkspaceName(workspaceName)
+  const workspaceInitials = onboardingWorkspaceInitials(workspaceName)
 
   const setDefinition = (updater: (definition: OnboardingDefinition) => OnboardingDefinition) => {
     setDraft((current) => ({ ...current, definition: updater(current.definition) }))
+  }
+
+  const applyBrandedDefaults = () => {
+    setDefinition((definition) => ({
+      ...definition,
+      intro_title: 'Let’s build your podcast guest profile',
+      intro_body: 'Share the experience, stories, and ideas that make you a compelling podcast guest. You can save your progress and return with this secure link.',
+      completion_message: 'Thank you. ' + brandedWorkspaceName + ' will review your answers and follow up if anything needs clarification.',
+    }))
   }
 
   const updateSection = (sectionIndex: number, updates: Partial<OnboardingSection>) => {
@@ -332,19 +348,8 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
     }
   }
 
-  const parseReminders = (): number[] => {
-    const values = reminderText.split(',').map((value) => value.trim()).filter(Boolean)
-    if (values.length > 10) throw new Error('Use no more than 10 reminder days.')
-    const days = values.map(Number)
-    if (days.some((day) => !Number.isSafeInteger(day) || day < 1 || day > 89)) {
-      throw new Error('Reminder days must be whole numbers from 1 to 89.')
-    }
-    return [...new Set(days)].sort((left, right) => left - right)
-  }
-
   const submit = (publish: boolean) => {
     try {
-      const reminderDays = parseReminders()
       if (!draft.name.trim()) throw new Error('Enter a template name.')
       if (!draft.definition.intro_title.trim() || !draft.definition.intro_body.trim() || !draft.definition.completion_message.trim()) {
         throw new Error('Complete the client intro title, intro text, and completion message.')
@@ -368,7 +373,7 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
         throw new Error('Each client field can be mapped only once.')
       }
       setBuilderError(null)
-      onSave({ ...draft, reminder_days: reminderDays }, publish, makeDefault)
+      onSave({ ...draft, reminder_days: [] }, publish, makeDefault)
     } catch (error) {
       setBuilderError(error instanceof Error ? error.message : 'The template is invalid.')
     }
@@ -802,100 +807,150 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
               </div>
             ) : mode === 'settings' ? (
               <div className="h-full overflow-y-auto bg-muted/10" role="tabpanel" aria-label="Template settings">
-                <div className="mx-auto grid w-full max-w-5xl gap-5 p-4 sm:p-6 lg:grid-cols-2 lg:p-8">
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-lg bg-primary/10 p-2 text-primary"><FileText className="h-4 w-4" /></span>
-                        <div>
-                          <CardTitle className="text-lg">Template details</CardTitle>
-                          <CardDescription>Internal information used by your team.</CardDescription>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="template-name">Template name</Label>
-                        <Input
-                          id="template-name"
-                          value={draft.name}
-                          maxLength={120}
-                          onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="template-description">Internal description</Label>
-                        <Textarea
-                          id="template-description"
-                          value={draft.description}
-                          maxLength={1000}
-                          placeholder="Explain when your team should use this template"
-                          onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-                        />
-                        <p className="text-xs text-muted-foreground">Clients never see this description.</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                <div className="mx-auto w-full max-w-5xl space-y-5 p-4 sm:p-6 lg:p-8">
+                  <div className="flex gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:items-center">
+                    <span className="mt-0.5 rounded-xl bg-primary p-2.5 text-primary-foreground sm:mt-0">
+                      <ShieldCheck className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="font-semibold">White-label client experience</p>
+                      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        Clients see {brandedWorkspaceName}, its workspace logo, and the messages you write here. Platform branding is not shown.
+                      </p>
+                    </div>
+                  </div>
 
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-lg bg-primary/10 p-2 text-primary"><Settings2 className="h-4 w-4" /></span>
-                        <div>
-                          <CardTitle className="text-lg">Invitation schedule</CardTitle>
-                          <CardDescription>Choose when incomplete-intake reminders are due.</CardDescription>
+                  <div className="grid gap-5 lg:grid-cols-2">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-lg bg-primary/10 p-2 text-primary"><FileText className="h-4 w-4" /></span>
+                          <div>
+                            <CardTitle className="text-lg">Template setup</CardTitle>
+                            <CardDescription>Only workspace managers see these details.</CardDescription>
+                          </div>
                         </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="reminder-days">Reminder days after invitation</Label>
-                        <Input
-                          id="reminder-days"
-                          value={reminderText}
-                          placeholder="3, 7, 12"
-                          onChange={(event) => setReminderText(event.target.value)}
-                        />
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          Enter comma-separated days or leave empty for no reminders. Reminders stop when the onboarding is submitted, approved, revoked, or expired.
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="template-name">Template name</Label>
+                          <Input
+                            id="template-name"
+                            value={draft.name}
+                            maxLength={120}
+                            onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="template-description">Team note</Label>
+                          <Textarea
+                            id="template-description"
+                            value={draft.description}
+                            maxLength={1000}
+                            placeholder="When should your team use this template?"
+                            onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+                          />
+                          <p className="text-xs text-muted-foreground">Clients never see this note.</p>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/30 p-3">
+                          <div>
+                            <Label htmlFor="default-template">Use as default</Label>
+                            <p className="text-xs text-muted-foreground">Preselect this template for new client links.</p>
+                          </div>
+                          <Switch id="default-template" checked={makeDefault} onCheckedChange={setMakeDefault} />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Share it your way</CardTitle>
+                        <CardDescription>Your team stays in control of every client follow-up.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {[
+                          ['1', 'Publish the template', 'Publishing locks a version for future client links.'],
+                          ['2', 'Create a secure link', 'Start onboarding for a client and copy their private link.'],
+                          ['3', 'Send and follow up', 'Share the link from your own client communication workflow.'],
+                        ].map(([number, title, description]) => (
+                          <div key={number} className="flex gap-3 rounded-xl border p-3">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{number}</span>
+                            <div><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p></div>
+                          </div>
+                        ))}
+                        <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                          No automated reminder emails are sent to your clients.
                         </p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </div>
 
-                  <Card className="lg:col-span-2">
-                    <CardHeader>
-                      <CardTitle className="text-lg">Client-facing messages</CardTitle>
-                      <CardDescription>Set the welcome and completion copy clients see while filling out the form.</CardDescription>
+                  <Card>
+                    <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <CardTitle className="text-lg">What clients see</CardTitle>
+                        <CardDescription>Write the welcome and confirmation messages in your agency’s voice.</CardDescription>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" onClick={applyBrandedDefaults}>
+                        Use branded defaults
+                      </Button>
                     </CardHeader>
-                    <CardContent className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="intro-title">Welcome title</Label>
-                        <Input
-                          id="intro-title"
-                          value={draft.definition.intro_title}
-                          maxLength={300}
-                          onChange={(event) => setDefinition((definition) => ({ ...definition, intro_title: event.target.value }))}
-                        />
+                    <CardContent className="grid gap-6 lg:grid-cols-[1.15fr_.85fr]">
+                      <div className="space-y-5">
+                        <div className="space-y-4 rounded-2xl border p-4">
+                          <div><p className="text-sm font-semibold">Welcome screen</p><p className="text-xs text-muted-foreground">Shown before the client starts answering questions.</p></div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="intro-title">Headline</Label>
+                            <Input
+                              id="intro-title"
+                              value={draft.definition.intro_title}
+                              maxLength={300}
+                              onChange={(event) => setDefinition((definition) => ({ ...definition, intro_title: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="intro-body">Welcome message</Label>
+                            <Textarea
+                              id="intro-body"
+                              rows={4}
+                              value={draft.definition.intro_body}
+                              maxLength={3000}
+                              onChange={(event) => setDefinition((definition) => ({ ...definition, intro_body: event.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-3 rounded-2xl border p-4">
+                          <div><p className="text-sm font-semibold">After submission</p><p className="text-xs text-muted-foreground">Shown after the client sends their completed intake.</p></div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="completion-message">Confirmation message</Label>
+                            <Textarea
+                              id="completion-message"
+                              rows={3}
+                              value={draft.definition.completion_message}
+                              maxLength={2000}
+                              onChange={(event) => setDefinition((definition) => ({ ...definition, completion_message: event.target.value }))}
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="completion-message">Completion message</Label>
-                        <Input
-                          id="completion-message"
-                          value={draft.definition.completion_message}
-                          maxLength={2000}
-                          onChange={(event) => setDefinition((definition) => ({ ...definition, completion_message: event.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-1.5 md:col-span-2">
-                        <Label htmlFor="intro-body">Welcome message</Label>
-                        <Textarea
-                          id="intro-body"
-                          value={draft.definition.intro_body}
-                          maxLength={3000}
-                          onChange={(event) => setDefinition((definition) => ({ ...definition, intro_body: event.target.value }))}
-                        />
-                      </div>
+
+                      <aside className="h-fit rounded-2xl border bg-muted/30 p-4 lg:sticky lg:top-0">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live message preview</p>
+                        <div className="mt-3 overflow-hidden rounded-2xl border bg-background shadow-sm">
+                          <div className="bg-primary/10 p-5">
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">{workspaceInitials}</span>
+                              <div><p className="text-sm font-semibold">{brandedWorkspaceName}</p><p className="text-xs text-muted-foreground">Client onboarding</p></div>
+                            </div>
+                            <h3 className="mt-5 text-lg font-semibold">{renderOnboardingBrandText(draft.definition.intro_title, workspaceName) || 'Welcome headline'}</h3>
+                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName) || 'Your welcome message will appear here.'}</p>
+                          </div>
+                          <div className="border-t p-4">
+                            <p className="text-xs font-semibold text-muted-foreground">After submission</p>
+                            <p className="mt-2 text-sm">{renderOnboardingBrandText(draft.definition.completion_message, workspaceName) || 'Your confirmation message will appear here.'}</p>
+                          </div>
+                        </div>
+                      </aside>
                     </CardContent>
                   </Card>
                 </div>
@@ -905,13 +960,13 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
                 <div className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
                   <div className="overflow-hidden rounded-3xl border bg-background shadow-sm">
                     <div className="border-b bg-primary/5 px-5 py-8 sm:px-8 sm:py-10">
-                      <Badge variant="secondary">Client preview</Badge>
-                      <h2 className="mt-4 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">{draft.definition.intro_title}</h2>
-                      <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">{draft.definition.intro_body}</p>
+                      <Badge variant="secondary">{brandedWorkspaceName} · Client preview</Badge>
+                      <h2 className="mt-4 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">{renderOnboardingBrandText(draft.definition.intro_title, workspaceName)}</h2>
+                      <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName)}</p>
                       <div className="mt-6 flex flex-wrap gap-2">
                         {draft.definition.sections.map((section, index) => (
                           <span key={section.id} className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
-                            {index + 1}. {section.title || 'Untitled section'}
+                            {index + 1}. {renderOnboardingBrandText(section.title, workspaceName) || 'Untitled section'}
                           </span>
                         ))}
                       </div>
@@ -922,25 +977,25 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
                         <section key={section.id} className="rounded-2xl border p-4 sm:p-6">
                           <div className="mb-5">
                             <p className="text-xs font-semibold uppercase tracking-wider text-primary">Section {sectionIndex + 1} of {draft.definition.sections.length}</p>
-                            <h3 className="mt-1 text-xl font-semibold">{section.title || 'Untitled section'}</h3>
-                            {section.description && <p className="mt-1 text-sm text-muted-foreground">{section.description}</p>}
+                            <h3 className="mt-1 text-xl font-semibold">{renderOnboardingBrandText(section.title, workspaceName) || 'Untitled section'}</h3>
+                            {section.description && <p className="mt-1 text-sm text-muted-foreground">{renderOnboardingBrandText(section.description, workspaceName)}</p>}
                           </div>
                           <div className="space-y-5">
                             {section.questions.map((question) => (
                               <div key={question.id} className="space-y-2">
                                 <Label>
-                                  {question.label || 'Untitled question'}
+                                  {renderOnboardingBrandText(question.label, workspaceName) || 'Untitled question'}
                                   {question.required && <span className="text-destructive"> *</span>}
                                 </Label>
-                                {question.description && <p className="text-xs text-muted-foreground">{question.description}</p>}
-                                <PreviewControl question={question} />
+                                {question.description && <p className="text-xs text-muted-foreground">{renderOnboardingBrandText(question.description, workspaceName)}</p>}
+                                <PreviewControl question={question} workspaceName={workspaceName} />
                               </div>
                             ))}
                           </div>
                         </section>
                       ))}
                       <div className="rounded-2xl bg-muted/50 p-5 text-center">
-                        <p className="text-sm font-medium">{draft.definition.completion_message}</p>
+                        <p className="text-sm font-medium">{renderOnboardingBrandText(draft.definition.completion_message, workspaceName)}</p>
                       </div>
                     </div>
                   </div>
@@ -955,19 +1010,10 @@ const OnboardingTemplateBuilder = ({ open, template, saving, onOpenChange, onSav
                 {builderError}
               </p>
             )}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2 sm:border-0 sm:p-0">
-                <div>
-                  <Label htmlFor="default-template">Default template</Label>
-                  <p className="text-xs text-muted-foreground">Preselect for new invitations</p>
-                </div>
-                <Switch id="default-template" checked={makeDefault} onCheckedChange={setMakeDefault} />
-              </div>
-              <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
                 <Button type="button" variant="secondary" disabled={saving} onClick={() => submit(false)}>Save draft</Button>
                 <Button type="button" disabled={saving} onClick={() => submit(true)}>{saving ? 'Saving…' : 'Save & publish'}</Button>
-              </div>
             </div>
           </footer>
         </div>

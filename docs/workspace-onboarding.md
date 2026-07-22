@@ -30,8 +30,10 @@ Drafts autosave to the server with an optimistic lock version. No onboarding
 answers or capability tokens are stored in browser storage. A submitted answer
 set becomes an immutable numbered revision. Reviewers leave notes on specific
 questions, and the client can submit another immutable revision in response.
-Requesting changes sends a branded email when Resend is configured and always
-returns the current secure link for manual delivery.
+Requesting changes can send a workspace-branded email when Resend is configured
+and always returns the current secure link for manual delivery. The product
+does not schedule or send reminder emails; the agency owns follow-up and can
+resend the link from its own mailbox.
 
 Submitting creates a pending AI pitch-profile draft. AI output is never
 published automatically: an owner or admin must review, edit, and approve it.
@@ -45,15 +47,19 @@ untouched.
 
 Each new private workspace receives a published default podcast-guest intake.
 Workspaces can create multiple reusable templates, publish immutable versions,
-choose an optional default, duplicate templates, and configure reminder days.
-The builder permits at most 12 sections, 100 questions, and 50 choices per
-select question.
+choose an optional default, and duplicate templates. Each invitation snapshots
+client-specific welcome copy, completion copy, accent color, and an optional
+client logo without changing the published questions. The builder permits at
+most 12 sections, 100 questions, and 50 choices per select question.
 
 Supported fields are short text, long text, email, URL, single select, multi
 select, yes/no, date, image upload, and PDF upload. Files use the private
 `workspace-onboarding-assets` bucket. PNG, JPEG, and WebP images are limited to
 5 MB; PDFs are limited to 10 MB. Browser clients receive only short-lived
 signed URLs after capability or staff authorization.
+Per-invitation client logos are also stored under the invitation's private
+Storage prefix and use short-lived signed URLs. If no override is supplied, the
+public form uses the workspace logo.
 
 ## Capability and retention rules
 
@@ -76,35 +82,29 @@ Set these as server-only Supabase Edge Function secrets:
 
 - `ONBOARDING_CAPABILITY_SECRET`: at least 32 characters; changing it
   invalidates every outstanding onboarding link.
-- `ONBOARDING_REMINDER_SECRET`: at least 32 characters; authenticates the
-  reminder worker request.
 - `APP_URL` or `WEB_URL`: canonical application origin used to construct
   links.
 - `RESEND_API_KEY`: optional; without it, delivery is marked skipped and the
   link is still returned.
-- `RESEND_FROM_EMAIL`: optional verified sender override.
+- `RESEND_FROM_EMAIL`: optional verified sender mailbox. The workspace name is
+  always used as the display sender; without a valid sender, email is skipped
+  and the secure link is still returned.
 - `ANTHROPIC_API_KEY`: optional; required for AI pitch drafts.
 - `ONBOARDING_AI_MODEL`: optional model override.
-
-Invoke `process-onboarding-reminders` from a trusted scheduler, typically
-every 15 minutes, with a POST request and the
-`x-onboarding-reminder-secret` header. The worker atomically claims up to 50
-due reminders with `SKIP LOCKED`, so concurrent invocations do not claim the
-same row. Claims left in `processing` by an interrupted worker become eligible
-again after 15 minutes.
 
 ## Deployment order
 
 1. Capture the normal database backup and current production inventory.
 2. Apply `20260722000400_workspace_branding.sql` if it is not already present,
-   then apply `20260722000500_workspace_onboarding.sql`.
+   then apply `20260722000500_workspace_onboarding.sql` and
+   `20260722000600_workspace_onboarding_white_label.sql` in order.
 3. Run the database verifier and the rollback-only onboarding behavior suite
    in an authorized local or staging environment.
 4. Configure the server secrets above.
 5. Deploy `workspace-onboarding` with JWT verification, then
-   `client-onboarding` and `process-onboarding-reminders` with the reviewed
-   non-JWT settings in `supabase/config.toml`.
-6. Configure the reminder scheduler and deploy the frontend routes.
+   `client-onboarding` with the reviewed non-JWT setting in
+   `supabase/config.toml`.
+6. Deploy the frontend routes. There is no reminder worker or scheduler.
 7. Complete signed-in owner, assigned-member, platform-owner, public-link,
    upload, review, approval, and purge acceptance checks before enabling live
    invitations.

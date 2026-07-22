@@ -73,6 +73,7 @@ const renderBuilder = (onSave = vi.fn()) => {
     <OnboardingTemplateBuilder
       open
       template={template}
+      workspaceName="Iveth Gonzalez"
       saving={false}
       onOpenChange={vi.fn()}
       onSave={onSave}
@@ -106,7 +107,9 @@ describe('OnboardingTemplateBuilder', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
     expect(screen.getByDisplayValue('Podcast Guest Onboarding')).toBeInTheDocument()
-    expect(screen.getByText('Clients never see this description.')).toBeInTheDocument()
+    expect(screen.getByText('Clients never see this note.')).toBeInTheDocument()
+    expect(screen.getByText('No automated reminder emails are sent to your clients.')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Reminder days/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }))
     expect(screen.getByRole('heading', { name: 'Basic information' })).toBeInTheDocument()
@@ -129,5 +132,6 @@ describe('OnboardingTemplateBuilder', () => {
     expect(makeDefault).toBe(true)
     expect(savedDraft.definition.sections[0].questions).toHaveLength(3)
     expect(savedDraft.definition.sections[0].questions[1].mapping).toBeNull()
+    expect(savedDraft.reminder_days).toEqual([])
   })
 })

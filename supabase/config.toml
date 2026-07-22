@@ -118,9 +118,6 @@ verify_jwt = true
 [functions.client-onboarding]
 verify_jwt = false
 
-[functions.process-onboarding-reminders]
-verify_jwt = false
-
 [functions.podscan-proxy]
 verify_jwt = true
 
