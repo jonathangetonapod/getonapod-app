@@ -104,6 +104,11 @@ const WorkspaceUsers = () => {
       await updateWorkspaceUserStatus(action, user.id)
     },
     onSuccess: async (_result, variables) => {
+      if (variables.action === 'revoke_manual' || variables.action === 'revoke_pending') {
+        queryClient.setQueryData<ManagedWorkspaceUser[]>(queryKey, (current) => (
+          current?.filter((managedUser) => managedUser.id !== variables.user.id) || []
+        ))
+      }
       await queryClient.invalidateQueries({ queryKey: platformQueryPrefix })
       setConfirmation(null)
       toast.success(
@@ -204,7 +209,15 @@ const WorkspaceUsers = () => {
     }
   }
 
-  const users = usersQuery.data || []
+  const users = (usersQuery.data || []).filter((managedUser) => (
+    managedUser.status !== 'revoked'
+    || (
+      managedUser.invite_reconciliation_pending
+      && managedUser.invite_reconciliation_claim_kind === 'revoke_cleanup'
+      && !managedUser.invite_cleanup_blocked
+      && !managedUser.has_newer_membership
+    )
+  ))
 
   return (
     <DashboardLayout>
@@ -221,7 +234,7 @@ const WorkspaceUsers = () => {
         </div>
 
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Workspace accounts</CardTitle><CardDescription>Each account receives one private workspace. Users cannot invite other users in this MVP.</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Workspace accounts</CardTitle><CardDescription>Each account receives one private workspace. Deleted accounts are archived and hidden from this list.</CardDescription></CardHeader>
           <CardContent>
             {usersQuery.isLoading ? (
               <div className="flex min-h-40 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>
@@ -269,7 +282,7 @@ const WorkspaceUsers = () => {
                         || managedUser.credential_reconciliation_review_after
                       const manualCleanupReady = reconciliationReady(manualCleanupReviewAfter)
                       const statusLabel = managedUser.status === 'revoked'
-                        ? 'deleted'
+                        ? 'deletion pending'
                         : inviteExpired
                           ? 'expired'
                           : managedUser.password_change_required
@@ -279,7 +292,7 @@ const WorkspaceUsers = () => {
                       <TableRow key={managedUser.id}>
                         <TableCell><p className="font-medium">{managedUser.full_name || managedUser.email}</p><p className="text-xs text-muted-foreground">{managedUser.email}</p></TableCell>
                         <TableCell>{managedUser.workspace?.name || 'Private workspace'}</TableCell>
-                        <TableCell><Badge variant={managedUser.status === 'active' ? 'default' : managedUser.status === 'suspended' || inviteExpired ? 'destructive' : 'secondary'} className="capitalize">{statusLabel}</Badge></TableCell>
+                        <TableCell><Badge variant={managedUser.status === 'active' ? 'default' : managedUser.status === 'suspended' || managedUser.status === 'revoked' || inviteExpired ? 'destructive' : 'secondary'} className="capitalize">{statusLabel}</Badge></TableCell>
                         <TableCell>
                           <p>{formatAccountDate(managedUser.invited_at)}</p>
                           {managedUser.invite_expires_at && (

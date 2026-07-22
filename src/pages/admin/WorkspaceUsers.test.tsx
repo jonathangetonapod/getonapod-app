@@ -151,7 +151,9 @@ describe('WorkspaceUsers manual account flow', () => {
   })
 
   it('requires confirmation before deleting a manual account', async () => {
-    mockedList.mockResolvedValue([manualUser])
+    mockedList
+      .mockResolvedValueOnce([manualUser])
+      .mockResolvedValue([])
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: /^delete$/i }))
@@ -162,6 +164,8 @@ describe('WorkspaceUsers manual account flow', () => {
       manualUser.id,
       expect.any(String),
     ))
+    expect(await screen.findByText('No workspace accounts')).toBeInTheDocument()
+    expect(screen.queryByText(manualUser.email)).not.toBeInTheDocument()
   })
 
   it('offers only delete after an interrupted manual setup reaches review', async () => {
@@ -181,7 +185,7 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(screen.getByRole('button', { name: /^delete$/i })).toBeEnabled()
   })
 
-  it('shows no cleanup action for a settled deleted invitation', async () => {
+  it('hides a settled deleted invitation from the workspace account list', async () => {
     mockedList.mockResolvedValue([{
       ...manualUser,
       status: 'revoked',
@@ -191,9 +195,62 @@ describe('WorkspaceUsers manual account flow', () => {
 
     renderPage()
 
-    expect(await screen.findByText('deleted')).toBeInTheDocument()
-    expect(screen.queryByText(/auth cleanup/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
+    expect(await screen.findByText('No workspace accounts')).toBeInTheDocument()
+    expect(screen.queryByText(manualUser.email)).not.toBeInTheDocument()
+  })
+
+  it('hides settled and unsafe revoked history while retaining live accounts', async () => {
+    mockedList.mockResolvedValue([
+      {
+        ...manualUser,
+        id: '41111111-1111-4111-8111-111111111111',
+        email: 'settled-manual@example.com',
+        status: 'revoked',
+        password_change_required: false,
+      },
+      {
+        ...manualUser,
+        id: '51111111-1111-4111-8111-111111111111',
+        email: 'credential-incident@example.com',
+        status: 'revoked',
+        password_change_required: false,
+        credential_reconciliation_pending: true,
+        credential_reconciliation_claim_kind: 'temporary_password_rotation',
+      },
+      {
+        ...manualUser,
+        id: '61111111-1111-4111-8111-111111111111',
+        email: 'delivery-incident@example.com',
+        status: 'revoked',
+        password_change_required: false,
+        invite_reconciliation_pending: true,
+        invite_reconciliation_claim_kind: 'deliver',
+      },
+      {
+        ...manualUser,
+        id: '71111111-1111-4111-8111-111111111111',
+        email: 'superseded-cleanup@example.com',
+        status: 'revoked',
+        password_change_required: false,
+        invite_reconciliation_pending: true,
+        invite_reconciliation_claim_kind: 'revoke_cleanup',
+        invite_cleanup_blocked: true,
+        has_newer_membership: true,
+      },
+      {
+        ...manualUser,
+        id: '81111111-1111-4111-8111-111111111111',
+        email: 'live-owner@example.com',
+      },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('live-owner@example.com')).toBeInTheDocument()
+    expect(screen.queryByText('settled-manual@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByText('credential-incident@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByText('delivery-incident@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByText('superseded-cleanup@example.com')).not.toBeInTheDocument()
   })
 
   it('shows passive operator review for interrupted invitation deletion', async () => {
@@ -209,6 +266,7 @@ describe('WorkspaceUsers manual account flow', () => {
 
     renderPage()
 
+    expect(await screen.findByText('deletion pending')).toBeInTheDocument()
     expect(await screen.findByText('Deletion requires operator review.')).toBeInTheDocument()
     expect(screen.queryByText(/auth cleanup/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()

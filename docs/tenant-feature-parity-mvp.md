@@ -66,6 +66,21 @@ is enabled:
 Existing `/admin/*` pages are platform tools. Hiding or linking one of those
 pages does not make it tenant-safe.
 
+## Shared workspace shell
+
+Workspace accounts use the same responsive left-sidebar structure and module
+order as the platform dashboard, under `/app/*`. A workspace account never
+receives the platform workspace selector or provisioning controls. The
+platform administrator's explicit preview renders this same workspace shell
+with a read-only banner and selector while preserving the administrator's own
+session.
+
+The shell may name a planned module before its backend is ready, but that entry
+must remain a disabled control rather than a route. Only Clients and Guest
+Resources currently satisfy the shared tenant contract. Each remaining entry
+becomes a link only in the same release unit as its migration, narrow service
+boundary, preview mode, and isolation tests.
+
 ## Module rollout
 
 | Order | Module | MVP boundary |

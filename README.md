@@ -14,8 +14,11 @@ migration `20260721000200_workspace_guest_resources.sql` is the eighth
 production migration, and the exact `workspace-guest-resources` v1 and
 `get-guest-resources` v14 Edge revisions are active. The reviewed frontend at
 commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` is on `main`, and Railway
-deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The live tenant
-navigation now exposes both Clients and Guest Resources.
+deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The workspace
+experience uses the same responsive left-sidebar structure and product-module
+order as the platform dashboard. Clients and Guest Resources are the enabled
+tenant links; modules that do not yet satisfy the workspace-isolation contract
+are visibly unavailable rather than linked to legacy global admin pages.
 
 The privileged-browser-key containment gate is complete. Railway now supplies
 the project publishable key. After the frontend deployment, a second
@@ -37,13 +40,14 @@ The sanitized cutover evidence and remaining gates are recorded in
 | Role | Supported access |
 | --- | --- |
 | Platform administrator | Existing internal `/admin/*` application, account provisioning/lifecycle, and safe read-only previews of each private workspace's Clients and Guest Resources modules |
-| Workspace user | `/app/clients` and `/app/guest-resources`; manage only the authenticated user's workspace data and choose which published resources each downstream client sees |
+| Workspace owner/admin | Shared workspace dashboard shell; currently manage `/app/clients` and `/app/guest-resources` for only the authenticated workspace and choose which published resources each downstream client sees |
 | Client portal user | Separate `/portal/*` login and client-specific bookings/resources view; this is not a SaaS workspace account |
 | Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
 
-Each invited account owns one private workspace. User-managed teams, multiple
-members per private workspace, public signup, self-service billing, and full
-tenant access to every legacy operational module are deliberately out of scope.
+Each invited account currently owns one private workspace. Public signup,
+self-service billing, and cross-workspace access remain out of scope. Tenant
+feature parity and workspace-level owner/admin/member permissions are being
+released one module at a time behind the shared isolation contract.
 
 ## Routes
 
@@ -101,7 +105,9 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
 - Manual-account revocation is database-first: it immediately revokes the
   membership, archives the private workspace, clears portal capabilities, and
   then deletes only the exact marked Auth identity. Interrupted cleanup remains
-  visible under a durable claim and becomes safely retryable after review.
+  visible as `Deletion pending` under a durable claim and becomes safely
+  retryable after review. Completed deletions remain in the audit history but
+  are hidden from the administrator's workspace-account list.
 - Credential reconciliation renews one exclusive execution lease only after a
   15-minute review window. That window deliberately exceeds Supabase's hosted
   Edge hard lifetime; revisit the invariant before self-hosting or increasing
@@ -605,10 +611,10 @@ The detailed rollout and acceptance matrix is in
 
 ## Known MVP limitations
 
-- The deployed tenant frontend currently exposes Clients and Guest Resources.
-  Podcast operations, outreach, reporting, and every other legacy module remain
-  platform-admin-only until they receive an explicit `workspace_id` model and
-  isolation tests.
+- The workspace sidebar shows the intended full product map, but only Clients
+  and Guest Resources are enabled today. Podcast operations, outreach,
+  reporting, and every other legacy module remain platform-admin-only until
+  they receive an explicit `workspace_id` model and isolation tests.
 - The platform administrator's private-workspace preview reuses the real
   tenant Clients experience, including its layout and client states, but is
   intentionally read-only: write controls are disabled and no mutation dialog

@@ -87,9 +87,9 @@ administrator console.
 - Revocation denies database access and archives the private workspace before
   deleting the exact marked Auth identity. Interrupted deletion remains under
   a visible, retryable cleanup claim and never re-enables workspace access.
-- Completed revoked invitation records remain in the audit history but expose
-  no repeated cleanup action in the administrator UI. A genuinely interrupted
-  deletion is shown only as passive operator-review state unless the dedicated
+- Completed revoked records remain in the audit history but are hidden from the
+  administrator's workspace-account list. A genuinely interrupted deletion is
+  shown as `Deletion pending`, with passive operator review unless the dedicated
   manual-account deletion workflow can safely resume it.
 
 ## Production backend release unit
