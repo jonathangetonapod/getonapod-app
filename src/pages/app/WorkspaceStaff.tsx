@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
+import { WorkspaceBrandLogo, WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { useAuth } from '@/contexts/AuthContext'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -30,7 +30,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { WORKSPACE_LOGO_MIME_TYPES, workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
   createWorkspaceStaffTemporaryPassword,
@@ -390,12 +389,20 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   <CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" />Workspace logo</CardTitle>
                   <CardDescription>Use a PNG, JPEG, or WebP image up to 2 MB.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <Avatar className="h-24 w-24 shrink-0 rounded-xl border bg-background">
-                    {logoUrl && <AvatarImage src={logoUrl} alt={`${data.workspace.name} logo`} className="object-contain p-2" />}
-                    <AvatarFallback className="rounded-xl text-xl font-semibold">{workspaceInitials}</AvatarFallback>
-                  </Avatar>
+                <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,28rem)_1fr] lg:items-center">
+                  <WorkspaceBrandLogo
+                    logoUrl={logoUrl}
+                    workspaceName={data.workspace.name}
+                    workspaceInitials={workspaceInitials}
+                    placement="settings"
+                  />
                   <div className="space-y-3">
+                    <div>
+                      <p className="font-semibold">Brand preview</p>
+                      <p className="text-sm text-muted-foreground">
+                        Your logo uses a high-contrast backdrop so transparent and light artwork stays visible.
+                      </p>
+                    </div>
                     <Input
                       ref={logoInputRef}
                       id="workspace-logo"

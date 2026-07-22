@@ -136,6 +136,9 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to platform/i })).toHaveAttribute('href', '/admin/users')
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-gradient-to-br')
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
+    expect(screen.getByTestId('workspace-logo-mobile')).toHaveClass('h-12', 'w-20', 'bg-gradient-to-br')
   })
 
   it('signs a workspace user out without exposing an admin destination', async () => {

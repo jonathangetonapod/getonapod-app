@@ -254,6 +254,8 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
+    expect(screen.getByTestId('workspace-logo-settings')).toHaveClass('h-44', 'w-full', 'max-w-md')
+
     fireEvent.click(screen.getByRole('button', { name: 'Remove logo' }))
     const dialog = screen.getByRole('alertdialog', { name: 'Remove workspace logo?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove logo' }))

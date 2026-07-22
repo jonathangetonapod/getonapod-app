@@ -61,6 +61,66 @@ interface WorkspaceLayoutProps {
   platformWorkspace?: PlatformWorkspaceConfig
 }
 
+interface WorkspaceBrandLogoProps {
+  logoUrl: string | null
+  workspaceName: string
+  workspaceInitials: string
+  placement: 'sidebar' | 'mobile' | 'settings'
+}
+
+const brandLogoSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
+  sidebar: 'h-24 w-full rounded-2xl',
+  mobile: 'h-12 w-20 rounded-xl',
+  settings: 'h-44 w-full max-w-md rounded-2xl sm:h-52',
+}
+
+const brandLogoImageSpacing: Record<WorkspaceBrandLogoProps['placement'], string> = {
+  sidebar: 'p-2',
+  mobile: 'p-1.5',
+  settings: 'p-4 sm:p-5',
+}
+
+const brandLogoFallbackSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
+  sidebar: 'text-3xl',
+  mobile: 'text-sm',
+  settings: 'text-5xl',
+}
+
+export const WorkspaceBrandLogo = ({
+  logoUrl,
+  workspaceName,
+  workspaceInitials,
+  placement,
+}: WorkspaceBrandLogoProps) => (
+  <Avatar
+    data-testid={`workspace-logo-${placement}`}
+    data-logo-state={logoUrl ? 'uploaded' : 'initials'}
+    className={cn(
+      'isolate overflow-hidden border border-white/15 bg-gradient-to-br from-[#141229] via-[#302a70] to-[#665cf2] shadow-[0_18px_40px_-24px_rgba(34,28,100,0.95)] ring-1 ring-black/10',
+      brandLogoSizes[placement],
+    )}
+  >
+    {logoUrl && (
+      <AvatarImage
+        src={logoUrl}
+        alt={`${workspaceName} logo`}
+        className={cn(
+          'aspect-auto h-full w-full object-contain drop-shadow-[0_5px_14px_rgba(0,0,0,0.3)]',
+          brandLogoImageSpacing[placement],
+        )}
+      />
+    )}
+    <AvatarFallback
+      className={cn(
+        'rounded-[inherit] bg-transparent font-bold tracking-tight text-white',
+        brandLogoFallbackSizes[placement],
+      )}
+    >
+      {workspaceInitials}
+    </AvatarFallback>
+  </Avatar>
+)
+
 export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayoutProps) => {
   const { membership, signOut, user, workspace } = useAuth()
   const navigate = useNavigate()
@@ -123,19 +183,19 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             </Button>
           </div>
 
-          <div className="border-b border-border px-6 py-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <Avatar className="h-10 w-10 shrink-0 rounded-lg border bg-background">
-                {logoUrl && <AvatarImage src={logoUrl} alt={`${workspaceName} logo`} className="object-contain p-1" />}
-                <AvatarFallback className="rounded-lg text-xs font-semibold">{workspaceInitials}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{workspaceName}</p>
-                <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
-              </div>
+          <div className="border-b border-border px-4 py-4">
+            <WorkspaceBrandLogo
+              logoUrl={logoUrl}
+              workspaceName={workspaceName}
+              workspaceInitials={workspaceInitials}
+              placement="sidebar"
+            />
+            <div className="mt-3 min-w-0 px-1">
+              <p className="truncate text-base font-bold tracking-tight">{workspaceName}</p>
+              <p className="truncate text-xs font-medium text-muted-foreground">Workspace dashboard</p>
             </div>
             {platformWorkspace && (
-              <div className="mt-3 space-y-2">
+              <div className="mt-4 space-y-2">
                 <WorkspaceSwitcher presentation="toolbar" />
                 <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
                   <Link to={platformWorkspace.exitHref}>
@@ -214,7 +274,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-card px-4 lg:hidden">
+        <header className="sticky top-0 z-30 flex h-20 items-center gap-4 border-b border-border bg-card px-4 lg:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -223,10 +283,12 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <Avatar className="h-9 w-9 shrink-0 rounded-lg border bg-background">
-            {logoUrl && <AvatarImage src={logoUrl} alt="" className="object-contain p-1" />}
-            <AvatarFallback className="rounded-lg text-[10px] font-semibold">{workspaceInitials}</AvatarFallback>
-          </Avatar>
+          <WorkspaceBrandLogo
+            logoUrl={logoUrl}
+            workspaceName={workspaceName}
+            workspaceInitials={workspaceInitials}
+            placement="mobile"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-lg font-semibold">{workspaceName}</p>
             <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
