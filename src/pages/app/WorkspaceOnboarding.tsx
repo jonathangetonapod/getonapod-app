@@ -405,7 +405,6 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               </TabsContent>}
             </Tabs>
 
-            <Alert><Archive className="h-4 w-4" /><AlertTitle>Draft retention and deletion</AlertTitle><AlertDescription>Unsubmitted drafts and private uploads are retained until a manager archives the onboarding and explicitly purges its PII. Purging cannot be undone and does not delete the separate client record.</AlertDescription></Alert>
           </>
         ) : null}
       </div>
