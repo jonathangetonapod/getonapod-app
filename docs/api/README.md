@@ -89,7 +89,7 @@ Authority Built supports multiple authentication systems:
 **Order management, validation functions, and shared utilities**
 - 📦 **Order Management**: `update-order-status` is retired
 - ✅ **Validation**: `validate-portal-session`; `verify-portal-token` is retired
-- 🗂️ **Workspace resources**: `workspace-guest-resources` provides audited tenant CRUD and read-only platform preview
+- 🗂️ **Workspace resources**: `workspace-guest-resources` provides audited tenant and platform-owner selected-workspace CRUD
 - 📧 **Email Templates**: Workspace invitation and operational emails
 - 🗄️ **Podcast Cache**: Central caching system (60-80% API savings)
 

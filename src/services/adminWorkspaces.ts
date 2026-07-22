@@ -32,7 +32,7 @@ interface AdminWorkspaceOwnerCandidate {
   password_change_required: boolean
 }
 
-function isPreviewableOwner(owner: AdminWorkspaceOwnerCandidate): boolean {
+function isAvailableOwner(owner: AdminWorkspaceOwnerCandidate): boolean {
   return owner.status === 'active'
     || (
       owner.status === 'invited'
@@ -78,12 +78,12 @@ export async function listAdminWorkspaces(): Promise<AdminWorkspace[]> {
 
   if (membershipError) throw new Error('Client workspaces could not be loaded.')
 
-  const previewableWorkspaceIds = new Set(
+  const availableWorkspaceIds = new Set(
     ((membershipData || []) as AdminWorkspaceOwnerCandidate[])
-      .filter(isPreviewableOwner)
+      .filter(isAvailableOwner)
       .map((membership) => membership.workspace_id),
   )
-  return workspaces.filter((workspace) => previewableWorkspaceIds.has(workspace.id))
+  return workspaces.filter((workspace) => availableWorkspaceIds.has(workspace.id))
 }
 
 export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortSignal): Promise<AdminWorkspaceView> {
@@ -101,7 +101,7 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
     throw new Error('This client workspace is unavailable or no longer active.')
   }
   if (workspaceData.id !== canonicalWorkspaceId || workspaceData.is_default) {
-    throw new Error('The workspace preview response did not match the selected workspace.')
+    throw new Error('The selected workspace response did not match the workspace address.')
   }
 
   let viewerQuery = supabase
@@ -115,17 +115,17 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
   const { data: viewerData, error: viewerError } = await viewerQuery
 
   if (viewerError) throw new Error('The workspace owner could not be loaded.')
-  const previewableOwners = ((viewerData || []) as AdminWorkspaceOwnerCandidate[])
-    .filter(isPreviewableOwner)
-  const viewer = previewableOwners.length === 1 ? previewableOwners[0] : null
+  const availableOwners = ((viewerData || []) as AdminWorkspaceOwnerCandidate[])
+    .filter(isAvailableOwner)
+  const viewer = availableOwners.length === 1 ? availableOwners[0] : null
   if (
     !viewer
     || viewer.workspace_id !== canonicalWorkspaceId
     || viewer.role !== 'owner'
-    || !isPreviewableOwner(viewer)
+    || !isAvailableOwner(viewer)
     || !viewer.email_normalized
   ) {
-    throw new Error('This client workspace does not have an available owner to preview.')
+    throw new Error('This client workspace does not have an available owner.')
   }
 
   let clientsQuery = supabase
@@ -141,7 +141,7 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
 
   const clients = (clientsData || []) as unknown as WorkspaceClient[]
   if (clients.some((client) => client.workspace_id !== canonicalWorkspaceId)) {
-    throw new Error('The workspace preview response did not match the selected workspace.')
+    throw new Error('The selected workspace response did not match the workspace address.')
   }
 
   return {

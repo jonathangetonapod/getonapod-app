@@ -48,7 +48,7 @@ describe('WorkspaceSwitcher', () => {
 
   it('navigates to an explicit admin workspace URL', async () => {
     renderSwitcher()
-    const trigger = await screen.findByRole('combobox', { name: 'Select a client workspace to view' })
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
@@ -63,23 +63,23 @@ describe('WorkspaceSwitcher', () => {
     expect(mockedList).not.toHaveBeenCalled()
   })
 
-  it('shows the selected workspace in the compact preview toolbar', async () => {
+  it('shows the selected workspace in the compact toolbar', async () => {
     renderSwitcher({
       initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/clients',
       presentation: 'toolbar',
     })
 
-    expect(await screen.findByRole('combobox', { name: 'Select a client workspace to view' })).toHaveTextContent('Bravo')
-    expect(screen.queryByText('View client workspace')).not.toBeInTheDocument()
+    expect(await screen.findByRole('combobox', { name: 'Select a workspace' })).toHaveTextContent('Bravo')
+    expect(screen.queryByText('Switch workspace')).not.toBeInTheDocument()
   })
 
-  it('preserves the guest resources module when switching workspaces from its preview', async () => {
+  it('preserves the guest resources module when switching workspaces', async () => {
     renderSwitcher({
       initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/guest-resources',
       presentation: 'toolbar',
     })
 
-    const trigger = await screen.findByRole('combobox', { name: 'Select a client workspace to view' })
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
@@ -87,13 +87,13 @@ describe('WorkspaceSwitcher', () => {
     ))
   })
 
-  it('preserves the workspace users module when switching read-only previews', async () => {
+  it('preserves the workspace users module when switching workspaces', async () => {
     renderSwitcher({
       initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/workspace-users',
       presentation: 'toolbar',
     })
 
-    const trigger = await screen.findByRole('combobox', { name: 'Select a client workspace to view' })
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(

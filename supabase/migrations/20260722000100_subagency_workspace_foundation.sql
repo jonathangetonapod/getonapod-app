@@ -320,13 +320,13 @@ AS $$
   );
 $$;
 
--- Resolve and lock a tenant manager. Platform administrators are accepted only
--- for the explicit read-only roster preview branch.
+-- Resolve and lock a tenant manager or the platform owner acting in an
+-- explicitly selected private workspace.
 CREATE OR REPLACE FUNCTION public.workspace_staff_actor_role_v1(
   p_workspace_id UUID,
   p_actor_user_id UUID,
   p_token_issued_at BIGINT,
-  p_allow_platform_preview BOOLEAN
+  p_allow_platform_management BOOLEAN
 )
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -376,8 +376,9 @@ BEGIN
   END IF;
 
   IF public.is_platform_admin_identity(p_actor_user_id, actor_email) THEN
-    -- Platform preview never locks a membership in the target workspace, so it
-    -- may safely stabilize that workspace before the default bootstrap row.
+    -- Platform management never creates or impersonates a membership in the
+    -- target workspace, so it may safely stabilize that workspace before the
+    -- default bootstrap row.
     SELECT
       workspace.status,
       workspace.is_default,
@@ -391,13 +392,13 @@ BEGIN
       RAISE EXCEPTION 'private workspace not found' USING ERRCODE = 'P0002';
     END IF;
 
-    IF NOT p_allow_platform_preview THEN
-      RAISE EXCEPTION 'platform administrator preview is read-only'
+    IF p_allow_platform_management IS NOT TRUE THEN
+      RAISE EXCEPTION 'platform owner management is not allowed for this operation'
         USING ERRCODE = '42501';
     END IF;
 
     IF workspace_status <> 'active' THEN
-      RAISE EXCEPTION 'active workspace preview is required'
+      RAISE EXCEPTION 'active selected workspace is required'
         USING ERRCODE = '42501';
     END IF;
 
@@ -529,14 +530,15 @@ BEGIN
       'status', workspace.status
     ),
     'capabilities', jsonb_build_object(
-      'read_only', actor_role = 'platform_admin',
+      'read_only', false,
       'invite_roles', CASE actor_role
         WHEN 'owner' THEN jsonb_build_array('admin', 'member')
+        WHEN 'platform_admin' THEN jsonb_build_array('admin', 'member')
         WHEN 'admin' THEN jsonb_build_array('member')
         ELSE '[]'::JSONB
       END,
-      'can_update_roles', actor_role = 'owner',
-      'can_transfer_owner', actor_role = 'owner'
+      'can_update_roles', actor_role IN ('owner', 'platform_admin'),
+      'can_transfer_owner', actor_role IN ('owner', 'platform_admin')
     ),
     'members', COALESCE((
       SELECT jsonb_agg(
@@ -552,8 +554,7 @@ BEGIN
           'suspended_at', membership.suspended_at,
           'pending_review', claim_state.pending_review,
           'allowed_actions', CASE
-            WHEN actor_role = 'platform_admin'
-              OR claim_state.pending_review
+            WHEN claim_state.pending_review
               OR membership.user_id = p_actor_user_id
               OR membership.role = 'owner'
               OR (actor_role = 'admin' AND membership.role <> 'member')
@@ -562,11 +563,13 @@ BEGIN
               jsonb_build_array('retry_invite', 'revoke')
             WHEN membership.status = 'invited' THEN
               jsonb_build_array('revoke')
-            WHEN membership.status = 'active' AND actor_role = 'owner' THEN
+            WHEN membership.status = 'active'
+              AND actor_role IN ('owner', 'platform_admin') THEN
               jsonb_build_array('suspend', 'update_role', 'transfer_owner')
             WHEN membership.status = 'active' THEN
               jsonb_build_array('suspend')
-            WHEN membership.status = 'suspended' AND actor_role = 'owner' THEN
+            WHEN membership.status = 'suspended'
+              AND actor_role IN ('owner', 'platform_admin') THEN
               jsonb_build_array('reactivate', 'revoke', 'update_role')
             WHEN membership.status = 'suspended' THEN
               jsonb_build_array('reactivate', 'revoke')
@@ -647,7 +650,7 @@ BEGIN
   END IF;
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   IF normalized_email IS NULL
@@ -818,7 +821,7 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   SELECT existing_membership.*
@@ -910,7 +913,7 @@ BEGIN
   END IF;
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   SELECT existing_membership.*
@@ -1078,7 +1081,7 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   SELECT existing_membership.*
@@ -1237,7 +1240,7 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   SELECT existing_membership.*
@@ -1425,7 +1428,7 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   SELECT existing_membership.*
@@ -1645,7 +1648,7 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
   desired_status := CASE p_action
@@ -1803,10 +1806,10 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
-  IF actor_role <> 'owner' THEN
+  IF actor_role NOT IN ('owner', 'platform_admin') THEN
     RAISE EXCEPTION 'workspace owner access is required'
       USING ERRCODE = '42501';
   END IF;
@@ -1903,10 +1906,10 @@ BEGIN
   PERFORM public.lock_workspace_provider_lifecycle_v1(p_workspace_id);
 
   actor_role := public.workspace_staff_actor_role_v1(
-    p_workspace_id, p_actor_user_id, p_token_issued_at, false
+    p_workspace_id, p_actor_user_id, p_token_issued_at, true
   );
 
-  IF actor_role <> 'owner' THEN
+  IF actor_role NOT IN ('owner', 'platform_admin') THEN
     RAISE EXCEPTION 'workspace owner access is required'
       USING ERRCODE = '42501';
   END IF;
@@ -1917,12 +1920,11 @@ BEGIN
   FROM public.workspace_memberships AS membership
   WHERE membership.workspace_id = p_workspace_id
     AND membership.id IN (p_membership_id, (
-      SELECT actor_membership.id
-      FROM public.workspace_memberships AS actor_membership
-      WHERE actor_membership.workspace_id = p_workspace_id
-        AND actor_membership.user_id = p_actor_user_id
-        AND actor_membership.status = 'active'
-        AND actor_membership.role = 'owner'
+      SELECT owner_membership.id
+      FROM public.workspace_memberships AS owner_membership
+      WHERE owner_membership.workspace_id = p_workspace_id
+        AND owner_membership.status = 'active'
+        AND owner_membership.role = 'owner'
     ))
   ORDER BY membership.id
   FOR UPDATE;
@@ -1931,12 +1933,16 @@ BEGIN
   INTO previous_owner
   FROM public.workspace_memberships AS membership
   WHERE membership.workspace_id = p_workspace_id
-    AND membership.user_id = p_actor_user_id
     AND membership.status = 'active'
     AND membership.role = 'owner'
   FOR UPDATE;
 
   IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace ownership changed during transfer'
+      USING ERRCODE = '55000';
+  END IF;
+
+  IF actor_role = 'owner' AND previous_owner.user_id <> p_actor_user_id THEN
     RAISE EXCEPTION 'workspace ownership changed during transfer'
       USING ERRCODE = '55000';
   END IF;
@@ -2820,7 +2826,8 @@ CREATE POLICY workspace_memberships_authenticated_select_isolation
     )
   );
 
--- Platform administrators retain cross-workspace SELECT for explicit preview,
+-- Platform administrators retain cross-workspace SELECT for an explicitly
+-- selected workspace,
 -- but browser sessions may mutate client rows only in the platform's default
 -- workspace. Private-workspace writes must pass through the audited tenant RPC.
 DROP POLICY IF EXISTS clients_workspace_insert ON public.clients;
@@ -2945,8 +2952,322 @@ CREATE POLICY clients_workspace_delete_isolation
     )
   );
 
+-- The internal client writer accepts either an active tenant manager or the
+-- authenticated platform owner. The token-aware v2 wrapper below remains the
+-- only executable service entry point and records the real actor in every
+-- audit event.
+CREATE OR REPLACE FUNCTION public.workspace_client_operation(
+  p_action TEXT,
+  p_workspace_id UUID,
+  p_client_id UUID,
+  p_payload JSONB,
+  p_actor_user_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  actor_email TEXT;
+  actor_is_authorized BOOLEAN := false;
+  target_client RECORD;
+  result JSONB;
+  normalized_name TEXT;
+  normalized_email TEXT;
+  normalized_contact TEXT;
+  normalized_linkedin TEXT;
+  normalized_website TEXT;
+  normalized_notes TEXT;
+  normalized_status TEXT;
+BEGIN
+  IF p_action IS NULL
+    OR p_action NOT IN ('list', 'create', 'update', 'delete')
+    OR p_workspace_id IS NULL
+    OR p_actor_user_id IS NULL
+  THEN
+    RAISE EXCEPTION 'invalid workspace client operation'
+      USING ERRCODE = '22023';
+  END IF;
+
+  SELECT lower(btrim(auth_user.email))
+  INTO actor_email
+  FROM auth.users AS auth_user
+  WHERE auth_user.id = p_actor_user_id
+    AND NULLIF(btrim(auth_user.email), '') IS NOT NULL;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace client actor identity is unavailable'
+      USING ERRCODE = '42501';
+  END IF;
+
+  actor_is_authorized := public.is_platform_admin_identity(
+    p_actor_user_id,
+    actor_email
+  );
+
+  IF NOT actor_is_authorized THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.workspace_memberships AS membership
+      JOIN auth.users AS auth_user
+        ON auth_user.id = membership.user_id
+        AND lower(btrim(auth_user.email)) = membership.email_normalized
+      WHERE membership.workspace_id = p_workspace_id
+        AND membership.user_id = p_actor_user_id
+        AND membership.email_normalized = actor_email
+        AND membership.status = 'active'
+        AND membership.role IN ('owner', 'admin')
+    )
+    INTO actor_is_authorized;
+  END IF;
+
+  IF NOT actor_is_authorized THEN
+    RAISE EXCEPTION 'active workspace manager access is required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM 1
+  FROM public.workspaces AS workspace
+  WHERE workspace.id = p_workspace_id
+    AND workspace.status = 'active'
+    AND NOT workspace.is_default
+  FOR SHARE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'active workspace manager access is required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF p_action = 'list' THEN
+    IF p_client_id IS NOT NULL
+      OR COALESCE(p_payload, '{}'::JSONB) <> '{}'::JSONB
+    THEN
+      RAISE EXCEPTION 'invalid list parameters' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT COALESCE(
+      jsonb_agg(to_jsonb(safe_client) ORDER BY safe_client.name),
+      '[]'::JSONB
+    )
+    INTO result
+    FROM (
+      SELECT
+        client.id,
+        client.workspace_id,
+        client.name,
+        client.email,
+        client.contact_person,
+        client.linkedin_url,
+        client.website,
+        client.status,
+        client.notes,
+        client.created_at,
+        client.updated_at
+      FROM public.clients AS client
+      WHERE client.workspace_id = p_workspace_id
+    ) AS safe_client;
+
+    RETURN result;
+  END IF;
+
+  IF p_action IN ('create', 'update') THEN
+    IF p_payload IS NULL
+      OR jsonb_typeof(p_payload) <> 'object'
+      OR EXISTS (
+        SELECT 1
+        FROM jsonb_object_keys(p_payload) AS payload_key(key)
+        WHERE payload_key.key NOT IN (
+          'name',
+          'email',
+          'contact_person',
+          'linkedin_url',
+          'website',
+          'status',
+          'notes'
+        )
+      )
+    THEN
+      RAISE EXCEPTION 'invalid client payload' USING ERRCODE = '22023';
+    END IF;
+
+    normalized_name := NULLIF(btrim(p_payload ->> 'name'), '');
+    normalized_email := NULLIF(btrim(p_payload ->> 'email'), '');
+    normalized_contact := NULLIF(btrim(p_payload ->> 'contact_person'), '');
+    normalized_linkedin := NULLIF(btrim(p_payload ->> 'linkedin_url'), '');
+    normalized_website := NULLIF(btrim(p_payload ->> 'website'), '');
+    normalized_status := NULLIF(btrim(p_payload ->> 'status'), '');
+    normalized_notes := NULLIF(btrim(p_payload ->> 'notes'), '');
+
+    IF normalized_name IS NULL
+      OR char_length(normalized_name) > 200
+      OR char_length(COALESCE(normalized_email, '')) > 254
+      OR char_length(COALESCE(normalized_contact, '')) > 200
+      OR char_length(COALESCE(normalized_linkedin, '')) > 2048
+      OR char_length(COALESCE(normalized_website, '')) > 2048
+      OR (
+        normalized_linkedin IS NOT NULL
+        AND normalized_linkedin !~* '^https?://[^[:space:][:cntrl:]]+$'
+      )
+      OR (
+        normalized_website IS NOT NULL
+        AND normalized_website !~* '^https?://[^[:space:][:cntrl:]]+$'
+      )
+      OR char_length(COALESCE(normalized_notes, '')) > 10000
+      OR normalized_status NOT IN ('active', 'paused', 'churned')
+    THEN
+      RAISE EXCEPTION 'invalid client fields' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
+  IF p_action = 'create' THEN
+    IF p_client_id IS NOT NULL THEN
+      RAISE EXCEPTION 'client_id is not accepted for create' USING ERRCODE = '22023';
+    END IF;
+
+    INSERT INTO public.clients (
+      workspace_id,
+      name,
+      email,
+      contact_person,
+      linkedin_url,
+      website,
+      status,
+      notes
+    )
+    VALUES (
+      p_workspace_id,
+      normalized_name,
+      normalized_email,
+      normalized_contact,
+      normalized_linkedin,
+      normalized_website,
+      normalized_status,
+      normalized_notes
+    )
+    RETURNING
+      id,
+      workspace_id,
+      name,
+      email,
+      contact_person,
+      linkedin_url,
+      website,
+      status,
+      notes,
+      created_at,
+      updated_at
+    INTO target_client;
+
+    INSERT INTO public.workspace_audit_log (
+      workspace_id, actor_user_id, action, entity_type, entity_id, metadata
+    )
+    VALUES (
+      p_workspace_id,
+      p_actor_user_id,
+      'workspace.client.created',
+      'client',
+      target_client.id,
+      jsonb_build_object('name', target_client.name)
+    );
+
+    RETURN to_jsonb(target_client);
+  END IF;
+
+  IF p_client_id IS NULL THEN
+    RAISE EXCEPTION 'client_id is required' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT
+    client.id,
+    client.workspace_id,
+    client.name,
+    client.email,
+    client.contact_person,
+    client.linkedin_url,
+    client.website,
+    client.status,
+    client.notes,
+    client.created_at,
+    client.updated_at
+  INTO target_client
+  FROM public.clients AS client
+  WHERE client.id = p_client_id
+    AND client.workspace_id = p_workspace_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace client not found' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF p_action = 'update' THEN
+    UPDATE public.clients AS client
+    SET
+      name = normalized_name,
+      email = normalized_email,
+      contact_person = normalized_contact,
+      linkedin_url = normalized_linkedin,
+      website = normalized_website,
+      status = normalized_status,
+      notes = normalized_notes
+    WHERE client.id = p_client_id
+      AND client.workspace_id = p_workspace_id
+    RETURNING
+      client.id,
+      client.workspace_id,
+      client.name,
+      client.email,
+      client.contact_person,
+      client.linkedin_url,
+      client.website,
+      client.status,
+      client.notes,
+      client.created_at,
+      client.updated_at
+    INTO target_client;
+
+    INSERT INTO public.workspace_audit_log (
+      workspace_id, actor_user_id, action, entity_type, entity_id, metadata
+    )
+    VALUES (
+      p_workspace_id,
+      p_actor_user_id,
+      'workspace.client.updated',
+      'client',
+      p_client_id,
+      jsonb_build_object('name', target_client.name)
+    );
+
+    RETURN to_jsonb(target_client);
+  END IF;
+
+  IF COALESCE(p_payload, '{}'::JSONB) <> '{}'::JSONB THEN
+    RAISE EXCEPTION 'delete does not accept a payload' USING ERRCODE = '22023';
+  END IF;
+
+  DELETE FROM public.clients
+  WHERE id = p_client_id
+    AND workspace_id = p_workspace_id;
+
+  INSERT INTO public.workspace_audit_log (
+    workspace_id, actor_user_id, action, entity_type, entity_id, metadata
+  )
+  VALUES (
+    p_workspace_id,
+    p_actor_user_id,
+    'workspace.client.deleted',
+    'client',
+    p_client_id,
+    jsonb_build_object('name', target_client.name)
+  );
+
+  RETURN to_jsonb(target_client);
+END;
+$$;
+
 -- Members can read the client directory used by every tenant module. Client
--- mutations remain manager-only and retain the existing audited implementation.
+-- mutations remain manager/platform-owner operations and retain the existing
+-- audited implementation.
 CREATE OR REPLACE FUNCTION public.workspace_client_operation_v2(
   p_action TEXT,
   p_workspace_id UUID,
@@ -2995,11 +3316,6 @@ BEGIN
       p_token_issued_at,
       true
     );
-
-    IF normalized_action <> 'list' THEN
-      RAISE EXCEPTION 'platform administrator preview is read-only'
-        USING ERRCODE = '42501';
-    END IF;
   ELSE
     SELECT membership.role
     INTO actor_role
@@ -3095,6 +3411,490 @@ REVOKE ALL ON FUNCTION public.workspace_guest_resource_operation_manager_v1(
   TEXT, UUID, UUID, JSONB, UUID, BIGINT
 ) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Platform-owner mutations use the same validation, workspace binding,
+-- assignment replacement, narrow response, and audit contract as tenant
+-- managers while retaining the platform actor's real Auth id.
+CREATE OR REPLACE FUNCTION public.platform_workspace_guest_resource_mutation_v1(
+  p_action TEXT,
+  p_workspace_id UUID,
+  p_resource_id UUID,
+  p_payload JSONB,
+  p_actor_user_id UUID,
+  p_token_issued_at BIGINT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  actor_role TEXT;
+  normalized_action TEXT := lower(btrim(COALESCE(p_action, '')));
+  expected_payload_keys CONSTANT TEXT[] := ARRAY[
+    'title',
+    'description',
+    'content',
+    'category',
+    'type',
+    'url',
+    'file_url',
+    'featured',
+    'display_order',
+    'status',
+    'visibility',
+    'client_ids'
+  ];
+  normalized_title TEXT;
+  normalized_description TEXT;
+  normalized_content TEXT;
+  normalized_category public.resource_category;
+  normalized_type public.resource_type;
+  normalized_url TEXT;
+  normalized_file_url TEXT;
+  normalized_featured BOOLEAN;
+  normalized_display_order INTEGER;
+  normalized_status TEXT;
+  normalized_visibility TEXT;
+  normalized_client_ids UUID[] := ARRAY[]::UUID[];
+  matching_client_count INTEGER := 0;
+  target_resource public.workspace_guest_resources%ROWTYPE;
+  previous_client_ids UUID[] := ARRAY[]::UUID[];
+  result JSONB;
+BEGIN
+  IF normalized_action NOT IN ('create', 'update', 'delete')
+    OR p_workspace_id IS NULL
+    OR p_actor_user_id IS NULL
+    OR p_token_issued_at IS NULL
+    OR p_token_issued_at < 1
+    OR p_token_issued_at > floor(EXTRACT(EPOCH FROM clock_timestamp()))::BIGINT + 300
+  THEN
+    RAISE EXCEPTION 'invalid platform workspace guest resource mutation'
+      USING ERRCODE = '22023';
+  END IF;
+
+  actor_role := public.workspace_staff_actor_role_v1(
+    p_workspace_id,
+    p_actor_user_id,
+    p_token_issued_at,
+    true
+  );
+
+  IF actor_role <> 'platform_admin' THEN
+    RAISE EXCEPTION 'platform owner access is required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF normalized_action = 'delete' THEN
+    IF p_resource_id IS NULL
+      OR COALESCE(p_payload, '{}'::JSONB) <> '{}'::JSONB
+    THEN
+      RAISE EXCEPTION 'invalid delete parameters' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT resource.*
+    INTO target_resource
+    FROM public.workspace_guest_resources AS resource
+    WHERE resource.id = p_resource_id
+      AND resource.workspace_id = p_workspace_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'workspace guest resource not found'
+        USING ERRCODE = 'P0002';
+    END IF;
+
+    SELECT COALESCE(array_agg(link.client_id ORDER BY link.client_id), ARRAY[]::UUID[])
+    INTO previous_client_ids
+    FROM public.workspace_guest_resource_clients AS link
+    WHERE link.resource_id = p_resource_id
+      AND link.workspace_id = p_workspace_id;
+
+    DELETE FROM public.workspace_guest_resources
+    WHERE id = p_resource_id
+      AND workspace_id = p_workspace_id;
+
+    INSERT INTO public.workspace_audit_log (
+      workspace_id,
+      actor_user_id,
+      action,
+      entity_type,
+      entity_id,
+      metadata
+    )
+    VALUES (
+      p_workspace_id,
+      p_actor_user_id,
+      'workspace.guest_resource.deleted',
+      'workspace_guest_resource',
+      p_resource_id,
+      jsonb_build_object(
+        'title', target_resource.title,
+        'status', target_resource.status,
+        'visibility', target_resource.visibility,
+        'client_count', cardinality(previous_client_ids),
+        'source_template_id', target_resource.source_template_id
+      )
+    );
+
+    RETURN 'null'::JSONB;
+  END IF;
+
+  IF p_payload IS NULL
+    OR jsonb_typeof(p_payload) <> 'object'
+    OR NOT p_payload ?& expected_payload_keys
+    OR EXISTS (
+      SELECT 1
+      FROM jsonb_object_keys(p_payload) AS payload_key(key)
+      WHERE payload_key.key <> ALL(expected_payload_keys)
+    )
+    OR jsonb_typeof(p_payload -> 'title') <> 'string'
+    OR jsonb_typeof(p_payload -> 'description') <> 'string'
+    OR jsonb_typeof(p_payload -> 'content') NOT IN ('string', 'null')
+    OR jsonb_typeof(p_payload -> 'category') <> 'string'
+    OR jsonb_typeof(p_payload -> 'type') <> 'string'
+    OR jsonb_typeof(p_payload -> 'url') NOT IN ('string', 'null')
+    OR jsonb_typeof(p_payload -> 'file_url') NOT IN ('string', 'null')
+    OR jsonb_typeof(p_payload -> 'featured') <> 'boolean'
+    OR jsonb_typeof(p_payload -> 'display_order') <> 'number'
+    OR jsonb_typeof(p_payload -> 'status') <> 'string'
+    OR jsonb_typeof(p_payload -> 'visibility') <> 'string'
+    OR jsonb_typeof(p_payload -> 'client_ids') <> 'array'
+  THEN
+    RAISE EXCEPTION 'invalid workspace guest resource payload'
+      USING ERRCODE = '22023';
+  END IF;
+
+  normalized_title := btrim(p_payload ->> 'title');
+  normalized_description := btrim(p_payload ->> 'description');
+  normalized_content := NULLIF(btrim(p_payload ->> 'content'), '');
+  normalized_url := NULLIF(btrim(p_payload ->> 'url'), '');
+  normalized_file_url := NULLIF(btrim(p_payload ->> 'file_url'), '');
+  normalized_featured := (p_payload ->> 'featured')::BOOLEAN;
+  normalized_status := btrim(p_payload ->> 'status');
+  normalized_visibility := btrim(p_payload ->> 'visibility');
+
+  IF (p_payload ->> 'display_order') !~ '^[0-9]+$'
+    OR (p_payload ->> 'display_order')::NUMERIC > 1000000
+    OR NOT public.guest_resource_text_is_normalized_nonempty(
+      normalized_title,
+      200
+    )
+    OR NOT public.guest_resource_text_is_normalized_nonempty(
+      normalized_description,
+      2000
+    )
+    OR char_length(COALESCE(normalized_content, '')) > 100000
+    OR (
+      normalized_content IS NOT NULL
+      AND (
+        normalized_content !~*
+          '^<(p|h[1-6]|ul|ol|blockquote|pre|hr)([[:space:]>])'
+        OR right(normalized_content, 1) <> '>'
+      )
+    )
+    OR (
+      normalized_url IS NOT NULL
+      AND NOT public.guest_resource_http_url_is_safe(normalized_url)
+    )
+    OR (
+      normalized_file_url IS NOT NULL
+      AND NOT public.guest_resource_http_url_is_safe(normalized_file_url)
+    )
+    OR p_payload ->> 'category' NOT IN (
+      'preparation',
+      'technical_setup',
+      'best_practices',
+      'promotion',
+      'examples',
+      'templates'
+    )
+    OR p_payload ->> 'type' NOT IN ('article', 'video', 'download', 'link')
+    OR normalized_status NOT IN ('draft', 'published', 'archived')
+    OR normalized_visibility NOT IN ('all_clients', 'selected_clients')
+    OR (
+      normalized_status = 'published'
+      AND (
+        (
+          p_payload ->> 'type' IN ('video', 'link')
+          AND normalized_url IS NULL
+        )
+        OR (
+          p_payload ->> 'type' = 'download'
+          AND normalized_file_url IS NULL
+        )
+        OR (
+          p_payload ->> 'type' = 'article'
+          AND NOT COALESCE(
+            public.guest_resource_content_has_meaningful_text(
+              normalized_content
+            ),
+            false
+          )
+        )
+      )
+    )
+    OR jsonb_array_length(p_payload -> 'client_ids') > 500
+    OR EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(p_payload -> 'client_ids') AS client_id(value)
+      WHERE jsonb_typeof(client_id.value) <> 'string'
+        OR client_id.value #>> '{}' !~*
+          '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    )
+    OR jsonb_array_length(p_payload -> 'client_ids') <> (
+      SELECT count(DISTINCT lower(client_id.value #>> '{}'))
+      FROM jsonb_array_elements(p_payload -> 'client_ids') AS client_id(value)
+    )
+  THEN
+    RAISE EXCEPTION 'invalid workspace guest resource fields'
+      USING ERRCODE = '22023';
+  END IF;
+
+  normalized_display_order := (p_payload ->> 'display_order')::INTEGER;
+  normalized_category := (p_payload ->> 'category')::public.resource_category;
+  normalized_type := (p_payload ->> 'type')::public.resource_type;
+
+  SELECT COALESCE(
+    array_agg((client_id.value #>> '{}')::UUID ORDER BY client_id.value #>> '{}'),
+    ARRAY[]::UUID[]
+  )
+  INTO normalized_client_ids
+  FROM jsonb_array_elements(p_payload -> 'client_ids') AS client_id(value);
+
+  IF (
+      normalized_visibility = 'selected_clients'
+      AND cardinality(normalized_client_ids) = 0
+    ) OR (
+      normalized_visibility = 'all_clients'
+      AND cardinality(normalized_client_ids) <> 0
+    )
+  THEN
+    RAISE EXCEPTION 'client_ids do not match resource visibility'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF cardinality(normalized_client_ids) > 0 THEN
+    PERFORM 1
+    FROM public.clients AS client
+    WHERE client.workspace_id = p_workspace_id
+      AND client.id = ANY(normalized_client_ids)
+    ORDER BY client.id
+    FOR SHARE;
+    GET DIAGNOSTICS matching_client_count = ROW_COUNT;
+
+    IF matching_client_count <> cardinality(normalized_client_ids) THEN
+      RAISE EXCEPTION 'one or more resource clients are outside the workspace'
+        USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
+  IF normalized_action = 'create' THEN
+    IF p_resource_id IS NOT NULL THEN
+      RAISE EXCEPTION 'resource_id is not accepted for create'
+        USING ERRCODE = '22023';
+    END IF;
+
+    INSERT INTO public.workspace_guest_resources (
+      workspace_id,
+      title,
+      description,
+      content,
+      category,
+      type,
+      url,
+      file_url,
+      featured,
+      display_order,
+      status,
+      published_at,
+      visibility,
+      source_template_id,
+      created_by,
+      updated_by
+    )
+    VALUES (
+      p_workspace_id,
+      normalized_title,
+      normalized_description,
+      normalized_content,
+      normalized_category,
+      normalized_type,
+      normalized_url,
+      normalized_file_url,
+      normalized_featured,
+      normalized_display_order,
+      normalized_status,
+      CASE WHEN normalized_status = 'published' THEN now() ELSE NULL END,
+      normalized_visibility,
+      NULL,
+      p_actor_user_id,
+      p_actor_user_id
+    )
+    RETURNING * INTO target_resource;
+
+    INSERT INTO public.workspace_guest_resource_clients (
+      workspace_id,
+      resource_id,
+      client_id,
+      created_by
+    )
+    SELECT
+      p_workspace_id,
+      target_resource.id,
+      assigned_client.client_id,
+      p_actor_user_id
+    FROM unnest(normalized_client_ids) AS assigned_client(client_id);
+
+    INSERT INTO public.workspace_audit_log (
+      workspace_id,
+      actor_user_id,
+      action,
+      entity_type,
+      entity_id,
+      metadata
+    )
+    VALUES (
+      p_workspace_id,
+      p_actor_user_id,
+      'workspace.guest_resource.created',
+      'workspace_guest_resource',
+      target_resource.id,
+      jsonb_build_object(
+        'title', target_resource.title,
+        'status', target_resource.status,
+        'visibility', target_resource.visibility,
+        'client_count', cardinality(normalized_client_ids),
+        'source_template_id', NULL
+      )
+    );
+  ELSE
+    IF normalized_action <> 'update' OR p_resource_id IS NULL THEN
+      RAISE EXCEPTION 'resource_id is required for update'
+        USING ERRCODE = '22023';
+    END IF;
+
+    SELECT resource.*
+    INTO target_resource
+    FROM public.workspace_guest_resources AS resource
+    WHERE resource.id = p_resource_id
+      AND resource.workspace_id = p_workspace_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'workspace guest resource not found'
+        USING ERRCODE = 'P0002';
+    END IF;
+
+    SELECT COALESCE(array_agg(link.client_id ORDER BY link.client_id), ARRAY[]::UUID[])
+    INTO previous_client_ids
+    FROM public.workspace_guest_resource_clients AS link
+    WHERE link.resource_id = p_resource_id
+      AND link.workspace_id = p_workspace_id;
+
+    UPDATE public.workspace_guest_resources AS resource
+    SET
+      title = normalized_title,
+      description = normalized_description,
+      content = normalized_content,
+      category = normalized_category,
+      type = normalized_type,
+      url = normalized_url,
+      file_url = normalized_file_url,
+      featured = normalized_featured,
+      display_order = normalized_display_order,
+      status = normalized_status,
+      published_at = CASE
+        WHEN normalized_status <> 'published' THEN NULL
+        WHEN target_resource.status = 'published' THEN target_resource.published_at
+        ELSE now()
+      END,
+      visibility = normalized_visibility,
+      updated_by = p_actor_user_id
+    WHERE resource.id = p_resource_id
+      AND resource.workspace_id = p_workspace_id
+    RETURNING resource.* INTO target_resource;
+
+    DELETE FROM public.workspace_guest_resource_clients
+    WHERE resource_id = p_resource_id
+      AND workspace_id = p_workspace_id;
+
+    INSERT INTO public.workspace_guest_resource_clients (
+      workspace_id,
+      resource_id,
+      client_id,
+      created_by
+    )
+    SELECT
+      p_workspace_id,
+      p_resource_id,
+      assigned_client.client_id,
+      p_actor_user_id
+    FROM unnest(normalized_client_ids) AS assigned_client(client_id);
+
+    INSERT INTO public.workspace_audit_log (
+      workspace_id,
+      actor_user_id,
+      action,
+      entity_type,
+      entity_id,
+      metadata
+    )
+    VALUES (
+      p_workspace_id,
+      p_actor_user_id,
+      'workspace.guest_resource.updated',
+      'workspace_guest_resource',
+      p_resource_id,
+      jsonb_build_object(
+        'title', target_resource.title,
+        'status', target_resource.status,
+        'visibility', target_resource.visibility,
+        'client_count', cardinality(normalized_client_ids),
+        'previous_client_count', cardinality(previous_client_ids),
+        'source_template_id', target_resource.source_template_id
+      )
+    );
+  END IF;
+
+  SELECT jsonb_build_object(
+    'id', resource.id,
+    'workspace_id', resource.workspace_id,
+    'title', resource.title,
+    'description', resource.description,
+    'content', resource.content,
+    'category', resource.category,
+    'type', resource.type,
+    'url', resource.url,
+    'file_url', resource.file_url,
+    'featured', resource.featured,
+    'display_order', resource.display_order,
+    'status', resource.status,
+    'published_at', resource.published_at,
+    'visibility', resource.visibility,
+    'source_template_id', resource.source_template_id,
+    'created_at', resource.created_at,
+    'updated_at', resource.updated_at,
+    'client_ids', COALESCE(assignment.client_ids, ARRAY[]::UUID[])
+  )
+  INTO result
+  FROM public.workspace_guest_resources AS resource
+  LEFT JOIN LATERAL (
+    SELECT array_agg(link.client_id ORDER BY link.client_id) AS client_ids
+    FROM public.workspace_guest_resource_clients AS link
+    WHERE link.workspace_id = resource.workspace_id
+      AND link.resource_id = resource.id
+  ) AS assignment ON true
+  WHERE resource.id = target_resource.id
+    AND resource.workspace_id = p_workspace_id;
+
+  RETURN result;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.platform_workspace_guest_resource_mutation_v1(
+  TEXT, UUID, UUID, JSONB, UUID, BIGINT
+) FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.workspace_guest_resource_operation_v1(
   p_action TEXT,
   p_workspace_id UUID,
@@ -3137,16 +3937,20 @@ BEGIN
   END IF;
 
   IF public.is_platform_admin_identity(p_actor_user_id, actor_email) THEN
-    -- The established manager function independently proves the platform
-    -- bootstrap membership and enforces read-only active-workspace preview.
-    PERFORM public.workspace_staff_actor_role_v1(
-      p_workspace_id,
-      p_actor_user_id,
-      p_token_issued_at,
-      true
-    );
+    IF normalized_action = 'list' THEN
+      -- The established manager function independently verifies the platform
+      -- identity for its list path.
+      RETURN public.workspace_guest_resource_operation_manager_v1(
+        normalized_action,
+        p_workspace_id,
+        p_resource_id,
+        p_payload,
+        p_actor_user_id,
+        p_token_issued_at
+      );
+    END IF;
 
-    RETURN public.workspace_guest_resource_operation_manager_v1(
+    RETURN public.platform_workspace_guest_resource_mutation_v1(
       normalized_action,
       p_workspace_id,
       p_resource_id,
@@ -3392,11 +4196,11 @@ COMMENT ON COLUMN public.workspaces.access_not_before_epoch IS
 COMMENT ON INDEX public.workspace_memberships_one_live_owner_idx IS
   'Immediate upper bound of one live owner per workspace; a deferred trigger enforces the owner floor.';
 COMMENT ON FUNCTION public.workspace_staff_list_v1(UUID, UUID, BIGINT) IS
-  'Returns the bounded workspace staff roster and actor-specific capabilities without exposing Auth ids or security epochs.';
+  'Returns the bounded workspace staff roster and owner-equivalent platform management capabilities without exposing Auth ids or security epochs.';
 COMMENT ON FUNCTION public.begin_workspace_staff_invite_v1(
   UUID, TEXT, TEXT, TEXT, UUID, BIGINT
 ) IS
-  'Begins a service-delivered invitation for a non-owner workspace staff account under the owner/admin hierarchy.';
+  'Begins a service-delivered invitation for a non-owner workspace staff account under the owner/admin/platform hierarchy.';
 COMMENT ON FUNCTION public.claim_workspace_staff_auth_lifecycle_v1(
   UUID, UUID, TEXT, UUID, BIGINT, UUID
 ) IS
@@ -3408,18 +4212,18 @@ COMMENT ON FUNCTION public.complete_workspace_staff_auth_lifecycle_v1(
 COMMENT ON FUNCTION public.update_workspace_staff_role_v1(
   UUID, UUID, TEXT, UUID, BIGINT
 ) IS
-  'Lets the current owner change a non-owner staff role between admin and member while revoking stale sessions.';
+  'Lets the current workspace owner or platform owner change a non-owner staff role between admin and member while revoking stale sessions.';
 COMMENT ON FUNCTION public.transfer_workspace_owner_v1(
   UUID, UUID, UUID, BIGINT
 ) IS
-  'Atomically transfers the sole live owner role to another active accepted staff account.';
+  'Lets the current workspace owner or platform owner atomically transfer the sole live owner role to another active accepted staff account.';
 COMMENT ON FUNCTION public.workspace_client_operation_v2(
   TEXT, UUID, UUID, JSONB, UUID, BIGINT
 ) IS
-  'Workspace-epoch-aware client operation: every active staff role may list; owner/admin roles may mutate.';
+  'Workspace-epoch-aware client operation: every active staff role may list; owner/admin roles and the platform owner may mutate.';
 COMMENT ON FUNCTION public.workspace_guest_resource_operation_v1(
   TEXT, UUID, UUID, JSONB, UUID, BIGINT
 ) IS
-  'Workspace-epoch-aware guest-resource operation: every active staff role may list; owner/admin roles may mutate; platform preview is read-only.';
+  'Workspace-epoch-aware guest-resource operation: every active staff role may list; owner/admin roles and the platform owner may mutate.';
 
 COMMIT;

@@ -17,15 +17,16 @@ post-deployment Cloudflare purge was completed, and the hardened recursive live
 verifier passed with all six retired asset paths returning 404, `no-store`,
 `text/plain`, and `noindex`. Safe rotation of the exposed legacy service-role
 key remains a separate incident task. That earlier increment did not capture a
-controlled signed-in tenant, administrator-preview, or private-client portal
+controlled signed-in tenant, administrator workspace, or private-client portal
 acceptance run; current production state must be inventoried and tested again
 rather than relying on the historical “no private workspace” observation.
 
 The Sub-agency Workspace Foundation is now the reviewed release candidate. It
 adds one transferable owner plus admins/members, workspace-managed staff,
-read-only platform roster preview, and independent employee/workspace
-lifecycles. It remains pre-production until migration 9, the new/changed Edge
-Functions, hosted Auth policy, frontend, and live acceptance complete.
+native platform-owner selected-workspace management, and independent
+employee/workspace lifecycles. It remains pre-production until migration 9,
+the new/changed Edge Functions, hosted Auth policy, frontend, and live
+acceptance complete.
 
 ## Product goal
 
@@ -59,14 +60,16 @@ Every tenant module must satisfy the same contract before its navigation item
 is enabled:
 
 1. Resolve the Auth user and reject stale manually provisioned credentials.
-2. Lock and verify an active workspace plus an active membership.
+2. Lock and verify the active target workspace plus either an active target
+   membership or the platform owner's fresh default-workspace authority.
 3. Derive or validate every object against the selected `workspace_id`.
 4. Return a narrow DTO rather than a base-table `select('*')` result.
-5. Allow writes only to an active owner or administrator role.
+5. Allow writes only to an active owner/administrator or the authenticated
+   platform owner acting in an explicitly selected active workspace.
 6. Perform mutations in a service-only transaction and append an audit event.
 7. Include user ID and workspace ID in query and browser-storage keys.
-8. Reuse the real tenant component for administrator preview, with mutation
-   code disabled and rejected server-side.
+8. Reuse the real tenant component for the platform owner's selected-workspace
+   context, while keeping the platform Auth identity and audit actor intact.
 9. Test two-workspace isolation, suspension, stale tokens, malformed IDs,
    cross-workspace IDs, CORS, and direct table denial.
 
@@ -78,22 +81,22 @@ pages does not make it tenant-safe.
 Workspace accounts use the same responsive left-sidebar structure and module
 order as the platform dashboard, under `/app/*`. A workspace account never
 receives the platform workspace selector or provisioning controls. The
-platform administrator's explicit preview renders this same workspace shell
-with a read-only banner and selector while preserving the administrator's own
-session.
+platform owner's selected-workspace route renders this same workspace shell
+with native controls and a platform-only selector while preserving the
+platform session.
 
 The shell may name a planned module before its backend is ready, but that entry
 must remain a disabled control rather than a route. Workspace Users, Clients,
 and Guest Resources satisfy the shared tenant contract in the current release
 candidate. Each remaining entry
 becomes a link only in the same release unit as its migration, narrow service
-boundary, preview mode, and isolation tests.
+boundary, platform-owner management path, and isolation tests.
 
 ## Module rollout
 
 | Order | Module | MVP boundary |
 | --- | --- | --- |
-| 1 | Workspace Users foundation | Exactly one transferable owner, admins/members, role hierarchy, employee lifecycle, stale-token revocation, and read-only platform preview |
+| 1 | Workspace Users foundation | Exactly one transferable owner, admins/members, role hierarchy, employee lifecycle, stale-token revocation, and owner-level platform management of a selected workspace |
 | 2 | Client Podcast System | Workspace-scoped booking/calendar management and portal-credential controls for workspace-owned clients |
 | 3 | Podcast Database | Read-only browse/search/filter over a narrow projection of the shared podcast catalog; no global writes, contact export, cost analytics, or live paid lookups |
 | 4 | Onboarding | Workspace-owned submissions behind expiring capability links; no legacy client deletion behavior |
@@ -153,11 +156,12 @@ that client's portal credential, sessions, tokens, and resource assignments.
 Deleting a global source template clears provenance without deleting any
 workspace's independent snapshot.
 
-Workspace owners manage the catalog at `/app/guest-resources`. A platform
-administrator can open the same component at
-`/admin/workspaces/:workspaceId/guest-resources`, but that preview is read-only.
-It exposes list/details only; mutation controls are disabled in the component
-and administrator writes to private catalogs are rejected by the database.
+Workspace owners manage the catalog at `/app/guest-resources`. The platform
+owner opens the same component at
+`/admin/workspaces/:workspaceId/guest-resources` and can create, edit, publish,
+archive, assign, and delete resources for that selected workspace. SQL binds
+the operation to the explicit workspace and records the real platform actor;
+the platform session is never replaced with the workspace owner's session.
 The public `/resources` page continues to show only GOAP public resources.
 
 This is content and audience customization, not visual white-labeling. In this
@@ -198,7 +202,7 @@ Functions. The 2026-07-22 backend increment followed that rule:
    post-deployment Cloudflare purge was completed; the hardened live verifier
    passed, and all six retired asset paths returned 404 with `no-store`,
    `text/plain`, and `noindex`; and
-7. that increment left signed-in tenant, read-only administrator-preview, and
+7. that increment left signed-in tenant, platform-owner workspace management, and
    private-client portal audience acceptance outstanding. Re-inventory current
    production workspaces and run those checks with controlled accounts; do not
    reuse the historical assumption that no private workspace exists.

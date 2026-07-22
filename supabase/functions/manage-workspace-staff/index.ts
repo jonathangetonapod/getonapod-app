@@ -329,7 +329,7 @@ function rpcFailure(
     message.includes("active workspace manager") ||
     message.includes("workspace manager access") ||
     message.includes("workspace staff access") ||
-    message.includes("active workspace preview") ||
+    message.includes("active selected workspace") ||
     message.includes("active workspace access") ||
     message.includes("workspace access is required")
   ) {
@@ -347,17 +347,6 @@ function rpcFailure(
       403,
       "WORKSPACE_OWNER_REQUIRED",
       "Workspace owner access is required",
-    );
-  }
-  if (
-    message.includes("read-only") ||
-    message.includes("read only") ||
-    message.includes("cannot mutate")
-  ) {
-    throw new HttpError(
-      403,
-      "PREVIEW_READ_ONLY",
-      "Administrator preview is read-only",
     );
   }
   if (
@@ -1255,6 +1244,7 @@ async function transferWorkspaceOwner(
     workspaceId: string;
     membershipId: string;
     actorUserId: string;
+    actorIsPlatformAdmin: boolean;
     tokenIssuedAt: number;
   },
 ): Promise<{ owner: StaffMemberDto; previousOwner: StaffMemberDto }> {
@@ -1279,7 +1269,8 @@ async function transferWorkspaceOwner(
   if (
     responseUuid(ownerRow.workspace_id) !== input.workspaceId ||
     responseUuid(previousOwnerRow.workspace_id) !== input.workspaceId ||
-    responseUuid(previousOwnerRow.user_id) !== input.actorUserId ||
+    (!input.actorIsPlatformAdmin &&
+      responseUuid(previousOwnerRow.user_id) !== input.actorUserId) ||
     owner.id !== input.membershipId ||
     owner.role !== "owner" ||
     owner.status !== "active" ||
@@ -1321,18 +1312,10 @@ serve(async (req) => {
         user.id,
         tokenIssuedAt,
       );
-      if (result.capabilities.read_only !== platformAdmin) {
+      if (result.capabilities.read_only) {
         invalidRpcResponse();
       }
       return jsonResponse(req, METHODS, 200, result);
-    }
-
-    if (platformAdmin) {
-      throw new HttpError(
-        403,
-        "PREVIEW_READ_ONLY",
-        "Administrator preview is read-only",
-      );
     }
 
     if (action === "invite") {
@@ -1410,13 +1393,14 @@ serve(async (req) => {
         workspaceId,
         membershipId,
         actorUserId: user.id,
+        actorIsPlatformAdmin: platformAdmin,
         tokenIssuedAt,
       });
       return jsonResponse(req, METHODS, 200, {
         success: true,
         owner: result.owner,
         previous_owner: result.previousOwner,
-        reauthentication_required: true,
+        reauthentication_required: !platformAdmin,
       });
     }
 

@@ -37,7 +37,7 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface WorkspaceStaffProps {
-  adminPreviewWorkspaceId?: string
+  platformWorkspaceId?: string
 }
 
 type ConfirmationAction = 'suspend' | 'reactivate' | 'revoke' | 'transfer_owner' | 'update_role'
@@ -57,13 +57,10 @@ const emptyInvite: WorkspaceStaffInviteInput = {
 function validateView(
   view: WorkspaceStaffView,
   workspaceId: string,
-  options: {
-    preview: boolean
-  },
 ): WorkspaceStaffView {
   if (
     view.workspace.id !== workspaceId
-    || view.capabilities.read_only !== options.preview
+    || view.capabilities.read_only
   ) {
     throw new Error('The workspace staff response did not match the signed-in account.')
   }
@@ -75,7 +72,10 @@ function formatDate(value: string | null): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
 }
 
-function confirmationCopy(confirmation: Confirmation): { title: string; description: string; button: string } {
+function confirmationCopy(
+  confirmation: Confirmation,
+  isPlatformWorkspace: boolean,
+): { title: string; description: string; button: string } {
   const name = confirmation.member.full_name || confirmation.member.email
   if (confirmation.action === 'suspend') {
     return {
@@ -101,7 +101,9 @@ function confirmationCopy(confirmation: Confirmation): { title: string; descript
   if (confirmation.action === 'transfer_owner') {
     return {
       title: `Transfer ownership to ${name}?`,
-      description: 'This user becomes the only workspace owner. Your role changes to admin, and only the new owner can transfer ownership again.',
+      description: isPlatformWorkspace
+        ? 'This user becomes the workspace owner and the current workspace owner becomes an admin. You remain the platform owner.'
+        : 'This user becomes the only workspace owner. Your role changes to admin, and only the new owner can transfer ownership again.',
       button: 'Transfer ownership',
     }
   }
@@ -114,17 +116,17 @@ function confirmationCopy(confirmation: Confirmation): { title: string; descript
   }
 }
 
-const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
+const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const { refreshAccount, refreshSession, signOut, user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [invite, setInvite] = useState<WorkspaceStaffInviteInput>(emptyInvite)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  const isAdminPreview = adminPreviewWorkspaceId !== undefined
-  const workspaceId = (isAdminPreview ? adminPreviewWorkspaceId : workspace?.id || '').toLowerCase()
+  const isPlatformWorkspace = platformWorkspaceId !== undefined
+  const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const validWorkspaceId = UUID_PATTERN.test(workspaceId)
   const queryKey = [
-    isAdminPreview ? 'platform' : 'tenant',
+    isPlatformWorkspace ? 'platform' : 'tenant',
     user?.id || 'unknown',
     workspaceId,
     'workspace-staff',
@@ -135,13 +137,10 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
     queryFn: async () => validateView(
       await listWorkspaceStaff(workspaceId),
       workspaceId,
-      {
-        preview: isAdminPreview,
-      },
     ),
     enabled: validWorkspaceId,
     retry: false,
-    gcTime: isAdminPreview ? 0 : undefined,
+    gcTime: isPlatformWorkspace ? 0 : undefined,
   })
 
   useEffect(() => {
@@ -156,7 +155,7 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
     [data?.members],
   )
   const capabilities = data?.capabilities
-  const canInvite = !isAdminPreview && Boolean(capabilities?.invite_roles.length)
+  const canInvite = Boolean(capabilities?.invite_roles.length)
   const allowedInviteRoles = capabilities?.invite_roles || []
 
   const inviteMutation = useMutation({
@@ -175,7 +174,6 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
 
   const actionMutation = useMutation({
     mutationFn: async (request: Confirmation | { action: 'retry_invite'; member: WorkspaceStaffMember }) => {
-      if (isAdminPreview) throw new Error('Changes are disabled in administrator preview.')
       if (request.action === 'update_role') {
         if (!request.role) throw new Error('Choose a staff role.')
         return updateWorkspaceStaffRole(workspaceId, request.member.id, request.role)
@@ -185,7 +183,7 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
     onSuccess: async (_result, request) => {
       await queryClient.invalidateQueries({ queryKey })
       setConfirmation(null)
-      if (request.action === 'transfer_owner') {
+      if (request.action === 'transfer_owner' && !isPlatformWorkspace) {
         try {
           const sessionRefreshed = await refreshSession()
           if (!sessionRefreshed) throw new Error('Session refresh failed')
@@ -214,18 +212,12 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The workspace user could not be updated.'),
   })
 
-  const previewLayout = isAdminPreview && data
-    ? (() => {
-        const owner = staff.find((member) => member.role === 'owner')
-        return {
-        workspaceName: data.workspace.name,
-        viewerEmail: owner?.email || 'Workspace owner',
-        viewerName: owner?.full_name,
-        viewerRole: 'owner' as const,
+  const platformWorkspace = isPlatformWorkspace
+    ? {
+        workspaceName: data?.workspace.name || 'Client workspace',
         baseHref: `/admin/workspaces/${workspaceId}`,
         exitHref: '/admin/users',
       }
-      })()
     : undefined
 
   const body = !validWorkspaceId
@@ -245,7 +237,6 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
                 <div>
                   <h1 className="text-3xl font-bold tracking-tight">Workspace Users</h1>
                   <p className="text-muted-foreground">Manage the people who can access {data.workspace.name}.</p>
-                  {isAdminPreview && <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">Read-only preview: staff controls cannot make changes.</p>}
                 </div>
                 <Button
                   disabled={!canInvite}
@@ -253,7 +244,6 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
                     setInvite({ ...emptyInvite, role: allowedInviteRoles[0] || 'member' })
                     setInviteOpen(true)
                   }}
-                  aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                 >
                   <UserPlus className="mr-2 h-4 w-4" />Invite user
                 </Button>
@@ -296,7 +286,7 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
                               </TableCell>
                               <TableCell>{formatDate(member.accepted_at || member.invited_at)}</TableCell>
                               <TableCell className="text-right">
-                                {isAdminPreview ? <span className="text-sm text-muted-foreground">Read only</span> : member.role === 'owner' ? <span className="text-sm text-muted-foreground">Protected owner</span> : manageable ? (
+                                {member.role === 'owner' ? <span className="text-sm text-muted-foreground">Protected owner</span> : manageable ? (
                                   <div className="inline-flex flex-wrap justify-end gap-2">
                                     {member.allowed_actions.includes('retry_invite') && (
                                       <Button size="sm" variant="outline" disabled={busy} onClick={() => actionMutation.mutate({ action: 'retry_invite', member })}><RefreshCw className="mr-2 h-4 w-4" />Retry invite</Button>
@@ -332,7 +322,7 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
           )
 
   return (
-    <WorkspaceLayout preview={previewLayout}>
+    <WorkspaceLayout platformWorkspace={platformWorkspace}>
       {body}
 
       <Dialog open={inviteOpen} onOpenChange={(open) => !inviteMutation.isPending && setInviteOpen(open)}>
@@ -350,7 +340,7 @@ const WorkspaceStaff = ({ adminPreviewWorkspaceId }: WorkspaceStaffProps) => {
       <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => !open && !actionMutation.isPending && setConfirmation(null)}>
         <AlertDialogContent>
           {confirmation && (() => {
-            const copy = confirmationCopy(confirmation)
+            const copy = confirmationCopy(confirmation, isPlatformWorkspace)
             return <><AlertDialogHeader><AlertDialogTitle>{copy.title}</AlertDialogTitle><AlertDialogDescription>{copy.description}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={actionMutation.isPending}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => actionMutation.mutate(confirmation)} disabled={actionMutation.isPending}>{actionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{copy.button}</AlertDialogAction></AlertDialogFooter></>
           })()}
         </AlertDialogContent>

@@ -1000,7 +1000,7 @@ export async function getOrderItems(orderId: string): Promise<OrderItem[]>
 | Route | Page/service path | Behavior |
 | --- | --- | --- |
 | `/app/guest-resources` | `WorkspaceGuestResources` + `/src/services/workspaceGuestResources.ts` | Workspace owners/admins create, edit, publish, archive, assign, and delete resources in their own workspace. |
-| `/admin/workspaces/:workspaceId/guest-resources` | `AdminWorkspaceGuestResources` wrapping `WorkspaceGuestResources` | Platform-admin preview of the same workspace layout and data. Mutation controls are disabled, the administrator remains in their own session, and the backend permits list only. |
+| `/admin/workspaces/:workspaceId/guest-resources` | `AdminWorkspaceGuestResources` wrapping `WorkspaceGuestResources` | Native selected-workspace management for the platform owner. The same create/edit/delete controls are available while the platform session remains intact. |
 | `/portal/resources` | `PortalResources` + `getPortalGuestResources()` | Client portal projection. Private-workspace clients receive only published resources visible to that exact client; default-workspace clients retain the platform catalog. |
 | `/admin/guest-resources` | `GuestResourcesManagement` + legacy helpers in `/src/services/guestResources.ts` | Platform/default-workspace template catalog. It seeds one-time snapshots for private workspaces; later template edits do not live-sync to existing workspaces. |
 
@@ -1569,8 +1569,8 @@ if (!data.success) {
 - Row-level security policies in Supabase
 - Client data access restricted by `client_id`
 - Admin functions require admin session validation
-- Workspace Guest Resources operations require an authenticated account, a fresh credential epoch, and an owner/admin membership in the requested `workspace_id`
-- Platform administrators can list a private workspace's Guest Resources for the read-only preview but cannot mutate through that preview
+- Workspace Guest Resources operations require a fresh authenticated account and either an owner/admin membership in the requested `workspace_id` or platform-owner authority for an explicitly selected active workspace
+- Platform-owner writes retain the real platform Auth user as the audit actor; selecting a workspace does not impersonate its owner
 
 ### 3. Data Protection
 - Sensitive operations use Edge Functions

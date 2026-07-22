@@ -20,7 +20,8 @@ tenant routes now expose Clients and Guest Resources.
 The Sub-agency Workspace Foundation is the current release candidate, not yet
 production-active in this document. It adds migration 9,
 `manage-workspace-staff`, one transferable owner plus admins/members,
-`/app/workspace-users`, and read-only platform staff preview. Hosted Auth
+`/app/workspace-users`, and native platform-owner management of a selected
+workspace. Hosted Auth
 password-policy verification, the production migration/Edge cutover, and live
 acceptance remain release gates.
 
@@ -55,10 +56,12 @@ The target MVP intentionally has:
 
 The platform administrator uses the existing `/admin/*` application. Workspace
 staff use `/app/workspace-users`, `/app/clients`, and
-`/app/guest-resources`. The matching platform preview routes are
+`/app/guest-resources`. The matching platform-owner management routes are
 `/admin/workspaces/:workspaceId/workspace-users`,
 `/admin/workspaces/:workspaceId/clients`, and
-`/admin/workspaces/:workspaceId/guest-resources`; every preview is read-only.
+`/admin/workspaces/:workspaceId/guest-resources`. Only a platform administrator
+receives the workspace selector; the selected context keeps the platform Auth
+session while exposing the supported workspace controls.
 Client portal users are separate client records and use `/portal/*`; they are
 not workspace accounts.
 
@@ -109,6 +112,8 @@ Agency employee lifecycle is separate from the table above. A workspace owner
 can invite admins or members, manage non-owner roles, suspend/remove staff, and
 transfer ownership. An admin can invite and manage members only. A member has
 no staff controls and currently receives read-only Clients and Guest Resources.
+The platform owner has owner-equivalent controls in an explicitly selected
+active workspace without becoming a roster member or impersonating its owner.
 Suspending/removing a non-owner affects only that membership and exact Auth
 identity: it does not suspend or archive the workspace and does not revoke
 client portal sessions. The current owner cannot be demoted, suspended, or
@@ -150,9 +155,10 @@ Private copies live in forced-RLS `workspace_guest_resources`, selected-client
 audiences use same-workspace composite foreign keys, and all management goes
 through the audited `workspace-guest-resources` transaction. Private workspaces
 receive independent snapshots of the global GOAP catalog; later global edits
-do not overwrite tenant customization. Platform administrators may list the
-same private catalog for read-only preview, but the database rejects their
-mutations.
+do not overwrite tenant customization. The platform owner may list and mutate
+the selected private catalog through the same service boundary; the database
+binds every operation to the selected workspace and audits the real platform
+actor ID.
 
 Direct browser policies on the full `clients` and `bookings` base rows are
 platform-admin-only. Workspace users cannot use `.select('*')` to recover
@@ -386,7 +392,7 @@ whose client lists are empty before the run. It never loads a dotenv file or
 accepts a service-role key.
 It creates tagged synthetic clients and one selected-client resource, tests
 real and modified cross-tenant IDs over Clients/Guest Resources Edge and REST,
-checks read-only admin resource preview plus exact client-portal session
+checks platform-owner client/resource management plus exact client-portal session
 visibility, probes all manifest tombstones and excluded functions,
 checks the Resend signature/body limit, exercises suspension/portal revocation,
 and performs owner cleanup in `finally`. Exit `2` means the automated HTTP
@@ -565,7 +571,7 @@ rollback behavior suite or staging catalog verifier, and they do not run the
 read-only production browser asset scan. The historical production catalog
 verifier passed before this incremental slice. The new Guest Resources
 target-bound production verifier and live browser scan also passed. Signed-in
-private-workspace, administrator-preview, and private-client portal acceptance
+private-workspace, administrator workspace, and private-client portal acceptance
 remain unavailable until a controlled private workspace is provisioned.
 
 ## Accepted limitations and follow-up
@@ -641,7 +647,7 @@ passed with all six retired asset paths failing closed as 404, `no-store`,
 `text/plain`, and `noindex`.
 
 Re-inventory current production workspaces and use controlled accounts to
-complete signed-in workspace customization, read-only administrator preview,
+complete signed-in workspace customization, platform-owner workspace management,
 selected-client private-portal visibility, and malformed/stale-access
 acceptance. These checks remain outstanding; use a second disposable workspace
 for the full cross-tenant denial matrix. Do not reuse the historical assumption

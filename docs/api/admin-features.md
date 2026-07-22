@@ -258,7 +258,7 @@ editors and video workers are not supported admin features.
 
 ### Guest Resources
 
-Guest Resources now has separate platform-template, tenant-management, administrator-preview, and client-portal surfaces. All workspaces share one PostgreSQL database; private resources are isolated by `workspace_id`, not by separate databases.
+Guest Resources now has separate platform-template, tenant-management, platform selected-workspace, and client-portal surfaces. All workspaces share one PostgreSQL database; private resources are isolated by `workspace_id`, not by separate databases.
 
 #### Platform template catalog (`/admin/guest-resources`)
 
@@ -274,12 +274,12 @@ Guest Resources now has separate platform-template, tenant-management, administr
 - Supports safe rich-text article content and safe external HTTP(S) resource/file URLs.
 - Keeps resource data and selected-client assignments scoped to the same `workspace_id`.
 
-#### Platform-admin workspace preview (`/admin/workspaces/:workspaceId/guest-resources`)
+#### Platform-owner selected workspace (`/admin/workspaces/:workspaceId/guest-resources`)
 
 - Renders the same workspace Guest Resources layout and selected workspace data.
-- Shows resource details and client assignments for operational review.
-- Is read-only: create, edit, and delete controls are disabled, and the service RPC rejects platform-admin mutations.
-- Does not replace or alter the administrator's current session.
+- Supports create, edit, publish, archive, audience assignment, and delete.
+- Keeps the platform owner's current session and records that real actor on mutations.
+- Is available through the platform-only workspace selector; tenant accounts do not receive a selector.
 
 #### Client portal (`/portal/resources`)
 
@@ -818,7 +818,7 @@ Each publication entry displays:
 
 #### Guest Resources Edge Functions
 
-- `POST /functions/v1/workspace-guest-resources` - Authenticated workspace action API. Accepts `list`, `create`, `update`, and `delete`; the requested `workspace_id` and current account role are revalidated server-side. Private workspace owners/admins may mutate, while platform administrators are limited to `list` for the read-only preview.
+- `POST /functions/v1/workspace-guest-resources` - Authenticated workspace action API. Accepts `list`, `create`, `update`, and `delete`; the requested `workspace_id` and current account authority are revalidated server-side. Private workspace owners/admins and the platform owner acting in an explicitly selected active workspace may mutate.
 - `POST /functions/v1/get-guest-resources` - Portal projection API. Validates the supplied client/session pair (or an explicit authenticated platform-admin client preview), derives the client's workspace server-side, and applies published/all-client/selected-client visibility for private workspaces while preserving the default-workspace platform catalog.
 
 Both routes are Supabase Edge Functions consumed through `supabase.functions.invoke(...)`; browser code does not directly read or mutate the private workspace Guest Resources tables.

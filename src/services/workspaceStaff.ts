@@ -289,7 +289,7 @@ export async function mutateWorkspaceStaff(
   }, 'The workspace user could not be updated.')
   if (!isRecord(data) || data.success !== true) throw new Error('The workspace staff response was invalid.')
   if (action === 'transfer_owner') {
-    if (data.reauthentication_required !== true) throw new Error('The workspace staff response was invalid.')
+    if (typeof data.reauthentication_required !== 'boolean') throw new Error('The workspace staff response was invalid.')
     const owner = parseMember(data.owner)
     const previousOwner = parseMember(data.previous_owner)
     if (

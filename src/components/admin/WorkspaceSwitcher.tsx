@@ -26,7 +26,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const routeMatch = matchPath('/admin/workspaces/:workspaceId/*', location.pathname)
-  const selectedId = routeMatch?.params.workspaceId || ''
+  const selectedId = (routeMatch?.params.workspaceId || '').toLowerCase()
   const selectedModule = location.pathname.endsWith('/workspace-users')
     ? 'workspace-users'
     : location.pathname.endsWith('/guest-resources')
@@ -49,7 +49,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
     <div className={cn(presentation === 'sidebar' ? 'border-b border-border p-3' : 'w-full sm:w-72')}>
       {presentation === 'sidebar' && (
         <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          View client workspace
+          Switch workspace
         </p>
       )}
       <Popover open={open} onOpenChange={setOpen}>
@@ -58,7 +58,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            aria-label="Select a client workspace to view"
+            aria-label="Select a workspace"
             className="w-full justify-between"
             disabled={workspacesQuery.isLoading || Boolean(workspacesQuery.error)}
           >

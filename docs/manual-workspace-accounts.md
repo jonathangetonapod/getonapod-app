@@ -1,4 +1,9 @@
-# Manual workspace accounts and administrator workspace preview
+# Manual workspace accounts and administrator workspace selection
+
+> Historical contract: this document records the migration 7 rollout. The
+> Sub-agency Workspace Foundation supersedes its read-only selected-workspace
+> behavior with native platform-owner management of Workspace Users, Clients,
+> and Guest Resources while preserving the platform Auth session.
 
 ## Release status
 
@@ -10,8 +15,8 @@ deployed. Production has exactly 89 active Edge Functions—75 with JWT
 verification enabled and the exact 14 reviewed handlers with it disabled.
 
 The historical six-migration cutover remains documented in
-`production-cutover-2026-07-21.md`. The administrator preview now reuses the
-real tenant Clients experience in read-only mode. Signed-in end-to-end
+`production-cutover-2026-07-21.md`. At that release point, the administrator
+view reused the real tenant Clients experience in read-only mode. Signed-in end-to-end
 acceptance still needs human/browser confirmation; this document does not
 promote that gate to an automated pass.
 
@@ -25,8 +30,9 @@ A platform administrator can:
 - select an active-owner workspace or a newly created manual-password
   workspace that is pending first sign-in from the administrator navigation;
   and
-- open the same Clients experience that workspace's owner uses, in a visibly
-  read-only administrator preview without impersonating the owner.
+- open the same Clients experience that workspace's owner uses without
+  impersonating the owner. Migration 7 rendered this view read-only; the later
+  foundation release authorizes platform-owner management.
 
 The manually created user signs in at `/login`, is restricted to
 `/change-password`, replaces the temporary password, signs in again, and then
@@ -51,8 +57,8 @@ membership. Unknown, malformed, default, archived, suspended, or unauthorized
 workspace IDs fail closed. Ordinary unaccepted email invitations are not
 previewable. A manual-password workspace becomes previewable after its
 one-time credential is successfully issued, even though the owner remains
-unable to access tenant data until replacing that password. The view is
-deliberately read-only.
+unable to access tenant data until replacing that password. The migration 7
+view was deliberately read-only.
 It reuses the tenant workspace layout and Clients page, including the same
 client rows and loading, empty, and error states. A persistent preview banner
 and workspace selector preserve administrator context; write controls are
@@ -143,8 +149,9 @@ still be verified together on the reviewed frontend commit.
 
 - Anonymous and tenant identities cannot list or view other workspaces or call
   either administrator provisioning action.
-- The administrator selector changes only the explicit URL. The selected route
-  renders the same tenant Clients experience with mutations disabled. Back,
+- The administrator selector changes only the explicit URL. For this historical
+  migration 7 acceptance, the selected route renders the same tenant Clients
+  experience with mutations disabled. Back,
   reload, and workspace A → B changes never show cached A data under B.
 - A successfully issued manual-password account appears in the selector before
   first sign-in; an ordinary unaccepted email invitation, provisioning failure,
@@ -173,12 +180,12 @@ still be verified together on the reviewed frontend commit.
   server tests, dependency audits, whitespace check, and secret scan pass on
   the exact commit.
 
-## Current limitations
+## Migration 7 limitations
 
 - Only client CRUD is tenant-aware. Podcasts, outreach, reporting, and other
   legacy modules remain platform-administrator-only.
-- The administrator workspace preview reuses the tenant Clients experience but
-  is read-only and covers clients only.
+- This migration 7 increment covered only a read-only administrator Clients
+  view; the Sub-agency Workspace Foundation supersedes that limitation.
 - Users cannot self-register, invite teammates, or own multiple workspaces.
 - There is no self-service password-recovery UI.
 - One-time credentials require a separately approved secure handoff channel.

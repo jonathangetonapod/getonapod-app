@@ -273,7 +273,7 @@ describe('getAdminWorkspaceView', () => {
     })
   })
 
-  it('allows a manual-password owner to preview before first sign-in', async () => {
+  it('allows a manual-password owner before first sign-in', async () => {
     arrange({
       viewerData: {
         ...ownerRow,
@@ -289,7 +289,7 @@ describe('getAdminWorkspaceView', () => {
     })
   })
 
-  it('filters non-previewable historical owner rows before selecting the owner', async () => {
+  it('filters unavailable historical owner rows before selecting the owner', async () => {
     arrange({
       viewerData: [
         {
@@ -307,7 +307,7 @@ describe('getAdminWorkspaceView', () => {
     })
   })
 
-  it('fails closed when more than one owner is previewable', async () => {
+  it('fails closed when more than one owner is available', async () => {
     const { clientsBuilder } = arrange({
       viewerData: [
         ownerRow,
@@ -321,7 +321,7 @@ describe('getAdminWorkspaceView', () => {
     })
 
     await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
-      'This client workspace does not have an available owner to preview.',
+      'This client workspace does not have an available owner.',
     )
     expect(clientsBuilder.select).not.toHaveBeenCalled()
   })
@@ -334,7 +334,7 @@ describe('getAdminWorkspaceView', () => {
     {
       label: 'default',
       workspaceData: { ...workspace, is_default: true },
-      expectedMessage: 'The workspace preview response did not match the selected workspace.',
+      expectedMessage: 'The selected workspace response did not match the workspace address.',
     },
     {
       label: 'inactive',
@@ -344,7 +344,7 @@ describe('getAdminWorkspaceView', () => {
     {
       label: 'mismatched',
       workspaceData: { ...workspace, id: otherWorkspaceId },
-      expectedMessage: 'The workspace preview response did not match the selected workspace.',
+      expectedMessage: 'The selected workspace response did not match the workspace address.',
     },
   ])('rejects a $label workspace before querying owner or client rows', async ({ workspaceData, expectedMessage }) => {
     const { viewerBuilder, clientsBuilder } = arrange({ workspaceData })
@@ -364,13 +364,13 @@ describe('getAdminWorkspaceView', () => {
     expect(clientsBuilder.select).not.toHaveBeenCalled()
   })
 
-  it('requires a previewable owner bound to the selected workspace', async () => {
+  it('requires an available owner bound to the selected workspace', async () => {
     const { clientsBuilder } = arrange({
       viewerData: { ...ownerRow, workspace_id: otherWorkspaceId },
     })
 
     await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
-      'This client workspace does not have an available owner to preview.',
+      'This client workspace does not have an available owner.',
     )
     expect(clientsBuilder.select).not.toHaveBeenCalled()
   })
@@ -386,7 +386,7 @@ describe('getAdminWorkspaceView', () => {
     })
 
     await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
-      'This client workspace does not have an available owner to preview.',
+      'This client workspace does not have an available owner.',
     )
     expect(clientsBuilder.select).not.toHaveBeenCalled()
   })
@@ -399,7 +399,7 @@ describe('getAdminWorkspaceView', () => {
     arrange({ clientsData: mismatchedClients })
 
     await expect(getAdminWorkspaceView(workspaceId)).rejects.toThrow(
-      'The workspace preview response did not match the selected workspace.',
+      'The selected workspace response did not match the workspace address.',
     )
   })
 })

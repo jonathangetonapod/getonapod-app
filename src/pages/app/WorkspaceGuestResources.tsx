@@ -63,7 +63,7 @@ const emptyResource: WorkspaceGuestResourceInput = {
 }
 
 interface WorkspaceGuestResourcesProps {
-  adminPreviewWorkspaceId?: string
+  platformWorkspaceId?: string
 }
 
 interface ResourcePageData {
@@ -71,7 +71,7 @@ interface ResourcePageData {
   clients: WorkspaceClient[]
 }
 
-interface PreviewResourcePageData extends ResourcePageData {
+interface PlatformResourcePageData extends ResourcePageData {
   view: AdminWorkspaceView
 }
 
@@ -94,7 +94,7 @@ function validateAssignments(
   return { clients, resources }
 }
 
-function validatePreviewView(view: AdminWorkspaceView, workspaceId: string): AdminWorkspaceView {
+function validatePlatformWorkspaceView(view: AdminWorkspaceView, workspaceId: string): AdminWorkspaceView {
   if (
     view.workspace.id !== workspaceId
     || view.workspace.is_default
@@ -104,12 +104,12 @@ function validatePreviewView(view: AdminWorkspaceView, workspaceId: string): Adm
     || !view.viewer.email
     || view.clients.some((client) => client.workspace_id !== workspaceId)
   ) {
-    throw new Error('The workspace preview response did not match the selected workspace.')
+    throw new Error('The selected workspace response did not match the workspace address.')
   }
   return view
 }
 
-const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestResourcesProps) => {
+const WorkspaceGuestResources = ({ platformWorkspaceId }: WorkspaceGuestResourcesProps) => {
   const { canWriteClients, user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -117,11 +117,12 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
   const [deleting, setDeleting] = useState<WorkspaceGuestResource | null>(null)
   const [viewing, setViewing] = useState<WorkspaceGuestResource | null>(null)
   const [form, setForm] = useState<WorkspaceGuestResourceInput>(emptyResource)
-  const isAdminPreview = adminPreviewWorkspaceId !== undefined
-  const previewWorkspaceId = (adminPreviewWorkspaceId || '').toLowerCase()
-  const validPreviewWorkspaceId = UUID_PATTERN.test(previewWorkspaceId)
+  const isPlatformWorkspace = platformWorkspaceId !== undefined
+  const selectedWorkspaceId = (platformWorkspaceId || '').toLowerCase()
+  const validSelectedWorkspaceId = UUID_PATTERN.test(selectedWorkspaceId)
   const tenantWorkspaceId = workspace?.id || ''
   const tenantQueryKey = ['tenant', user?.id || 'unknown', tenantWorkspaceId, 'guest-resources'] as const
+  const platformQueryKey = ['platform', user?.id || 'unknown', 'workspace', selectedWorkspaceId, 'guest-resources'] as const
 
   const tenantQuery = useQuery({
     queryKey: tenantQueryKey,
@@ -132,48 +133,49 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
       ])
       return validateAssignments(tenantWorkspaceId, clients, resources)
     },
-    enabled: !isAdminPreview && Boolean(tenantWorkspaceId),
+    enabled: !isPlatformWorkspace && Boolean(tenantWorkspaceId),
   })
 
-  const previewQuery = useQuery({
-    queryKey: ['platform', user?.id || 'unknown', 'workspace-preview', previewWorkspaceId, 'guest-resources'],
-    queryFn: async ({ signal }): Promise<PreviewResourcePageData> => {
+  const platformQuery = useQuery({
+    queryKey: platformQueryKey,
+    queryFn: async ({ signal }): Promise<PlatformResourcePageData> => {
       const [view, resources] = await Promise.all([
-        getAdminWorkspaceView(previewWorkspaceId, signal),
-        listWorkspaceGuestResources(previewWorkspaceId),
+        getAdminWorkspaceView(selectedWorkspaceId, signal),
+        listWorkspaceGuestResources(selectedWorkspaceId),
       ])
-      const validView = validatePreviewView(view, previewWorkspaceId)
+      const validView = validatePlatformWorkspaceView(view, selectedWorkspaceId)
       return {
         view: validView,
-        ...validateAssignments(previewWorkspaceId, validView.clients, resources),
+        ...validateAssignments(selectedWorkspaceId, validView.clients, resources),
       }
     },
-    enabled: isAdminPreview && validPreviewWorkspaceId,
+    enabled: isPlatformWorkspace && validSelectedWorkspaceId,
     retry: false,
     gcTime: 0,
   })
 
   useEffect(() => {
-    if (!isAdminPreview && tenantQuery.error) {
+    if (!isPlatformWorkspace && tenantQuery.error) {
       toast.error(tenantQuery.error instanceof Error ? tenantQuery.error.message : 'Unable to load guest resources.')
     }
-  }, [isAdminPreview, tenantQuery.error])
+  }, [isPlatformWorkspace, tenantQuery.error])
 
-  const effectiveWorkspace = isAdminPreview ? previewQuery.data?.view.workspace || null : workspace
+  const effectiveWorkspace = isPlatformWorkspace ? platformQuery.data?.view.workspace || null : workspace
   const workspaceId = effectiveWorkspace?.id || ''
-  const resources = isAdminPreview ? previewQuery.data?.resources || [] : tenantQuery.data?.resources || []
-  const clients = isAdminPreview ? previewQuery.data?.clients || [] : tenantQuery.data?.clients || []
-  const resourcesLoading = isAdminPreview
-    ? validPreviewWorkspaceId && previewQuery.isLoading
+  const resources = isPlatformWorkspace ? platformQuery.data?.resources || [] : tenantQuery.data?.resources || []
+  const clients = isPlatformWorkspace ? platformQuery.data?.clients || [] : tenantQuery.data?.clients || []
+  const resourcesLoading = isPlatformWorkspace
+    ? validSelectedWorkspaceId && platformQuery.isLoading
     : tenantQuery.isLoading
-  const resourcesError = isAdminPreview
-    ? !validPreviewWorkspaceId
+  const resourcesError = isPlatformWorkspace
+    ? !validSelectedWorkspaceId
       ? new Error('The workspace address is invalid.')
-      : previewQuery.error
+      : platformQuery.error
     : tenantQuery.error
-  const refetchResources = isAdminPreview ? previewQuery.refetch : tenantQuery.refetch
-  const managementEnabled = !isAdminPreview && canWriteClients
-  const showManagementControls = isAdminPreview || managementEnabled
+  const refetchResources = isPlatformWorkspace ? platformQuery.refetch : tenantQuery.refetch
+  const activeQueryKey = isPlatformWorkspace ? platformQueryKey : tenantQueryKey
+  const managementEnabled = isPlatformWorkspace || canWriteClients
+  const showManagementControls = managementEnabled
   const clientById = new Map(clients.map((client) => [client.id, client]))
   const resourceUrlRequired = form.status === 'published' && (form.type === 'video' || form.type === 'link')
   const fileUrlRequired = form.status === 'published' && form.type === 'download'
@@ -181,7 +183,6 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (isAdminPreview) throw new Error('Changes are disabled in administrator preview.')
       if (!managementEnabled) throw new Error('Workspace manager access is required.')
       if (!workspaceId) throw new Error('Workspace is unavailable.')
       return editing
@@ -189,7 +190,7 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
         : createWorkspaceGuestResource(workspaceId, form)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantQueryKey })
+      await queryClient.invalidateQueries({ queryKey: activeQueryKey })
       setDialogOpen(false)
       setEditing(null)
       setForm(emptyResource)
@@ -200,13 +201,12 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
 
   const deleteMutation = useMutation({
     mutationFn: async (resource: WorkspaceGuestResource) => {
-      if (isAdminPreview) throw new Error('Changes are disabled in administrator preview.')
       if (!managementEnabled) throw new Error('Workspace manager access is required.')
       if (!workspaceId) throw new Error('Workspace is unavailable.')
       await deleteWorkspaceGuestResource(workspaceId, resource.id)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantQueryKey })
+      await queryClient.invalidateQueries({ queryKey: activeQueryKey })
       setDeleting(null)
       toast.success('Guest resource deleted.')
     },
@@ -249,7 +249,7 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
     }))
   }
 
-  if (!isAdminPreview && !workspace) {
+  if (!isPlatformWorkspace && !workspace) {
     return (
       <WorkspaceLayout>
         <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>Your account does not have an active workspace.</CardDescription></CardHeader></Card>
@@ -257,35 +257,26 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
     )
   }
 
-  const previewLayout = isAdminPreview
+  const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
-        viewerEmail: previewQuery.data?.view.viewer.email || 'Workspace owner',
-        viewerName: previewQuery.data?.view.viewer.full_name,
-        viewerRole: previewQuery.data?.view.viewer.role || 'owner' as const,
-        baseHref: `/admin/workspaces/${previewWorkspaceId}`,
+        baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
         exitHref: '/admin/users',
       }
     : undefined
 
   return (
-    <WorkspaceLayout preview={previewLayout}>
+    <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Guest Resources</h1>
             <p className="text-muted-foreground">Resources for clients in {effectiveWorkspace?.name || 'this workspace'}</p>
-            {isAdminPreview && (
-              <p className="mt-1 text-sm text-amber-800 dark:text-amber-300" aria-describedby="admin-preview-context">
-                Read-only preview: workspace controls are shown but cannot make changes.
-              </p>
-            )}
           </div>
           {showManagementControls && (
             <Button
               onClick={openCreate}
               disabled={!managementEnabled}
-              aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
             >
               <Plus className="mr-2 h-4 w-4" />Add resource
             </Button>
@@ -306,7 +297,7 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
                 <p className="max-w-md text-sm text-muted-foreground">
                   {resourcesError instanceof Error ? resourcesError.message : 'Check your connection and try again.'}
                 </p>
-                {validPreviewWorkspaceId || !isAdminPreview ? (
+                {validSelectedWorkspaceId || !isPlatformWorkspace ? (
                   <Button variant="outline" onClick={() => void refetchResources()}>Try again</Button>
                 ) : null}
               </div>
@@ -319,7 +310,6 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
                     onClick={openCreate}
                     variant="outline"
                     disabled={!managementEnabled}
-                    aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                   >
                     <Plus className="mr-2 h-4 w-4" />Add resource
                   </Button>
@@ -373,7 +363,7 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
                           <TableCell className="text-right">
                             {showManagementControls && (
                               <div className="inline-flex gap-1">
-                                {isAdminPreview && (
+                                {isPlatformWorkspace && (
                                   <Button
                                     size="icon"
                                     variant="ghost"
@@ -389,7 +379,6 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
                                   onClick={() => openEdit(resource)}
                                   aria-label={`Edit ${resource.title}`}
                                   disabled={!managementEnabled}
-                                  aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -400,7 +389,6 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
                                   onClick={() => managementEnabled && setDeleting(resource)}
                                   aria-label={`Delete ${resource.title}`}
                                   disabled={!managementEnabled}
-                                  aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -418,8 +406,7 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
         </Card>
       </div>
 
-      {!isAdminPreview && (
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }}>
           <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editing ? 'Edit guest resource' : 'Add guest resource'}</DialogTitle>
@@ -498,10 +485,9 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
               </DialogFooter>
             </form>
           </DialogContent>
-        </Dialog>
-      )}
+      </Dialog>
 
-      {isAdminPreview && (
+      {isPlatformWorkspace && (
         <Dialog open={Boolean(viewing)} onOpenChange={(open) => { if (!open) setViewing(null) }}>
           <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
             <DialogHeader>
@@ -567,14 +553,12 @@ const WorkspaceGuestResources = ({ adminPreviewWorkspaceId }: WorkspaceGuestReso
         </Dialog>
       )}
 
-      {!isAdminPreview && (
-        <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open) setDeleting(null) }}>
+      <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open) setDeleting(null) }}>
           <DialogContent>
             <DialogHeader><DialogTitle>Delete guest resource?</DialogTitle><DialogDescription>This permanently deletes {deleting?.title}. This action cannot be undone.</DialogDescription></DialogHeader>
             <DialogFooter><Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleting && deleteMutation.mutate(deleting)}>{deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Delete resource</Button></DialogFooter>
           </DialogContent>
-        </Dialog>
-      )}
+      </Dialog>
     </WorkspaceLayout>
   )
 }

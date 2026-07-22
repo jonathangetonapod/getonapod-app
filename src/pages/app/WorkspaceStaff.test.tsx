@@ -86,7 +86,7 @@ const refreshAccount = vi.fn()
 const refreshSession = vi.fn()
 const signOut = vi.fn()
 
-function renderPage(adminPreviewWorkspaceId?: string) {
+function renderPage(platformWorkspaceId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -97,13 +97,13 @@ function renderPage(adminPreviewWorkspaceId?: string) {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter
         initialEntries={[
-          adminPreviewWorkspaceId
-            ? `/admin/workspaces/${adminPreviewWorkspaceId}/workspace-users`
+          platformWorkspaceId
+            ? `/admin/workspaces/${platformWorkspaceId}/workspace-users`
             : '/app/workspace-users',
         ]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
-        <WorkspaceStaff adminPreviewWorkspaceId={adminPreviewWorkspaceId} />
+        <WorkspaceStaff platformWorkspaceId={platformWorkspaceId} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -191,20 +191,7 @@ describe('WorkspaceStaff', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Workspace ownership transferred.')
   })
 
-  it('renders platform preview from the selected workspace with no mutation path', async () => {
-    const previewView: WorkspaceStaffView = {
-      ...ownerView,
-      capabilities: {
-        read_only: true,
-        invite_roles: [],
-        can_update_roles: false,
-        can_transfer_owner: false,
-      },
-      members: [
-        { ...owner, allowed_actions: [] },
-        { ...admin, allowed_actions: [] },
-      ],
-    }
+  it('gives the platform owner native management controls in the selected workspace', async () => {
     mockedUseAuth.mockReturnValue({
       user: { id: userId, email: 'platform@example.com' },
       workspace: null,
@@ -214,28 +201,46 @@ describe('WorkspaceStaff', () => {
       refreshSession,
       signOut,
     } as never)
-    mockedList.mockResolvedValue(previewView)
+    mockedList.mockResolvedValue(ownerView)
 
     renderPage(workspaceId)
 
-    expect(await screen.findByText('Admin preview · Read only')).toBeInTheDocument()
-    expect(screen.getByText('Read-only preview: staff controls cannot make changes.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /invite user/i })).toBeDisabled()
-    expect(screen.getAllByText('Read only')).toHaveLength(2)
-    expect(screen.queryByRole('button', { name: /make owner/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^suspend$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeDisabled()
+    expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
+    expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /make owner/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^suspend$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+    expect(screen.getByText('platform@example.com')).toBeInTheDocument()
+    expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Workspace Users' })).toHaveAttribute(
       'href',
       `/admin/workspaces/${workspaceId}/workspace-users`,
     )
+
+    fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
+    const inviteDialog = screen.getByRole('dialog')
+    fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'Platform Invite' } })
+    fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'platform-invite@example.com' } })
+    fireEvent.click(within(inviteDialog).getByRole('button', { name: 'Send invitation' }))
+    await waitFor(() => expect(mockedInvite).toHaveBeenCalledWith(workspaceId, {
+      email: 'platform-invite@example.com',
+      full_name: 'Platform Invite',
+      role: 'admin',
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: /make owner/i }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).getByText(/current workspace owner becomes an admin/i)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Transfer ownership' }))
+
+    await waitFor(() => expect(mockedMutate).toHaveBeenCalledWith(workspaceId, adminId, 'transfer_owner'))
+    expect(refreshSession).not.toHaveBeenCalled()
+    expect(refreshAccount).not.toHaveBeenCalled()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
-    expect(mockedInvite).not.toHaveBeenCalled()
-    expect(mockedMutate).not.toHaveBeenCalled()
-    expect(mockedUpdateRole).not.toHaveBeenCalled()
   })
 
-  it('fails closed when preview data does not declare the selected read-only workspace', async () => {
+  it('fails closed when selected-workspace data names a different workspace', async () => {
     mockedList.mockResolvedValue({
       ...ownerView,
       workspace: { id: otherWorkspaceId, name: 'Other Workspace', status: 'active' },
@@ -249,7 +254,7 @@ describe('WorkspaceStaff', () => {
     expect(mockedMutate).not.toHaveBeenCalled()
   })
 
-  it('does not call the service for an invalid preview workspace address', async () => {
+  it('does not call the service for an invalid selected workspace address', async () => {
     renderPage('not-a-workspace')
 
     expect(screen.getByText('The workspace address is invalid.')).toBeInTheDocument()

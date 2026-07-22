@@ -88,7 +88,7 @@ describe('workspaceStaff', () => {
     expect(result.members[0]).not.toHaveProperty('workspace_id')
   })
 
-  it('fails closed on a mismatched workspace, invalid owner set, or unsafe preview actions', async () => {
+  it('fails closed on a mismatched workspace, invalid owner set, or contradictory capabilities', async () => {
     invoke
       .mockResolvedValueOnce({
         data: ownerView({ workspace: { id: otherWorkspaceId, name: 'Other', status: 'active' } }),
@@ -193,7 +193,7 @@ describe('workspaceStaff', () => {
     })
   })
 
-  it('requires a safe ownership-transfer response and reauthentication marker', async () => {
+  it('accepts either ownership-transfer reauthentication outcome and requires the marker', async () => {
     const newOwner = { ...admin, role: 'owner' as const, allowed_actions: [] }
     const previousOwner = { ...owner, role: 'admin' as const }
     invoke
@@ -215,11 +215,20 @@ describe('workspaceStaff', () => {
         },
         error: null,
       })
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          owner: newOwner,
+          previous_owner: previousOwner,
+        },
+        error: null,
+      })
 
     await expect(mutateWorkspaceStaff(workspaceId, staffId, 'transfer_owner')).resolves.toEqual(newOwner)
     expect(invoke).toHaveBeenNthCalledWith(1, 'manage-workspace-staff', {
       body: { action: 'transfer_owner', workspace_id: workspaceId, membership_id: staffId },
     })
+    await expect(mutateWorkspaceStaff(workspaceId, staffId, 'transfer_owner')).resolves.toEqual(newOwner)
     await expect(mutateWorkspaceStaff(workspaceId, staffId, 'transfer_owner')).rejects.toThrow(
       'workspace staff response was invalid',
     )

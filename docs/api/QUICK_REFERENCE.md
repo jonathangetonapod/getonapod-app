@@ -54,7 +54,7 @@ const supabase = createClient(url, SUPABASE_SERVICE_ROLE_KEY)
 |----------|--------|---------|------|
 | `/create-client-account` | POST | Full onboarding | `{name, email, bio, ...}` |
 | `/create-client-google-sheet` | POST | Create spreadsheet | `{clientId, clientName}` |
-| `/workspace-guest-resources` | POST | Tenant resource CRUD | `{action, workspace_id, resource_id?, resource?}`; authenticated workspace owner/admin, list-only platform preview |
+| `/workspace-guest-resources` | POST | Workspace resource CRUD | `{action, workspace_id, resource_id?, resource?}`; authenticated workspace owner/admin or platform owner in a selected active workspace |
 
 ### 🎯 Prospect Management
 | Endpoint | Method | Purpose | Body |

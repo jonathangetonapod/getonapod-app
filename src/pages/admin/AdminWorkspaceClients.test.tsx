@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminWorkspaceClients from '@/pages/admin/AdminWorkspaceClients'
@@ -81,7 +81,7 @@ function renderPage(path: string, switchTo?: string) {
   return queryClient
 }
 
-const previewQueryKey = ['platform', adminUserId, 'workspace-preview', workspaceId, 'clients'] as const
+const platformQueryKey = ['platform', adminUserId, 'workspace', workspaceId, 'clients'] as const
 
 describe('AdminWorkspaceClients', () => {
   beforeEach(() => {
@@ -90,34 +90,35 @@ describe('AdminWorkspaceClients', () => {
       user: { id: adminUserId, email: 'admin@example.com' },
       workspace: { id: 'default-workspace', name: 'Default Workspace' },
       canWriteClients: true,
+      isPlatformAdmin: true,
     } as never)
     mockedView.mockResolvedValue(workspaceView())
+    mockedCreate.mockResolvedValue(workspaceView().clients[0])
   })
 
-  it('shows the owner experience while preserving fail-closed administrator controls', async () => {
+  it('shows a native, manageable workspace for the platform owner', async () => {
     renderPage(`/admin/workspaces/${workspaceId}/clients`)
 
     expect(await screen.findByText('Clients in Acme Workspace')).toBeInTheDocument()
     expect(screen.getByText('Acme Client')).toBeInTheDocument()
-    expect(screen.getByText('Admin preview · Read only')).toBeInTheDocument()
+    expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
     expect(screen.getByText('Your clients')).toBeInTheDocument()
-    expect(screen.getByText('owner@acme.example')).toBeInTheDocument()
-    expect(screen.getByText(/Viewing the workspace layout and data for owner@acme\.example/)).toBeInTheDocument()
-    expect(screen.getByText(/remain signed in as admin@example\.com/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add client/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Edit Acme Client' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Remove Acme Client' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeDisabled()
+    expect(screen.getByText('admin@example.com')).toBeInTheDocument()
+    expect(screen.getByText('platform owner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add client/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Edit Acme Client' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Remove Acme Client' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: /add client/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Acme Client' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Acme Client' }))
-
-    expect(mockedCreate).not.toHaveBeenCalled()
-    expect(mockedUpdate).not.toHaveBeenCalled()
-    expect(mockedDelete).not.toHaveBeenCalled()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /exit preview/i })).toHaveAttribute('href', '/admin/users')
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Client name'), { target: { value: 'New Platform Client' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add client' }))
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({ name: 'New Platform Client' }),
+    ))
+    expect(screen.getByRole('link', { name: /back to platform/i })).toHaveAttribute('href', '/admin/users')
     expect(screen.queryByText('Default Workspace')).not.toBeInTheDocument()
     expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
   })
@@ -185,7 +186,7 @@ describe('AdminWorkspaceClients', () => {
     expect(screen.queryByText('Late Acme Client')).not.toBeInTheDocument()
   })
 
-  it('rejects mismatched client data before it can enter the preview cache', async () => {
+  it('rejects mismatched client data before it can enter the selected-workspace cache', async () => {
     const wrongView = workspaceView()
     wrongView.clients[0].workspace_id = secondWorkspaceId
     wrongView.clients[0].name = 'Wrong Workspace Client'
@@ -193,9 +194,9 @@ describe('AdminWorkspaceClients', () => {
 
     const queryClient = renderPage(`/admin/workspaces/${workspaceId}/clients`)
 
-    expect(await screen.findByText('The workspace preview response did not match the selected workspace.')).toBeInTheDocument()
+    expect(await screen.findByText('The selected workspace response did not match the workspace address.')).toBeInTheDocument()
     expect(screen.queryByText('Wrong Workspace Client')).not.toBeInTheDocument()
-    expect(queryClient.getQueryData(previewQueryKey)).toBeUndefined()
+    expect(queryClient.getQueryData(platformQueryKey)).toBeUndefined()
   })
 
   it.each<{
@@ -205,14 +206,14 @@ describe('AdminWorkspaceClients', () => {
     { label: 'default', workspacePatch: { is_default: true } },
     { label: 'inactive', workspacePatch: { status: 'suspended' } },
     { label: 'mismatched', workspacePatch: { id: secondWorkspaceId } },
-  ])('rejects a $label workspace response before it can enter the preview cache', async ({ workspacePatch }) => {
+  ])('rejects a $label workspace response before it can enter the selected-workspace cache', async ({ workspacePatch }) => {
     const invalidView = workspaceView()
     invalidView.workspace = { ...invalidView.workspace, ...workspacePatch }
     mockedView.mockResolvedValue(invalidView)
 
     const queryClient = renderPage(`/admin/workspaces/${workspaceId}/clients`)
 
-    expect(await screen.findByText('The workspace preview response did not match the selected workspace.')).toBeInTheDocument()
-    expect(queryClient.getQueryData(previewQueryKey)).toBeUndefined()
+    expect(await screen.findByText('The selected workspace response did not match the workspace address.')).toBeInTheDocument()
+    expect(queryClient.getQueryData(platformQueryKey)).toBeUndefined()
   })
 })

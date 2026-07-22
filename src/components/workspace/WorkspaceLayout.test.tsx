@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   WorkspaceLayout,
-  type WorkspacePreviewConfig,
+  type PlatformWorkspaceConfig,
 } from '@/components/workspace/WorkspaceLayout'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
@@ -29,10 +29,10 @@ const expectedNavigation = [
   'Unibox',
 ]
 
-function renderLayout(preview?: WorkspacePreviewConfig) {
+function renderLayout(platformWorkspace?: PlatformWorkspaceConfig) {
   render(
-    <MemoryRouter initialEntries={[preview ? `${preview.baseHref}/clients` : '/app/clients']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <WorkspaceLayout preview={preview}><div>Module content</div></WorkspaceLayout>
+    <MemoryRouter initialEntries={[platformWorkspace ? `${platformWorkspace.baseHref}/clients` : '/app/clients']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <WorkspaceLayout platformWorkspace={platformWorkspace}><div>Module content</div></WorkspaceLayout>
     </MemoryRouter>,
   )
 }
@@ -108,16 +108,13 @@ describe('WorkspaceLayout', () => {
     expect(within(workspaceUsers as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
   })
 
-  it('keeps enabled navigation inside the selected read-only admin preview', () => {
-    const preview: WorkspacePreviewConfig = {
-      workspaceName: 'Preview Workspace',
-      viewerEmail: 'preview@example.com',
-      viewerName: 'Preview Owner',
-      viewerRole: 'owner',
+  it('renders a selected workspace as a native platform-owner context', () => {
+    const platformWorkspace: PlatformWorkspaceConfig = {
+      workspaceName: 'Selected Workspace',
       baseHref: `/admin/workspaces/${workspaceId}`,
       exitHref: '/admin/users',
     }
-    renderLayout(preview)
+    renderLayout(platformWorkspace)
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getByRole('link', { name: 'Workspace Users' })).toHaveAttribute(
@@ -132,10 +129,12 @@ describe('WorkspaceLayout', () => {
       'href',
       `/admin/workspaces/${workspaceId}/guest-resources`,
     )
-    expect(screen.getByText('Admin preview · Read only')).toBeInTheDocument()
+    expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
+    expect(screen.getByText('owner@example.com')).toBeInTheDocument()
+    expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /exit preview/i })).toHaveAttribute('href', '/admin/users')
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeDisabled()
+    expect(screen.getByRole('link', { name: /back to platform/i })).toHaveAttribute('href', '/admin/users')
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
   })
 
   it('signs a workspace user out without exposing an admin destination', async () => {

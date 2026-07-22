@@ -96,7 +96,7 @@ two-account isolation acceptance, and exposed-credential rotation remain open.
   recursive live verifier passed, and all six retired asset paths returned 404
   with `no-store`, `text/plain`, and `noindex`.
 - Production currently has no private workspace, so signed-in private-tenant
-  management, read-only administrator preview, and private-client portal
+  management, platform-owner selected-workspace management, and private-client portal
   audience acceptance cannot run until a controlled workspace is provisioned.
 
 ## Production data effects
@@ -125,7 +125,7 @@ restored.
    clients, legacy records, and logout.
 4. Provision one controlled private workspace and complete invitation/password
    creation, acceptance, login, isolated client and resource management,
-   read-only administrator preview, selected-client portal visibility, logout,
+   platform-owner selected-workspace management, selected-client portal visibility, logout,
    suspension, and reactivation. Add a second disposable workspace for the
    complete cross-tenant denial matrix.
 5. Confirm provider-side removal of the external Stripe webhook and every

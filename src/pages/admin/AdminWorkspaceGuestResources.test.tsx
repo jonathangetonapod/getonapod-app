@@ -97,27 +97,24 @@ describe('AdminWorkspaceGuestResources', () => {
     } as never)
     mockedView.mockResolvedValue(view)
     mockedList.mockResolvedValue([resource])
+    mockedCreate.mockResolvedValue(resource)
   })
 
-  it('shows the same resource module with fail-closed preview controls and module-aware navigation', async () => {
+  it('shows native platform-owner resource controls and module-aware navigation', async () => {
     renderPage()
 
     expect(await screen.findByText('Preview guide')).toBeInTheDocument()
     expect(screen.getByText('Resources for clients in Acme Workspace')).toBeInTheDocument()
-    expect(screen.getByText('Admin preview · Read only')).toBeInTheDocument()
-    expect(screen.getByText(/Viewing the workspace layout and data for owner@acme\.example/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /add resource/i })).toBeDisabled()
+    expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
+    expect(screen.getByText('admin@example.com')).toBeInTheDocument()
+    expect(screen.getByText('platform owner')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /add resource/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'View Preview guide' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Edit Preview guide' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Delete Preview guide' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Edit Preview guide' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Delete Preview guide' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute('href', `/admin/workspaces/${workspaceId}/clients`)
     expect(screen.getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', `/admin/workspaces/${workspaceId}/guest-resources`)
-
-    fireEvent.click(screen.getByRole('button', { name: /add resource/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Preview guide' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Preview guide' }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'View Preview guide' }))
     const detailDialog = screen.getByRole('dialog')
@@ -125,7 +122,16 @@ describe('AdminWorkspaceGuestResources', () => {
     expect(detailDialog).toHaveTextContent('Preview Client')
     expect(detailDialog).toHaveTextContent('preview@example.com')
     fireEvent.click(within(detailDialog).getAllByRole('button', { name: 'Close' })[0])
-    expect(mockedCreate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /add resource/i }))
+    const createDialog = screen.getByRole('dialog')
+    fireEvent.change(within(createDialog).getByLabelText('Title'), { target: { value: 'Platform resource' } })
+    fireEvent.change(within(createDialog).getByLabelText('Description'), { target: { value: 'Managed from the selected workspace.' } })
+    fireEvent.click(within(createDialog).getByRole('button', { name: 'Add resource' }))
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledWith(
+      workspaceId,
+      expect.objectContaining({ title: 'Platform resource' }),
+    ))
     expect(mockedUpdate).not.toHaveBeenCalled()
     expect(mockedDelete).not.toHaveBeenCalled()
     expect(mockedGetClients).not.toHaveBeenCalled()
@@ -140,7 +146,7 @@ describe('AdminWorkspaceGuestResources', () => {
     expect(mockedList).not.toHaveBeenCalled()
   })
 
-  it('rejects assignments that are not present in the preview workspace client set', async () => {
+  it('rejects assignments that are not present in the selected workspace client set', async () => {
     mockedList.mockResolvedValue([{ ...resource, visibility: 'selected_clients', client_ids: ['44444444-4444-4444-8444-444444444444'] }])
     renderPage()
     expect(await screen.findByText('The guest resources response included an invalid client assignment.')).toBeInTheDocument()

@@ -1464,10 +1464,12 @@ async function main(): Promise<number> {
   let admin: AdminSession | null = null
   let aliceClient: WorkspaceClientRow | null = null
   let bobClient: WorkspaceClientRow | null = null
+  let platformClientProbe: WorkspaceClientRow | null = null
   let aliceResource: WorkspaceGuestResourceRow | null = null
   const aliceResourceCleanupTitles = new Set<string>()
   let aliceCreateMayHaveSucceeded = false
   let bobCreateMayHaveSucceeded = false
+  let platformClientProbeMayHaveSucceeded = false
   let alicePortalPasswordTouched = false
   let alicePortalAccessTouched = false
   let aliceLifecycleTouched = false
@@ -1532,6 +1534,37 @@ async function main(): Promise<number> {
     bobClient = await harness.must('fixtures.bob_client_create', async () => {
       bobCreateMayHaveSucceeded = true
       return await createWorkspaceClient(config, bob as AuthSession, bobPayload)
+    })
+
+    await harness.check('clients.platform_owner_management', async () => {
+      const probePayload = syntheticPayload(`${config.runId}-platform`, 'alice')
+      platformClientProbeMayHaveSucceeded = true
+      const creation = await callFunction(config, 'workspace-clients', {
+        token: activeAdmin.accessToken,
+        jsonBody: {
+          action: 'create',
+          workspace_id: (alice as AuthSession).workspaceId,
+          client: probePayload,
+        },
+      })
+      expectStatus(creation, 201, 'PLATFORM_CLIENT_CREATE_FAILED')
+      platformClientProbe = parseWorkspaceClient(asRecord(creation.json)?.client)
+      assertSafe(
+        platformClientProbe.workspace_id === (alice as AuthSession).workspaceId,
+        'PLATFORM_CLIENT_WORKSPACE_MISMATCH',
+      )
+
+      const deletion = await callFunction(config, 'workspace-clients', {
+        token: activeAdmin.accessToken,
+        jsonBody: {
+          action: 'delete',
+          workspace_id: (alice as AuthSession).workspaceId,
+          client_id: platformClientProbe.id,
+        },
+      })
+      expectStatus(deletion, 200, 'PLATFORM_CLIENT_DELETE_FAILED')
+      platformClientProbe = null
+      platformClientProbeMayHaveSucceeded = false
     })
 
     const aliceResourcePayload = syntheticResourcePayload(
@@ -1627,22 +1660,22 @@ async function main(): Promise<number> {
       expectStatus(result, 400, 'CROSS_WORKSPACE_RESOURCE_ASSIGNMENT_NOT_DENIED')
     })
 
-    await harness.check('guest_resources.admin_preview_read_only', async () => {
-      const preview = await listWorkspaceGuestResources(
+    await harness.check('guest_resources.platform_owner_management', async () => {
+      const selectedResources = await listWorkspaceGuestResources(
         config,
         activeAdmin,
         (alice as AuthSession).workspaceId,
       )
       assertSafe(
-        preview.some((resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id),
-        'ADMIN_RESOURCE_PREVIEW_MISSING',
+        selectedResources.some((resource) => resource.id === (aliceResource as WorkspaceGuestResourceRow).id),
+        'PLATFORM_RESOURCE_LIST_MISSING',
       )
       const probePayload = syntheticResourcePayload(
-        `${config.runId}-admin-preview`,
+        `${config.runId}-platform`,
         (aliceClient as WorkspaceClientRow).id,
       )
       aliceResourceCleanupTitles.add(probePayload.title)
-      const mutation = await callFunction(config, 'workspace-guest-resources', {
+      const creation = await callFunction(config, 'workspace-guest-resources', {
         token: activeAdmin.accessToken,
         jsonBody: {
           action: 'create',
@@ -1650,13 +1683,23 @@ async function main(): Promise<number> {
           resource: probePayload,
         },
       })
-      if (mutation.status === 201) {
-        const leaked = parseWorkspaceGuestResource(asRecord(mutation.json)?.resource)
-        await deleteWorkspaceGuestResource(config, alice as AuthSession, leaked.id)
-        aliceResourceCleanupTitles.delete(probePayload.title)
-      }
-      if (mutation.status === 403) aliceResourceCleanupTitles.delete(probePayload.title)
-      expectStatus(mutation, 403, 'ADMIN_RESOURCE_PREVIEW_MUTATION_NOT_DENIED')
+      expectStatus(creation, 201, 'PLATFORM_RESOURCE_CREATE_FAILED')
+      const created = parseWorkspaceGuestResource(asRecord(creation.json)?.resource)
+      assertSafe(
+        created.workspace_id === (alice as AuthSession).workspaceId,
+        'PLATFORM_RESOURCE_WORKSPACE_MISMATCH',
+      )
+
+      const deletion = await callFunction(config, 'workspace-guest-resources', {
+        token: activeAdmin.accessToken,
+        jsonBody: {
+          action: 'delete',
+          workspace_id: (alice as AuthSession).workspaceId,
+          resource_id: created.id,
+        },
+      })
+      expectStatus(deletion, 200, 'PLATFORM_RESOURCE_DELETE_FAILED')
+      aliceResourceCleanupTitles.delete(probePayload.title)
     })
 
     const originalBobSnapshot = clientSnapshot(bobClient)
@@ -2190,6 +2233,38 @@ async function main(): Promise<number> {
           payload,
           'CLEANUP_ALICE_FIXTURE_AMBIGUOUS',
         )
+      })
+    }
+
+    if (alice && !platformClientProbe && platformClientProbeMayHaveSucceeded) {
+      await harness.check('cleanup.platform_client_probe_discovery', async () => {
+        const currentAlice = await loadTenantSession(config, alice as AuthSession)
+        alice = currentAlice
+        platformClientProbe = await recoverSyntheticClient(
+          config,
+          currentAlice,
+          syntheticPayload(`${config.runId}-platform`, 'alice'),
+          'CLEANUP_PLATFORM_CLIENT_AMBIGUOUS',
+        )
+        if (!platformClientProbe) platformClientProbeMayHaveSucceeded = false
+      })
+    }
+
+    if (alice && platformClientProbe) {
+      await harness.check('cleanup.platform_client_probe', async () => {
+        if (aliceLifecycleTouched) throw new SafeFailure('CLEANUP_ALICE_STATE_UNRESOLVED')
+        const currentAlice = await loadTenantSession(config, alice as AuthSession)
+        alice = currentAlice
+        const result = await callWorkspaceClientMutation(
+          config,
+          currentAlice,
+          'delete',
+          currentAlice.workspaceId,
+          (platformClientProbe as WorkspaceClientRow).id,
+        )
+        expectStatus(result, 200, 'CLEANUP_PLATFORM_CLIENT_FAILED')
+        platformClientProbe = null
+        platformClientProbeMayHaveSucceeded = false
       })
     }
 

@@ -23,9 +23,11 @@ model and authorization boundary instead.
 
 ## Identity and tenancy rules
 
-- Platform administrators provision and suspend agency workspaces. They can
-  select a workspace and open a read-only preview, but preview never changes the
-  tenant's Auth session or permits tenant mutations.
+- Platform administrators provision and suspend agency workspaces. The
+  platform owner can select a workspace and manage its supported modules with
+  owner-equivalent authority. Selection never changes the Auth session or
+  creates an impersonated tenant membership; every mutation retains the real
+  platform actor ID in the audit log.
 - Each agency has one private `workspaces` row.
 - Each agency employee has one live `workspace_memberships` row; revoked
   historical rows may be retained for audit and provider reconciliation. A live
@@ -46,7 +48,7 @@ model and authorization boundary instead.
 
 | Actor | Scope | Staff management | Agency operations | Client portal |
 | --- | --- | --- | --- | --- |
-| Platform admin | Platform | Provision/suspend agency owner; read-only preview | Legacy platform tools | No impersonation |
+| Platform admin | Platform | Provision/suspend agency owner; owner-level selected-workspace management | Legacy platform tools plus selected workspace modules | No impersonation |
 | Workspace owner | One agency | Admins, members, ownership transfer | Full agency access | Manages portal access |
 | Workspace admin | One agency | Members only | Operational management | Manages permitted clients |
 | Workspace member | One agency | None | Restricted/read-only by module | None by default |
@@ -76,9 +78,11 @@ Agency lifecycle and employee lifecycle are deliberately separate:
 - An archived agency retains no live staff. Non-owner staff must be removed
   before the owner/workspace archive operation.
 
-The MVP caps a private workspace at 100 live staff. Owners may invite admins or
-members and manage any non-owner; admins may invite/manage members only;
-members cannot administer staff.
+The MVP caps a private workspace at 100 live staff. Workspace owners may invite
+admins or members and manage any non-owner; admins may invite/manage members
+only; members cannot administer staff. The platform owner has owner-equivalent
+staff controls in an explicitly selected active workspace but is not inserted
+into that workspace's roster.
 
 ## Cross-system operations
 
@@ -122,7 +126,8 @@ Every tenant module must prove:
 - two independent workspaces cannot read or mutate one another by guessing IDs;
 - owner/admin/member permissions and self-targeting rules are enforced in SQL;
 - suspended memberships and stale tokens fail closed;
-- platform preview is read-only and cannot invoke tenant mutations;
+- only the platform owner receives the workspace selector, and selected-workspace
+  mutations remain scoped to the explicit workspace and audited to that actor;
 - portal users cannot reach workspace routes, and workspace users cannot cross
   client portal boundaries;
 - direct REST/RLS, Edge Function, and browser paths agree;

@@ -6,7 +6,6 @@ import {
   Calendar,
   ClipboardList,
   Database,
-  Eye,
   LayoutDashboard,
   LogOut,
   Mail,
@@ -49,39 +48,34 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'unibox', name: 'Unibox', segment: 'unibox', icon: Users, enabled: false },
 ]
 
-export interface WorkspacePreviewConfig {
+export interface PlatformWorkspaceConfig {
   workspaceName: string
-  viewerEmail: string
-  viewerName?: string | null
-  viewerRole: 'owner' | 'admin' | 'member'
   baseHref: string
   exitHref: string
 }
 
 interface WorkspaceLayoutProps {
   children: React.ReactNode
-  preview?: WorkspacePreviewConfig
+  platformWorkspace?: PlatformWorkspaceConfig
 }
 
-export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => {
+export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayoutProps) => {
   const { membership, signOut, user, workspace } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const workspaceName = preview?.workspaceName || workspace?.name || 'Workspace'
-  const viewerEmail = preview?.viewerEmail || user?.email
-  const viewerName = preview?.viewerName
-    || membership?.full_name
+  const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
+  const viewerEmail = user?.email
+  const viewerName = membership?.full_name
     || user?.user_metadata?.full_name
     || 'Workspace user'
-  const viewerRole = preview?.viewerRole || membership?.role
-  const baseHref = preview?.baseHref || '/app'
+  const viewerRole = platformWorkspace ? 'platform owner' : membership?.role
+  const baseHref = platformWorkspace?.baseHref || '/app'
 
   const handleSignOut = async () => {
-    if (preview) return
     try {
       await signOut()
-      navigate('/login', { replace: true })
+      navigate(platformWorkspace ? '/admin/login' : '/login', { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
     }
@@ -121,6 +115,16 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
           <div className="border-b border-border px-6 py-4">
             <p className="truncate text-sm font-semibold">{workspaceName}</p>
             <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
+            {platformWorkspace && (
+              <div className="mt-3 space-y-2">
+                <WorkspaceSwitcher presentation="toolbar" />
+                <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
+                  <Link to={platformWorkspace.exitHref}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />Back to platform
+                  </Link>
+                </Button>
+              </div>
+            )}
           </div>
 
           <nav aria-label="Workspace navigation" className="flex-1 overflow-y-auto px-3 py-4">
@@ -131,7 +135,7 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
                 const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
                 const isWorkspaceUsers = item.id === 'workspace-users'
                 const itemEnabled = isWorkspaceUsers
-                  ? Boolean(preview || membership?.role === 'owner' || membership?.role === 'admin')
+                  ? Boolean(platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin')
                   : item.enabled
 
                 return (
@@ -183,8 +187,6 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
               variant="outline"
               size="sm"
               className="w-full"
-              disabled={Boolean(preview)}
-              aria-describedby={preview ? 'admin-preview-context' : undefined}
             >
               <LogOut className="mr-2 h-4 w-4" />Sign out
             </Button>
@@ -193,28 +195,6 @@ export const WorkspaceLayout = ({ children, preview }: WorkspaceLayoutProps) => 
       </aside>
 
       <div className="lg:pl-64">
-        {preview && (
-          <div className="border-b border-amber-500/40 bg-amber-50/95 dark:bg-amber-950/95">
-            <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div className="flex min-w-0 items-start gap-3">
-                <Eye className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-                <div className="min-w-0">
-                  <p className="font-semibold">Admin preview · Read only</p>
-                  <p id="admin-preview-context" className="text-sm text-muted-foreground">
-                    Viewing the workspace layout and data for {viewerEmail} in {workspaceName}. Mutation controls are visible but disabled; you remain signed in as {user?.email || 'a platform administrator'}.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <WorkspaceSwitcher presentation="toolbar" />
-                <Button variant="outline" size="sm" asChild>
-                  <Link to={preview.exitHref}><ArrowLeft className="mr-2 h-4 w-4" />Exit preview</Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-card px-4 lg:hidden">
           <Button
             variant="ghost"

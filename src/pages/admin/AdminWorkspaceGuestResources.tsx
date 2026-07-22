@@ -3,7 +3,7 @@ import WorkspaceGuestResources from '@/pages/app/WorkspaceGuestResources'
 
 const AdminWorkspaceGuestResources = () => {
   const { workspaceId = '' } = useParams()
-  return <WorkspaceGuestResources key={workspaceId || 'missing'} adminPreviewWorkspaceId={workspaceId} />
+  return <WorkspaceGuestResources key={workspaceId || 'missing'} platformWorkspaceId={workspaceId} />
 }
 
 export default AdminWorkspaceGuestResources

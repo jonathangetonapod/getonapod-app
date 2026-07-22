@@ -10,7 +10,7 @@ client portal.
 ## Current rollout status
 
 The invite-only account lifecycle, manual account provisioning, tenant Clients
-module, and read-only administrator workspace preview are deployed. The
+module, and administrator workspace view are deployed. The
 workspace-customizable Guest Resources backend was added on 2026-07-22:
 migration `20260721000200_workspace_guest_resources.sql` is the eighth
 production migration, and the exact `workspace-guest-resources` v1 and
@@ -24,8 +24,9 @@ are visibly unavailable rather than linked to legacy global admin pages.
 
 The Sub-agency Workspace Foundation is the current release candidate. It adds
 exactly one transferable owner per private workspace, admins and members,
-`/app/workspace-users`, read-only platform staff preview, independent employee
-lifecycle controls, and workspace-wide token revocation. Its ninth migration,
+`/app/workspace-users`, native platform-owner management of a selected
+workspace, independent employee lifecycle controls, and workspace-wide token
+revocation. Its ninth migration,
 new Edge Function, stronger hosted Auth password policy, and frontend are not
 production-active until the cutover checks in this document pass. Client
 Podcast System is the next tenant module after that foundation is stable.
@@ -49,7 +50,7 @@ The sanitized cutover evidence and remaining gates are recorded in
 
 | Role | Supported access |
 | --- | --- |
-| Platform administrator | Existing internal `/admin/*` application, agency-owner provisioning/workspace lifecycle, and safe read-only previews of each private workspace's users, Clients, and Guest Resources modules |
+| Platform administrator | Existing internal `/admin/*` application, agency-owner provisioning/workspace lifecycle, and owner-level management of a selected private workspace's users, Clients, and Guest Resources modules |
 | Workspace owner | One agency workspace; invites admins or members, manages non-owner staff, transfers ownership, and manages tenant-enabled modules |
 | Workspace admin | One agency workspace; invites and manages members and manages tenant-enabled modules, but cannot manage the owner or another admin |
 | Workspace member | One agency workspace; no staff administration and read-only access to the currently enabled Clients and Guest Resources modules |
@@ -74,9 +75,9 @@ shared isolation contract.
 | `/app/clients` | Authenticated workspace client CRUD |
 | `/app/guest-resources` | Authenticated workspace resource customization, lifecycle, ordering, and client audience management |
 | `/admin/users` | Platform administrator invitation/lifecycle console |
-| `/admin/workspaces/:workspaceId/workspace-users` | Platform administrator read-only preview of the selected workspace's staff roster |
-| `/admin/workspaces/:workspaceId/clients` | Platform administrator read-only preview of the same Clients experience for one explicitly selected private workspace |
-| `/admin/workspaces/:workspaceId/guest-resources` | Platform administrator read-only preview of that workspace's resource catalog and audience assignments |
+| `/admin/workspaces/:workspaceId/workspace-users` | Platform-owner management of the selected workspace's staff roster |
+| `/admin/workspaces/:workspaceId/clients` | Platform-owner management of the selected workspace's Clients experience |
+| `/admin/workspaces/:workspaceId/guest-resources` | Platform-owner management of that workspace's resource catalog and audience assignments |
 | `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
 | `/portal/login` | Separate client portal login |
 | `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
@@ -130,13 +131,15 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   15-minute review window. That window deliberately exceeds Supabase's hosted
   Edge hard lifetime; revisit the invariant before self-hosting or increasing
   worker limits.
-- The administrator workspace selector is an explicit URL-scoped, read-only
-  preview that reuses the tenant Workspace Users, Clients, and Guest Resources
+- The platform-owner workspace selector is an explicit URL-scoped management
+  context that reuses the tenant Workspace Users, Clients, and Guest Resources
   layout/pages. It includes active owners and newly created manual-password
   accounts that are pending first sign-in, but excludes ordinary unaccepted
-  email invitations, revoked memberships, and inactive workspaces. It does not
-  impersonate the tenant, mutate the administrator's Auth context, enable
-  client mutations, or silently fall back to another workspace.
+  email invitations, revoked memberships, and inactive workspaces. Only the
+  platform owner receives the selector. Selecting a workspace does not create
+  a tenant membership or mutate the platform owner's Auth context; supported
+  writes are authorized server-side and audited under the platform owner's
+  real Auth user ID.
 - Platform workspace suspend/reactivate uses a separate durable service-only
   lifecycle claim. The database transition commits first and remains
   authoritative while Auth is
@@ -355,7 +358,7 @@ the historical cutover above:
    post-deployment Cloudflare purge, the hardened recursive live verifier
    passed and all six retired asset paths returned 404 with `no-store`,
    `text/plain`, and `noindex`. That historical increment did not record a
-   controlled signed-in tenant, read-only administrator-preview, or
+   controlled signed-in tenant, platform-owner workspace management, or
    private-client audience acceptance run; current production state must be
    inventoried and tested again.
 
@@ -513,7 +516,7 @@ npm run test:staging
 
 The runner creates tagged synthetic clients plus a selected-client resource,
 attacks the Clients and Guest Resources boundaries over Edge Functions/REST,
-checks read-only admin resource preview and exact portal-session visibility,
+checks platform-owner client/resource management and exact portal-session visibility,
 checks exact tombstone/exclusion behavior, probes the
 Resend signature/body limits, exercises suspend/reactivate plus portal-session
 revocation, and removes its fixtures in `finally`. Its NDJSON contains only
@@ -660,11 +663,10 @@ The detailed rollout and acceptance matrix is in
   and Guest Resources are enabled today. Podcast operations, outreach,
   reporting, and every other legacy module remain platform-admin-only until
   they receive an explicit `workspace_id` model and isolation tests.
-- The platform administrator's private-workspace preview reuses the real
-  tenant Clients experience, including its layout and client states, but is
-  intentionally read-only: write controls are disabled and no mutation dialog
-  is available. It is not an impersonation mode and does not make legacy
-  modules tenant-aware.
+- The platform owner's selected-workspace context reuses the real tenant
+  Workspace Users, Clients, and Guest Resources experiences with native write
+  controls. It is not an impersonation mode, preserves the platform session,
+  and does not make legacy modules tenant-aware.
 - Workspace owners can invite admins or members; workspace admins can invite
   members. Tenant identities still cannot own or join multiple private
   workspaces in this MVP.
@@ -754,7 +756,7 @@ commit, project, backup, phased manifest, and private evidence directory.
 The account/Clients and Guest Resources backend/frontend production rollouts
 are complete. The current production workspace inventory must be captured
 again, then controlled accounts must complete signed-in tenant customization,
-read-only administrator preview, selected-client private-portal visibility,
+platform-owner workspace management, selected-client private-portal visibility,
 draft/archive denial, malformed/stale access, and two-workspace isolation.
 Historical evidence did not complete those checks, so they cannot yet be
 claimed for the foundation release.

@@ -36,10 +36,10 @@ const emptyClient: WorkspaceClientInput = {
 }
 
 interface WorkspaceClientsProps {
-  adminPreviewWorkspaceId?: string
+  platformWorkspaceId?: string
 }
 
-function validatePreviewView(view: AdminWorkspaceView, workspaceId: string): AdminWorkspaceView {
+function validatePlatformWorkspaceView(view: AdminWorkspaceView, workspaceId: string): AdminWorkspaceView {
   if (
     view.workspace.id !== workspaceId
     || view.workspace.is_default
@@ -49,69 +49,70 @@ function validatePreviewView(view: AdminWorkspaceView, workspaceId: string): Adm
     || !view.viewer.email
     || view.clients.some((client) => client.workspace_id !== workspaceId)
   ) {
-    throw new Error('The workspace preview response did not match the selected workspace.')
+    throw new Error('The selected workspace response did not match the workspace address.')
   }
   return view
 }
 
-const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) => {
+const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
   const { canWriteClients, user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<WorkspaceClient | null>(null)
   const [deleting, setDeleting] = useState<WorkspaceClient | null>(null)
   const [form, setForm] = useState<WorkspaceClientInput>(emptyClient)
-  const isAdminPreview = adminPreviewWorkspaceId !== undefined
-  const previewWorkspaceId = (adminPreviewWorkspaceId || '').toLowerCase()
-  const validPreviewWorkspaceId = UUID_PATTERN.test(previewWorkspaceId)
+  const isPlatformWorkspace = platformWorkspaceId !== undefined
+  const selectedWorkspaceId = (platformWorkspaceId || '').toLowerCase()
+  const validSelectedWorkspaceId = UUID_PATTERN.test(selectedWorkspaceId)
   const tenantWorkspaceId = workspace?.id || ''
-  const queryKey = ['tenant', user?.id || 'unknown', tenantWorkspaceId, 'clients'] as const
+  const tenantQueryKey = ['tenant', user?.id || 'unknown', tenantWorkspaceId, 'clients'] as const
+  const platformQueryKey = ['platform', user?.id || 'unknown', 'workspace', selectedWorkspaceId, 'clients'] as const
 
   const tenantClientsQuery = useQuery({
-    queryKey,
+    queryKey: tenantQueryKey,
     queryFn: () => getWorkspaceClients(tenantWorkspaceId),
-    enabled: !isAdminPreview && Boolean(tenantWorkspaceId),
+    enabled: !isPlatformWorkspace && Boolean(tenantWorkspaceId),
   })
 
-  const previewQuery = useQuery({
-    queryKey: ['platform', user?.id || 'unknown', 'workspace-preview', previewWorkspaceId, 'clients'],
-    queryFn: async ({ signal }) => validatePreviewView(
-      await getAdminWorkspaceView(previewWorkspaceId, signal),
-      previewWorkspaceId,
+  const platformQuery = useQuery({
+    queryKey: platformQueryKey,
+    queryFn: async ({ signal }) => validatePlatformWorkspaceView(
+      await getAdminWorkspaceView(selectedWorkspaceId, signal),
+      selectedWorkspaceId,
     ),
-    enabled: isAdminPreview && validPreviewWorkspaceId,
+    enabled: isPlatformWorkspace && validSelectedWorkspaceId,
     retry: false,
     gcTime: 0,
   })
 
   useEffect(() => {
-    if (!isAdminPreview && tenantClientsQuery.error) {
+    if (!isPlatformWorkspace && tenantClientsQuery.error) {
       toast.error(tenantClientsQuery.error instanceof Error ? tenantClientsQuery.error.message : 'Unable to load clients.')
     }
-  }, [isAdminPreview, tenantClientsQuery.error])
+  }, [isPlatformWorkspace, tenantClientsQuery.error])
 
-  const effectiveWorkspace = isAdminPreview
-    ? previewQuery.data?.workspace || null
+  const effectiveWorkspace = isPlatformWorkspace
+    ? platformQuery.data?.workspace || null
     : workspace
   const workspaceId = effectiveWorkspace?.id || ''
-  const clients = isAdminPreview
-    ? previewQuery.data?.clients || []
+  const clients = isPlatformWorkspace
+    ? platformQuery.data?.clients || []
     : tenantClientsQuery.data || []
-  const clientsLoading = isAdminPreview
-    ? validPreviewWorkspaceId && previewQuery.isLoading
+  const clientsLoading = isPlatformWorkspace
+    ? validSelectedWorkspaceId && platformQuery.isLoading
     : tenantClientsQuery.isLoading
-  const clientsError = isAdminPreview
-    ? !validPreviewWorkspaceId
+  const clientsError = isPlatformWorkspace
+    ? !validSelectedWorkspaceId
       ? new Error('The workspace address is invalid.')
-      : previewQuery.error
+      : platformQuery.error
     : tenantClientsQuery.error
-  const refetchClients = isAdminPreview ? previewQuery.refetch : tenantClientsQuery.refetch
-  const managementEnabled = !isAdminPreview && canWriteClients
-  const showManagementControls = isAdminPreview || managementEnabled
+  const refetchClients = isPlatformWorkspace ? platformQuery.refetch : tenantClientsQuery.refetch
+  const activeQueryKey = isPlatformWorkspace ? platformQueryKey : tenantQueryKey
+  const managementEnabled = isPlatformWorkspace || canWriteClients
+  const showManagementControls = managementEnabled
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (isAdminPreview) throw new Error('Changes are disabled in administrator preview.')
       if (!workspaceId) throw new Error('Workspace is unavailable.')
       if (!form.name.trim()) throw new Error('Client name is required.')
       return editing
@@ -119,7 +120,7 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
         : createWorkspaceClient(workspaceId, form)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({ queryKey: activeQueryKey })
       setDialogOpen(false)
       setEditing(null)
       setForm(emptyClient)
@@ -130,12 +131,11 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
 
   const deleteMutation = useMutation({
     mutationFn: async (client: WorkspaceClient) => {
-      if (isAdminPreview) throw new Error('Changes are disabled in administrator preview.')
       if (!workspaceId) throw new Error('Workspace is unavailable.')
       await deleteWorkspaceClient(workspaceId, client.id)
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey })
+      await queryClient.invalidateQueries({ queryKey: activeQueryKey })
       setDeleting(null)
       toast.success('Client removed.')
     },
@@ -164,7 +164,7 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
     setDialogOpen(true)
   }
 
-  if (!isAdminPreview && !workspace) {
+  if (!isPlatformWorkspace && !workspace) {
     return (
       <WorkspaceLayout>
         <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>Your account does not have an active workspace.</CardDescription></CardHeader></Card>
@@ -172,35 +172,26 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
     )
   }
 
-  const previewLayout = isAdminPreview
+  const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
-        viewerEmail: previewQuery.data?.viewer.email || 'Workspace owner',
-        viewerName: previewQuery.data?.viewer.full_name,
-        viewerRole: previewQuery.data?.viewer.role || 'owner',
-        baseHref: `/admin/workspaces/${previewWorkspaceId}`,
+        baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
         exitHref: '/admin/users',
       }
     : undefined
 
   return (
-    <WorkspaceLayout preview={previewLayout}>
+    <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Clients</h1>
             <p className="text-muted-foreground">Clients in {effectiveWorkspace?.name || 'this workspace'}</p>
-            {isAdminPreview && (
-              <p className="mt-1 text-sm text-amber-800 dark:text-amber-300" aria-describedby="admin-preview-context">
-                Read-only preview: workspace controls are shown but cannot make changes.
-              </p>
-            )}
           </div>
           {showManagementControls && (
             <Button
               onClick={openCreate}
               disabled={!managementEnabled}
-              aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
             >
               <Plus className="mr-2 h-4 w-4" />Add client
             </Button>
@@ -221,7 +212,7 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
                 <p className="max-w-md text-sm text-muted-foreground">
                   {clientsError instanceof Error ? clientsError.message : 'Check your connection and try again.'}
                 </p>
-                {validPreviewWorkspaceId || !isAdminPreview ? (
+                {validSelectedWorkspaceId || !isPlatformWorkspace ? (
                   <Button variant="outline" onClick={() => void refetchClients()}>Try again</Button>
                 ) : null}
               </div>
@@ -234,7 +225,6 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
                     onClick={openCreate}
                     variant="outline"
                     disabled={!managementEnabled}
-                    aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                   >
                     <Plus className="mr-2 h-4 w-4" />Add client
                   </Button>
@@ -259,7 +249,6 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
                                 onClick={() => openEdit(client)}
                                 aria-label={`Edit ${client.name}`}
                                 disabled={!managementEnabled}
-                                aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -270,7 +259,6 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
                                 onClick={() => managementEnabled && setDeleting(client)}
                                 aria-label={`Remove ${client.name}`}
                                 disabled={!managementEnabled}
-                                aria-describedby={isAdminPreview ? 'admin-preview-context' : undefined}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -287,7 +275,7 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
         </Card>
       </div>
 
-      {!isAdminPreview && <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditing(null) }}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle>{editing ? 'Edit client' : 'Add client'}</DialogTitle><DialogDescription>{editing ? 'Update this client inside your private workspace.' : 'Create a client visible only inside your private workspace.'}</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); saveMutation.mutate() }}>
@@ -303,14 +291,14 @@ const WorkspaceClients = ({ adminPreviewWorkspaceId }: WorkspaceClientsProps) =>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit" disabled={saveMutation.isPending}>{saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editing ? 'Save changes' : 'Add client'}</Button></DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>}
+      </Dialog>
 
-      {!isAdminPreview && <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open) setDeleting(null) }}>
+      <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open) setDeleting(null) }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Remove client?</DialogTitle><DialogDescription>This permanently removes {deleting?.name} and may remove connected records. This action cannot be undone.</DialogDescription></DialogHeader>
           <DialogFooter><Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleting && deleteMutation.mutate(deleting)}>{deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Remove client</Button></DialogFooter>
         </DialogContent>
-      </Dialog>}
+      </Dialog>
     </WorkspaceLayout>
   )
 }

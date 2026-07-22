@@ -56,7 +56,8 @@ BEGIN
     'public.lock_workspace_provider_lifecycle_v1(uuid)',
     'public.workspace_user_has_provider_claim_v1(uuid)',
     'public.workspace_membership_has_provider_claim_v1(uuid)',
-    'public.workspace_has_provider_claim_v1(uuid,uuid)'
+    'public.workspace_has_provider_claim_v1(uuid,uuid)',
+    'public.platform_workspace_guest_resource_mutation_v1(text,uuid,uuid,jsonb,uuid,bigint)'
   ]
   LOOP
     IF to_regprocedure(internal_function) IS NULL
@@ -565,6 +566,10 @@ DECLARE
   platform_id UUID;
   client_a_id UUID;
   client_b_id UUID;
+  platform_client_id UUID;
+  platform_resource_id UUID;
+  platform_staff_membership_id UUID;
+  platform_staff_cleanup_lock UUID;
   token_epoch BIGINT := floor(EXTRACT(EPOCH FROM clock_timestamp()))::BIGINT;
   response JSONB;
   rejected BOOLEAN;
@@ -616,10 +621,13 @@ BEGIN
   response := public.workspace_staff_list_v1(
     workspace_a_id, platform_id, token_epoch
   );
-  IF response #>> '{capabilities,read_only}' <> 'true'
-    OR response #> '{capabilities,invite_roles}' <> '[]'::JSONB
+  IF response #>> '{capabilities,read_only}' <> 'false'
+    OR response #> '{capabilities,invite_roles}'
+      <> '["admin", "member"]'::JSONB
+    OR response #>> '{capabilities,can_update_roles}' <> 'true'
+    OR response #>> '{capabilities,can_transfer_owner}' <> 'true'
   THEN
-    RAISE EXCEPTION 'platform workspace preview is not read-only';
+    RAISE EXCEPTION 'platform owner workspace capabilities are malformed';
   END IF;
 
   response := public.workspace_client_operation_v2(
@@ -630,7 +638,130 @@ BEGIN
     OR response -> 0 ->> 'workspace_id' <> workspace_a_id::TEXT
     OR response::TEXT LIKE '%' || client_b_id::TEXT || '%'
   THEN
-    RAISE EXCEPTION 'platform client preview crossed or lost its workspace';
+    RAISE EXCEPTION 'platform client context crossed or lost its workspace';
+  END IF;
+
+  response := public.workspace_client_operation_v2(
+    'create',
+    workspace_a_id,
+    NULL,
+    jsonb_build_object(
+      'name', 'Platform Managed Client',
+      'email', 'platform-client@example.invalid',
+      'contact_person', NULL,
+      'linkedin_url', NULL,
+      'website', NULL,
+      'status', 'active',
+      'notes', 'created by platform owner'
+    ),
+    platform_id,
+    token_epoch
+  );
+  platform_client_id := (response ->> 'id')::UUID;
+  IF response ->> 'workspace_id' <> workspace_a_id::TEXT THEN
+    RAISE EXCEPTION 'platform owner created a client outside the selected workspace';
+  END IF;
+
+  PERFORM public.workspace_client_operation_v2(
+    'delete',
+    workspace_a_id,
+    platform_client_id,
+    '{}'::JSONB,
+    platform_id,
+    token_epoch
+  );
+
+  response := public.workspace_guest_resource_operation_v1(
+    'create',
+    workspace_a_id,
+    NULL,
+    jsonb_build_object(
+      'title', 'Platform Managed Resource',
+      'description', 'Created by the platform owner.',
+      'content', '<p>Platform owner content.</p>',
+      'category', 'preparation',
+      'type', 'article',
+      'url', NULL,
+      'file_url', NULL,
+      'featured', false,
+      'display_order', 999,
+      'status', 'draft',
+      'visibility', 'all_clients',
+      'client_ids', jsonb_build_array()
+    ),
+    platform_id,
+    token_epoch
+  );
+  platform_resource_id := (response ->> 'id')::UUID;
+  IF response ->> 'workspace_id' <> workspace_a_id::TEXT THEN
+    RAISE EXCEPTION 'platform owner created a resource outside the selected workspace';
+  END IF;
+
+  PERFORM public.workspace_guest_resource_operation_v1(
+    'delete',
+    workspace_a_id,
+    platform_resource_id,
+    '{}'::JSONB,
+    platform_id,
+    token_epoch
+  );
+
+  response := public.begin_workspace_staff_invite_v1(
+    workspace_a_id,
+    'platform-managed-staff@example.invalid',
+    'Platform Managed Staff',
+    'member',
+    platform_id,
+    token_epoch
+  );
+  platform_staff_membership_id := (response #>> '{membership,id}')::UUID;
+  platform_staff_cleanup_lock := gen_random_uuid();
+  PERFORM public.revoke_workspace_staff_account_v1(
+    workspace_a_id,
+    platform_staff_membership_id,
+    platform_id,
+    token_epoch,
+    platform_staff_cleanup_lock
+  );
+  IF public.find_workspace_staff_invite_auth_user_v1(
+      workspace_a_id,
+      platform_staff_membership_id,
+      platform_id,
+      token_epoch,
+      platform_staff_cleanup_lock
+    ) IS NOT NULL
+    OR NOT public.release_workspace_invite_delivery_claim(
+      platform_staff_membership_id,
+      platform_staff_cleanup_lock
+    )
+  THEN
+    RAISE EXCEPTION 'platform owner staff fixture did not clean up';
+  END IF;
+
+  IF NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_audit_log AS audit
+      WHERE audit.workspace_id = workspace_a_id
+        AND audit.actor_user_id = platform_id
+        AND audit.action = 'workspace.client.created'
+        AND audit.entity_id = platform_client_id
+    ) OR NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_audit_log AS audit
+      WHERE audit.workspace_id = workspace_a_id
+        AND audit.actor_user_id = platform_id
+        AND audit.action = 'workspace.guest_resource.created'
+        AND audit.entity_id = platform_resource_id
+    ) OR NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_audit_log AS audit
+      WHERE audit.workspace_id = workspace_a_id
+        AND audit.actor_user_id = platform_id
+        AND audit.action = 'workspace.staff.invite_provisioning_started'
+        AND audit.entity_id = platform_staff_membership_id
+    )
+  THEN
+    RAISE EXCEPTION 'platform workspace mutations lost the real audit actor';
   END IF;
 
   rejected := false;
@@ -638,33 +769,62 @@ BEGIN
     PERFORM public.workspace_client_operation_v2(
       'delete',
       workspace_a_id,
-      client_a_id,
+      client_b_id,
       '{}'::JSONB,
       platform_id,
       token_epoch
     );
-  EXCEPTION WHEN SQLSTATE '42501' THEN
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN
     rejected := true;
   END;
   IF NOT rejected THEN
-    RAISE EXCEPTION 'platform client preview invoked a tenant mutation';
+    RAISE EXCEPTION 'platform client mutation crossed the selected workspace';
   END IF;
 
   rejected := false;
   BEGIN
-    PERFORM public.begin_workspace_staff_invite_v1(
+    PERFORM public.workspace_guest_resource_operation_v1(
+      'create',
       workspace_a_id,
-      'platform-cannot-mutate@example.invalid',
-      'No Mutation',
-      'member',
+      NULL,
+      jsonb_build_object(
+        'title', 'Cross-workspace Platform Resource',
+        'description', 'Must be rejected.',
+        'content', '<p>Must be rejected.</p>',
+        'category', 'preparation',
+        'type', 'article',
+        'url', NULL,
+        'file_url', NULL,
+        'featured', false,
+        'display_order', 999,
+        'status', 'draft',
+        'visibility', 'selected_clients',
+        'client_ids', jsonb_build_array(client_b_id)
+      ),
       platform_id,
       token_epoch
     );
-  EXCEPTION WHEN SQLSTATE '42501' THEN
+  EXCEPTION WHEN SQLSTATE '22023' THEN
     rejected := true;
   END;
   IF NOT rejected THEN
-    RAISE EXCEPTION 'platform preview mutated tenant staff';
+    RAISE EXCEPTION 'platform resource assignment crossed the selected workspace';
+  END IF;
+
+  rejected := false;
+  BEGIN
+    PERFORM public.update_workspace_staff_role_v1(
+      workspace_a_id,
+      member_b_membership_id,
+      'admin',
+      platform_id,
+      token_epoch
+    );
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN
+    rejected := true;
+  END;
+  IF NOT rejected THEN
+    RAISE EXCEPTION 'platform staff mutation crossed the selected workspace';
   END IF;
 
   rejected := false;
@@ -1584,6 +1744,7 @@ DECLARE
   workspace_a_id UUID;
   owner_a_id UUID;
   admin_a_id UUID;
+  platform_id UUID;
   owner_a_membership_id UUID;
   admin_a_membership_id UUID;
   member_a_membership_id UUID;
@@ -1599,6 +1760,8 @@ BEGIN
     WHERE key = 'owner_a';
   SELECT value INTO admin_a_id FROM goap_subagency_behavior_state
     WHERE key = 'admin_a';
+  SELECT value INTO platform_id FROM goap_subagency_behavior_state
+    WHERE key = 'platform';
   SELECT value INTO owner_a_membership_id FROM goap_subagency_behavior_state
     WHERE key = 'owner_a_membership';
   SELECT value INTO admin_a_membership_id FROM goap_subagency_behavior_state
@@ -1641,7 +1804,7 @@ BEGIN
   response := public.transfer_workspace_owner_v1(
     workspace_a_id,
     admin_a_membership_id,
-    owner_a_id,
+    platform_id,
     token_epoch
   );
 
@@ -1658,6 +1821,17 @@ BEGIN
     ) <> 1
   THEN
     RAISE EXCEPTION 'workspace ownership transfer was not atomic';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.workspace_audit_log AS audit
+    WHERE audit.workspace_id = workspace_a_id
+      AND audit.actor_user_id = platform_id
+      AND audit.action = 'workspace.owner.transferred'
+      AND audit.entity_id = admin_a_membership_id
+  ) THEN
+    RAISE EXCEPTION 'platform ownership transfer lost the real audit actor';
   END IF;
 
   SELECT workspace_access_not_before_epoch
@@ -1754,6 +1928,18 @@ BEGIN
   IF (SELECT status FROM public.workspaces WHERE id = workspace_a_id) <> 'active'
   THEN
     RAISE EXCEPTION 'ownership transfer changed workspace lifecycle';
+  END IF;
+
+  response := public.transfer_workspace_owner_v1(
+    workspace_a_id,
+    owner_a_membership_id,
+    admin_a_id,
+    admin_fresh_epoch
+  );
+  IF response #>> '{owner,id}' <> owner_a_membership_id::TEXT
+    OR response #>> '{previous_owner,id}' <> admin_a_membership_id::TEXT
+  THEN
+    RAISE EXCEPTION 'workspace owner could not transfer ownership';
   END IF;
 END;
 $owner_transfer_and_floor$;
