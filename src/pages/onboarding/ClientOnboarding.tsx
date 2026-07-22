@@ -58,20 +58,37 @@ function sectionError(view: ClientOnboardingView, answers: Record<string, unknow
 const ClientBrandHead = ({ view, logoUnavailable }: { view: ClientOnboardingView; logoUnavailable: boolean }) => {
   const accent = onboardingAccentColor(view.accent_color)
   const title = `${view.workspace.name} · Client onboarding`
+  const cardTitle = 'Complete your client intake'
+  const description = `Complete your private onboarding securely with ${view.workspace.name}.`
+  const previewImage = `${window.location.origin}/onboarding-link-preview.png?accent=${accent.slice(1)}`
+  const fallbackIcon = `${window.location.origin}/onboarding-link-icon.png?accent=${accent.slice(1)}`
   const favicon = view.workspace.logo_url && !logoUnavailable
     ? view.workspace.logo_url
     : onboardingFaviconDataUrl(view.workspace.name, accent)
+  const touchIcon = view.workspace.logo_url && !logoUnavailable ? view.workspace.logo_url : fallbackIcon
   return (
     <Helmet>
       <title>{title}</title>
-      <meta name="description" content={`Secure client onboarding from ${view.workspace.name}.`} />
+      <meta name="description" content={description} />
       <meta name="author" content={view.workspace.name} />
       <meta name="application-name" content={view.workspace.name} />
       <meta name="apple-mobile-web-app-title" content={view.workspace.name} />
       <meta name="theme-color" content={accent} />
-      <meta property="og:title" content={title} />
+      <meta property="og:type" content="website" />
+      <meta property="og:title" content={cardTitle} />
+      <meta property="og:description" content={description} />
       <meta property="og:site_name" content={view.workspace.name} />
+      <meta property="og:image" content={previewImage} />
+      <meta property="og:image:type" content="image/png" />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content="Secure client onboarding" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={cardTitle} />
+      <meta name="twitter:description" content={description} />
+      <meta name="twitter:image" content={previewImage} />
       <link rel="icon" href={favicon} />
+      <link rel="apple-touch-icon" sizes="180x180" href={touchIcon} />
     </Helmet>
   )
 }
@@ -416,7 +433,7 @@ const BrandHeader = ({ workspace, accent, logoUnavailable, onLogoError }: { work
     <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
     <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
       {workspace.logo_url && !logoUnavailable ? <div className="relative flex h-28 w-full max-w-xs items-center justify-center rounded-2xl border border-white/30 bg-white p-4 shadow-xl sm:h-24 sm:w-64"><img src={workspace.logo_url} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" onError={onLogoError} /></div> : <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(workspace.name)}</div>}
-      <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{workspace.name}</h1><p className="mt-1 text-sm text-white/80">Secure podcast guest intake</p></div>
+      <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{workspace.name}</h1><p className="mt-1 text-sm text-white/80">Secure client intake</p></div>
     </div>
   </header>
 )

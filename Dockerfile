@@ -29,7 +29,12 @@ RUN test -n "${VITE_SUPABASE_URL}" \
 
 FROM node:22.22.2-alpine AS runtime
 
+ARG VITE_SUPABASE_URL
+ARG VITE_APP_URL
+
 ENV NODE_ENV=production
+ENV SUPABASE_PUBLIC_URL=${VITE_SUPABASE_URL}
+ENV PUBLIC_APP_URL=${VITE_APP_URL}
 WORKDIR /app
 
 RUN test "$(node --version)" = "v22.22.2" \

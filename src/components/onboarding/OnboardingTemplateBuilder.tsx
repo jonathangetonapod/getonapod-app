@@ -11,8 +11,8 @@ import {
   Settings2,
   ShieldCheck,
   Trash2,
-  UploadCloud,
 } from 'lucide-react'
+import ClientOnboardingPreview from '@/components/onboarding/ClientOnboardingPreview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -164,52 +164,6 @@ function duplicateSection(section: OnboardingSection): OnboardingSection {
     title: (section.title.trim() || 'Untitled section') + ' copy',
     questions: section.questions.map(duplicateQuestion),
   }
-}
-
-const PreviewControl = ({ question, workspaceName }: { question: OnboardingQuestion; workspaceName: string }) => {
-  if (question.type === 'long_text') {
-    return (
-      <div className="h-24 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-        {renderOnboardingBrandText(question.placeholder, workspaceName) || 'Long-form response'}
-      </div>
-    )
-  }
-
-  if (question.type === 'single_select' || question.type === 'multi_select') {
-    return (
-      <div className="flex flex-wrap gap-2">
-        {(question.options ?? []).map((option) => (
-          <span key={option.id} className="rounded-full border bg-background px-3 py-1.5 text-sm text-muted-foreground">
-            {renderOnboardingBrandText(option.label, workspaceName) || 'Untitled option'}
-          </span>
-        ))}
-      </div>
-    )
-  }
-
-  if (question.type === 'yes_no') {
-    return (
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg border bg-background px-3 py-2 text-center text-sm text-muted-foreground">Yes</div>
-        <div className="rounded-lg border bg-background px-3 py-2 text-center text-sm text-muted-foreground">No</div>
-      </div>
-    )
-  }
-
-  if (question.type === 'image_upload' || question.type === 'document_upload') {
-    return (
-      <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg border border-dashed bg-background text-sm text-muted-foreground">
-        <UploadCloud className="h-4 w-4" />
-        {question.type === 'image_upload' ? 'Choose an image' : 'Choose a PDF'}
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-      {renderOnboardingBrandText(question.placeholder, workspaceName) || typeLabels[question.type]}
-    </div>
-  )
 }
 
 const PreviewBrandMark = ({
@@ -990,60 +944,14 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                 </div>
               </div>
             ) : (
-              <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,#665CF21A,transparent_34%),linear-gradient(to_bottom,#f8fafc,#f1f5f9)]" role="tabpanel" aria-label="Client form preview">
-                <div className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
-                  <header className="relative overflow-hidden rounded-3xl p-5 text-white shadow-2xl shadow-slate-950/20 sm:p-7" style={{ background: `linear-gradient(135deg, #111827 0%, ${DEFAULT_ONBOARDING_ACCENT} 100%)` }}>
-                    <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-                    <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-                      <PreviewBrandMark workspaceName={workspaceName} logoUrl={workspaceLogoUrl} logoUnavailable={workspaceLogoUnavailable} onLogoError={() => setWorkspaceLogoUnavailable(true)} />
-                      <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{brandedWorkspaceName}</h1><p className="mt-1 text-sm text-white/80">Secure podcast guest intake</p></div>
-                    </div>
-                  </header>
-
-                  <div className="mt-6 overflow-hidden rounded-3xl border-0 bg-background shadow-2xl shadow-slate-900/10">
-                    <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${DEFAULT_ONBOARDING_ACCENT}, ${DEFAULT_ONBOARDING_ACCENT}99, ${DEFAULT_ONBOARDING_ACCENT}55)` }} />
-                    <div className="border-b px-5 py-8 sm:px-8 sm:py-10">
-                      <Badge variant="outline" style={{ borderColor: `${DEFAULT_ONBOARDING_ACCENT}33`, color: DEFAULT_ONBOARDING_ACCENT, backgroundColor: `${DEFAULT_ONBOARDING_ACCENT}0D` }}>Private client intake</Badge>
-                      <h2 className="mt-4 max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">{renderOnboardingBrandText(draft.definition.intro_title, workspaceName)}</h2>
-                      <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName)}</p>
-                      <div className="mt-6 space-y-2"><div className="flex items-center justify-between text-sm"><span className="font-medium">Form overview</span><span className="text-slate-500">{draft.definition.sections.length} sections</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${100 / Math.max(draft.definition.sections.length, 1)}%`, backgroundColor: DEFAULT_ONBOARDING_ACCENT }} /></div></div>
-                      <div className="mt-4 flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="h-3.5 w-3.5" />Your answers save securely to {brandedWorkspaceName}.</div>
-                      <div className="mt-6 flex flex-wrap gap-2">
-                        {draft.definition.sections.map((section, index) => (
-                          <span key={section.id} className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
-                            {index + 1}. {renderOnboardingBrandText(section.title, workspaceName) || 'Untitled section'}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-6 p-4 sm:p-8">
-                      {draft.definition.sections.map((section, sectionIndex) => (
-                        <section key={section.id} className="rounded-2xl border p-4 sm:p-6">
-                          <div className="mb-5">
-                            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: DEFAULT_ONBOARDING_ACCENT }}>Section {sectionIndex + 1} of {draft.definition.sections.length}</p>
-                            <h3 className="mt-1 text-xl font-semibold">{renderOnboardingBrandText(section.title, workspaceName) || 'Untitled section'}</h3>
-                            {section.description && <p className="mt-1 text-sm text-muted-foreground">{renderOnboardingBrandText(section.description, workspaceName)}</p>}
-                          </div>
-                          <div className="space-y-5">
-                            {section.questions.map((question) => (
-                              <div key={question.id} className="space-y-2">
-                                <Label>
-                                  {renderOnboardingBrandText(question.label, workspaceName) || 'Untitled question'}
-                                  {question.required && <span className="text-destructive"> *</span>}
-                                </Label>
-                                {question.description && <p className="text-xs text-muted-foreground">{renderOnboardingBrandText(question.description, workspaceName)}</p>}
-                                <PreviewControl question={question} workspaceName={workspaceName} />
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                      ))}
-                      <div className="rounded-2xl bg-muted/50 p-5 text-center">
-                        <p className="text-sm font-medium">{renderOnboardingBrandText(draft.definition.completion_message, workspaceName)}</p>
-                      </div>
-                    </div>
-                  </div>
+              <div className="h-full overflow-y-auto bg-muted/20" role="tabpanel" aria-label="Client form preview">
+                <div className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
+                  <ClientOnboardingPreview
+                    definition={draft.definition}
+                    workspaceName={workspaceName}
+                    workspaceLogoUrl={workspaceLogoUrl}
+                    accentColor={DEFAULT_ONBOARDING_ACCENT}
+                  />
                 </div>
               </div>
             )}

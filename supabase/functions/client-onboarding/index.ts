@@ -99,17 +99,20 @@ function logoUrl(path: unknown): string | null {
   return `${base.replace(/\/$/u, '')}/storage/v1/object/public/workspace-logos/${path.split('/').map(encodeURIComponent).join('/')}`
 }
 
-async function presentClientView(
+async function presentClientBrand(
   admin: ReturnType<typeof createAdminClient>,
   instanceId: string,
   value: unknown,
-): Promise<Record<string, unknown>> {
+): Promise<{
+  result: Record<string, unknown>
+  workspace: { name: string; logo_url: string | null }
+  accent_color: string
+}> {
   const result = responseRecord(value)
   if (result.id !== instanceId) {
     throw new HttpError(500, 'INVALID_ONBOARDING_RESPONSE', 'The onboarding response did not match the link')
   }
   const workspace = responseRecord(result.workspace, 'workspace')
-  const status = responseString(result.status, 'status', 32)
   const accentColor = typeof result.accent_color === 'string' && /^#[0-9A-F]{6}$/u.test(result.accent_color)
     ? result.accent_color
     : '#665CF2'
@@ -123,6 +126,24 @@ async function presentClientView(
     const signedLogo = await admin.storage.from(BUCKET).createSignedUrl(experienceLogoPath, 3600)
     if (!signedLogo.error) presentedLogoUrl = signedLogo.data.signedUrl
   }
+  return {
+    result,
+    workspace: {
+      name: responseString(workspace.name, 'workspace name', 200),
+      logo_url: presentedLogoUrl,
+    },
+    accent_color: accentColor,
+  }
+}
+
+async function presentClientView(
+  admin: ReturnType<typeof createAdminClient>,
+  instanceId: string,
+  value: unknown,
+): Promise<Record<string, unknown>> {
+  const brand = await presentClientBrand(admin, instanceId, value)
+  const result = brand.result
+  const status = responseString(result.status, 'status', 32)
   if (['expired', 'revoked', 'approved', 'submitted'].includes(status)) {
     let completionMessage = ''
     if (result.definition && typeof result.definition === 'object' && !Array.isArray(result.definition)) {
@@ -131,11 +152,8 @@ async function presentClientView(
     }
     return {
       id: instanceId,
-      workspace: {
-        name: responseString(workspace.name, 'workspace name', 200),
-        logo_url: presentedLogoUrl,
-      },
-      accent_color: accentColor,
+      workspace: brand.workspace,
+      accent_color: brand.accent_color,
       status,
       expires_at: result.expires_at,
       current_revision: result.current_revision,
@@ -172,11 +190,8 @@ async function presentClientView(
   return {
     ...result,
     experience_logo_path: undefined,
-    workspace: {
-      name: responseString(workspace.name, 'workspace name', 200),
-      logo_url: presentedLogoUrl,
-    },
-    accent_color: accentColor,
+    workspace: brand.workspace,
+    accent_color: brand.accent_color,
     assets,
   }
 }
@@ -264,6 +279,18 @@ serve(async (req) => {
       p_payload: {},
     })
     if (initial.error) clientRpcError(initial.error)
+
+    if (action === 'metadata') {
+      requireOnlyKeys(body, ['action', 'token'])
+      const brand = await presentClientBrand(admin, capability.instanceId, initial.data)
+      return jsonResponse(req, METHODS, 200, {
+        metadata: {
+          workspace: brand.workspace,
+          accent_color: brand.accent_color,
+        },
+      })
+    }
+
     const initialView = await presentClientView(admin, capability.instanceId, initial.data)
 
     if (action === 'get') {

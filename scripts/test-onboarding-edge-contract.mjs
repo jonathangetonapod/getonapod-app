@@ -29,6 +29,8 @@ assert.match(staff, /listPrivateOnboardingFiles/u)
 assert.doesNotMatch(staff, /console\.(?:log|error)\([^)]*(?:token|recipient|email)/iu)
 
 assert.match(client, /verifyOnboardingCapability\(token, capabilitySecret\(\)\)/u)
+assert.match(client, /action === 'metadata'/u)
+assert.match(client, /metadata:\s*\{\s*workspace: brand\.workspace,\s*accent_color: brand\.accent_color/u)
 assert.match(client, /validateOnboardingAnswers/u)
 assert.match(client, /hasExpectedSignature/u)
 assert.match(client, /createSignedUrl\(path, 900\)/u)

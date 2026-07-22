@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, MoreHorizontal, Palette, Plus, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, MoreHorizontal, Palette, Plus, RefreshCw, Send, Share2, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
+import ClientOnboardingPreview from '@/components/onboarding/ClientOnboardingPreview'
 import OnboardingReviewDialog from '@/components/onboarding/OnboardingReviewDialog'
 import OnboardingTemplateBuilder, { type OnboardingTemplateDraft } from '@/components/onboarding/OnboardingTemplateBuilder'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
@@ -20,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
-import { DEFAULT_ONBOARDING_ACCENT, onboardingWorkspaceInitials, renderOnboardingBrandText } from '@/lib/onboardingBrand'
+import { DEFAULT_ONBOARDING_ACCENT, renderOnboardingBrandText } from '@/lib/onboardingBrand'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
   approveOnboarding,
@@ -144,7 +145,6 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const [startOpen, setStartOpen] = useState(false)
   const [startForm, setStartForm] = useState<StartForm>(blankStartForm)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
-  const [agencyLogoUnavailable, setAgencyLogoUnavailable] = useState(false)
   const [invitation, setInvitation] = useState<OnboardingInvitationResult | null>(null)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<OnboardingTemplate | null>(null)
@@ -168,18 +168,12 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     () => publishedTemplates.find((template) => template.id === startForm.template_id),
     [publishedTemplates, startForm.template_id],
   )
-  const selectedQuestionCount = selectedStartTemplate?.definition.sections.reduce(
-    (total, section) => total + section.questions.length,
-    0,
-  ) ?? 0
   const agencyLogoUrl = workspaceLogoUrl(
     data?.workspace.id,
     data?.workspace.logo_path,
     data?.workspace.logo_updated_at,
   )
-  const activePreviewLogoUrl = logoPreviewUrl || (agencyLogoUnavailable ? null : agencyLogoUrl)
-
-  useEffect(() => setAgencyLogoUnavailable(false), [agencyLogoUrl])
+  const activePreviewLogoUrl = logoPreviewUrl || agencyLogoUrl
 
   useEffect(() => {
     if (!startOpen || !data) return
@@ -420,6 +414,24 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     }
   }
 
+  const shareLink = async (link: string) => {
+    const agencyName = data?.workspace.name?.trim() || 'Our agency'
+    if (!navigator.share) {
+      await copyLink(link)
+      return
+    }
+    try {
+      await navigator.share({
+        title: `${agencyName} · Client onboarding`,
+        text: `${agencyName} sent you a secure client intake form.`,
+        url: link,
+      })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      toast.error('Sharing could not be opened. Copy the link instead.')
+    }
+  }
+
   if (!isPlatformWorkspace && !workspace) {
     return <WorkspaceLayout><Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>Your account does not have an active workspace.</CardDescription></CardHeader></Card></WorkspaceLayout>
   }
@@ -512,16 +524,16 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       </div>
 
       <Dialog open={startOpen} onOpenChange={setStartOpen}>
-        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto p-0">
+        <DialogContent className="max-h-[92vh] max-w-7xl overflow-y-auto p-0">
           <DialogHeader className="border-b px-6 pb-5 pt-6">
             <DialogTitle>Start client onboarding</DialogTitle>
             <DialogDescription>Choose the client and personalize the exact branded experience they will receive.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-6 px-6 py-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
+          <div className="grid gap-6 px-6 py-5 lg:grid-cols-[minmax(0,.9fr)_minmax(440px,1.1fr)]">
             <div className="space-y-6">
               <section className="space-y-4">
-                <div><h3 className="font-semibold">Invitation details</h3><p className="text-sm text-muted-foreground">The form questions stay pinned to this published template version.</p></div>
+                <div><h3 className="font-semibold">Client and form</h3><p className="text-sm text-muted-foreground">Create one private intake link for this client. The questions stay pinned to this published template version.</p></div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2"><Label>Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-2 sm:col-span-2"><Label>Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
@@ -552,14 +564,24 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
             </div>
 
             <aside className="lg:sticky lg:top-0 lg:self-start">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-muted-foreground">Client preview</p>
-              <div className="overflow-hidden rounded-3xl border bg-white shadow-xl shadow-slate-900/10">
-                <div className="relative overflow-hidden p-5 text-white" style={{ background: `linear-gradient(135deg, #171827 0%, ${startForm.accent_color} 100%)` }}>
-                  <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-                  <div className="relative flex flex-col items-center gap-3 text-center">{activePreviewLogoUrl ? <div className="flex h-20 w-full max-w-56 items-center justify-center rounded-xl border border-white/25 bg-white p-3 shadow-lg"><img src={activePreviewLogoUrl} alt="Onboarding logo preview" className="max-h-full max-w-full object-contain" onError={() => { if (!logoPreviewUrl) setAgencyLogoUnavailable(true) }} /></div> : <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white/15 text-xl font-bold ring-1 ring-white/20">{onboardingWorkspaceInitials(data?.workspace.name ?? '')}</div>}<div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><p className="truncate text-lg font-semibold">{data?.workspace.name || 'Your team'}</p><p className="mt-0.5 text-xs text-white/75">Secure podcast guest intake</p></div></div>
-                </div>
-                <div className="space-y-4 p-5"><Badge variant="outline" style={{ borderColor: `${startForm.accent_color}55`, color: startForm.accent_color, backgroundColor: `${startForm.accent_color}0D` }}>Private client intake</Badge><div><p className="text-sm text-slate-500">Hi {startForm.recipient_name.trim() || 'there'},</p><h4 className="mt-1 text-xl font-bold leading-tight text-slate-950">{startForm.experience_title || 'Your welcome title'}</h4><p className="mt-2 text-sm leading-6 text-slate-600">{startForm.experience_body || 'Your welcome message will appear here.'}</p></div><div className="space-y-2"><div className="flex items-center justify-between text-xs"><span className="font-medium text-slate-700">{selectedStartTemplate?.definition.sections[0]?.title || 'First section'}</span><span className="text-slate-500">{selectedStartTemplate?.definition.sections.length ?? 0} sections · {selectedQuestionCount} questions</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${100 / Math.max(selectedStartTemplate?.definition.sections.length ?? 1, 1)}%`, backgroundColor: startForm.accent_color }} /></div></div><div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Answers save automatically. Your client can leave and return with the same secure link.</div></div>
-              </div>
+              {selectedStartTemplate ? (
+                <ClientOnboardingPreview
+                  key={selectedStartTemplate.id}
+                  definition={{
+                    ...selectedStartTemplate.definition,
+                    intro_title: startForm.experience_title,
+                    intro_body: startForm.experience_body,
+                    completion_message: startForm.experience_completion_message,
+                  }}
+                  workspaceName={data?.workspace.name ?? ''}
+                  workspaceLogoUrl={activePreviewLogoUrl}
+                  accentColor={startForm.accent_color}
+                  recipientName={startForm.recipient_name}
+                  className="max-h-[72vh] overflow-y-auto"
+                />
+              ) : (
+                <Card><CardHeader><CardTitle className="text-base">Choose a template to preview</CardTitle><CardDescription>The complete client experience will appear here.</CardDescription></CardHeader></Card>
+              )}
             </aside>
           </div>
 
@@ -568,10 +590,10 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       </Dialog>
 
       <Dialog open={Boolean(invitation)} onOpenChange={(open) => { if (!open) setInvitation(null) }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Secure onboarding link ready</DialogTitle><DialogDescription>{invitation?.delivery.status === 'sent' ? 'The client was notified. Keep the link available in case they need it directly.' : invitation?.delivery.status === 'failed' ? 'The notification could not be delivered, but the link is active. Copy and send it securely.' : 'Copy this link and send it to your client through your preferred channel.'}</DialogDescription></DialogHeader>
-          {invitation && <div className="space-y-4"><div className="rounded-xl border bg-muted/30 p-4"><p className="text-sm font-semibold">Ready for {invitation.instance.recipient_name}</p><p className="mt-1 text-xs text-muted-foreground">Send this private link through the client communication channel you already use.</p></div><div className="space-y-2"><Label htmlFor="onboarding-link">Private onboarding link</Label><div className="flex flex-col gap-2 sm:flex-row"><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><Button onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div></div><p className="text-xs text-muted-foreground">Anyone with this link can act as the invited contact until it expires or is revoked. Do not post it publicly.</p></div>}
-          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={invitation.onboarding_url} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Preview client form</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Your client intake link is ready</DialogTitle><DialogDescription>Share it from your agency’s usual client communication channel.</DialogDescription></DialogHeader>
+          {invitation && <div className="space-y-4"><div className="overflow-hidden rounded-2xl border bg-muted/20"><div className="h-1.5 bg-gradient-to-r from-primary via-violet-500 to-fuchsia-400" /><div className="p-5"><div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Share2 className="h-5 w-5" /></div><div><p className="font-semibold">Ready for {invitation.instance.recipient_name}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">When shared in Messages, the link can display your agency name and logo as a polished preview.</p></div></div></div></div><div className="space-y-2"><Label htmlFor="onboarding-link">Private onboarding link</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}><Share2 className="mr-2 h-4 w-4" />Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}
+          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={invitation.onboarding_url} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open client form</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

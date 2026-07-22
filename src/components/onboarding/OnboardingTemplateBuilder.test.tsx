@@ -103,7 +103,7 @@ describe('OnboardingTemplateBuilder', () => {
     expect(screen.queryByText('Full name')).not.toBeInTheDocument()
   })
 
-  it('separates internal settings from the form outline and previews every section', () => {
+  it('separates internal settings and provides the complete interactive client flow', () => {
     renderBuilder()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
@@ -113,10 +113,21 @@ describe('OnboardingTemplateBuilder', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }))
     expect(screen.getByRole('img', { name: 'Iveth Gonzalez logo' })).toHaveAttribute('src', 'https://cdn.example.com/iveth-logo.webp')
-    expect(screen.getByText('Secure podcast guest intake')).toBeInTheDocument()
+    expect(screen.getByText('Secure client intake')).toBeInTheDocument()
+    expect(screen.getByText('Preview answers are not saved')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Basic information' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Professional profile' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Jane Smith'), { target: { value: 'Iveth Gonzalez' } })
+    fireEvent.change(screen.getByPlaceholderText('jane@example.com'), { target: { value: 'iveth@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & continue' }))
+
     expect(screen.getByRole('heading', { name: 'Professional profile' })).toBeInTheDocument()
     expect(screen.getByText('Current professional bio')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Tell us about your background.'), { target: { value: 'Founder and podcast guest.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }))
+    expect(screen.getByRole('heading', { name: 'Onboarding submitted' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restart preview' })).toBeInTheDocument()
   })
 
   it('duplicates a question without duplicating its client mapping and saves the draft', () => {
