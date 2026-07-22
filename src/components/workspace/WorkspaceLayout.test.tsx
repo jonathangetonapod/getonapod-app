@@ -17,7 +17,6 @@ const signOut = vi.fn()
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const expectedNavigation = [
   'Overview',
-  'Workspace Users',
   'Onboarding',
   'Podcast Finder',
   'Prospect Dashboards',
@@ -27,6 +26,7 @@ const expectedNavigation = [
   'Outreach Platform',
   'Guest Resources',
   'Unibox',
+  'Settings',
 ]
 
 function renderLayout(platformWorkspace?: PlatformWorkspaceConfig) {
@@ -52,7 +52,7 @@ describe('WorkspaceLayout', () => {
     } as never)
   })
 
-  it('matches the complete navigation order and enables workspace users for an owner', () => {
+  it('matches the complete navigation order and enables settings for an owner', () => {
     renderLayout()
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
@@ -63,9 +63,9 @@ describe('WorkspaceLayout', () => {
 
     const links = within(navigation).getAllByRole('link')
     expect(links).toHaveLength(3)
-    expect(within(navigation).getByRole('link', { name: 'Workspace Users' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
-      '/app/workspace-users',
+      '/app/settings',
     )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
@@ -78,7 +78,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
   })
 
-  it('enables workspace users for an admin and keeps it unavailable to a member', () => {
+  it('enables settings for an admin and keeps it unavailable to a member', () => {
     mockedUseAuth.mockReturnValue({
       user: { email: 'admin@example.com' },
       workspace: { name: 'Acme Workspace' },
@@ -90,7 +90,7 @@ describe('WorkspaceLayout', () => {
         <WorkspaceLayout><div>Module content</div></WorkspaceLayout>
       </MemoryRouter>,
     )
-    expect(screen.getByRole('link', { name: 'Workspace Users' })).toHaveAttribute('href', '/app/workspace-users')
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/settings')
 
     unmount()
     mockedUseAuth.mockReturnValue({
@@ -102,24 +102,25 @@ describe('WorkspaceLayout', () => {
     renderLayout()
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
-    expect(within(navigation).queryByRole('link', { name: 'Workspace Users' })).not.toBeInTheDocument()
-    const workspaceUsers = within(navigation).getByText('Workspace Users').closest('button')
-    expect(workspaceUsers).toBeDisabled()
-    expect(within(workspaceUsers as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument()
+    const settings = within(navigation).getByText('Settings').closest('button')
+    expect(settings).toBeDisabled()
+    expect(within(settings as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
   })
 
   it('renders a selected workspace as a native platform-owner context', () => {
     const platformWorkspace: PlatformWorkspaceConfig = {
       workspaceName: 'Selected Workspace',
+      logoUrl: 'https://cdn.example/selected-workspace.png',
       baseHref: `/admin/workspaces/${workspaceId}`,
       exitHref: '/admin/users',
     }
     renderLayout(platformWorkspace)
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
-    expect(within(navigation).getByRole('link', { name: 'Workspace Users' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/workspace-users`,
+      `/admin/workspaces/${workspaceId}/settings`,
     )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute(
       'href',

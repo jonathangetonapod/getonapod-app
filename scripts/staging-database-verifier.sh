@@ -22,6 +22,8 @@ readonly -a RELEASE_INPUTS=(
   'supabase/migrations/20260721000200_workspace_guest_resources.sql'
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql'
   'supabase/migrations/20260722000200_platform_owner_workspace_management.sql'
+  'supabase/migrations/20260722000300_workspace_staff_temporary_passwords.sql'
+  'supabase/migrations/20260722000400_workspace_branding.sql'
   'supabase/tests/20260721_workspace_guest_resources_behavior.sql'
   'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql'
   "${VERIFIER}"

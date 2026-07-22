@@ -55,6 +55,11 @@ const KeyedClientApprovalView = () => {
   return <ClientApprovalView key={slug || 'missing'} />
 }
 
+const LegacyAdminWorkspaceStaffRedirect = () => {
+  const { workspaceId = '' } = useParams()
+  return <Navigate to={`/admin/workspaces/${workspaceId}/settings`} replace />
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -79,8 +84,9 @@ const App = () => (
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/change-password" element={<ChangeInitialPassword />} />
             <Route path="/app" element={<Navigate to="/app/clients" replace />} />
+            <Route path="/app/workspace-users" element={<Navigate to="/app/settings" replace />} />
             <Route
-              path="/app/workspace-users"
+              path="/app/settings"
               element={
                 <WorkspaceStaffRoute>
                   <WorkspaceStaff />
@@ -248,6 +254,10 @@ const App = () => (
             />
             <Route
               path="/admin/workspaces/:workspaceId/workspace-users"
+              element={<LegacyAdminWorkspaceStaffRedirect />}
+            />
+            <Route
+              path="/admin/workspaces/:workspaceId/settings"
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceStaff />

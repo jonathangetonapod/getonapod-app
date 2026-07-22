@@ -27,8 +27,9 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
   const [open, setOpen] = useState(false)
   const routeMatch = matchPath('/admin/workspaces/:workspaceId/*', location.pathname)
   const selectedId = (routeMatch?.params.workspaceId || '').toLowerCase()
-  const selectedModule = location.pathname.endsWith('/workspace-users')
-    ? 'workspace-users'
+  const selectedModule = location.pathname.endsWith('/settings')
+    || location.pathname.endsWith('/workspace-users')
+    ? 'settings'
     : location.pathname.endsWith('/guest-resources')
       ? 'guest-resources'
       : 'clients'

@@ -7,6 +7,8 @@ export interface AdminWorkspace {
   slug: string
   status: 'active' | 'suspended' | 'archived'
   is_default: boolean
+  logo_path?: string | null
+  logo_updated_at?: string | null
 }
 
 export interface AdminWorkspaceView {
@@ -58,7 +60,7 @@ const WORKSPACE_CLIENT_COLUMNS = [
 export async function listAdminWorkspaces(): Promise<AdminWorkspace[]> {
   const { data: workspaceData, error: workspaceError } = await supabase
     .from('workspaces')
-    .select('id,name,slug,status,is_default')
+    .select('id,name,slug,status,is_default,logo_path,logo_updated_at')
     .eq('is_default', false)
     .eq('status', 'active')
     .order('name', { ascending: true })
@@ -90,7 +92,7 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
   const canonicalWorkspaceId = workspaceId.toLowerCase()
   let workspaceQuery = supabase
     .from('workspaces')
-    .select('id,name,slug,status,is_default')
+    .select('id,name,slug,status,is_default,logo_path,logo_updated_at')
     .eq('id', canonicalWorkspaceId)
     .eq('is_default', false)
   if (signal) workspaceQuery = workspaceQuery.abortSignal(signal)

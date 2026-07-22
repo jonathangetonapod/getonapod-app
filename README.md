@@ -22,14 +22,15 @@ order as the platform dashboard. Clients and Guest Resources are the enabled
 tenant links; modules that do not yet satisfy the workspace-isolation contract
 are visibly unavailable rather than linked to legacy global admin pages.
 
-The Sub-agency Workspace Foundation is the current release candidate. It adds
-exactly one transferable owner per private workspace, admins and members,
-`/app/workspace-users`, native platform-owner management of a selected
-workspace, independent employee lifecycle controls, and workspace-wide token
-revocation. Its ninth foundation migration, tenth forward platform-owner
-management migration, new Edge Function, stronger hosted Auth password policy,
-and frontend are not production-active until the cutover checks in this
-document pass. Client
+The Sub-agency Workspace Foundation and forward platform-owner management
+migrations are production-active through migration 10. The current Settings
+increment moves workspace-user management under `/app/settings` and lets
+workspace owners/admins send an email invitation or generate a one-time
+password for an authorized staff role. Migration 12 adds a server-write-only
+workspace-logo bucket and audited branding updates; the same Settings page lets
+owners/admins upload, replace, or remove a PNG, JPEG, or WebP logo up to 2 MB.
+Migrations 11–12, the changed Edge Functions, and this frontend increment are
+not production-active until their coordinated cutover checks pass. Client
 Podcast System is the next tenant module after that foundation is stable.
 
 The privileged-browser-key containment gate is complete. Railway now supplies
@@ -51,9 +52,9 @@ The sanitized cutover evidence and remaining gates are recorded in
 
 | Role | Supported access |
 | --- | --- |
-| Platform administrator | Existing internal `/admin/*` application, agency-owner provisioning/workspace lifecycle, and owner-level management of a selected private workspace's users, Clients, and Guest Resources modules |
-| Workspace owner | One agency workspace; invites admins or members, manages non-owner staff, transfers ownership, and manages tenant-enabled modules |
-| Workspace admin | One agency workspace; invites and manages members and manages tenant-enabled modules, but cannot manage the owner or another admin |
+| Platform administrator | Existing internal `/admin/*` application, agency-owner provisioning/workspace lifecycle, and owner-level management of a selected private workspace's branding, users, Clients, and Guest Resources modules |
+| Workspace owner | One agency workspace; manages its logo, adds admins or members by email invite or generated password, manages non-owner staff, transfers ownership, and manages tenant-enabled modules |
+| Workspace admin | One agency workspace; manages its logo, adds and manages members by email invite or generated password, and manages tenant-enabled modules, but cannot manage the owner or another admin |
 | Workspace member | One agency workspace; no staff administration and read-only access to the currently enabled Clients and Guest Resources modules |
 | Client portal user | Separate `/portal/*` login and client-specific bookings/resources view; this is not a SaaS workspace account |
 | Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
@@ -72,11 +73,11 @@ shared isolation contract.
 | `/login` | Workspace/platform account login |
 | `/accept-invite` | Supabase email-invite completion |
 | `/change-password` | Mandatory first-sign-in password replacement for manually created accounts |
-| `/app/workspace-users` | Workspace owner/admin roster, invitations, roles, employee lifecycle, and ownership transfer |
+| `/app/settings` | Workspace settings, including logo branding, owner/admin roster, invitations, roles, employee lifecycle, and ownership transfer |
 | `/app/clients` | Authenticated workspace client CRUD |
 | `/app/guest-resources` | Authenticated workspace resource customization, lifecycle, ordering, and client audience management |
 | `/admin/users` | Platform administrator invitation/lifecycle console |
-| `/admin/workspaces/:workspaceId/workspace-users` | Platform-owner management of the selected workspace's staff roster |
+| `/admin/workspaces/:workspaceId/settings` | Platform-owner management of the selected workspace's settings and staff roster |
 | `/admin/workspaces/:workspaceId/clients` | Platform-owner management of the selected workspace's Clients experience |
 | `/admin/workspaces/:workspaceId/guest-resources` | Platform-owner management of that workspace's resource catalog and audience assignments |
 | `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
@@ -117,6 +118,16 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   in the successful `no-store` response. Plaintext credentials never enter the
   application database, audit log, Auth metadata, browser storage, or query
   cache. A lost credential is replaced, never retrieved.
+- The same exact-marker temporary-password flow is available under Workspace
+  Settings for non-owner staff. The server enforces the owner/admin hierarchy,
+  the account remains blocked until first-sign-in password replacement, and a
+  failed provider attempt exposes only its matching retry action.
+- Workspace logos use a dedicated public-read Storage bucket because they are
+  presentation assets. Browser writes remain closed: the authenticated
+  workspace-management function accepts only PNG/JPEG/WebP signatures up to
+  2 MB, writes a unique object path, commits it through a service-only
+  owner/admin/platform-authorized RPC with stale-state protection, and audits
+  every replace/remove without logging image data.
 - A manually created membership remains non-active until the user replaces the
   temporary password. Password rotation and first-password replacement use
   durable claims and exact attempt/execution markers. The provider password
@@ -133,7 +144,7 @@ docs route. Their charge/order/video mutation endpoints return HTTP 410.
   Edge hard lifetime; revisit the invariant before self-hosting or increasing
   worker limits.
 - The platform-owner workspace selector is an explicit URL-scoped management
-  context that reuses the tenant Workspace Users, Clients, and Guest Resources
+  context that reuses the tenant Settings, Clients, and Guest Resources
   layout/pages. It includes active owners and newly created manual-password
   accounts that are pending first sign-in, but excludes ordinary unaccepted
   email invitations, revoked memberships, and inactive workspaces. Only the
@@ -439,16 +450,18 @@ The updater GETs the current Auth configuration, PATCHes exactly
 fails if any unrelated setting changed. Do not use broad `supabase config push`
 for this cutover; it can overwrite unrelated hosted Auth settings.
 
-Before the foundation cutover, the production migration ledger records eight
-coordinated versions. Migration
-`20260722000100_subagency_workspace_foundation.sql` becomes the ninth and
-`20260722000200_platform_owner_workspace_management.sql` becomes the tenth only
-after their reviewed, ordered production apply and catalog verification
-succeed. The tenth migration is also the forward upgrade for any controlled
+The production migration ledger records ten coordinated versions, including
+`20260722000100_subagency_workspace_foundation.sql` and
+`20260722000200_platform_owner_workspace_management.sql`. Migration
+`20260722000300_workspace_staff_temporary_passwords.sql` becomes the eleventh
+and `20260722000400_workspace_branding.sql` the twelfth only after the Settings
+cutover is deployed and verified. The tenth through twelfth migrations are the
+forward upgrades for any controlled
 environment that applied the foundation while selected-workspace platform
 access was still read-only. Apply the complete current files to a fresh
-dedicated staging baseline, or apply the tenth migration after the recorded
-ninth version; never assume edits to an already-applied migration were replayed.
+dedicated staging baseline, or apply the tenth through twelfth migrations after
+the recorded ninth version; never assume edits to an already-applied migration
+were replayed.
 
 ## Verification
 
@@ -462,7 +475,7 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` runs the release-shape verifier, parses all ten release
+`check:static` runs the release-shape verifier, parses all twelve release
 migrations, the catalog verifier, and both rollback behavior suites with a
 PostgreSQL grammar parser, runs both
 TypeScript checks, the zero-warning
@@ -668,15 +681,15 @@ The detailed rollout and acceptance matrix is in
   reporting, and every other legacy module remain platform-admin-only until
   they receive an explicit `workspace_id` model and isolation tests.
 - The platform owner's selected-workspace context reuses the real tenant
-  Workspace Users, Clients, and Guest Resources experiences with native write
+  Settings, Clients, and Guest Resources experiences with native write
   controls. It is not an impersonation mode, preserves the platform session,
   and does not make legacy modules tenant-aware.
-- Workspace owners can invite admins or members; workspace admins can invite
-  members. Tenant identities still cannot own or join multiple private
-  workspaces in this MVP.
+- Workspace owners can invite or generate passwords for admins or members;
+  workspace admins can do the same for members. Tenant identities still cannot
+  own or join multiple private workspaces in this MVP.
 - Workspace password recovery has no product UI yet; support must perform a
   controlled Supabase Auth recovery/reset.
-- Temporary passwords for manually created accounts are displayed once. They
+- Temporary passwords for manually created owner or staff accounts are displayed once. They
   must be transferred out of band through an approved secure channel; if the
   password is lost, the administrator issues a new temporary password.
 - The production invitation UI warns about email readiness but has no automatic

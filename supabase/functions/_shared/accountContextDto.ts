@@ -20,6 +20,8 @@ export interface AccountWorkspaceRecord {
   slug: string | null
   status: string
   is_default: boolean
+  logo_path: string | null
+  logo_updated_at: string | null
 }
 
 export interface AccountWorkspaceDto {
@@ -28,6 +30,8 @@ export interface AccountWorkspaceDto {
   slug: string | null
   status: string
   is_default: boolean
+  logo_path: string | null
+  logo_updated_at: string | null
 }
 
 export function toAccountMembershipDto(
@@ -51,5 +55,7 @@ export function toAccountWorkspaceDto(
     slug: workspace.slug,
     status: workspace.status,
     is_default: workspace.is_default,
+    logo_path: workspace.logo_path,
+    logo_updated_at: workspace.logo_updated_at,
   }
 }

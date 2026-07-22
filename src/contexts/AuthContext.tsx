@@ -21,6 +21,8 @@ export interface Workspace {
   slug: string | null
   status: 'active' | 'suspended' | 'archived' | string
   is_default: boolean
+  logo_path: string | null
+  logo_updated_at: string | null
 }
 
 export interface WorkspaceMembership {

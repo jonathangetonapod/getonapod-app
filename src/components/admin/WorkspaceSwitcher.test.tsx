@@ -91,9 +91,9 @@ describe('WorkspaceSwitcher', () => {
     ))
   })
 
-  it('preserves the workspace users module when switching workspaces', async () => {
+  it('preserves the settings module when switching workspaces', async () => {
     renderSwitcher({
-      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/workspace-users',
+      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/settings',
       presentation: 'toolbar',
     })
 
@@ -101,7 +101,7 @@ describe('WorkspaceSwitcher', () => {
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
-      '/admin/workspaces/11111111-1111-4111-8111-111111111111/workspace-users',
+      '/admin/workspaces/11111111-1111-4111-8111-111111111111/settings',
     ))
   })
 })

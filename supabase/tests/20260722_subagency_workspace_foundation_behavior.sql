@@ -33,6 +33,11 @@ BEGIN
     'public.claim_workspace_staff_invite_delivery_v1(uuid,uuid,uuid,bigint,uuid)',
     'public.find_workspace_staff_invite_auth_user_v1(uuid,uuid,uuid,bigint,uuid)',
     'public.finalize_workspace_staff_invite_v1(uuid,uuid,uuid,bigint,uuid,uuid)',
+    'public.begin_workspace_staff_password_account_v1(uuid,text,text,text,uuid,bigint)',
+    'public.claim_workspace_staff_password_delivery_v1(uuid,uuid,uuid,bigint,uuid)',
+    'public.finalize_workspace_staff_password_account_v1(uuid,uuid,uuid,bigint,uuid,uuid)',
+    'public.cancel_workspace_staff_password_account_v1(uuid,uuid,uuid,bigint,uuid)',
+    'public.set_workspace_logo_v1(uuid,text,text,uuid,bigint)',
     'public.revoke_workspace_staff_account_v1(uuid,uuid,uuid,bigint,uuid)',
     'public.claim_workspace_staff_auth_lifecycle_v1(uuid,uuid,text,uuid,bigint,uuid)',
     'public.complete_workspace_staff_auth_lifecycle_v1(uuid,uuid,text,uuid,bigint,uuid)',
@@ -51,6 +56,28 @@ BEGIN
         required_function;
     END IF;
   END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM storage.buckets AS bucket
+    WHERE bucket.id = 'workspace-logos'
+      AND bucket.name = 'workspace-logos'
+      AND bucket.public
+      AND bucket.file_size_limit = 2097152
+      AND bucket.allowed_mime_types @> ARRAY[
+        'image/jpeg', 'image/png', 'image/webp'
+      ]::TEXT[]
+  )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'public.workspaces'::regclass
+        AND conname = 'workspaces_logo_state_check'
+        AND convalidated
+    )
+  THEN
+    RAISE EXCEPTION 'workspace logo storage contract is missing';
+  END IF;
 
   FOREACH internal_function IN ARRAY ARRAY[
     'public.lock_workspace_provider_lifecycle_v1(uuid)',
@@ -1738,6 +1765,383 @@ BEGIN
   END IF;
 END;
 $invite_and_revoke$;
+
+DO $staff_temporary_passwords$
+DECLARE
+  workspace_a_id UUID;
+  owner_a_id UUID;
+  admin_a_id UUID;
+  token_epoch BIGINT := floor(EXTRACT(EPOCH FROM clock_timestamp()))::BIGINT;
+  password_email TEXT :=
+    'staff-password-' || replace(gen_random_uuid()::TEXT, '-', '')
+    || '@example.invalid';
+  admin_password_email TEXT :=
+    'admin-staff-password-' || replace(gen_random_uuid()::TEXT, '-', '')
+    || '@example.invalid';
+  password_user_id UUID := gen_random_uuid();
+  password_membership_id UUID;
+  admin_password_membership_id UUID;
+  delivery_lock UUID := gen_random_uuid();
+  admin_delivery_lock UUID := gen_random_uuid();
+  revoke_lock UUID := gen_random_uuid();
+  response JSONB;
+  listed_member JSONB;
+  rejected BOOLEAN;
+BEGIN
+  SELECT value INTO workspace_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'workspace_a';
+  SELECT value INTO owner_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'owner_a';
+  SELECT value INTO admin_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'admin_a';
+
+  rejected := false;
+  BEGIN
+    PERFORM public.begin_workspace_staff_password_account_v1(
+      workspace_a_id,
+      'admin-password-target-' || replace(gen_random_uuid()::TEXT, '-', '')
+        || '@example.invalid',
+      'Disallowed Admin Target',
+      'admin',
+      admin_a_id,
+      token_epoch
+    );
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    rejected := true;
+  END;
+  IF NOT rejected THEN
+    RAISE EXCEPTION 'workspace admin provisioned another admin password account';
+  END IF;
+
+  response := public.begin_workspace_staff_password_account_v1(
+    workspace_a_id,
+    password_email,
+    'Password Staff',
+    'member',
+    owner_a_id,
+    token_epoch
+  );
+  password_membership_id := (response #>> '{membership,id}')::UUID;
+
+  IF response #>> '{membership,provisioning_method}'
+      <> 'admin_temporary_password'
+    OR response #>> '{membership,status}' <> 'provisioning'
+    OR response #>> '{membership,password_change_required}' <> 'false'
+    OR NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_audit_log AS audit
+      WHERE audit.workspace_id = workspace_a_id
+        AND audit.actor_user_id = owner_a_id
+        AND audit.entity_id = password_membership_id
+        AND audit.action =
+          'workspace.staff.temporary_password_provisioning_started'
+    )
+  THEN
+    RAISE EXCEPTION 'temporary-password staff preflight was not isolated';
+  END IF;
+
+  response := public.workspace_staff_list_v1(
+    workspace_a_id, owner_a_id, token_epoch
+  );
+  IF response #>> '{capabilities,can_generate_password}' <> 'true' THEN
+    RAISE EXCEPTION 'workspace owner did not receive password capability';
+  END IF;
+  SELECT member
+  INTO listed_member
+  FROM jsonb_array_elements(response -> 'members') AS roster_member(member)
+  WHERE member ->> 'id' = password_membership_id::TEXT;
+  IF listed_member IS NULL
+    OR listed_member ->> 'setup_method' <> 'admin_temporary_password'
+    OR NOT (listed_member -> 'allowed_actions' ? 'retry_password')
+    OR listed_member -> 'allowed_actions' ? 'retry_invite'
+  THEN
+    RAISE EXCEPTION 'temporary-password retry action leaked across methods';
+  END IF;
+
+  PERFORM public.claim_workspace_staff_password_delivery_v1(
+    workspace_a_id,
+    password_membership_id,
+    owner_a_id,
+    token_epoch,
+    delivery_lock
+  );
+
+  rejected := false;
+  BEGIN
+    PERFORM public.claim_workspace_staff_password_delivery_v1(
+      workspace_a_id,
+      password_membership_id,
+      owner_a_id,
+      token_epoch,
+      gen_random_uuid()
+    );
+  EXCEPTION WHEN SQLSTATE '55P03' THEN
+    rejected := true;
+  END;
+  IF NOT rejected THEN
+    RAISE EXCEPTION 'temporary-password delivery claim was stealable';
+  END IF;
+
+  INSERT INTO auth.users (
+    id,
+    email,
+    encrypted_password,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    email_confirmed_at,
+    last_sign_in_at
+  ) VALUES (
+    password_user_id,
+    password_email,
+    'temporary-password-hash',
+    jsonb_build_object(
+      'workspace_id', workspace_a_id,
+      'workspace_membership_id', password_membership_id,
+      'workspace_provisioning_method', 'admin_temporary_password',
+      'workspace_password_change_required', true,
+      'workspace_credential_version', 1,
+      'workspace_credential_attempt_id', delivery_lock,
+      'workspace_credential_execution_id', delivery_lock
+    ),
+    jsonb_build_object('full_name', 'Password Staff'),
+    now(),
+    now(),
+    NULL
+  );
+
+  PERFORM public.finalize_workspace_staff_password_account_v1(
+    workspace_a_id,
+    password_membership_id,
+    owner_a_id,
+    token_epoch,
+    delivery_lock,
+    password_user_id
+  );
+  PERFORM public.finalize_workspace_staff_password_account_v1(
+    workspace_a_id,
+    password_membership_id,
+    owner_a_id,
+    token_epoch,
+    delivery_lock,
+    password_user_id
+  );
+
+  IF NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_memberships AS membership
+      WHERE membership.id = password_membership_id
+        AND membership.user_id = password_user_id
+        AND membership.status = 'invited'
+        AND membership.provisioning_method = 'admin_temporary_password'
+        AND membership.password_change_required
+        AND membership.invite_expires_at BETWEEN
+          now() + interval '6 days 23 hours'
+          AND now() + interval '7 days 1 hour'
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.workspace_invite_delivery_claims AS claim
+      WHERE claim.membership_id = password_membership_id
+    )
+    OR NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_audit_log AS audit
+      WHERE audit.workspace_id = workspace_a_id
+        AND audit.actor_user_id = owner_a_id
+        AND audit.entity_id = password_membership_id
+        AND audit.action = 'workspace.staff.temporary_password_issued'
+    )
+  THEN
+    RAISE EXCEPTION 'temporary-password staff account did not finalize safely';
+  END IF;
+
+  PERFORM public.revoke_workspace_staff_account_v1(
+    workspace_a_id,
+    password_membership_id,
+    owner_a_id,
+    token_epoch,
+    revoke_lock
+  );
+  IF public.find_workspace_staff_invite_auth_user_v1(
+      workspace_a_id,
+      password_membership_id,
+      owner_a_id,
+      token_epoch,
+      revoke_lock
+    ) IS DISTINCT FROM password_user_id
+  THEN
+    RAISE EXCEPTION 'temporary-password revocation lost its exact Auth identity';
+  END IF;
+  DELETE FROM auth.users WHERE id = password_user_id;
+  IF NOT public.release_workspace_invite_delivery_claim(
+      password_membership_id, revoke_lock
+    )
+  THEN
+    RAISE EXCEPTION 'temporary-password revocation claim did not release';
+  END IF;
+
+  response := public.begin_workspace_staff_password_account_v1(
+    workspace_a_id,
+    admin_password_email,
+    'Admin Provisioned Member',
+    'member',
+    admin_a_id,
+    token_epoch
+  );
+  admin_password_membership_id := (response #>> '{membership,id}')::UUID;
+  PERFORM public.claim_workspace_staff_password_delivery_v1(
+    workspace_a_id,
+    admin_password_membership_id,
+    admin_a_id,
+    token_epoch,
+    admin_delivery_lock
+  );
+  PERFORM public.cancel_workspace_staff_password_account_v1(
+    workspace_a_id,
+    admin_password_membership_id,
+    admin_a_id,
+    token_epoch,
+    admin_delivery_lock
+  );
+  IF (SELECT status FROM public.workspace_memberships
+      WHERE id = admin_password_membership_id) <> 'revoked'
+    OR EXISTS (
+      SELECT 1
+      FROM public.workspace_invite_delivery_claims
+      WHERE membership_id = admin_password_membership_id
+    )
+  THEN
+    RAISE EXCEPTION 'workspace admin password cancellation was not atomic';
+  END IF;
+END;
+$staff_temporary_passwords$;
+
+DO $workspace_branding$
+DECLARE
+  workspace_a_id UUID;
+  owner_a_id UUID;
+  admin_a_id UUID;
+  member_a_id UUID;
+  platform_id UUID;
+  token_epoch BIGINT := floor(EXTRACT(EPOCH FROM clock_timestamp()))::BIGINT;
+  first_logo_path TEXT;
+  second_logo_path TEXT;
+  response JSONB;
+  rejected BOOLEAN;
+BEGIN
+  SELECT value INTO workspace_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'workspace_a';
+  SELECT value INTO owner_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'owner_a';
+  SELECT value INTO admin_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'admin_a';
+  SELECT value INTO member_a_id FROM goap_subagency_behavior_state
+    WHERE key = 'member_a';
+  SELECT value INTO platform_id FROM goap_subagency_behavior_state
+    WHERE key = 'platform';
+
+  first_logo_path := workspace_a_id::TEXT || '/' || gen_random_uuid()::TEXT
+    || '.png';
+  second_logo_path := workspace_a_id::TEXT || '/' || gen_random_uuid()::TEXT
+    || '.webp';
+
+  response := public.set_workspace_logo_v1(
+    workspace_a_id,
+    NULL,
+    first_logo_path,
+    owner_a_id,
+    token_epoch
+  );
+  IF response ->> 'id' <> workspace_a_id::TEXT
+    OR response ->> 'logo_path' <> first_logo_path
+    OR response ->> 'logo_updated_at' IS NULL
+    OR (SELECT logo_path FROM public.workspaces WHERE id = workspace_a_id)
+      <> first_logo_path
+  THEN
+    RAISE EXCEPTION 'workspace owner could not set workspace branding';
+  END IF;
+
+  rejected := false;
+  BEGIN
+    PERFORM public.set_workspace_logo_v1(
+      workspace_a_id,
+      NULL,
+      second_logo_path,
+      admin_a_id,
+      token_epoch
+    );
+  EXCEPTION WHEN SQLSTATE '40001' THEN
+    rejected := true;
+  END;
+  IF NOT rejected THEN
+    RAISE EXCEPTION 'stale workspace logo state overwrote current branding';
+  END IF;
+
+  response := public.set_workspace_logo_v1(
+    workspace_a_id,
+    first_logo_path,
+    second_logo_path,
+    admin_a_id,
+    token_epoch
+  );
+  IF response ->> 'logo_path' <> second_logo_path THEN
+    RAISE EXCEPTION 'workspace admin could not replace workspace branding';
+  END IF;
+
+  rejected := false;
+  BEGIN
+    PERFORM public.set_workspace_logo_v1(
+      workspace_a_id,
+      second_logo_path,
+      NULL,
+      member_a_id,
+      token_epoch
+    );
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    rejected := true;
+  END;
+  IF NOT rejected THEN
+    RAISE EXCEPTION 'workspace member removed workspace branding';
+  END IF;
+
+  response := public.set_workspace_logo_v1(
+    workspace_a_id,
+    second_logo_path,
+    NULL,
+    platform_id,
+    token_epoch
+  );
+  IF response -> 'logo_path' <> 'null'::JSONB
+    OR response -> 'logo_updated_at' <> 'null'::JSONB
+    OR (SELECT logo_path FROM public.workspaces WHERE id = workspace_a_id)
+      IS NOT NULL
+    OR NOT EXISTS (
+      SELECT 1
+      FROM public.workspace_audit_log AS audit
+      WHERE audit.workspace_id = workspace_a_id
+        AND audit.actor_user_id = platform_id
+        AND audit.action = 'workspace.branding.logo_removed'
+        AND audit.entity_id = workspace_a_id
+    )
+  THEN
+    RAISE EXCEPTION 'platform owner could not remove workspace branding';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM public.workspace_audit_log AS audit
+    WHERE audit.workspace_id = workspace_a_id
+      AND audit.action IN (
+        'workspace.branding.logo_updated',
+        'workspace.branding.logo_removed'
+      )
+  ) <> 3
+  THEN
+    RAISE EXCEPTION 'workspace branding audit trail is incomplete';
+  END IF;
+END;
+$workspace_branding$;
 
 DO $owner_transfer_and_floor$
 DECLARE

@@ -37,6 +37,8 @@ const ACCOUNT_WORKSPACE_COLUMNS = [
   'slug',
   'status',
   'is_default',
+  'logo_path',
+  'logo_updated_at',
   'access_not_before_epoch',
 ].join(',')
 

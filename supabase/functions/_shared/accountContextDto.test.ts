@@ -35,6 +35,8 @@ Deno.test('account workspace DTO omits creator and lifecycle metadata', () => {
     slug: 'private-workspace',
     status: 'active',
     is_default: false,
+    logo_path: '22222222-2222-4222-8222-222222222222/55555555-5555-4555-8555-555555555555.png',
+    logo_updated_at: '2026-07-22T01:00:00.000Z',
     access_not_before_epoch: 1,
     created_by: '44444444-4444-4444-8444-444444444444',
     created_at: '2026-07-21T00:00:00.000Z',
@@ -43,7 +45,7 @@ Deno.test('account workspace DTO omits creator and lifecycle metadata', () => {
   const dto = toAccountWorkspaceDto(workspace)
 
   assert(
-    Object.keys(dto).join(',') === 'id,name,slug,status,is_default',
+    Object.keys(dto).join(',') === 'id,name,slug,status,is_default,logo_path,logo_updated_at',
     'workspace DTO fields changed',
   )
 })

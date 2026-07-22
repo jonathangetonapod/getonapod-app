@@ -21,12 +21,12 @@ controlled signed-in tenant, administrator workspace, or private-client portal
 acceptance run; current production state must be inventoried and tested again
 rather than relying on the historical “no private workspace” observation.
 
-The Sub-agency Workspace Foundation is now the reviewed release candidate. It
-adds one transferable owner plus admins/members, workspace-managed staff,
-native platform-owner selected-workspace management, and independent
-employee/workspace lifecycles. It remains pre-production until migration 9,
-the forward platform-owner management migration 10, the new/changed Edge
-Functions, hosted Auth policy, frontend, and live acceptance complete.
+The Sub-agency Workspace Foundation and native platform-owner
+selected-workspace management are production-active through migration 10. The
+current release candidate adds Settings-based workspace-user management and
+staff temporary-password migration 11 plus audited workspace-logo migration 12.
+Migrations 11–12, the changed Edge Functions, frontend, and live acceptance
+remain incomplete for this increment.
 
 ## Product goal
 
@@ -34,7 +34,8 @@ An administrator provisions one private workspace and its agency owner. The
 owner can add admins and members; that agency team signs in under `/app/*`, adds
 its own clients, and uses supported podcast-placement modules without seeing
 another workspace's records. Billing, public registration, multi-workspace
-tenant identities, and visual white-labeling remain out of scope.
+tenant identities, and full visual white-labeling beyond a workspace logo
+remain out of scope.
 
 The downstream client portal is a separate identity layer. A workspace account
 manages work for many clients; each client portal login sees only that client's
@@ -86,8 +87,8 @@ with native controls and a platform-only selector while preserving the
 platform session.
 
 The shell may name a planned module before its backend is ready, but that entry
-must remain a disabled control rather than a route. Workspace Users, Clients,
-and Guest Resources satisfy the shared tenant contract in the current release
+must remain a disabled control rather than a route. Settings (including
+Workspace users), Clients, and Guest Resources satisfy the shared tenant contract in the current release
 candidate. Each remaining entry
 becomes a link only in the same release unit as its migration, narrow service
 boundary, platform-owner management path, and isolation tests.
@@ -96,7 +97,7 @@ boundary, platform-owner management path, and isolation tests.
 
 | Order | Module | MVP boundary |
 | --- | --- | --- |
-| 1 | Workspace Users foundation | Exactly one transferable owner, admins/members, role hierarchy, employee lifecycle, stale-token revocation, and owner-level platform management of a selected workspace |
+| 1 | Settings / Workspace users foundation | Workspace-logo branding; exactly one transferable owner; admins/members; email or generated-password staff setup; role hierarchy; employee lifecycle; stale-token revocation; and owner-level platform management of a selected workspace |
 | 2 | Client Podcast System | Workspace-scoped booking/calendar management and portal-credential controls for workspace-owned clients |
 | 3 | Podcast Database | Read-only browse/search/filter over a narrow projection of the shared podcast catalog; no global writes, contact export, cost analytics, or live paid lookups |
 | 4 | Onboarding | Workspace-owned submissions behind expiring capability links; no legacy client deletion behavior |
@@ -106,8 +107,8 @@ boundary, platform-owner management path, and isolation tests.
 | 8 | Unibox | Campaign-bound ingestion, quarantined unknown events, read-only inbox first, then AI drafts and idempotent sends |
 
 Clients and customizable Guest Resources are already tenant-scoped foundation
-modules. Client Podcast System is the next implementation slice after Workspace
-Users reaches production.
+modules. Client Podcast System is the next implementation slice after the
+Workspace users settings section reaches production.
 
 Outreach and Unibox come last because their current provider accounts and event
 records are global. `campaign_replies` cannot presently identify a workspace,
@@ -164,11 +165,12 @@ the operation to the explicit workspace and records the real platform actor;
 the platform session is never replaced with the workspace owner's session.
 The public `/resources` page continues to show only GOAP public resources.
 
-This is content and audience customization, not visual white-labeling. In this
+This is content and audience customization, not full visual white-labeling. In this
 slice a workspace can choose the exact resources, copy, links, files, order,
 featured state, lifecycle, and client audience shown in its downstream portal.
-Custom domains, logos, colors, navigation labels, and page-level themes remain
-part of the deferred white-label phase.
+A workspace logo is now managed separately under Settings. Custom domains,
+colors, navigation labels, and page-level themes remain part of the deferred
+white-label phase.
 
 The client portal never accepts a caller-supplied workspace. It validates the
 opaque, hash-stored portal session for the exact `clientId`, derives that

@@ -22,6 +22,7 @@ import {
   type WorkspaceClientInput,
 } from '@/services/clients'
 import { getAdminWorkspaceView, type AdminWorkspaceView } from '@/services/adminWorkspaces'
+import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -175,6 +176,11 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
   const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
+        logoUrl: workspaceLogoUrl(
+          effectiveWorkspace?.id,
+          effectiveWorkspace?.logo_path,
+          effectiveWorkspace?.logo_updated_at,
+        ),
         baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
         exitHref: '/admin/users',
       }

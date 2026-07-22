@@ -244,7 +244,9 @@ describe('getAdminWorkspaceView', () => {
       'workspace_memberships',
       'clients',
     ])
-    expect(workspaceBuilder.select).toHaveBeenCalledWith('id,name,slug,status,is_default')
+    expect(workspaceBuilder.select).toHaveBeenCalledWith(
+      'id,name,slug,status,is_default,logo_path,logo_updated_at',
+    )
     expect(workspaceBuilder.eq).toHaveBeenNthCalledWith(1, 'id', workspaceId)
     expect(workspaceBuilder.eq).toHaveBeenNthCalledWith(2, 'is_default', false)
     expect(viewerBuilder.select).toHaveBeenCalledWith(

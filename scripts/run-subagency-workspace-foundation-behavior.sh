@@ -12,6 +12,8 @@ readonly -a SOURCE_INPUTS=(
   'scripts/run-subagency-workspace-foundation-behavior.sh'
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql'
   'supabase/migrations/20260722000200_platform_owner_workspace_management.sql'
+  'supabase/migrations/20260722000300_workspace_staff_temporary_passwords.sql'
+  'supabase/migrations/20260722000400_workspace_branding.sql'
   "${BEHAVIOR_TEST}"
 )
 readonly -a REQUIRED_ENV=(

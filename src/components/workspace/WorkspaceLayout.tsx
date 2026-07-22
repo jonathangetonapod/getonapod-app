@@ -11,9 +11,9 @@ import {
   Mail,
   Menu,
   Search,
+  Settings,
   Share2,
   User,
-  UserPlus,
   Users,
   X,
   type LucideIcon,
@@ -21,10 +21,11 @@ import {
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 
 interface WorkspaceNavItem {
   id: string
@@ -36,7 +37,6 @@ interface WorkspaceNavItem {
 
 const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'overview', name: 'Overview', segment: 'overview', icon: LayoutDashboard, enabled: false },
-  { id: 'workspace-users', name: 'Workspace Users', segment: 'workspace-users', icon: UserPlus, enabled: false },
   { id: 'onboarding', name: 'Onboarding', segment: 'onboarding', icon: ClipboardList, enabled: false },
   { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: false },
   { id: 'prospect-dashboards', name: 'Prospect Dashboards', segment: 'prospect-dashboards', icon: Share2, enabled: false },
@@ -46,10 +46,12 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'outreach-platform', name: 'Outreach Platform', segment: 'outreach-platform', icon: Mail, enabled: false },
   { id: 'guest-resources', name: 'Guest Resources', segment: 'guest-resources', icon: BookOpen, enabled: true },
   { id: 'unibox', name: 'Unibox', segment: 'unibox', icon: Users, enabled: false },
+  { id: 'settings', name: 'Settings', segment: 'settings', icon: Settings, enabled: false },
 ]
 
 export interface PlatformWorkspaceConfig {
   workspaceName: string
+  logoUrl?: string | null
   baseHref: string
   exitHref: string
 }
@@ -65,6 +67,15 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
+  const logoUrl = platformWorkspace
+    ? platformWorkspace.logoUrl || null
+    : workspaceLogoUrl(workspace?.id, workspace?.logo_path, workspace?.logo_updated_at)
+  const workspaceInitials = workspaceName
+    .split(/\s+/u)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'W'
   const viewerEmail = user?.email
   const viewerName = membership?.full_name
     || user?.user_metadata?.full_name
@@ -113,8 +124,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           </div>
 
           <div className="border-b border-border px-6 py-4">
-            <p className="truncate text-sm font-semibold">{workspaceName}</p>
-            <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar className="h-10 w-10 shrink-0 rounded-lg border bg-background">
+                {logoUrl && <AvatarImage src={logoUrl} alt={`${workspaceName} logo`} className="object-contain p-1" />}
+                <AvatarFallback className="rounded-lg text-xs font-semibold">{workspaceInitials}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{workspaceName}</p>
+                <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
+              </div>
+            </div>
             {platformWorkspace && (
               <div className="mt-3 space-y-2">
                 <WorkspaceSwitcher presentation="toolbar" />
@@ -133,8 +152,8 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 const Icon = item.icon
                 const href = `${baseHref}/${item.segment}`
                 const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
-                const isWorkspaceUsers = item.id === 'workspace-users'
-                const itemEnabled = isWorkspaceUsers
+                const isSettings = item.id === 'settings'
+                const itemEnabled = isSettings
                   ? Boolean(platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin')
                   : item.enabled
 
@@ -162,7 +181,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                       >
                         <Icon className="h-5 w-5 shrink-0" />
                         <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{isWorkspaceUsers ? 'Owner/Admin' : 'Soon'}</Badge>
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{isSettings ? 'Owner/Admin' : 'Soon'}</Badge>
                       </button>
                     )}
                   </li>
@@ -204,7 +223,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="min-w-0">
+          <Avatar className="h-9 w-9 shrink-0 rounded-lg border bg-background">
+            {logoUrl && <AvatarImage src={logoUrl} alt="" className="object-contain p-1" />}
+            <AvatarFallback className="rounded-lg text-[10px] font-semibold">{workspaceInitials}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
             <p className="truncate text-lg font-semibold">{workspaceName}</p>
             <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
           </div>

@@ -11,6 +11,14 @@ const forwardMigration = readFileSync(
   'supabase/migrations/20260722000200_platform_owner_workspace_management.sql',
   'utf8',
 )
+const passwordMigration = readFileSync(
+  'supabase/migrations/20260722000300_workspace_staff_temporary_passwords.sql',
+  'utf8',
+)
+const brandingMigration = readFileSync(
+  'supabase/migrations/20260722000400_workspace_branding.sql',
+  'utf8',
+)
 
 const cutoverGuardIndex = migration.indexOf('DO $cutover_claim_guard$')
 assert.ok(cutoverGuardIndex > 0, 'provider-claim cutover guard must remain installed')
@@ -62,6 +70,34 @@ for (const rpc of [
   )
 }
 
+assert.match(source, /"set_workspace_logo_v1", \{\s*p_workspace_id: input\.workspaceId,\s*p_expected_logo_path: input\.expectedLogoPath,\s*p_logo_path: input\.logoPath,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt/u)
+assert.match(
+  brandingMigration,
+  sqlPattern('CREATE OR REPLACE FUNCTION public.set_workspace_logo_v1( p_workspace_id UUID, p_expected_logo_path TEXT, p_logo_path TEXT, p_actor_user_id UUID, p_token_issued_at BIGINT )'),
+)
+assert.match(
+  brandingMigration,
+  sqlPattern('REVOKE ALL ON FUNCTION public.set_workspace_logo_v1( UUID, TEXT, TEXT, UUID, BIGINT ) FROM PUBLIC, anon, authenticated, service_role;'),
+)
+assert.match(
+  brandingMigration,
+  sqlPattern('GRANT EXECUTE ON FUNCTION public.set_workspace_logo_v1( UUID, TEXT, TEXT, UUID, BIGINT ) TO service_role;'),
+)
+
+for (const rpc of [
+  'begin_workspace_staff_password_account_v1',
+  'claim_workspace_staff_password_delivery_v1',
+  'finalize_workspace_staff_password_account_v1',
+  'cancel_workspace_staff_password_account_v1',
+]) {
+  assert.match(source, new RegExp(`"${rpc}"`, 'u'), `${rpc} must remain version-pinned`)
+  assert.match(
+    passwordMigration,
+    new RegExp(`CREATE OR REPLACE FUNCTION public\\.${rpc}\\(`, 'u'),
+    `${rpc} must be installed by the temporary-password migration`,
+  )
+}
+
 assert.match(forwardMigration, /'read_only', false/u)
 assert.match(forwardMigration, /WHEN 'platform_admin' THEN jsonb_build_array\('admin', 'member'\)/u)
 assert.doesNotMatch(
@@ -81,8 +117,37 @@ for (const edgeCall of [
   /"complete_workspace_staff_auth_lifecycle_v1",\s*\{\s*p_workspace_id: input\.workspaceId,\s*p_membership_id: input\.membershipId,\s*p_action: input\.action,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt,\s*p_lock_token: input\.lockToken/u,
   /"update_workspace_staff_role_v1", \{\s*p_workspace_id: input\.workspaceId,\s*p_membership_id: input\.membershipId,\s*p_role: input\.role,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt/u,
   /"transfer_workspace_owner_v1", \{\s*p_workspace_id: input\.workspaceId,\s*p_membership_id: input\.membershipId,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt/u,
+  /"begin_workspace_staff_password_account_v1",\s*\{\s*p_workspace_id: input\.workspaceId,\s*p_email: input\.email,\s*p_full_name: input\.fullName,\s*p_role: input\.role,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt/u,
+  /"claim_workspace_staff_password_delivery_v1",\s*\{\s*p_workspace_id: input\.workspaceId,\s*p_membership_id: input\.membershipId,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt,\s*p_lock_token: input\.lockToken/u,
+  /"finalize_workspace_staff_password_account_v1",\s*\{\s*p_workspace_id: input\.workspaceId,\s*p_membership_id: input\.membershipId,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt,\s*p_lock_token: input\.lockToken,\s*p_auth_user_id: input\.authUserId/u,
+  /"cancel_workspace_staff_password_account_v1",\s*\{\s*p_workspace_id: input\.workspaceId,\s*p_membership_id: input\.membershipId,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt,\s*p_lock_token: input\.lockToken/u,
 ]) {
   assert.match(source, edgeCall, 'Edge RPC argument map must match the SQL contract')
+}
+
+const passwordSqlContracts = [
+  ['begin_workspace_staff_password_account_v1', 'p_workspace_id UUID, p_email TEXT, p_full_name TEXT, p_role TEXT, p_actor_user_id UUID, p_token_issued_at BIGINT', 'UUID, TEXT, TEXT, TEXT, UUID, BIGINT'],
+  ['claim_workspace_staff_password_delivery_v1', 'p_workspace_id UUID, p_membership_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT, p_lock_token UUID', 'UUID, UUID, UUID, BIGINT, UUID'],
+  ['finalize_workspace_staff_password_account_v1', 'p_workspace_id UUID, p_membership_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT, p_lock_token UUID, p_auth_user_id UUID', 'UUID, UUID, UUID, BIGINT, UUID, UUID'],
+  ['cancel_workspace_staff_password_account_v1', 'p_workspace_id UUID, p_membership_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT, p_lock_token UUID', 'UUID, UUID, UUID, BIGINT, UUID'],
+]
+
+for (const [name, namedSignature, typeSignature] of passwordSqlContracts) {
+  assert.match(
+    passwordMigration,
+    sqlPattern(`CREATE OR REPLACE FUNCTION public.${name}( ${namedSignature} )`),
+    `${name} SQL named signature must match Edge`,
+  )
+  assert.match(
+    passwordMigration,
+    sqlPattern(`REVOKE ALL ON FUNCTION public.${name}( ${typeSignature} ) FROM PUBLIC, anon, authenticated, service_role;`),
+    `${name} must be revoked before its narrow grant`,
+  )
+  assert.match(
+    passwordMigration,
+    sqlPattern(`GRANT EXECUTE ON FUNCTION public.${name}( ${typeSignature} ) TO service_role;`),
+    `${name} must be service-role-only`,
+  )
 }
 
 const sqlContracts = [
@@ -127,6 +192,34 @@ for (const parameter of [
 assert.match(source, /const lockToken = crypto\.randomUUID\(\)/u)
 assert.match(source, /"release_workspace_invite_delivery_claim"/u)
 assert.match(source, /admin\.auth\.admin[\s\S]*?\.inviteUserByEmail/u)
+assert.match(source, /import \{ generateTemporaryPassword \} from "\.\.\/_shared\/workspaceCredentials\.ts"/u)
+assert.match(source, /const temporaryPassword = generateTemporaryPassword\(\)/u)
+assert.match(source, /admin\.auth\.admin\.createUser\(\{[\s\S]*?password: temporaryPassword,[\s\S]*?email_confirm: true/u)
+assert.match(source, /workspace_provisioning_method: "admin_temporary_password"/u)
+assert.match(source, /workspace_password_change_required: true/u)
+assert.match(source, /workspace_credential_version: 1/u)
+assert.match(source, /workspace_credential_attempt_id: lockToken/u)
+assert.match(source, /temporary_password: issued\.temporaryPassword/u)
+assert.match(source, /action === "create_password"/u)
+assert.match(source, /action === "retry_password"/u)
+assert.match(source, /capabilities\.can_generate_password \?\? false/u)
+assert.match(source, /capabilities\.can_manage_branding \?\? false/u)
+assert.match(source, /action === "update_logo"/u)
+assert.match(source, /action === "remove_logo"/u)
+assert.match(source, /parseJsonObject\(req, MAX_WORKSPACE_LOGO_REQUEST_BYTES\)/u)
+assert.match(source, /MAX_WORKSPACE_LOGO_BYTES = 2 \* 1024 \* 1024/u)
+assert.match(source, /"image\/jpeg": "jpg"[\s\S]*?"image\/png": "png"[\s\S]*?"image\/webp": "webp"/u)
+assert.match(source, /\.from\(WORKSPACE_LOGO_BUCKET\)[\s\S]*?\.upload\(logoPath, image\.bytes/u)
+assert.match(source, /cacheControl: "31536000"[\s\S]*?upsert: false/u)
+assert.match(source, /await removeWorkspaceLogoObject\(admin, logoPath\)[\s\S]*?throw error/u)
+assert.match(source, /currentBranding\.logo_path !== expectedLogoPath/u)
+assert.match(passwordMigration, /'can_generate_password', actor_role IN/u)
+assert.match(brandingMigration, /'workspace-logos',[\s\S]*?true,[\s\S]*?2097152/u)
+assert.match(brandingMigration, /ARRAY\['image\/jpeg', 'image\/png', 'image\/webp'\]/u)
+assert.match(brandingMigration, /workspace\.logo_path IS NOT DISTINCT FROM p_expected_logo_path/u)
+assert.match(brandingMigration, /workspace\.branding\.logo_updated/u)
+assert.match(brandingMigration, /workspace\.branding\.logo_removed/u)
+assert.doesNotMatch(source, /console\.[a-z]+\([^\n]*temporaryPassword/u)
 assert.match(source, /data: \{[\s\S]*?workspace_id: membership\.workspace_id,[\s\S]*?workspace_membership_id: membership\.id/u)
 assert.match(source, /app_metadata: \{[\s\S]*?workspace_id: membership\.workspace_id,[\s\S]*?workspace_membership_id: membership\.id/u)
 assert.match(source, /markerMatches\(data\.user\.app_metadata, membership\)/u)
@@ -160,6 +253,7 @@ for (const key of [
   'full_name',
   'role',
   'status',
+  'setup_method',
   'invited_at',
   'invite_expires_at',
   'accepted_at',
@@ -175,6 +269,8 @@ for (const forbidden of [
   'lock_token',
   'actor_user_id',
   'workspace_access_not_before_epoch',
+  'provisioning_method',
+  'password_change_required',
 ]) {
   assert.doesNotMatch(
     publicMemberProjection,

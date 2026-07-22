@@ -15,6 +15,7 @@ import {
   requireUuid,
   workspaceCredentialIsFresh,
 } from "../_shared/workspaceAuth.ts";
+import { generateTemporaryPassword } from "../_shared/workspaceCredentials.ts";
 
 const METHODS = ["POST"] as const;
 const STAFF_ROLES = ["owner", "admin", "member"] as const;
@@ -28,11 +29,16 @@ const STAFF_STATUSES = [
 ] as const;
 const PUBLIC_ACTIONS = [
   "retry_invite",
+  "retry_password",
   "update_role",
   "transfer_owner",
   "suspend",
   "reactivate",
   "revoke",
+] as const;
+const PROVISIONING_METHODS = [
+  "email_invite",
+  "admin_temporary_password",
 ] as const;
 const LIFECYCLE_ACTIONS = [
   "suspend",
@@ -42,6 +48,14 @@ const LIFECYCLE_ACTIONS = [
 // revoked Auth cleanup claims remain visible for reconciliation, so retain a
 // separate defensive response bound instead of hiding the roster at 101.
 const MAX_ROSTER_RESPONSE_MEMBERS = 1_000;
+const WORKSPACE_LOGO_BUCKET = "workspace-logos";
+const MAX_WORKSPACE_LOGO_BYTES = 2 * 1024 * 1024;
+const MAX_WORKSPACE_LOGO_REQUEST_BYTES = 2_900_000;
+const WORKSPACE_LOGO_MIME_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+} as const;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,6 +67,8 @@ type InviteRole = typeof INVITE_ROLES[number];
 type StaffStatus = typeof STAFF_STATUSES[number];
 type PublicAction = typeof PUBLIC_ACTIONS[number];
 type LifecycleAction = typeof LIFECYCLE_ACTIONS[number];
+type ProvisioningMethod = typeof PROVISIONING_METHODS[number];
+type WorkspaceLogoMimeType = keyof typeof WORKSPACE_LOGO_MIME_TYPES;
 
 interface RpcError {
   code?: string;
@@ -67,6 +83,8 @@ interface InternalMembership {
   full_name: string | null;
   role: StaffRole;
   status: StaffStatus;
+  provisioning_method: ProvisioningMethod;
+  password_change_required: boolean;
   invited_at: string;
   invite_expires_at: string | null;
   accepted_at: string | null;
@@ -80,6 +98,7 @@ interface StaffMemberDto {
   full_name: string | null;
   role: StaffRole;
   status: StaffStatus;
+  setup_method: ProvisioningMethod;
   invited_at: string;
   invite_expires_at: string | null;
   accepted_at: string | null;
@@ -93,14 +112,24 @@ interface StaffViewDto {
     id: string;
     name: string;
     status: "active";
+    logo_path: string | null;
+    logo_updated_at: string | null;
   };
   members: StaffMemberDto[];
   capabilities: {
     read_only: boolean;
     invite_roles: InviteRole[];
+    can_generate_password: boolean;
+    can_manage_branding: boolean;
     can_update_roles: boolean;
     can_transfer_owner: boolean;
   };
+}
+
+interface WorkspaceBrandingDto {
+  id: string;
+  logo_path: string | null;
+  logo_updated_at: string | null;
 }
 
 function invalidRpcResponse(): never {
@@ -154,6 +183,37 @@ function responseTimestamp(value: unknown, nullable = false): string | null {
   return value;
 }
 
+function workspaceLogoPath(
+  value: unknown,
+  workspaceId: string,
+): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length > 96) invalidRpcResponse();
+  const pathPattern = new RegExp(
+    `^${workspaceId}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(png|jpg|webp)$`,
+    "u",
+  );
+  if (!pathPattern.test(value)) invalidRpcResponse();
+  return value;
+}
+
+function workspaceBrandingDto(
+  value: unknown,
+  expectedWorkspaceId: string,
+): WorkspaceBrandingDto {
+  const row = responseRecord(Array.isArray(value) ? value[0] : value);
+  const id = responseUuid(row.id);
+  if (id !== expectedWorkspaceId) invalidRpcResponse();
+  const logoPath = workspaceLogoPath(row.logo_path, id);
+  const logoUpdatedAt = responseTimestamp(row.logo_updated_at, true);
+  if ((logoPath === null) !== (logoUpdatedAt === null)) invalidRpcResponse();
+  return {
+    id,
+    logo_path: logoPath,
+    logo_updated_at: logoUpdatedAt,
+  };
+}
+
 function responseEnum<T extends string>(
   value: unknown,
   allowed: readonly T[],
@@ -185,6 +245,15 @@ function responseActions(value: unknown): PublicAction[] {
   return actions;
 }
 
+function responseSetupMethod(
+  row: Record<string, unknown>,
+): ProvisioningMethod {
+  return responseEnum(
+    row.setup_method ?? row.provisioning_method ?? "email_invite",
+    PROVISIONING_METHODS,
+  );
+}
+
 function memberDto(value: unknown, useRpcCapabilities = true): StaffMemberDto {
   const row = responseRecord(value);
   const emailValue = row.email ?? row.email_normalized;
@@ -192,9 +261,18 @@ function memberDto(value: unknown, useRpcCapabilities = true): StaffMemberDto {
   const allowedActions = useRpcCapabilities
     ? responseActions(row.allowed_actions)
     : [];
+  const setupMethod = responseSetupMethod(row);
 
   if (typeof pendingReview !== "boolean") invalidRpcResponse();
   if (pendingReview && allowedActions.length > 0) invalidRpcResponse();
+  if (
+    (allowedActions.includes("retry_invite") &&
+      setupMethod !== "email_invite") ||
+    (allowedActions.includes("retry_password") &&
+      setupMethod !== "admin_temporary_password")
+  ) {
+    invalidRpcResponse();
+  }
 
   return {
     id: responseUuid(row.id),
@@ -202,6 +280,7 @@ function memberDto(value: unknown, useRpcCapabilities = true): StaffMemberDto {
     full_name: responseText(row.full_name, 120, true),
     role: responseEnum(row.role, STAFF_ROLES),
     status: responseEnum(row.status, STAFF_STATUSES),
+    setup_method: setupMethod,
     invited_at: responseTimestamp(row.invited_at) as string,
     invite_expires_at: responseTimestamp(row.invite_expires_at, true),
     accepted_at: responseTimestamp(row.accepted_at, true),
@@ -223,6 +302,16 @@ function internalMembership(value: unknown): InternalMembership {
     full_name: dto.full_name,
     role: dto.role,
     status: dto.status,
+    provisioning_method: responseEnum(
+      row.provisioning_method,
+      PROVISIONING_METHODS,
+    ),
+    password_change_required: (() => {
+      if (typeof row.password_change_required !== "boolean") {
+        invalidRpcResponse();
+      }
+      return row.password_change_required;
+    })(),
     invited_at: dto.invited_at,
     invite_expires_at: dto.invite_expires_at,
     accepted_at: dto.accepted_at,
@@ -263,12 +352,18 @@ function staffViewDto(value: unknown): StaffViewDto {
   const inviteRoles = capabilities.invite_roles.map((role) =>
     responseEnum(role, INVITE_ROLES)
   );
+  const canGeneratePassword = capabilities.can_generate_password ?? false;
+  const canManageBranding = capabilities.can_manage_branding ?? false;
   if (new Set(inviteRoles).size !== inviteRoles.length) invalidRpcResponse();
   if (
+    typeof canGeneratePassword !== "boolean" ||
+    typeof canManageBranding !== "boolean" ||
     typeof capabilities.can_update_roles !== "boolean" ||
     typeof capabilities.can_transfer_owner !== "boolean" ||
     (capabilities.read_only &&
       (inviteRoles.length > 0 ||
+        canGeneratePassword ||
+        canManageBranding ||
         capabilities.can_update_roles ||
         capabilities.can_transfer_owner))
   ) {
@@ -281,11 +376,15 @@ function staffViewDto(value: unknown): StaffViewDto {
       id: responseUuid(workspace.id),
       name: responseText(workspace.name, 120) as string,
       status: workspaceStatus,
+      logo_path: null,
+      logo_updated_at: null,
     },
     members,
     capabilities: {
       read_only: capabilities.read_only,
       invite_roles: inviteRoles,
+      can_generate_password: canGeneratePassword,
+      can_manage_branding: canManageBranding,
       can_update_roles: capabilities.can_update_roles,
       can_transfer_owner: capabilities.can_transfer_owner,
     },
@@ -425,6 +524,7 @@ function rpcFailure(
     message.includes("claim was lost") ||
     message.includes("claim is inconsistent") ||
     message.includes("pending review") ||
+    message.includes("requires reconciliation") ||
     code === "55P03"
   ) {
     throw new HttpError(
@@ -522,6 +622,201 @@ async function listWorkspaceStaff(
   return result;
 }
 
+async function loadWorkspaceBranding(
+  admin: AdminClient,
+  workspaceId: string,
+): Promise<WorkspaceBrandingDto> {
+  const { data, error } = await admin
+    .from("workspaces")
+    .select("id,logo_path,logo_updated_at")
+    .eq("id", workspaceId)
+    .eq("status", "active")
+    .eq("is_default", false)
+    .maybeSingle();
+  if (error || !data) {
+    throw new HttpError(
+      500,
+      "BRANDING_UNAVAILABLE",
+      "Workspace branding could not be loaded",
+    );
+  }
+  return workspaceBrandingDto(data, workspaceId);
+}
+
+async function listWorkspaceSettings(
+  admin: AdminClient,
+  workspaceId: string,
+  actorUserId: string,
+  tokenIssuedAt: number,
+): Promise<StaffViewDto> {
+  const [staff, branding] = await Promise.all([
+    listWorkspaceStaff(admin, workspaceId, actorUserId, tokenIssuedAt),
+    loadWorkspaceBranding(admin, workspaceId),
+  ]);
+  return {
+    ...staff,
+    workspace: {
+      ...staff.workspace,
+      logo_path: branding.logo_path,
+      logo_updated_at: branding.logo_updated_at,
+    },
+    capabilities: {
+      ...staff.capabilities,
+      can_manage_branding: true,
+    },
+  };
+}
+
+function requireExpectedLogoPath(
+  value: unknown,
+  workspaceId: string,
+): string | null {
+  if (value === null) return null;
+  if (value === undefined) {
+    throw new HttpError(
+      400,
+      "INVALID_FIELD",
+      "expected_logo_path is required",
+    );
+  }
+  if (typeof value !== "string") {
+    throw new HttpError(
+      400,
+      "INVALID_FIELD",
+      "expected_logo_path is invalid",
+    );
+  }
+  try {
+    return workspaceLogoPath(value, workspaceId);
+  } catch {
+    throw new HttpError(
+      400,
+      "INVALID_FIELD",
+      "expected_logo_path is invalid",
+    );
+  }
+}
+
+function requireWorkspaceLogoImage(
+  mimeValue: unknown,
+  base64Value: unknown,
+): {
+  bytes: Uint8Array;
+  extension: typeof WORKSPACE_LOGO_MIME_TYPES[WorkspaceLogoMimeType];
+  mimeType: WorkspaceLogoMimeType;
+} {
+  if (
+    typeof mimeValue !== "string" ||
+    !Object.hasOwn(WORKSPACE_LOGO_MIME_TYPES, mimeValue)
+  ) {
+    throw new HttpError(
+      400,
+      "INVALID_LOGO_TYPE",
+      "Logo must be a PNG, JPEG, or WebP image",
+    );
+  }
+  if (
+    typeof base64Value !== "string" ||
+    base64Value.length === 0 ||
+    base64Value.length > Math.ceil(MAX_WORKSPACE_LOGO_BYTES / 3) * 4 ||
+    base64Value.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/u.test(base64Value)
+  ) {
+    throw new HttpError(
+      400,
+      "INVALID_LOGO_DATA",
+      "Logo image data is invalid",
+    );
+  }
+
+  let bytes: Uint8Array;
+  try {
+    const decoded = atob(base64Value);
+    bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  } catch {
+    throw new HttpError(
+      400,
+      "INVALID_LOGO_DATA",
+      "Logo image data is invalid",
+    );
+  }
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_WORKSPACE_LOGO_BYTES) {
+    throw new HttpError(
+      413,
+      "LOGO_TOO_LARGE",
+      "Logo must be 2 MB or smaller",
+    );
+  }
+
+  const mimeType = mimeValue as WorkspaceLogoMimeType;
+  const signatureMatches = mimeType === "image/png"
+    ? bytes.byteLength >= 8 &&
+      [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) =>
+        bytes[index] === byte
+      )
+    : mimeType === "image/jpeg"
+    ? bytes.byteLength >= 4 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff
+    : bytes.byteLength >= 12 &&
+      String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  if (!signatureMatches) {
+    throw new HttpError(
+      400,
+      "LOGO_TYPE_MISMATCH",
+      "Logo contents do not match the selected image type",
+    );
+  }
+
+  return {
+    bytes,
+    extension: WORKSPACE_LOGO_MIME_TYPES[mimeType],
+    mimeType,
+  };
+}
+
+async function setWorkspaceLogo(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    expectedLogoPath: string | null;
+    logoPath: string | null;
+    actorUserId: string;
+    tokenIssuedAt: number;
+  },
+): Promise<WorkspaceBrandingDto> {
+  const { data, error } = await admin.rpc("set_workspace_logo_v1", {
+    p_workspace_id: input.workspaceId,
+    p_expected_logo_path: input.expectedLogoPath,
+    p_logo_path: input.logoPath,
+    p_actor_user_id: input.actorUserId,
+    p_token_issued_at: input.tokenIssuedAt,
+  });
+  if (error) {
+    rpcFailure(
+      error,
+      "BRANDING_UPDATE_FAILED",
+      "Workspace branding could not be updated",
+    );
+  }
+  return workspaceBrandingDto(data, input.workspaceId);
+}
+
+async function removeWorkspaceLogoObject(
+  admin: AdminClient,
+  logoPath: string | null,
+): Promise<void> {
+  if (!logoPath) return;
+  try {
+    await admin.storage.from(WORKSPACE_LOGO_BUCKET).remove([logoPath]);
+  } catch {
+    // The database pointer is authoritative. A failed best-effort cleanup may
+    // leave an unreferenced public presentation asset, never a tenant write.
+  }
+}
+
 async function beginStaffInvite(
   admin: AdminClient,
   input: {
@@ -555,7 +850,54 @@ async function beginStaffInvite(
     membership.full_name !== input.fullName ||
     membership.role !== input.role ||
     membership.status !== "provisioning" ||
-    membership.user_id !== null
+    membership.user_id !== null ||
+    membership.provisioning_method !== "email_invite" ||
+    membership.password_change_required
+  ) {
+    invalidRpcResponse();
+  }
+  return membership;
+}
+
+async function beginStaffPasswordAccount(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    email: string;
+    fullName: string | null;
+    role: InviteRole;
+    actorUserId: string;
+    tokenIssuedAt: number;
+  },
+): Promise<InternalMembership> {
+  const { data, error } = await admin.rpc(
+    "begin_workspace_staff_password_account_v1",
+    {
+      p_workspace_id: input.workspaceId,
+      p_email: input.email,
+      p_full_name: input.fullName,
+      p_role: input.role,
+      p_actor_user_id: input.actorUserId,
+      p_token_issued_at: input.tokenIssuedAt,
+    },
+  );
+  if (error) {
+    rpcFailure(
+      error,
+      "STAFF_PASSWORD_ACCOUNT_FAILED",
+      "The workspace password account could not be created",
+    );
+  }
+  const membership = provisioningMembership(data);
+  if (
+    membership.workspace_id !== input.workspaceId ||
+    membership.email_normalized !== input.email ||
+    membership.full_name !== input.fullName ||
+    membership.role !== input.role ||
+    membership.status !== "provisioning" ||
+    membership.user_id !== null ||
+    membership.provisioning_method !== "admin_temporary_password" ||
+    membership.password_change_required
   ) {
     invalidRpcResponse();
   }
@@ -588,7 +930,9 @@ async function claimStaffInviteDelivery(
       if (
         membership.id !== input.membershipId ||
         membership.workspace_id !== input.workspaceId ||
-        membership.status !== "provisioning"
+        membership.status !== "provisioning" ||
+        membership.provisioning_method !== "email_invite" ||
+        membership.password_change_required
       ) {
         invalidRpcResponse();
       }
@@ -606,6 +950,56 @@ async function claimStaffInviteDelivery(
     503,
     "INVITE_DELIVERY_CLAIM_UNCERTAIN",
     "The invitation delivery claim requires operator review",
+  );
+}
+
+async function claimStaffPasswordDelivery(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+    lockToken: string;
+  },
+): Promise<InternalMembership> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await admin.rpc(
+      "claim_workspace_staff_password_delivery_v1",
+      {
+        p_workspace_id: input.workspaceId,
+        p_membership_id: input.membershipId,
+        p_actor_user_id: input.actorUserId,
+        p_token_issued_at: input.tokenIssuedAt,
+        p_lock_token: input.lockToken,
+      },
+    );
+    if (!error) {
+      const membership = internalMembership(data);
+      if (
+        membership.id !== input.membershipId ||
+        membership.workspace_id !== input.workspaceId ||
+        membership.status !== "provisioning" ||
+        membership.user_id !== null ||
+        membership.provisioning_method !== "admin_temporary_password" ||
+        membership.password_change_required
+      ) {
+        invalidRpcResponse();
+      }
+      return membership;
+    }
+    if (attempt === 1) {
+      rpcFailure(
+        error,
+        "PASSWORD_DELIVERY_CLAIM_UNCERTAIN",
+        "The temporary-password claim requires operator review",
+      );
+    }
+  }
+  throw new HttpError(
+    503,
+    "PASSWORD_DELIVERY_CLAIM_UNCERTAIN",
+    "The temporary-password claim requires operator review",
   );
 }
 
@@ -677,7 +1071,9 @@ async function finalizeStaffInvite(
         membership.id !== input.membershipId ||
         membership.workspace_id !== input.workspaceId ||
         membership.user_id !== input.authUserId ||
-        membership.status !== "invited"
+        membership.status !== "invited" ||
+        membership.provisioning_method !== "email_invite" ||
+        membership.password_change_required
       ) {
         invalidRpcResponse();
       }
@@ -715,6 +1111,123 @@ async function finalizeStaffInvite(
     503,
     "INVITE_FINALIZE_UNCERTAIN",
     "The invitation result is uncertain and requires operator review",
+  );
+}
+
+async function finalizeStaffPasswordAccount(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+    lockToken: string;
+    authUserId: string;
+  },
+): Promise<InternalMembership | null> {
+  let notReadyResponses = 0;
+  let sawTransportUncertainty = false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await admin.rpc(
+      "finalize_workspace_staff_password_account_v1",
+      {
+        p_workspace_id: input.workspaceId,
+        p_membership_id: input.membershipId,
+        p_actor_user_id: input.actorUserId,
+        p_token_issued_at: input.tokenIssuedAt,
+        p_lock_token: input.lockToken,
+        p_auth_user_id: input.authUserId,
+      },
+    );
+    if (!error) {
+      const membership = internalMembership(data);
+      if (
+        membership.id !== input.membershipId ||
+        membership.workspace_id !== input.workspaceId ||
+        membership.user_id !== input.authUserId ||
+        membership.status !== "invited" ||
+        membership.provisioning_method !== "admin_temporary_password" ||
+        !membership.password_change_required ||
+        membership.invite_expires_at === null
+      ) {
+        invalidRpcResponse();
+      }
+      return membership;
+    }
+
+    const message = error.message.toLowerCase();
+    if (message.includes("auth identity is not ready")) {
+      notReadyResponses += 1;
+      continue;
+    }
+    if (
+      ["22023", "23505", "42501", "55000", "55P03", "P0002"].includes(
+        error.code ?? "",
+      )
+    ) {
+      if (sawTransportUncertainty) break;
+      rpcFailure(
+        error,
+        "PASSWORD_FINALIZE_FAILED",
+        "The temporary-password account could not be finalized",
+      );
+    }
+    sawTransportUncertainty = true;
+  }
+  if (!sawTransportUncertainty && notReadyResponses === 2) return null;
+  throw new HttpError(
+    503,
+    "PASSWORD_FINALIZE_UNCERTAIN",
+    "The temporary-password result is uncertain and requires operator review",
+  );
+}
+
+async function cancelStaffPasswordAccount(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+    lockToken: string;
+  },
+): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await admin.rpc(
+      "cancel_workspace_staff_password_account_v1",
+      {
+        p_workspace_id: input.workspaceId,
+        p_membership_id: input.membershipId,
+        p_actor_user_id: input.actorUserId,
+        p_token_issued_at: input.tokenIssuedAt,
+        p_lock_token: input.lockToken,
+      },
+    );
+    if (!error) {
+      const membership = internalMembership(data);
+      if (
+        membership.id !== input.membershipId ||
+        membership.workspace_id !== input.workspaceId ||
+        membership.status !== "revoked" ||
+        membership.user_id !== null ||
+        membership.password_change_required
+      ) {
+        invalidRpcResponse();
+      }
+      return;
+    }
+    if (attempt === 1) {
+      rpcFailure(
+        error,
+        "PASSWORD_ACCOUNT_CANCEL_UNCERTAIN",
+        "The failed temporary-password account requires operator review",
+      );
+    }
+  }
+  throw new HttpError(
+    503,
+    "PASSWORD_ACCOUNT_CANCEL_UNCERTAIN",
+    "The failed temporary-password account requires operator review",
   );
 }
 
@@ -899,6 +1412,85 @@ async function deleteExactAuthUser(
   }
 }
 
+function exactTemporaryPasswordMetadata(
+  metadata: Record<string, unknown> | undefined,
+  membership: InternalMembership,
+  lockToken: string,
+): boolean {
+  return markerMatches(metadata, membership) &&
+    metadata?.workspace_provisioning_method === "admin_temporary_password" &&
+    metadata?.workspace_password_change_required === true &&
+    metadata?.workspace_credential_version === 1 &&
+    metadata?.workspace_credential_attempt_id === lockToken &&
+    metadata?.workspace_credential_execution_id === lockToken;
+}
+
+function passwordIdentityMatches(
+  user: {
+    email?: string;
+    created_at?: string;
+    confirmed_at?: string;
+    last_sign_in_at?: string;
+    app_metadata?: Record<string, unknown>;
+  },
+  membership: InternalMembership,
+  lockToken: string,
+): boolean {
+  const createdAt = Date.parse(user.created_at ?? "");
+  const membershipCreatedAt = Date.parse(membership.created_at);
+  return user.email?.trim().toLowerCase() === membership.email_normalized &&
+    Number.isFinite(createdAt) &&
+    Number.isFinite(membershipCreatedAt) &&
+    createdAt >= membershipCreatedAt - 60_000 &&
+    !user.last_sign_in_at &&
+    exactTemporaryPasswordMetadata(
+      user.app_metadata,
+      membership,
+      lockToken,
+    );
+}
+
+async function deleteExactTemporaryPasswordAuthUser(
+  admin: AdminClient,
+  authUserId: string,
+  membership: InternalMembership,
+  lockToken: string,
+): Promise<void> {
+  const { data, error } = await admin.auth.admin.getUserById(authUserId);
+  if (error) {
+    if (
+      error.status === 404 ||
+      error.message.toLowerCase().includes("not found")
+    ) return;
+    throw new HttpError(
+      503,
+      "AUTH_RECONCILIATION_UNCERTAIN",
+      "The workspace user provider state requires operator review",
+    );
+  }
+  if (!data.user) return;
+  if (!passwordIdentityMatches(data.user, membership, lockToken)) {
+    throw new HttpError(
+      409,
+      "STAFF_IDENTITY_UNSAFE",
+      "The workspace user identity requires operator review",
+    );
+  }
+  await requireUnprotectedEmail(admin, membership.email_normalized);
+  const { error: deleteError } = await admin.auth.admin.deleteUser(authUserId);
+  if (
+    deleteError &&
+    deleteError.status !== 404 &&
+    !deleteError.message.toLowerCase().includes("not found")
+  ) {
+    throw new HttpError(
+      503,
+      "AUTH_RECONCILIATION_UNCERTAIN",
+      "The workspace user provider state requires operator review",
+    );
+  }
+}
+
 async function deliverStaffInvite(
   admin: AdminClient,
   input: {
@@ -989,6 +1581,123 @@ async function deliverStaffInvite(
     503,
     markerError ? "INVITE_MARKER_FAILED" : "INVITE_FINALIZE_FAILED",
     "The invitation was invalidated before activation; retry to send a fresh link",
+  );
+}
+
+async function issueStaffTemporaryPassword(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+  },
+): Promise<{ membership: InternalMembership; temporaryPassword: string }> {
+  const lockToken = crypto.randomUUID();
+  const claimInput = { ...input, lockToken };
+  const membership = await claimStaffPasswordDelivery(admin, claimInput);
+
+  try {
+    await requireUnprotectedEmail(admin, membership.email_normalized);
+  } catch (error) {
+    await releaseInviteClaim(admin, membership.id, lockToken);
+    throw error;
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const { data, error: createError } = await admin.auth.admin.createUser({
+    email: membership.email_normalized,
+    password: temporaryPassword,
+    email_confirm: true,
+    user_metadata: {
+      full_name: membership.full_name,
+    },
+    app_metadata: {
+      workspace_id: membership.workspace_id,
+      workspace_membership_id: membership.id,
+      workspace_provisioning_method: "admin_temporary_password",
+      workspace_password_change_required: true,
+      workspace_credential_version: 1,
+      workspace_credential_attempt_id: lockToken,
+      workspace_credential_execution_id: lockToken,
+    },
+  });
+
+  if (createError || !data.user) {
+    const accountExists =
+      (createError as { code?: string } | null)?.code === "email_exists" ||
+      createError?.message.toLowerCase().includes("registered") === true;
+    const markedUserId = await findStaffInviteAuthUser(admin, claimInput);
+    if (markedUserId) {
+      await deleteExactTemporaryPasswordAuthUser(
+        admin,
+        markedUserId,
+        membership,
+        lockToken,
+      );
+      await releaseInviteClaim(admin, membership.id, lockToken);
+      throw new HttpError(
+        503,
+        "PASSWORD_CREATE_RETRY_REQUIRED",
+        "Password creation was safely rolled back; generate a new password",
+      );
+    }
+    if (accountExists) {
+      await cancelStaffPasswordAccount(admin, claimInput);
+      throw new HttpError(
+        409,
+        "AUTH_ACCOUNT_EXISTS",
+        "This email already has an unrelated account",
+      );
+    }
+    await releaseInviteClaim(admin, membership.id, lockToken);
+    throw new HttpError(
+      503,
+      "PASSWORD_CREATE_RETRY_REQUIRED",
+      "Password creation did not complete; generate a new password",
+    );
+  }
+
+  if (!passwordIdentityMatches(data.user, membership, lockToken)) {
+    throw new HttpError(
+      409,
+      "STAFF_IDENTITY_UNSAFE",
+      "The workspace user identity requires operator review",
+    );
+  }
+
+  let finalized: InternalMembership | null = null;
+  let finalizationError: HttpError | null = null;
+  try {
+    finalized = await finalizeStaffPasswordAccount(admin, {
+      ...claimInput,
+      authUserId: data.user.id,
+    });
+  } catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    if (
+      error.code === "PASSWORD_FINALIZE_UNCERTAIN" ||
+      error.code === "STAFF_RECONCILIATION_PENDING" ||
+      error.code === "STAFF_IDENTITY_UNSAFE"
+    ) {
+      throw error;
+    }
+    finalizationError = error;
+  }
+  if (finalized) return { membership: finalized, temporaryPassword };
+
+  await deleteExactTemporaryPasswordAuthUser(
+    admin,
+    data.user.id,
+    membership,
+    lockToken,
+  );
+  await releaseInviteClaim(admin, membership.id, lockToken);
+  if (finalizationError) throw finalizationError;
+  throw new HttpError(
+    503,
+    "PASSWORD_CREATE_RETRY_REQUIRED",
+    "Password creation was safely rolled back; generate a new password",
   );
 }
 
@@ -1291,7 +2000,7 @@ serve(async (req) => {
       throw new HttpError(405, "METHOD_NOT_ALLOWED", "Only POST is allowed");
     }
 
-    const body = await parseJsonObject(req);
+    const body = await parseJsonObject(req, MAX_WORKSPACE_LOGO_REQUEST_BYTES);
     const action = typeof body.action === "string" ? body.action : "";
     const authContext = await requireAuthenticatedUser(req);
     if (!workspaceCredentialIsFresh(authContext)) {
@@ -1306,7 +2015,7 @@ serve(async (req) => {
 
     if (action === "list") {
       requireOnlyKeys(body, ["action", "workspace_id"]);
-      const result = await listWorkspaceStaff(
+      const result = await listWorkspaceSettings(
         admin,
         workspaceId,
         user.id,
@@ -1316,6 +2025,115 @@ serve(async (req) => {
         invalidRpcResponse();
       }
       return jsonResponse(req, METHODS, 200, result);
+    }
+
+    if (action === "update_logo") {
+      requireOnlyKeys(body, [
+        "action",
+        "workspace_id",
+        "expected_logo_path",
+        "mime_type",
+        "image_base64",
+      ]);
+      const expectedLogoPath = requireExpectedLogoPath(
+        body.expected_logo_path,
+        workspaceId,
+      );
+      const staff = await listWorkspaceStaff(
+        admin,
+        workspaceId,
+        user.id,
+        tokenIssuedAt,
+      );
+      if (staff.capabilities.read_only) invalidRpcResponse();
+      const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
+      if (currentBranding.logo_path !== expectedLogoPath) {
+        throw new HttpError(
+          409,
+          "BRANDING_STATE_CHANGED",
+          "Workspace branding changed; refresh before trying again",
+        );
+      }
+      const image = requireWorkspaceLogoImage(
+        body.mime_type,
+        body.image_base64,
+      );
+      const logoPath = `${workspaceId}/${crypto.randomUUID()}.${image.extension}`;
+      const { error: uploadError } = await admin.storage
+        .from(WORKSPACE_LOGO_BUCKET)
+        .upload(logoPath, image.bytes, {
+          cacheControl: "31536000",
+          contentType: image.mimeType,
+          upsert: false,
+        });
+      if (uploadError) {
+        throw new HttpError(
+          502,
+          "LOGO_UPLOAD_FAILED",
+          "The workspace logo could not be uploaded",
+        );
+      }
+
+      let branding: WorkspaceBrandingDto;
+      try {
+        branding = await setWorkspaceLogo(admin, {
+          workspaceId,
+          expectedLogoPath,
+          logoPath,
+          actorUserId: user.id,
+          tokenIssuedAt,
+        });
+      } catch (error) {
+        await removeWorkspaceLogoObject(admin, logoPath);
+        throw error;
+      }
+      await removeWorkspaceLogoObject(admin, expectedLogoPath);
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        workspace: branding,
+      });
+    }
+
+    if (action === "remove_logo") {
+      requireOnlyKeys(body, [
+        "action",
+        "workspace_id",
+        "expected_logo_path",
+      ]);
+      const expectedLogoPath = requireExpectedLogoPath(
+        body.expected_logo_path,
+        workspaceId,
+      );
+      const staff = await listWorkspaceStaff(
+        admin,
+        workspaceId,
+        user.id,
+        tokenIssuedAt,
+      );
+      if (staff.capabilities.read_only) invalidRpcResponse();
+      const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
+      if (
+        expectedLogoPath === null ||
+        currentBranding.logo_path !== expectedLogoPath
+      ) {
+        throw new HttpError(
+          409,
+          "BRANDING_STATE_CHANGED",
+          "Workspace branding changed; refresh before trying again",
+        );
+      }
+      const branding = await setWorkspaceLogo(admin, {
+        workspaceId,
+        expectedLogoPath,
+        logoPath: null,
+        actorUserId: user.id,
+        tokenIssuedAt,
+      });
+      await removeWorkspaceLogoObject(admin, expectedLogoPath);
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        workspace: branding,
+      });
     }
 
     if (action === "invite") {
@@ -1349,6 +2167,39 @@ serve(async (req) => {
       });
     }
 
+    if (action === "create_password") {
+      requireOnlyKeys(body, [
+        "action",
+        "workspace_id",
+        "email",
+        "full_name",
+        "role",
+      ]);
+      const email = requireEmail(body.email);
+      const fullName = optionalString(body.full_name, "full_name", 120);
+      const role = requireInviteRole(body.role);
+      const provisioning = await beginStaffPasswordAccount(admin, {
+        workspaceId,
+        email,
+        fullName,
+        role,
+        actorUserId: user.id,
+        tokenIssuedAt,
+      });
+      const issued = await issueStaffTemporaryPassword(admin, {
+        workspaceId,
+        membershipId: provisioning.id,
+        actorUserId: user.id,
+        tokenIssuedAt,
+      });
+      return jsonResponse(req, METHODS, 201, {
+        success: true,
+        member: memberDto(issued.membership, false),
+        email: issued.membership.email_normalized,
+        temporary_password: issued.temporaryPassword,
+      });
+    }
+
     if (action === "retry_invite") {
       requireOnlyKeys(body, ["action", "workspace_id", "membership_id"]);
       const membershipId = requireUuid(body.membership_id, "membership_id");
@@ -1361,6 +2212,23 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, {
         success: true,
         member: memberDto(invited, false),
+      });
+    }
+
+    if (action === "retry_password") {
+      requireOnlyKeys(body, ["action", "workspace_id", "membership_id"]);
+      const membershipId = requireUuid(body.membership_id, "membership_id");
+      const issued = await issueStaffTemporaryPassword(admin, {
+        workspaceId,
+        membershipId,
+        actorUserId: user.id,
+        tokenIssuedAt,
+      });
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        member: memberDto(issued.membership, false),
+        email: issued.membership.email_normalized,
+        temporary_password: issued.temporaryPassword,
       });
     }
 

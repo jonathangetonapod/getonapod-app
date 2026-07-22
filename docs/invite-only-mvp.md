@@ -17,14 +17,15 @@ handlers. `get-guest-resources` v14 (`verify_jwt=false`) and
 deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The production
 tenant routes now expose Clients and Guest Resources.
 
-The Sub-agency Workspace Foundation is the current release candidate, not yet
-production-active in this document. It adds foundation migration 9 and the
-forward platform-owner management migration 10,
-`manage-workspace-staff`, one transferable owner plus admins/members,
-`/app/workspace-users`, and native platform-owner management of a selected
-workspace. Hosted Auth
-password-policy verification, the production migration/Edge cutover, and live
-acceptance remain release gates.
+The Sub-agency Workspace Foundation and forward platform-owner management are
+production-active through migration 10. The current release candidate adds
+workspace-staff temporary-password migration 11, moves workspace-user
+management under `/app/settings`, and updates `manage-workspace-staff` so an
+authorized owner/admin can choose email or a generated password. Workspace
+branding migration 12 adds audited, server-side logo upload/removal for the
+same owner/admin and selected-workspace platform context. Migrations 11–12, the
+changed Edge Functions, frontend deployment, and live acceptance remain release
+gates for this increment.
 
 The privileged browser key was replaced by the project publishable key. After
 the frontend deployment, a second Cloudflare purge was completed and the
@@ -56,9 +57,9 @@ The target MVP intentionally has:
   are verified.
 
 The platform administrator uses the existing `/admin/*` application. Workspace
-staff use `/app/workspace-users`, `/app/clients`, and
+staff use `/app/settings`, `/app/clients`, and
 `/app/guest-resources`. The matching platform-owner management routes are
-`/admin/workspaces/:workspaceId/workspace-users`,
+`/admin/workspaces/:workspaceId/settings`,
 `/admin/workspaces/:workspaceId/clients`, and
 `/admin/workspaces/:workspaceId/guest-resources`. Only a platform administrator
 receives the workspace selector; the selected context keeps the platform Auth
@@ -110,8 +111,11 @@ conflicting lifecycle/invite actions while the service-only safe projection
 reports a pending claim.
 
 Agency employee lifecycle is separate from the table above. A workspace owner
-can invite admins or members, manage non-owner roles, suspend/remove staff, and
-transfer ownership. An admin can invite and manage members only. A member has
+can add admins or members by email invitation or one-time generated password,
+manage non-owner roles, suspend/remove staff, and transfer ownership. An admin
+can add and manage members only. Generated staff passwords are returned once,
+are never stored in Postgres, expire after seven days, and must be replaced at
+first sign-in before workspace access. A member has
 no staff controls and currently receives read-only Clients and Guest Resources.
 The platform owner has owner-equivalent controls in an explicitly selected
 active workspace without becoming a roster member or impersonating its owner.
@@ -272,9 +276,12 @@ an external integration.
    migrations, the manual-account seventh migration, the Guest Resources eighth
    migration, the Sub-agency Workspace Foundation ninth migration, and
    `20260722000200_platform_owner_workspace_management.sql` as migration 10 in
-   order. On a controlled environment that already recorded migration 9, apply
-   migration 10 as the forward upgrade; edits to migration 9 are not an
-   in-place upgrade path.
+   order, followed by
+   `20260722000300_workspace_staff_temporary_passwords.sql` as migration 11 and
+   `20260722000400_workspace_branding.sql` as migration 12.
+   On a controlled environment that already recorded migration 9, apply
+   migrations 10 through 12 as forward upgrades; edits to migration 9 are not
+   an in-place upgrade path.
 
 For hosted production Auth, use `npm run verify:hosted-auth -- --project-ref
 ysjwveqnwjysldpfqzov` in read-only mode first. If it reports drift, the
@@ -412,7 +419,7 @@ Administrator credentials are required, and any unexpected incomplete record
 converts the run to a failure. Exact variable names and a safe command template
 are in the root README.
 
-Run `scripts/staging-database-verifier.sh` after all ten migrations. Provide
+Run `scripts/staging-database-verifier.sh` after all twelve migrations. Provide
 the connection only through `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `PGPASSWORD`, and `PGSSLMODE=verify-full`, plus
 `STAGING_DB_EXPECTED_PGHOST`, mandatory
@@ -551,7 +558,7 @@ git diff --check
 git diff --check origin/main...HEAD
 ```
 
-`check:static` verifies the exact manifest/release shape; parses all ten
+`check:static` verifies the exact manifest/release shape; parses all twelve
 migrations, the catalog verifier, and both rollback behavior suites with a
 PostgreSQL grammar parser; checks app and
 staging TypeScript; enforces zero warnings on the MVP lint scope; tests

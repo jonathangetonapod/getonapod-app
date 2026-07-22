@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAdminWorkspaceView, type AdminWorkspaceView } from '@/services/adminWorkspaces'
+import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { hasMeaningfulGuestResourceContent } from '@/lib/guestResourceContent'
 import { sanitizePortalResourceContent } from '@/lib/portalResourceContent'
 import { getWorkspaceClients, type WorkspaceClient } from '@/services/clients'
@@ -260,6 +261,11 @@ const WorkspaceGuestResources = ({ platformWorkspaceId }: WorkspaceGuestResource
   const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
+        logoUrl: workspaceLogoUrl(
+          effectiveWorkspace?.id,
+          effectiveWorkspace?.logo_path,
+          effectiveWorkspace?.logo_updated_at,
+        ),
         baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
         exitHref: '/admin/users',
       }
