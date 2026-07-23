@@ -44,10 +44,11 @@ describe('WorkspaceLayout', () => {
     signOut.mockResolvedValue(undefined)
     mockedUseAuth.mockReturnValue({
       user: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         email: 'owner@example.com',
         user_metadata: { full_name: 'Owner Name' },
       },
-      workspace: { name: 'Acme Workspace' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
       membership: { full_name: 'Owner Name', role: 'owner' },
       isPlatformAdmin: false,
       signOut,
@@ -83,8 +84,8 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
   })
 
-  it('restores and resets a navigation order saved for the signed-in user', async () => {
-    const storageKey = 'workspace-nav-order-v1:owner@example.com'
+  it('restores and resets a navigation order saved for this owner and workspace', async () => {
+    const storageKey = `workspace-nav-order-v2:${workspaceId}:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`
     window.localStorage.setItem(storageKey, JSON.stringify(['clients', 'podcast-finder', 'overview']))
     renderLayout()
 
@@ -109,8 +110,8 @@ describe('WorkspaceLayout', () => {
 
   it('enables settings for an admin and keeps it unavailable to a member', () => {
     mockedUseAuth.mockReturnValue({
-      user: { email: 'admin@example.com' },
-      workspace: { name: 'Acme Workspace' },
+      user: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', email: 'admin@example.com' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
       membership: { full_name: 'Agency Admin', role: 'admin' },
       isPlatformAdmin: false,
       signOut,
@@ -121,11 +122,12 @@ describe('WorkspaceLayout', () => {
       </MemoryRouter>,
     )
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/settings')
+    expect(screen.queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
 
     unmount()
     mockedUseAuth.mockReturnValue({
-      user: { email: 'member@example.com' },
-      workspace: { name: 'Acme Workspace' },
+      user: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', email: 'member@example.com' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
       membership: { full_name: 'Agency Member', role: 'member' },
       isPlatformAdmin: false,
       signOut,
@@ -137,12 +139,13 @@ describe('WorkspaceLayout', () => {
     const settings = within(navigation).getByText('Settings').closest('button')
     expect(settings).toBeDisabled()
     expect(within(settings as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
+    expect(within(navigation).queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
   })
 
   it('renders a selected workspace as a native platform-owner context', () => {
     mockedUseAuth.mockReturnValue({
       user: { email: 'owner@example.com' },
-      workspace: { name: 'Acme Workspace' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
       membership: { full_name: 'Owner Name', role: 'owner' },
       isPlatformAdmin: true,
       signOut,
@@ -176,6 +179,7 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher').closest('header')).not.toBeNull()
+    expect(within(navigation).queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/settings')
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-gradient-to-br')

@@ -34,6 +34,7 @@ import ProspectView from "./pages/prospect/ProspectView";
 import ClientApprovalView from "./pages/client/ClientApprovalView";
 import AcceptInvite from "./pages/admin/AcceptInvite";
 import WorkspaceClients from "./pages/app/WorkspaceClients";
+import WorkspaceClientDetail from "./pages/app/WorkspaceClientDetail";
 import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
 import MyWorkspaceSettings from "./pages/app/MyWorkspaceSettings";
@@ -42,6 +43,7 @@ import WorkspacePodcastFinderHome from "./pages/app/WorkspacePodcastFinderHome";
 import WorkspacePodcastFinder from "./pages/app/WorkspacePodcastFinder";
 import AdminWorkspaceOverview from "./pages/admin/AdminWorkspaceOverview";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
+import AdminWorkspaceClientDetail from "./pages/admin/AdminWorkspaceClientDetail";
 import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
 import AdminWorkspaceOnboarding from "./pages/admin/AdminWorkspaceOnboarding";
 import AdminWorkspaceStaff from "./pages/admin/AdminWorkspaceStaff";
@@ -136,6 +138,14 @@ const App = () => (
               }
             />
             <Route
+              path="/app/clients/:clientId"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceClientDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/app/podcast-finder"
               element={
                 <ProtectedRoute>
@@ -198,6 +208,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceClients />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/clients/:clientId"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceClientDetail />
                 </PlatformAdminRoute>
               }
             />

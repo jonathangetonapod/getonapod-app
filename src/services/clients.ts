@@ -53,6 +53,62 @@ export interface WorkspaceClient {
   updated_at: string
 }
 
+export interface WorkspaceClientProfile extends WorkspaceClient {
+  bio: string | null
+  photo_url: string | null
+  calendar_link: string | null
+  google_sheet_url: string | null
+  media_kit_url: string | null
+  prospect_dashboard_slug: string | null
+  dashboard_slug: string | null
+  dashboard_enabled: boolean
+  portal_access_enabled: boolean
+  portal_last_login_at: string | null
+  password_set_at: string | null
+}
+
+export interface WorkspaceClientBooking {
+  id: string
+  client_id: string
+  podcast_id: string | null
+  podcast_name: string
+  podcast_url: string | null
+  host_name: string | null
+  scheduled_date: string | null
+  recording_date: string | null
+  publish_date: string | null
+  status: 'conversation_started' | 'in_progress' | 'booked' | 'recorded' | 'published' | 'cancelled'
+  episode_url: string | null
+  prep_sent: boolean
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkspaceClientOnboardingSummary {
+  id: string
+  workspace_id: string
+  client_id: string
+  recipient_name: string
+  recipient_email: string
+  status: 'invited' | 'in_progress' | 'submitted' | 'changes_requested' | 'approved' | 'expired' | 'revoked'
+  invited_at: string
+  started_at: string | null
+  submitted_at: string | null
+  approved_at: string | null
+  updated_at: string
+  archived_at: string | null
+}
+
+export interface WorkspaceClientDetail {
+  workspace: WorkspaceResearchContext['workspace']
+  viewer_role: 'owner' | 'admin' | 'member' | 'platform_admin'
+  can_manage: boolean
+  client: WorkspaceClientProfile
+  bookings: WorkspaceClientBooking[]
+  onboarding: WorkspaceClientOnboardingSummary | null
+}
+
 export interface WorkspaceClientInput {
   name: string
   email?: string
@@ -159,6 +215,42 @@ export async function getWorkspaceResearchContext(
       ? rawExistingPodcastIds.map((podcastId) => podcastId.trim())
       : [])),
   }
+}
+
+export async function getWorkspaceClientDetail(
+  workspaceId: string,
+  clientId: string,
+): Promise<WorkspaceClientDetail> {
+  const canonicalWorkspaceId = workspaceId.toLowerCase()
+  const canonicalClientId = clientId.toLowerCase()
+  const { data, error } = await supabase.functions.invoke('workspace-clients', {
+    body: {
+      action: 'detail-get',
+      workspace_id: canonicalWorkspaceId,
+      client_id: canonicalClientId,
+    },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to load client details.')
+  const detail = data as WorkspaceClientDetail | null
+  if (
+    !detail?.workspace
+    || !detail.client
+    || detail.workspace.id !== canonicalWorkspaceId
+    || detail.client.workspace_id !== canonicalWorkspaceId
+    || detail.client.id !== canonicalClientId
+    || !Array.isArray(detail.bookings)
+    || detail.bookings.length > 500
+    || detail.bookings.some((booking) => booking.client_id !== canonicalClientId)
+    || (detail.onboarding !== null && (
+      detail.onboarding.workspace_id !== canonicalWorkspaceId
+      || detail.onboarding.client_id !== canonicalClientId
+    ))
+  ) {
+    throw new Error('The client detail response did not match the workspace client address.')
+  }
+
+  return detail
 }
 
 export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {

@@ -98,16 +98,17 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.getByRole('button', { name: /add client/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Edit Tenant Client' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Remove Tenant Client' })).toBeEnabled()
-    expect(screen.getByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open Tenant Client' })).toHaveAttribute(
       'href',
-      `/app/podcast-finder?client=${client.id}`,
+      `/app/clients/${client.id}`,
     )
+    expect(screen.queryByText('Research')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.queryByText('Admin preview · Read only')).not.toBeInTheDocument()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
   })
 
-  it('gives a workspace member the same client-bound research entry without management controls', async () => {
+  it('lets a workspace member open the client hub without management controls', async () => {
     mockedUseAuth.mockReturnValue({
       user: { id: userId, email: 'member@example.com' },
       workspace: {
@@ -124,9 +125,9 @@ describe('WorkspaceClients tenant mode', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Open Tenant Client' })).toHaveAttribute(
       'href',
-      `/app/podcast-finder?client=${client.id}`,
+      `/app/clients/${client.id}`,
     )
     expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
@@ -145,9 +146,9 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.getByText('Choose a client')).toBeInTheDocument()
     expect(screen.getByText('Tenant Client')).toBeInTheDocument()
     expect(screen.queryByText('Paused Client')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open Tenant Client' })).toHaveAttribute(
       'href',
-      `/app/podcast-finder?client=${client.id}`,
+      `/app/clients/${client.id}`,
     )
     expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()

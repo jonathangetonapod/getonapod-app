@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, MoreHorizontal, Palette, Plus, RefreshCw, Send, Share2, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import ClientOnboardingPreview from '@/components/onboarding/ClientOnboardingPreview'
@@ -171,6 +172,7 @@ function nextCopyName(template: OnboardingTemplate, templates: OnboardingTemplat
 const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const { user, workspace } = useAuth()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const selectedWorkspaceId = (platformWorkspaceId || '').toLowerCase()
   const workspaceId = isPlatformWorkspace ? selectedWorkspaceId : workspace?.id || ''
@@ -183,6 +185,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<OnboardingTemplate | null>(null)
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
+  const openedRequestedInstanceRef = useRef<string | null>(null)
   const [confirmation, setConfirmation] = useState<{ action: ConfirmationAction; instance: OnboardingInstanceSummary } | null>(null)
 
   const onboardingQuery = useQuery({
@@ -194,6 +197,16 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     refetchInterval: startOpen || builderOpen || selectedInstanceId ? false : 30_000,
   })
   const data = onboardingQuery.data
+  const requestedClientId = (searchParams.get('client') || '').toLowerCase()
+  const requestedInstanceId = (searchParams.get('instance') || '').toLowerCase()
+  const clientFilter = UUID_PATTERN.test(requestedClientId) ? requestedClientId : null
+  const visibleInstances = useMemo(
+    () => data?.instances.filter((instance) => !clientFilter || instance.client_id === clientFilter) ?? [],
+    [clientFilter, data?.instances],
+  )
+  const filteredClient = clientFilter
+    ? data?.clients.find((client) => client.id === clientFilter) || null
+    : null
   const canManage = data?.can_manage === true
   const publishedTemplates = useMemo(
     () => data?.templates.filter((template) => template.status === 'published') ?? [],
@@ -213,13 +226,23 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   useEffect(() => {
     if (!startOpen || !data) return
     const defaultTemplate = publishedTemplates.find((template) => template.is_default) ?? publishedTemplates[0]
+    const requestedClient = clientFilter
+      ? data.clients.find((client) => client.id === clientFilter)
+      : undefined
     setLogoPreviewUrl(null)
     setStartForm({
       ...blankStartForm,
       template_id: defaultTemplate?.id ?? '',
+      ...(requestedClient ? {
+        client_choice: requestedClient.id,
+        client_name: requestedClient.name,
+        contact_person: requestedClient.contact_person || '',
+        recipient_name: requestedClient.contact_person || requestedClient.name,
+        recipient_email: requestedClient.email || '',
+      } : {}),
       ...experienceFromTemplate(defaultTemplate, data.workspace.name),
     })
-  }, [data, publishedTemplates, startOpen])
+  }, [clientFilter, data, publishedTemplates, startOpen])
 
   const detailQuery = useQuery({
     queryKey: [...queryKey, 'detail', selectedInstanceId || 'none'],
@@ -227,6 +250,16 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     enabled: Boolean(selectedInstanceId && validWorkspaceId),
     retry: false,
   })
+
+  useEffect(() => {
+    if (
+      !UUID_PATTERN.test(requestedInstanceId)
+      || openedRequestedInstanceRef.current === requestedInstanceId
+      || !visibleInstances.some((instance) => instance.id === requestedInstanceId)
+    ) return
+    openedRequestedInstanceRef.current = requestedInstanceId
+    setSelectedInstanceId(requestedInstanceId)
+  }, [requestedInstanceId, visibleInstances])
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey })
@@ -328,14 +361,14 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   })
 
   const counts = useMemo(() => {
-    const instances = data?.instances ?? []
+    const instances = visibleInstances
     return {
       active: instances.filter((instance) => ['invited', 'in_progress', 'changes_requested'].includes(instance.status)).length,
       review: instances.filter((instance) => instance.status === 'submitted').length,
       approved: instances.filter((instance) => instance.status === 'approved').length,
       expired: instances.filter((instance) => instance.status === 'expired' || instance.status === 'revoked').length,
     }
-  }, [data?.instances])
+  }, [visibleInstances])
 
   const handleClientChoice = (choice: string) => {
     if (choice === 'new') {
@@ -464,11 +497,12 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   }
 
   const effectiveWorkspace = data?.workspace
+  const workspaceBaseHref = isPlatformWorkspace ? selectedWorkspaceBaseHref(selectedWorkspaceId) : '/app'
   const platformWorkspace = isPlatformWorkspace
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
         logoUrl: workspaceLogoUrl(effectiveWorkspace?.id, effectiveWorkspace?.logo_path, effectiveWorkspace?.logo_updated_at),
-        baseHref: selectedWorkspaceBaseHref(selectedWorkspaceId),
+        baseHref: workspaceBaseHref,
       }
     : undefined
 
@@ -476,10 +510,13 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div><h1 className="text-3xl font-bold tracking-tight">Client Onboarding</h1><p className="mt-1 text-muted-foreground">Create branded intake forms, invite clients, and review their completed answers.</p></div>
-          {canManage && (publishedTemplates.length > 0
-            ? <Button onClick={() => setStartOpen(true)}><Send className="mr-2 h-4 w-4" />Start onboarding</Button>
-            : <Button onClick={() => { setEditingTemplate(data?.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Set up a template</Button>)}
+          <div><h1 className="text-3xl font-bold tracking-tight">{filteredClient ? `${filteredClient.name} onboarding` : 'Client Onboarding'}</h1><p className="mt-1 text-muted-foreground">{filteredClient ? 'Review this client’s intake, answers, and approved profile.' : 'Create branded intake forms, invite clients, and review their completed answers.'}</p></div>
+          <div className="flex flex-wrap gap-2">
+            {filteredClient && <Button asChild variant="outline"><Link to={`${workspaceBaseHref}/clients/${filteredClient.id}`}>Back to client</Link></Button>}
+            {canManage && (publishedTemplates.length > 0
+              ? <Button onClick={() => setStartOpen(true)}><Send className="mr-2 h-4 w-4" />Start onboarding</Button>
+              : <Button onClick={() => { setEditingTemplate(data?.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Set up a template</Button>)}
+          </div>
         </div>
 
         {!validWorkspaceId ? (
@@ -505,13 +542,13 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                 <Card>
                   <CardHeader><CardTitle>Onboarding activity</CardTitle><CardDescription>See when the private link was first viewed, when the client first saved progress, and when they completed the form.</CardDescription></CardHeader>
                   <CardContent>
-                    {data.instances.length === 0 ? (
+                    {visibleInstances.length === 0 ? (
                       <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No onboarding invitations yet</p><p className="text-sm text-muted-foreground">Start with an existing client or create a minimal client while inviting them.</p></div>{canManage && <Button variant="outline" onClick={() => setStartOpen(true)}><Plus className="mr-2 h-4 w-4" />Start onboarding</Button>}</div>
                     ) : (
                       <div className="overflow-x-auto">
                         <Table>
                           <TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Template</TableHead><TableHead>Activity</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                          <TableBody>{data.instances.map((instance) => (
+                          <TableBody>{visibleInstances.map((instance) => (
                             <TableRow key={instance.id} className={instance.archived_at ? 'opacity-60' : undefined}>
                               <TableCell><p className="font-medium">{instance.client_name}</p><p className="text-xs text-muted-foreground">{instance.recipient_email}</p>{instance.archived_at && <Badge variant="outline" className="mt-1">Archived</Badge>}</TableCell>
                               <TableCell><p>{instance.template_name}</p><p className="text-xs text-muted-foreground">Version {instance.template_version}</p></TableCell>

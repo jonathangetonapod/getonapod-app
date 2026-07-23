@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getClients, getWorkspaceResearchContext } from '@/services/clients'
+import { getClients, getWorkspaceClientDetail, getWorkspaceResearchContext } from '@/services/clients'
 
 const { from, invoke } = vi.hoisted(() => ({ from: vi.fn(), invoke: vi.fn() }))
 
@@ -154,6 +154,66 @@ describe('getWorkspaceResearchContext', () => {
 
     await expect(getWorkspaceResearchContext(workspaceId, clientId)).rejects.toThrow(
       'The podcast research context did not match the workspace client address.',
+    )
+  })
+})
+
+describe('getWorkspaceClientDetail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('loads the legacy client command-center data through a workspace-bound contract', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    const detail = {
+      workspace: {
+        id: workspaceId,
+        name: 'Agency',
+        slug: 'agency',
+        status: 'active',
+        is_default: false,
+        logo_path: null,
+        logo_updated_at: null,
+      },
+      viewer_role: 'owner',
+      can_manage: true,
+      client: {
+        id: clientId,
+        workspace_id: workspaceId,
+        name: 'Client',
+        bookings: undefined,
+      },
+      bookings: [{ id: 'booking-1', client_id: clientId }],
+      onboarding: { id: 'onboarding-1', workspace_id: workspaceId, client_id: clientId },
+    }
+    invoke.mockResolvedValue({ data: detail, error: null })
+
+    await expect(getWorkspaceClientDetail(workspaceId.toUpperCase(), clientId.toUpperCase())).resolves.toEqual(detail)
+    expect(invoke).toHaveBeenCalledWith('workspace-clients', {
+      body: {
+        action: 'detail-get',
+        workspace_id: workspaceId,
+        client_id: clientId,
+      },
+    })
+  })
+
+  it('rejects podcast or onboarding data belonging to another client', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValue({
+      data: {
+        workspace: { id: workspaceId },
+        client: { id: clientId, workspace_id: workspaceId },
+        bookings: [{ id: 'booking-1', client_id: '33333333-3333-4333-8333-333333333333' }],
+        onboarding: null,
+      },
+      error: null,
+    })
+
+    await expect(getWorkspaceClientDetail(workspaceId, clientId)).rejects.toThrow(
+      'The client detail response did not match the workspace client address.',
     )
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { Loader2, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowUpRight, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
@@ -60,6 +60,7 @@ function validatePlatformWorkspaceView(view: AdminWorkspaceView, workspaceId: st
 
 const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceClientsProps) => {
   const { canWriteClients, user, workspace } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<WorkspaceClient | null>(null)
@@ -264,20 +265,27 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                 <Table>
                   <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {clients.map((client) => (
-                      <TableRow key={client.id}>
-                        <TableCell><p className="font-medium">{client.name}</p>{client.website && <p className="max-w-xs truncate text-xs text-muted-foreground">{client.website}</p>}</TableCell>
+                    {clients.map((client) => {
+                      const clientDetailHref = `${clientBaseHref}/clients/${encodeURIComponent(client.id)}`
+                      return (
+                      <TableRow
+                        key={client.id}
+                        tabIndex={0}
+                        aria-label={`Open ${client.name}`}
+                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        onClick={() => navigate(clientDetailHref)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            navigate(clientDetailHref)
+                          }
+                        }}
+                      >
+                        <TableCell><Link to={clientDetailHref} onClick={(event) => event.stopPropagation()} aria-label={`Open ${client.name}`} className="inline-flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">{client.name}<ArrowUpRight className="h-3.5 w-3.5" /></Link>{client.website && <p className="max-w-xs truncate text-xs text-muted-foreground">{client.website}</p>}</TableCell>
                         <TableCell><p>{client.contact_person || '—'}</p><p className="text-xs text-muted-foreground">{client.email || 'No email'}</p></TableCell>
                         <TableCell><Badge variant={client.status === 'active' ? 'default' : 'secondary'} className="capitalize">{client.status}</Badge></TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                           <div className="inline-flex items-center gap-1">
-                            {client.status === 'active' && (
-                              <Button asChild size="sm" variant="outline">
-                                <Link to={`${clientBaseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`} aria-label={`Research podcasts for ${client.name}`}>
-                                  <Search className="mr-2 h-4 w-4" />Research
-                                </Link>
-                              </Button>
-                            )}
                             {showManagementControls && (
                               <>
                               <Button
@@ -304,7 +312,8 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>

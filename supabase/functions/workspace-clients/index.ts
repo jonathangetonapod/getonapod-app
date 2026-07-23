@@ -104,7 +104,7 @@ serve(async (req) => {
     let clientId: string | null = null
     let payload: Record<string, string | null> = {}
 
-    if (action === 'research-get') {
+    if (action === 'research-get' || action === 'detail-get') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
       clientId = requireUuid(body.client_id, 'client_id')
     } else if (action === 'list') {
@@ -121,6 +121,74 @@ serve(async (req) => {
       clientId = requireUuid(body.client_id, 'client_id')
     } else {
       throw new HttpError(400, 'INVALID_ACTION', 'Unknown workspace client action')
+    }
+
+    if (action === 'detail-get') {
+      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      const { data: client, error: clientError } = await admin
+        .from('clients')
+        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,google_sheet_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_enabled,portal_access_enabled,portal_last_login_at,password_set_at,created_at,updated_at')
+        .eq('id', clientId!)
+        .eq('workspace_id', workspaceId)
+        .maybeSingle()
+
+      if (clientError) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The workspace client could not be loaded')
+      }
+      if (!client || client.workspace_id !== workspaceId) {
+        throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Workspace client not found')
+      }
+
+      const [bookingsResult, onboardingResult] = await Promise.all([
+        admin
+          .from('bookings')
+          .select('id,client_id,podcast_id,podcast_name,podcast_url,host_name,scheduled_date,recording_date,publish_date,status,episode_url,prep_sent,notes,created_at,updated_at')
+          .eq('client_id', clientId!)
+          .order('scheduled_date', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(500),
+        admin
+          .from('workspace_onboarding_instances')
+          .select('id,workspace_id,client_id,recipient_name,recipient_email,status,invited_at,started_at,submitted_at,approved_at,updated_at,archived_at')
+          .eq('workspace_id', workspaceId)
+          .eq('client_id', clientId!)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+
+      if (bookingsResult.error) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client podcast activity could not be loaded')
+      }
+      if (onboardingResult.error) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client onboarding status could not be loaded')
+      }
+      if ((bookingsResult.data || []).some((booking) => booking.client_id !== clientId)) {
+        throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client podcast activity could not be loaded')
+      }
+      if (onboardingResult.data && (
+        onboardingResult.data.workspace_id !== workspaceId
+        || onboardingResult.data.client_id !== clientId
+      )) {
+        throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client onboarding status could not be loaded')
+      }
+
+      return jsonResponse(req, METHODS, 200, {
+        workspace: {
+          id: access.workspace.id,
+          name: access.workspace.name,
+          slug: access.workspace.slug,
+          status: access.workspace.status,
+          is_default: access.workspace.is_default,
+          logo_path: access.workspace.logo_path,
+          logo_updated_at: access.workspace.logo_updated_at,
+        },
+        viewer_role: access.role,
+        can_manage: ['owner', 'admin', 'platform_admin'].includes(access.role),
+        client,
+        bookings: bookingsResult.data || [],
+        onboarding: access.role === 'member' ? null : onboardingResult.data || null,
+      })
     }
 
     if (action === 'research-get') {

@@ -67,7 +67,7 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'settings', name: 'Settings', segment: 'settings', icon: Settings, enabled: false },
 ]
 
-const WORKSPACE_NAV_ORDER_STORAGE_PREFIX = 'workspace-nav-order-v1'
+const WORKSPACE_NAV_ORDER_STORAGE_PREFIX = 'workspace-nav-order-v2'
 
 function orderedWorkspaceNavItems(value: unknown): WorkspaceNavItem[] {
   if (!Array.isArray(value)) return [...workspaceNavItems]
@@ -261,8 +261,13 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     || 'Workspace user'
   const viewerRole = platformWorkspace ? 'platform owner' : membership?.role
   const baseHref = platformWorkspace?.baseHref || '/app'
-  const navStorageIdentity = user?.id || user?.email?.trim().toLowerCase() || 'current-user'
-  const navStorageKey = `${WORKSPACE_NAV_ORDER_STORAGE_PREFIX}:${navStorageIdentity}`
+  const navStorageOwner = user?.id || user?.email?.trim().toLowerCase() || 'current-user'
+  const navStorageWorkspace = workspace?.id?.toLowerCase() || 'unavailable-workspace'
+  const canOrganizeNavigation = !platformWorkspace
+    && membership?.role === 'owner'
+    && Boolean(workspace?.id)
+  const navStorageKey = `${WORKSPACE_NAV_ORDER_STORAGE_PREFIX}:${navStorageWorkspace}:${navStorageOwner}`
+  const legacyNavStorageKey = `workspace-nav-order-v1:${navStorageOwner}`
   const isDefaultNavOrder = navItems.every((item, index) => item.id === workspaceNavItems[index]?.id)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -270,18 +275,30 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   )
 
   useEffect(() => {
+    if (!canOrganizeNavigation) {
+      setNavItems([...workspaceNavItems])
+      setIsOrganizing(false)
+      return
+    }
+
     let savedOrder: unknown = null
     try {
-      const stored = window.localStorage.getItem(navStorageKey)
+      const currentStored = window.localStorage.getItem(navStorageKey)
+      const legacyStored = currentStored ? null : window.localStorage.getItem(legacyNavStorageKey)
+      const stored = currentStored || legacyStored
       savedOrder = stored ? JSON.parse(stored) : null
+      if (!currentStored && legacyStored) {
+        window.localStorage.setItem(navStorageKey, legacyStored)
+      }
     } catch {
       // The default order remains available when browser storage is unavailable or invalid.
     }
     setNavItems(orderedWorkspaceNavItems(savedOrder))
     setIsOrganizing(false)
-  }, [navStorageKey])
+  }, [canOrganizeNavigation, legacyNavStorageKey, navStorageKey])
 
   const saveNavOrder = (items: WorkspaceNavItem[]) => {
+    if (!canOrganizeNavigation) return
     try {
       window.localStorage.setItem(navStorageKey, JSON.stringify(items.map((item) => item.id)))
     } catch {
@@ -290,7 +307,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   }
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return
+    if (!canOrganizeNavigation || !over || active.id === over.id) return
     setNavItems((current) => {
       const oldIndex = current.findIndex((item) => item.id === active.id)
       const newIndex = current.findIndex((item) => item.id === over.id)
@@ -302,6 +319,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   }
 
   const handleResetNavOrder = () => {
+    if (!canOrganizeNavigation) return
     setNavItems([...workspaceNavItems])
     try {
       window.localStorage.removeItem(navStorageKey)
@@ -369,29 +387,31 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           <nav aria-label="Workspace navigation" className="flex-1 overflow-y-auto px-3 py-4">
             <div className="mb-2 flex items-center justify-between gap-2 px-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Navigation</p>
-              <div className="flex items-center gap-1">
-                {isOrganizing && (
+              {canOrganizeNavigation && (
+                <div className="flex items-center gap-1">
+                  {isOrganizing && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      disabled={isDefaultNavOrder}
+                      onClick={handleResetNavOrder}
+                    >
+                      Reset
+                    </Button>
+                  )}
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant={isOrganizing ? 'secondary' : 'ghost'}
                     size="sm"
                     className="h-7 px-2 text-xs"
-                    disabled={isDefaultNavOrder}
-                    onClick={handleResetNavOrder}
+                    onClick={() => setIsOrganizing((current) => !current)}
                   >
-                    Reset
+                    {isOrganizing ? 'Done' : 'Organize'}
                   </Button>
-                )}
-                <Button
-                  type="button"
-                  variant={isOrganizing ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setIsOrganizing((current) => !current)}
-                >
-                  {isOrganizing ? 'Done' : 'Organize'}
-                </Button>
-              </div>
+                </div>
+              )}
             </div>
             {isOrganizing && (
               <p className="mb-2 px-1 text-xs text-muted-foreground">Drag pages into your preferred order. Changes save automatically.</p>
