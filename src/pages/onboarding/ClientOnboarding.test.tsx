@@ -46,6 +46,30 @@ describe('ClientOnboarding white-label experience', () => {
             required: true,
             placeholder: 'Jane Smith',
             mapping: 'client.name',
+          }, {
+            id: 'email',
+            type: 'email',
+            label: 'Best contact',
+            description: '',
+            required: false,
+            placeholder: 'How should we reach you?',
+            mapping: 'client.email',
+          }, {
+            id: 'website',
+            type: 'url',
+            label: 'Website',
+            description: '',
+            required: false,
+            placeholder: 'Website or anything helpful',
+            mapping: 'client.website',
+          }, {
+            id: 'date',
+            type: 'date',
+            label: 'Important date',
+            description: '',
+            required: false,
+            placeholder: 'Any wording is fine',
+            mapping: null,
           }],
         }],
       },
@@ -79,6 +103,9 @@ describe('ClientOnboarding white-label experience', () => {
     expect(screen.getByText('Hi Casey,')).toBeInTheDocument()
     expect(screen.getByText(/Your progress saves automatically and stays private with Iveth Gonzalez/u)).toBeInTheDocument()
     expect(screen.queryByText(/your agency|Get On A Pod/iu)).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('How should we reach you?')).toHaveAttribute('type', 'text')
+    expect(screen.getByPlaceholderText('Website or anything helpful')).toHaveAttribute('type', 'text')
+    expect(screen.getByPlaceholderText('Any wording is fine')).toHaveAttribute('type', 'text')
     await waitFor(() => expect(document.title).toBe('Iveth Gonzalez · Client onboarding'))
   })
 

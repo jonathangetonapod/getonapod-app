@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateOnboardingDefinition } from './workspaceOnboarding.ts'
+import { validateOnboardingAnswers, validateOnboardingDefinition } from './workspaceOnboarding.ts'
 
 const question = (id: string) => ({
   id,
@@ -41,5 +41,36 @@ describe('validateOnboardingDefinition', () => {
       { id: 'first', questions: [question('duplicate')] },
       { id: 'second', questions: [question('duplicate')] },
     ]))).toThrow('question ids must be unique')
+  })
+})
+
+describe('validateOnboardingAnswers', () => {
+  it('accepts free-form text for email, website, and date questions', () => {
+    const freeTextDefinition = validateOnboardingDefinition({
+      schema_version: 1,
+      intro_title: 'Welcome',
+      intro_body: 'Tell us about yourself.',
+      completion_message: 'Thank you.',
+      sections: [{
+        id: 'details',
+        title: 'Details',
+        description: '',
+        questions: [
+          { ...question('email'), type: 'email', label: 'Best contact', mapping: 'client.email' },
+          { ...question('website'), type: 'url', label: 'Website', mapping: 'client.website' },
+          { ...question('date'), type: 'date', label: 'Important date' },
+        ],
+      }],
+    })
+
+    expect(validateOnboardingAnswers(freeTextDefinition, {
+      email: 'Call me instead',
+      website: 'Search our company name',
+      date: 'Sometime next spring',
+    }, { requireComplete: true, assets: [] })).toEqual({
+      email: 'Call me instead',
+      website: 'Search our company name',
+      date: 'Sometime next spring',
+    })
   })
 })

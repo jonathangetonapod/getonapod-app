@@ -48,18 +48,6 @@ function sectionError(
     const value = answers[question.id]
     const label = renderOnboardingBrandText(question.label, workspaceName) || 'This question'
     if (question.required && isEmptyAnswer(value)) return `${label} is required.`
-    if (isEmptyAnswer(value)) continue
-    if (question.type === 'email' && (typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value))) {
-      return `${label} must be a valid email address.`
-    }
-    if (question.type === 'url' && typeof value === 'string') {
-      try {
-        const parsed = new URL(value)
-        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return `${label} must be a valid web address.`
-      } catch {
-        return `${label} must be a valid web address.`
-      }
-    }
   }
   return null
 }
@@ -122,7 +110,7 @@ const PreviewQuestion = ({
       {label}{help}
       <Input
         id={inputId}
-        type={question.type === 'email' ? 'email' : question.type === 'url' ? 'url' : question.type === 'date' ? 'date' : 'text'}
+        type="text"
         value={answerText(answer)}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}

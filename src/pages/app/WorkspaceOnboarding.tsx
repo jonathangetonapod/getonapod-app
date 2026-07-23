@@ -22,10 +22,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { DEFAULT_ONBOARDING_ACCENT, renderOnboardingBrandText } from '@/lib/onboardingBrand'
-import { onboardingActivityStage, type OnboardingActivityStage } from '@/lib/onboardingActivity'
+import { onboardingActivityStage, onboardingStatusLabel, type OnboardingActivityStage } from '@/lib/onboardingActivity'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
-  approveOnboarding,
   archiveOnboardingInstance,
   archiveOnboardingTemplate,
   duplicateOnboardingTemplate,
@@ -35,20 +34,15 @@ import {
   listWorkspaceOnboarding,
   publishOnboardingTemplate,
   purgeOnboardingInstance,
-  requestOnboardingChanges,
-  retryOnboardingAi,
   revokeOnboardingLink,
   rotateOnboardingLink,
   saveOnboardingTemplate,
   setDefaultOnboardingTemplate,
   startWorkspaceOnboarding,
-  updateOnboardingProfile,
-  updateOnboardingAssignments,
   type OnboardingInstanceDetail,
   type OnboardingInstanceSummary,
   type OnboardingInvitationResult,
   type OnboardingTemplate,
-  type PitchProfile,
   type StartOnboardingInput,
 } from '@/services/workspaceOnboarding'
 
@@ -109,24 +103,14 @@ function experienceFromTemplate(template: OnboardingTemplate | undefined, worksp
   }
 }
 
-const statusLabels: Record<OnboardingInstanceSummary['status'], string> = {
-  invited: 'Invited',
-  in_progress: 'In progress',
-  submitted: 'Submitted',
-  changes_requested: 'Changes requested',
-  approved: 'Approved',
-  expired: 'Expired',
-  revoked: 'Revoked',
-}
-
 const statusStyles: Record<OnboardingInstanceSummary['status'], string> = {
   invited: 'bg-blue-50 text-blue-700 border-blue-200',
-  in_progress: 'bg-violet-50 text-violet-700 border-violet-200',
+  in_progress: 'bg-blue-50 text-blue-700 border-blue-200',
   submitted: 'bg-amber-50 text-amber-800 border-amber-200',
-  changes_requested: 'bg-orange-50 text-orange-800 border-orange-200',
+  changes_requested: 'bg-blue-50 text-blue-700 border-blue-200',
   approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   expired: 'bg-slate-50 text-slate-600 border-slate-200',
-  revoked: 'bg-red-50 text-red-700 border-red-200',
+  revoked: 'bg-slate-50 text-slate-600 border-slate-200',
 }
 
 const activityLabels: Record<OnboardingActivityStage, string> = {
@@ -284,38 +268,6 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the template.'),
   })
 
-  const reviewMutation = useMutation({
-    mutationFn: async (request:
-      | { action: 'changes'; comments: Array<{ question_id: string; body: string }> }
-      | { action: 'save_profile' | 'approve'; profile: PitchProfile }
-      | { action: 'assignments'; membershipIds: string[] }
-      | { action: 'retry_ai' }
-    ) => {
-      if (!selectedInstanceId) throw new Error('No onboarding is selected.')
-      if (request.action === 'changes') return requestOnboardingChanges(workspaceId, selectedInstanceId, request.comments)
-      if (request.action === 'save_profile') return updateOnboardingProfile(workspaceId, selectedInstanceId, request.profile)
-      if (request.action === 'approve') return approveOnboarding(workspaceId, selectedInstanceId, request.profile)
-      if (request.action === 'assignments') return updateOnboardingAssignments(workspaceId, selectedInstanceId, request.membershipIds)
-      return retryOnboardingAi(workspaceId, selectedInstanceId)
-    },
-    onSuccess: async (result, variables) => {
-      await refresh()
-      await detailQuery.refetch()
-      if (variables.action === 'approve' || variables.action === 'changes') setSelectedInstanceId(null)
-      if (variables.action === 'changes' && result.onboarding_url && result.instance) {
-        setInvitation({
-          instance: result.instance,
-          onboarding_url: result.onboarding_url,
-          delivery: result.delivery ?? { status: 'skipped' },
-        })
-      }
-      toast.success(variables.action === 'changes'
-        ? result.delivery?.status === 'sent' ? 'Changes requested and client notified.' : 'Changes requested; secure link is ready to share.'
-        : variables.action === 'approve' ? 'Client profile finalized.' : variables.action === 'retry_ai' ? 'Pitch profile generated.' : variables.action === 'assignments' ? 'Team assignments updated.' : 'Pitch profile draft saved.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update onboarding.'),
-  })
-
   const linkMutation = useMutation({
     mutationFn: async ({ action, instance }: { action: 'get_link' | 'rotate' | 'extend'; instance: OnboardingInstanceSummary }) => {
       if (action === 'get_link') return getOnboardingLink(workspaceId, instance.id)
@@ -366,7 +318,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       active: instances.filter((instance) => ['invited', 'in_progress', 'changes_requested'].includes(instance.status)).length,
       review: instances.filter((instance) => instance.status === 'submitted').length,
       approved: instances.filter((instance) => instance.status === 'approved').length,
-      expired: instances.filter((instance) => instance.status === 'expired').length,
+      expired: instances.filter((instance) => instance.status === 'expired' || instance.status === 'revoked').length,
     }
   }, [data?.instances])
 
@@ -510,7 +462,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div><h1 className="text-3xl font-bold tracking-tight">Client Onboarding</h1><p className="mt-1 text-muted-foreground">Create branded intake forms, invite clients, review answers, and finalize podcast pitch profiles.</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">Client Onboarding</h1><p className="mt-1 text-muted-foreground">Create branded intake forms, invite clients, and review their completed answers.</p></div>
           {canManage && (publishedTemplates.length > 0
             ? <Button onClick={() => setStartOpen(true)}><Send className="mr-2 h-4 w-4" />Start onboarding</Button>
             : <Button onClick={() => { setEditingTemplate(data?.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Set up a template</Button>)}
@@ -524,7 +476,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           <Card><CardHeader><CardTitle>Onboarding unavailable</CardTitle><CardDescription>{onboardingQuery.error instanceof Error ? onboardingQuery.error.message : 'Try again.'}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => void onboardingQuery.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Try again</Button></CardContent></Card>
         ) : data ? (
           <>
-            {!canManage && <Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>Assigned onboarding access</AlertTitle><AlertDescription>You can review only the onboarding records assigned to you. Owners and admins manage templates, invitations, review decisions, and client profiles.</AlertDescription></Alert>}
+            {!canManage && <Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>Assigned onboarding access</AlertTitle><AlertDescription>You can review only the onboarding records assigned to you. Owners and admins manage templates and invitations.</AlertDescription></Alert>}
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Card><CardHeader className="pb-2"><CardDescription>Active intake</CardDescription><CardTitle className="text-3xl">{counts.active}</CardTitle></CardHeader><CardContent><Clock3 className="h-5 w-5 text-violet-500" /></CardContent></Card>
@@ -550,7 +502,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                               <TableCell><p className="font-medium">{instance.client_name}</p><p className="text-xs text-muted-foreground">{instance.recipient_email}</p>{instance.archived_at && <Badge variant="outline" className="mt-1">Archived</Badge>}</TableCell>
                               <TableCell><p>{instance.template_name}</p><p className="text-xs text-muted-foreground">Version {instance.template_version}</p></TableCell>
                               <TableCell><OnboardingActivity instance={instance} /></TableCell>
-                              <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{statusLabels[instance.status]}</Badge>{instance.open_comment_count > 0 && <p className="mt-1 text-xs text-muted-foreground">{instance.open_comment_count} open notes</p>}</TableCell>
+                              <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{onboardingStatusLabel(instance.status)}</Badge></TableCell>
                               <TableCell className="text-right"><div className="inline-flex items-center gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedInstanceId(instance.id)}>View</Button>{canManage && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                                 {!['approved', 'revoked', 'submitted', 'expired'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'get_link', instance })}><ExternalLink className="mr-2 h-4 w-4" />Open or copy current link</DropdownMenuItem>}
                                 {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
@@ -663,15 +615,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       <OnboardingReviewDialog
         open={Boolean(selectedInstanceId)}
         detail={detailQuery.data ?? null}
-        canManage={canManage}
-        busy={reviewMutation.isPending || detailQuery.isFetching}
-        assignableMembers={data?.assignable_members ?? []}
         onOpenChange={(open) => { if (!open) setSelectedInstanceId(null) }}
-        onRequestChanges={(comments) => reviewMutation.mutate({ action: 'changes', comments })}
-        onSaveProfile={(profile) => reviewMutation.mutate({ action: 'save_profile', profile })}
-        onApprove={(profile) => reviewMutation.mutate({ action: 'approve', profile })}
-        onRetryAi={() => reviewMutation.mutate({ action: 'retry_ai' })}
-        onSaveAssignments={(membershipIds) => reviewMutation.mutate({ action: 'assignments', membershipIds })}
       />
 
       {selectedInstanceId && detailQuery.isLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20"><div className="rounded-xl bg-background p-6 shadow-xl"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div></div>}

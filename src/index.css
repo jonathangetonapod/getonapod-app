@@ -117,6 +117,14 @@
     scroll-behavior: smooth;
   }
 
+  /* Keep the desktop UI comfortably dense at normal browser zoom. Mobile
+     retains the browser's 16px base size for legibility and tap comfort. */
+  @media (min-width: 768px) {
+    html {
+      font-size: 15px;
+    }
+  }
+
   ::selection {
     background: rgba(45, 109, 246, 0.18);
     color: #0d1b2a;

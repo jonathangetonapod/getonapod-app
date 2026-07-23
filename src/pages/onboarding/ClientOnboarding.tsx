@@ -38,19 +38,6 @@ function sectionError(view: ClientOnboardingView, answers: Record<string, unknow
   for (const question of section.questions) {
     const label = renderOnboardingBrandText(question.label, view.workspace.name)
     if (question.required && emptyAnswer(answers[question.id])) return `${label} is required.`
-    const answer = answers[question.id]
-    if (emptyAnswer(answer)) continue
-    if (question.type === 'email' && (typeof answer !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(answer))) {
-      return `${label} must be a valid email address.`
-    }
-    if (question.type === 'url' && typeof answer === 'string') {
-      try {
-        const parsed = new URL(answer)
-        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return `${label} must be a valid web address.`
-      } catch {
-        return `${label} must be a valid web address.`
-      }
-    }
   }
   return null
 }
@@ -429,11 +416,11 @@ const ClientOnboarding = () => {
 }
 
 const BrandHeader = ({ workspace, accent, logoUnavailable, onLogoError }: { workspace: ClientOnboardingView['workspace']; accent: string; logoUnavailable: boolean; onLogoError: () => void }) => (
-  <header className="relative overflow-hidden rounded-3xl p-5 text-white shadow-2xl shadow-slate-950/20 sm:p-7" style={{ background: `linear-gradient(135deg, #111827 0%, ${accent} 100%)` }}>
+  <header className="relative overflow-hidden rounded-2xl p-4 text-white shadow-xl shadow-slate-950/20 sm:p-5" style={{ background: `linear-gradient(135deg, #111827 0%, ${accent} 100%)` }}>
     <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-    <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-      {workspace.logo_url && !logoUnavailable ? <div className="relative flex h-28 w-full max-w-xs items-center justify-center rounded-2xl border border-white/30 bg-white p-4 shadow-xl sm:h-24 sm:w-64"><img src={workspace.logo_url} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" onError={onLogoError} /></div> : <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(workspace.name)}</div>}
-      <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h1 className="mt-1 truncate text-2xl font-bold sm:text-3xl">{workspace.name}</h1><p className="mt-1 text-sm text-white/80">Secure client intake</p></div>
+    <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+      {workspace.logo_url && !logoUnavailable ? <div className="relative flex h-20 w-full max-w-56 items-center justify-center rounded-xl border border-white/30 bg-white p-3 shadow-lg sm:h-16 sm:w-52"><img src={workspace.logo_url} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" onError={onLogoError} /></div> : <div className="relative flex h-14 w-14 items-center justify-center rounded-xl bg-white/15 text-lg font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(workspace.name)}</div>}
+      <div className="relative min-w-0"><p className="text-[11px] font-bold uppercase tracking-[.16em] text-white/70">Client onboarding</p><h1 className="mt-0.5 truncate text-xl font-bold sm:text-2xl">{workspace.name}</h1><p className="mt-0.5 text-xs text-white/80">Secure client intake</p></div>
     </div>
   </header>
 )
@@ -456,7 +443,7 @@ const QuestionField = ({ question, workspaceName, answer, asset, disabled, onCha
   const help = question.description && <p className="text-sm leading-6 text-slate-500">{renderOnboardingBrandText(question.description, workspaceName)}</p>
   const placeholder = renderOnboardingBrandText(question.placeholder, workspaceName)
 
-  if (question.type === 'long_text') return <div className="space-y-2">{label}{help}<Textarea id={inputId} rows={6} maxLength={20000} disabled={disabled} value={typeof answer === 'string' ? answer : ''} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>
+  if (question.type === 'long_text') return <div className="space-y-2">{label}{help}<Textarea id={inputId} rows={5} maxLength={20000} disabled={disabled} value={typeof answer === 'string' ? answer : ''} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>
   if (question.type === 'yes_no') return <div className="space-y-3">{label}{help}<RadioGroup disabled={disabled} value={typeof answer === 'boolean' ? String(answer) : ''} onValueChange={(value) => onChange(value === 'true')} className="flex gap-5"><label className="flex items-center gap-2"><RadioGroupItem value="true" />Yes</label><label className="flex items-center gap-2"><RadioGroupItem value="false" />No</label></RadioGroup></div>
   if (question.type === 'single_select') return <div className="space-y-2">{label}{help}<Select disabled={disabled} value={typeof answer === 'string' ? answer : ''} onValueChange={onChange}><SelectTrigger id={inputId}><SelectValue placeholder="Choose an option" /></SelectTrigger><SelectContent>{question.options?.map((option) => <SelectItem key={option.id} value={option.id}>{renderOnboardingBrandText(option.label, workspaceName)}</SelectItem>)}</SelectContent></Select></div>
   if (question.type === 'multi_select') {
@@ -465,9 +452,9 @@ const QuestionField = ({ question, workspaceName, answer, asset, disabled, onCha
   }
   if (question.type === 'image_upload' || question.type === 'document_upload') {
     const accept = question.type === 'image_upload' ? 'image/png,image/jpeg,image/webp' : 'application/pdf'
-    return <div className="space-y-2">{label}{help}{asset ? <div className="flex flex-col gap-3 rounded-xl border bg-slate-50 p-4 sm:flex-row sm:items-center"><div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white">{question.type === 'image_upload' ? <ImageIcon className="h-5 w-5 text-primary" /> : <FileText className="h-5 w-5 text-primary" />}</div><div className="min-w-0 flex-1">{asset.signed_url ? <a className="block truncate text-sm font-semibold text-primary hover:underline" href={asset.signed_url} target="_blank" rel="noreferrer">{asset.original_name}</a> : <p className="truncate text-sm font-semibold text-slate-600">{asset.original_name} · preview unavailable</p>}<p className="text-xs text-slate-500">{(asset.byte_size / 1_048_576).toFixed(1)} MB</p></div><Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onDeleteUpload(asset.id)}><Trash2 className="mr-2 h-4 w-4" />Remove</Button></div> : <button type="button" disabled={disabled} className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/25 bg-primary/5 p-7 text-center transition hover:border-primary/60 disabled:opacity-60" onClick={() => fileInput.current?.click()}><UploadCloud className="h-8 w-8 text-primary" /><span className="mt-2 text-sm font-semibold text-primary">Choose {question.type === 'image_upload' ? 'an image' : 'a PDF'}</span><span className="mt-1 text-xs text-slate-500">{question.type === 'image_upload' ? 'PNG, JPEG, or WebP up to 5 MB' : 'PDF up to 10 MB'}</span></button>}<input ref={fileInput} id={inputId} type="file" accept={accept} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.currentTarget.value = '' }} /></div>
+    return <div className="space-y-2">{label}{help}{asset ? <div className="flex flex-col gap-3 rounded-xl border bg-slate-50 p-4 sm:flex-row sm:items-center"><div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white">{question.type === 'image_upload' ? <ImageIcon className="h-5 w-5 text-primary" /> : <FileText className="h-5 w-5 text-primary" />}</div><div className="min-w-0 flex-1">{asset.signed_url ? <a className="block truncate text-sm font-semibold text-primary hover:underline" href={asset.signed_url} target="_blank" rel="noreferrer">{asset.original_name}</a> : <p className="truncate text-sm font-semibold text-slate-600">{asset.original_name} · preview unavailable</p>}<p className="text-xs text-slate-500">{(asset.byte_size / 1_048_576).toFixed(1)} MB</p></div><Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onDeleteUpload(asset.id)}><Trash2 className="mr-2 h-4 w-4" />Remove</Button></div> : <button type="button" disabled={disabled} className="flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/25 bg-primary/5 p-5 text-center transition hover:border-primary/60 disabled:opacity-60" onClick={() => fileInput.current?.click()}><UploadCloud className="h-7 w-7 text-primary" /><span className="mt-2 text-sm font-semibold text-primary">Choose {question.type === 'image_upload' ? 'an image' : 'a PDF'}</span><span className="mt-1 text-xs text-slate-500">{question.type === 'image_upload' ? 'PNG, JPEG, or WebP up to 5 MB' : 'PDF up to 10 MB'}</span></button>}<input ref={fileInput} id={inputId} type="file" accept={accept} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.currentTarget.value = '' }} /></div>
   }
-  return <div className="space-y-2">{label}{help}<Input id={inputId} disabled={disabled} type={question.type === 'email' ? 'email' : question.type === 'url' ? 'url' : question.type === 'date' ? 'date' : 'text'} maxLength={question.type === 'url' ? 2048 : 500} value={typeof answer === 'string' ? answer : ''} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>
+  return <div className="space-y-2">{label}{help}<Input id={inputId} disabled={disabled} type="text" maxLength={question.type === 'url' ? 2048 : 500} value={typeof answer === 'string' ? answer : ''} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></div>
 }
 
 const ClientOnboardingPage = () => (

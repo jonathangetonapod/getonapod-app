@@ -117,6 +117,7 @@ describe('OnboardingTemplateBuilder', () => {
     expect(screen.getByText('Preview answers are not saved')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Basic information' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Professional profile' })).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('jane@example.com')).toHaveAttribute('type', 'text')
 
     fireEvent.change(screen.getByPlaceholderText('Jane Smith'), { target: { value: 'Iveth Gonzalez' } })
     fireEvent.change(screen.getByPlaceholderText('jane@example.com'), { target: { value: 'iveth@example.com' } })

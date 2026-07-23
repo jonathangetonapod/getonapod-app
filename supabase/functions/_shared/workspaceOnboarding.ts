@@ -82,7 +82,6 @@ export interface CapabilityParts {
 
 const ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const TOKEN_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([1-9][0-9]{0,9})\.([A-Za-z0-9_-]{43})$/i
 const encoder = new TextEncoder()
 
@@ -117,23 +116,6 @@ function idValue(value: unknown, field: string): string {
     throw new HttpError(400, 'INVALID_FIELD', `${field} must use lowercase letters, numbers, underscores, or dashes`)
   }
   return result
-}
-
-function urlValue(value: string, field: string): string {
-  let parsed: URL
-  try {
-    parsed = new URL(value)
-  } catch {
-    throw new HttpError(400, 'INVALID_FIELD', `${field} must be a valid URL`)
-  }
-  if (
-    (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
-    || parsed.username
-    || parsed.password
-  ) {
-    throw new HttpError(400, 'INVALID_FIELD', `${field} must be a safe HTTP or HTTPS URL`)
-  }
-  return parsed.toString()
 }
 
 function compatibleMapping(type: OnboardingQuestionType, mapping: OnboardingMapping | null): boolean {
@@ -352,27 +334,15 @@ export function validateOnboardingAnswers(
     if (!trimmed || trimmed.length > max) {
       throw new HttpError(400, 'INVALID_FIELD', `${question.label} is too long or empty`)
     }
-    if (question.type === 'email' && (!EMAIL_PATTERN.test(trimmed) || trimmed.length > 254)) {
-      throw new HttpError(400, 'INVALID_FIELD', `${question.label} must be a valid email address`)
-    }
-    if (question.type === 'url') {
-      result[question.id] = urlValue(trimmed, question.label)
-      continue
-    }
-    if (question.type === 'date') {
-      const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-      const parsed = match ? new Date(`${trimmed}T00:00:00.000Z`) : null
-      if (!parsed || Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== trimmed) {
-        throw new HttpError(400, 'INVALID_FIELD', `${question.label} must be a valid date`)
-      }
-    }
     if (question.type === 'single_select') {
       const allowed = new Set(question.options?.map((option) => option.id) ?? [])
       if (!allowed.has(trimmed)) {
         throw new HttpError(400, 'INVALID_FIELD', `${question.label} contains an invalid choice`)
       }
     }
-    result[question.id] = question.type === 'email' ? trimmed.toLowerCase() : trimmed
+    // Scalar answers are intentionally free-form. The semantic question type is
+    // retained for client-field mapping, but it must not block a client's wording.
+    result[question.id] = trimmed
   }
 
   return result

@@ -68,12 +68,12 @@ type OnboardingSection = OnboardingDefinition['sections'][number]
 const typeLabels: Record<OnboardingQuestionType, string> = {
   short_text: 'Short text',
   long_text: 'Long text',
-  email: 'Email',
-  url: 'URL',
+  email: 'Email (free text)',
+  url: 'Website / link (free text)',
   single_select: 'Single select',
   multi_select: 'Multi-select',
   yes_no: 'Yes / No',
-  date: 'Date',
+  date: 'Date (free text)',
   image_upload: 'Image upload',
   document_upload: 'PDF upload',
 }
