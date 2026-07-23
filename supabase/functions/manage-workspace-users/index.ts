@@ -58,6 +58,7 @@ type CredentialPendingRow = {
   claim_kind:
     | 'temporary_password_rotation'
     | 'initial_password_change'
+    | 'staff_password_reset'
   review_after: string
 }
 

@@ -4,6 +4,7 @@ import {
   inviteWorkspaceStaff,
   listWorkspaceStaff,
   mutateWorkspaceStaff,
+  resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
   updateWorkspaceLogo,
@@ -49,7 +50,7 @@ const admin: WorkspaceStaffMember = {
   accepted_at: '2026-07-22T00:20:00.000Z',
   suspended_at: null,
   pending_review: false,
-  allowed_actions: ['update_role', 'transfer_owner', 'suspend', 'revoke'],
+  allowed_actions: ['reset_password', 'update_role', 'transfer_owner', 'suspend', 'revoke'],
 }
 
 function ownerView(overrides: Partial<WorkspaceStaffView> = {}): WorkspaceStaffView {
@@ -120,6 +121,21 @@ describe('workspaceStaff', () => {
 
     expect(result.capabilities.can_generate_password).toBe(false)
     expect(result.capabilities.can_manage_branding).toBe(false)
+  })
+
+  it('accepts the platform-owner-only password reset action on a workspace owner', async () => {
+    const resettableOwner: WorkspaceStaffMember = { ...owner, allowed_actions: ['reset_password'] }
+    invoke.mockResolvedValueOnce({
+      data: ownerView({ members: [resettableOwner, admin] }),
+      error: null,
+    })
+
+    await expect(listWorkspaceStaff(workspaceId)).resolves.toMatchObject({
+      members: [
+        { id: ownerId, allowed_actions: ['reset_password'] },
+        { id: staffId },
+      ],
+    })
   })
 
   it('uploads and removes only the exact workspace logo state', async () => {
@@ -279,7 +295,7 @@ describe('workspaceStaff', () => {
     )
   })
 
-  it('creates and retries a one-time workspace staff password through explicit actions', async () => {
+  it('creates, retries, and resets a one-time workspace staff password through explicit actions', async () => {
     const passwordMember: WorkspaceStaffMember = {
       ...admin,
       email: 'staff@example.com',
@@ -298,6 +314,7 @@ describe('workspaceStaff', () => {
       temporary_password: temporaryPassword,
     }
     invoke
+      .mockResolvedValueOnce({ data: credential, error: null })
       .mockResolvedValueOnce({ data: credential, error: null })
       .mockResolvedValueOnce({ data: credential, error: null })
 
@@ -331,6 +348,22 @@ describe('workspaceStaff', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'manage-workspace-staff', {
       body: {
         action: 'retry_password',
+        workspace_id: workspaceId,
+        membership_id: staffId,
+      },
+    })
+
+    await expect(resetWorkspaceStaffTemporaryPassword(
+      workspaceId,
+      staffId.toUpperCase(),
+    )).resolves.toEqual({
+      member: passwordMember,
+      email: 'staff@example.com',
+      temporary_password: temporaryPassword,
+    })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'manage-workspace-staff', {
+      body: {
+        action: 'reset_password',
         workspace_id: workspaceId,
         membership_id: staffId,
       },
@@ -452,6 +485,9 @@ describe('workspaceStaff', () => {
       'Staff membership ID is invalid.',
     )
     await expect(retryWorkspaceStaffTemporaryPassword(workspaceId, 'not-a-membership')).rejects.toThrow(
+      'Staff membership ID is invalid.',
+    )
+    await expect(resetWorkspaceStaffTemporaryPassword(workspaceId, 'not-a-membership')).rejects.toThrow(
       'Staff membership ID is invalid.',
     )
     await expect(mutateWorkspaceStaff(workspaceId, staffId, 'not-an-action' as never)).rejects.toThrow(

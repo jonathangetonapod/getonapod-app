@@ -1,13 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceClientDetail from '@/pages/app/WorkspaceClientDetail'
 import { useAuth } from '@/contexts/AuthContext'
-import { getWorkspaceClientDetail, type WorkspaceClientDetail as WorkspaceClientDetailData } from '@/services/clients'
+import {
+  getWorkspaceClientDetail,
+  setWorkspaceClientPassword,
+  type WorkspaceClientDetail as WorkspaceClientDetailData,
+} from '@/services/clients'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
-vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
+vi.mock('@/services/clients', () => ({
+  generatePassword: vi.fn(() => 'Generated-Portal-42!'),
+  getWorkspaceClientDetail: vi.fn(),
+  setWorkspaceClientPassword: vi.fn(),
+}))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({ WorkspaceSwitcher: () => <div>Workspace switcher</div> }))
 vi.mock('@/components/workspace/ClientShortlistEditor', () => ({
   ClientShortlistEditor: () => <section id="client-podcast-list">Client podcast editor</section>,
@@ -15,6 +23,7 @@ vi.mock('@/components/workspace/ClientShortlistEditor', () => ({
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
+const mockedSetPortalPassword = vi.mocked(setWorkspaceClientPassword)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 const onboardingId = '33333333-3333-4333-8333-333333333333'
@@ -152,6 +161,7 @@ describe('WorkspaceClientDetail', () => {
       signOut: vi.fn(),
     } as never)
     mockedDetail.mockResolvedValue(detail)
+    mockedSetPortalPassword.mockResolvedValue(undefined)
   })
 
   it('rebuilds the legacy client command center inside the workspace shell', async () => {
@@ -236,6 +246,40 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.queryByRole('link', { name: /preview as client/i })).not.toBeInTheDocument()
     expect(screen.getByText(/No podcasts are on this client’s approval list yet/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /run fresh discovery/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+  })
+
+  it('lets the workspace owner set and reveal a client portal password once', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change portal password' }))
+    const editor = screen.getByRole('dialog', { name: 'Change portal password' })
+    expect(within(editor).getByLabelText('New password')).toHaveValue('Generated-Portal-42!')
+    expect(within(editor).getByLabelText('Confirm password')).toHaveValue('Generated-Portal-42!')
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save new password' }))
+
+    await waitFor(() => expect(mockedSetPortalPassword).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      'Generated-Portal-42!',
+    ))
+    const receipt = await screen.findByRole('dialog', { name: 'Save the client portal password' })
+    expect(within(receipt).getByLabelText('Portal password')).toHaveValue('Generated-Portal-42!')
+    expect(within(receipt).getByRole('button', { name: 'Done' })).toBeDisabled()
+    fireEvent.click(within(receipt).getByLabelText('I saved this password in a secure place.'))
+    fireEvent.click(within(receipt).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Save the client portal password' })).not.toBeInTheDocument())
+  })
+
+  it('keeps client portal password controls owner-only', async () => {
+    mockedDetail.mockResolvedValue({ ...detail, viewer_role: 'admin', can_manage: true })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
+
+    expect(screen.queryByRole('button', { name: 'Change portal password' })).not.toBeInTheDocument()
+    expect(screen.getByText('Only the workspace owner can manage client portal passwords.')).toBeInTheDocument()
   })
 
   it('fails closed before requesting a malformed client address', async () => {

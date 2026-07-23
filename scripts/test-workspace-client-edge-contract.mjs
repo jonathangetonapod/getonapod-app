@@ -6,6 +6,7 @@ const exportEdge = readFileSync('supabase/functions/export-to-google-sheets/inde
 const shortlistEdge = readFileSync('supabase/functions/workspace-client-shortlist/index.ts', 'utf8')
 const publicDashboardEdge = readFileSync('supabase/functions/public-client-dashboard/index.ts', 'utf8')
 const clientPodcastsEdge = readFileSync('supabase/functions/get-client-podcasts/index.ts', 'utf8')
+const portalPasswordEdge = readFileSync('supabase/functions/manage-client-portal-password/index.ts', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const migration = readFileSync(
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql',
@@ -17,6 +18,10 @@ const forwardMigration = readFileSync(
 )
 const shortlistMigration = readFileSync(
   'supabase/migrations/20260723000400_client_shortlist_editor.sql',
+  'utf8',
+)
+const ownerPasswordMigration = readFileSync(
+  'supabase/migrations/20260723000500_workspace_owner_password_management.sql',
   'utf8',
 )
 
@@ -55,6 +60,21 @@ assert.doesNotMatch(shortlistEdge, /\.from\('client_dashboard_podcasts'\)\.delet
 assert.match(shortlistEdge, /podscan_email/u)
 assert.match(shortlistEdge, /rpc\('reorder_client_shortlist_featured_v1'/u)
 assert.match(config, /\[functions\.workspace-client-shortlist\]\s+verify_jwt = true/u)
+
+assert.match(portalPasswordEdge, /const tenantScoped = Object\.hasOwn\(body, 'workspace_id'\)/u)
+assert.match(portalPasswordEdge, /const authContext = await requireAuthenticatedUser\(req\)/u)
+assert.match(portalPasswordEdge, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
+assert.match(portalPasswordEdge, /await requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
+assert.match(portalPasswordEdge, /PASSWORD_MANAGER_ROLES\.has\(access\.role\)/u)
+assert.match(portalPasswordEdge, /p_client_id: clientId,[\s\S]*?p_workspace_id: workspaceId,[\s\S]*?p_password_hash: passwordHash,[\s\S]*?p_actor_user_id: user\.id,[\s\S]*?p_token_issued_at: tokenIssuedAt/u)
+assert.doesNotMatch(portalPasswordEdge, /password:\s*(?:password|body\.password)[,}]/u)
+assert.match(config, /\[functions\.manage-client-portal-password\]\s+verify_jwt = true/u)
+assert.match(ownerPasswordMigration, /CREATE OR REPLACE FUNCTION public\.manage_client_portal_password\([\s\S]*?p_workspace_id UUID[\s\S]*?p_token_issued_at BIGINT/u)
+assert.match(ownerPasswordMigration, /actor_role NOT IN \('owner', 'platform_admin'\)/u)
+assert.match(ownerPasswordMigration, /client\.workspace_id = p_workspace_id/u)
+assert.match(ownerPasswordMigration, /password_verifier = EXCLUDED\.password_verifier/u)
+assert.match(ownerPasswordMigration, /portal_password = NULL/u)
+assert.doesNotMatch(ownerPasswordMigration, /portal_password\s*=\s*p_/u)
 
 assert.match(shortlistMigration, /ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'visible'/u)
 assert.match(shortlistMigration, /CHECK \(visibility IN \('visible', 'hidden', 'archived'\)\)/u)

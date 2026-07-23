@@ -19,6 +19,10 @@ const brandingMigration = readFileSync(
   'supabase/migrations/20260722000400_workspace_branding.sql',
   'utf8',
 )
+const ownerPasswordMigration = readFileSync(
+  'supabase/migrations/20260723000500_workspace_owner_password_management.sql',
+  'utf8',
+)
 
 const cutoverGuardIndex = migration.indexOf('DO $cutover_claim_guard$')
 assert.ok(cutoverGuardIndex > 0, 'provider-claim cutover guard must remain installed')
@@ -67,6 +71,19 @@ for (const rpc of [
     forwardMigration,
     new RegExp(`CREATE OR REPLACE FUNCTION public\\.${rpc}\\(`, 'u'),
     `${rpc} must be upgraded for already-applied foundation databases`,
+  )
+}
+
+for (const rpc of [
+  'claim_workspace_staff_password_reset_v1',
+  'cancel_workspace_staff_password_reset_v1',
+  'complete_workspace_staff_password_reset_v1',
+]) {
+  assert.match(source, new RegExp(`"${rpc}"`, 'u'), `${rpc} must remain version-pinned`)
+  assert.match(
+    ownerPasswordMigration,
+    new RegExp(`CREATE OR REPLACE FUNCTION public\\.${rpc}\\(`, 'u'),
+    `${rpc} must be installed by the owner-password migration`,
   )
 }
 
@@ -150,6 +167,30 @@ for (const [name, namedSignature, typeSignature] of passwordSqlContracts) {
   )
 }
 
+const ownerPasswordSqlContracts = [
+  ['claim_workspace_staff_password_reset_v1', 'p_workspace_id UUID, p_membership_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT, p_attempt_id UUID, p_execution_id UUID', 'UUID, UUID, UUID, BIGINT, UUID, UUID'],
+  ['cancel_workspace_staff_password_reset_v1', 'p_workspace_id UUID, p_membership_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT, p_attempt_id UUID, p_execution_id UUID', 'UUID, UUID, UUID, BIGINT, UUID, UUID'],
+  ['complete_workspace_staff_password_reset_v1', 'p_workspace_id UUID, p_membership_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT, p_attempt_id UUID, p_execution_id UUID, p_credential_version BIGINT', 'UUID, UUID, UUID, BIGINT, UUID, UUID, BIGINT'],
+]
+
+for (const [name, namedSignature, typeSignature] of ownerPasswordSqlContracts) {
+  assert.match(
+    ownerPasswordMigration,
+    sqlPattern(`CREATE OR REPLACE FUNCTION public.${name}( ${namedSignature} )`),
+    `${name} SQL named signature must match Edge`,
+  )
+  assert.match(
+    ownerPasswordMigration,
+    sqlPattern(`REVOKE ALL ON FUNCTION public.${name}( ${typeSignature} ) FROM PUBLIC, anon, authenticated, service_role;`),
+    `${name} must be revoked before its narrow grant`,
+  )
+  assert.match(
+    ownerPasswordMigration,
+    sqlPattern(`GRANT EXECUTE ON FUNCTION public.${name}( ${typeSignature} ) TO service_role;`),
+    `${name} must be service-role-only`,
+  )
+}
+
 const sqlContracts = [
   ['workspace_staff_list_v1', 'p_workspace_id UUID, p_actor_user_id UUID, p_token_issued_at BIGINT', 'UUID, UUID, BIGINT'],
   ['begin_workspace_staff_invite_v1', 'p_workspace_id UUID, p_email TEXT, p_full_name TEXT, p_role TEXT, p_actor_user_id UUID, p_token_issued_at BIGINT', 'UUID, TEXT, TEXT, TEXT, UUID, BIGINT'],
@@ -202,6 +243,14 @@ assert.match(source, /workspace_credential_attempt_id: lockToken/u)
 assert.match(source, /temporary_password: issued\.temporaryPassword/u)
 assert.match(source, /action === "create_password"/u)
 assert.match(source, /action === "retry_password"/u)
+assert.match(source, /action === "reset_password"/u)
+assert.match(source, /const temporaryPassword = generateTemporaryPassword\(\)[\s\S]*?password: temporaryPassword, app_metadata: nextMetadata/u)
+assert.match(source, /workspace_password_change_required: true/u)
+assert.match(source, /"complete_workspace_staff_password_reset_v1"/u)
+assert.match(ownerPasswordMigration, /'reset_password'/u)
+assert.match(ownerPasswordMigration, /claim_kind = 'staff_password_reset'/u)
+assert.match(ownerPasswordMigration, /status = 'invited',[\s\S]*?password_change_required = true/u)
+assert.doesNotMatch(ownerPasswordMigration, /temporary_password\s+(?:TEXT|VARCHAR)/iu)
 assert.match(source, /capabilities\.can_generate_password \?\? false/u)
 assert.match(source, /capabilities\.can_manage_branding \?\? false/u)
 assert.match(source, /action === "update_logo"/u)

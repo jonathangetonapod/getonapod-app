@@ -37,6 +37,7 @@ import {
   inviteWorkspaceStaff,
   listWorkspaceStaff,
   mutateWorkspaceStaff,
+  resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
   updateWorkspaceLogo,
@@ -54,11 +55,12 @@ interface WorkspaceStaffProps {
   platformWorkspaceId?: string
 }
 
-type ConfirmationAction = 'suspend' | 'reactivate' | 'revoke' | 'transfer_owner' | 'update_role'
+type ConfirmationAction = 'suspend' | 'reactivate' | 'revoke' | 'transfer_owner' | 'update_role' | 'reset_password'
 type InviteMethod = 'email_invite' | 'temporary_password'
 type PasswordRequest =
   | { mode: 'create'; input: WorkspaceStaffInviteInput }
   | { mode: 'retry'; member: WorkspaceStaffMember }
+  | { mode: 'reset'; member: WorkspaceStaffMember }
 
 interface Confirmation {
   action: ConfirmationAction
@@ -132,6 +134,13 @@ function confirmationCopy(
         ? 'This user becomes the workspace owner and the current workspace owner becomes an admin. You remain the platform owner.'
         : 'This user becomes the only workspace owner. Your role changes to admin, and only the new owner can transfer ownership again.',
       button: 'Transfer ownership',
+    }
+  }
+  if (confirmation.action === 'reset_password') {
+    return {
+      title: `Reset ${name}’s password?`,
+      description: 'Their current workspace sessions will stop working. A one-time temporary password will be shown to you, and they must replace it at their next sign-in.',
+      button: 'Reset password',
     }
   }
   return {
@@ -269,7 +278,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       }
       const issued = request.mode === 'create'
         ? await createWorkspaceStaffTemporaryPassword(workspaceId, request.input)
-        : await retryWorkspaceStaffTemporaryPassword(workspaceId, request.member.id)
+        : request.mode === 'retry'
+          ? await retryWorkspaceStaffTemporaryPassword(workspaceId, request.member.id)
+          : await resetWorkspaceStaffTemporaryPassword(workspaceId, request.member.id)
       await queryClient.invalidateQueries({ queryKey })
       setInviteOpen(false)
       setInvite(emptyInvite)
@@ -290,6 +301,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
   const actionMutation = useMutation({
     mutationFn: async (request: Confirmation | { action: 'retry_invite'; member: WorkspaceStaffMember }) => {
+      if (request.action === 'reset_password') {
+        throw new Error('Password resets use the one-time credential flow.')
+      }
       if (request.action === 'update_role') {
         if (!request.role) throw new Error('Choose a staff role.')
         return updateWorkspaceStaffRole(workspaceId, request.member.id, request.role)
@@ -512,7 +526,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               </TableCell>
                               <TableCell>{formatDate(member.accepted_at || member.invited_at)}</TableCell>
                               <TableCell className="text-right">
-                                {member.role === 'owner' ? <span className="text-sm text-muted-foreground">Protected owner</span> : manageable ? (
+                                {member.role === 'owner' && !manageable ? <span className="text-sm text-muted-foreground">Protected owner</span> : manageable ? (
                                   <div className="inline-flex flex-wrap justify-end gap-2">
                                     {member.allowed_actions.includes('retry_invite') && (
                                       <Button size="sm" variant="outline" disabled={busy} onClick={() => actionMutation.mutate({ action: 'retry_invite', member })}><RefreshCw className="mr-2 h-4 w-4" />Retry invite</Button>
@@ -521,6 +535,12 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                       <Button size="sm" variant="outline" disabled={busy} onClick={() => void issueTemporaryPassword({ mode: 'retry', member })}>
                                         {passwordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
                                         Generate password
+                                      </Button>
+                                    )}
+                                    {member.allowed_actions.includes('reset_password') && (
+                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmation({ action: 'reset_password', member })}>
+                                        {passwordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                                        Reset password
                                       </Button>
                                     )}
                                     {member.allowed_actions.includes('update_role') && capabilities.can_update_roles && (
@@ -718,7 +738,16 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
         <AlertDialogContent>
           {confirmation && (() => {
             const copy = confirmationCopy(confirmation, isPlatformWorkspace)
-            return <><AlertDialogHeader><AlertDialogTitle>{copy.title}</AlertDialogTitle><AlertDialogDescription>{copy.description}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={actionMutation.isPending}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => actionMutation.mutate(confirmation)} disabled={actionMutation.isPending}>{actionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{copy.button}</AlertDialogAction></AlertDialogFooter></>
+            const confirmationBusy = actionMutation.isPending || passwordBusy
+            return <><AlertDialogHeader><AlertDialogTitle>{copy.title}</AlertDialogTitle><AlertDialogDescription>{copy.description}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={confirmationBusy}>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => {
+              if (confirmation.action === 'reset_password') {
+                const member = confirmation.member
+                setConfirmation(null)
+                void issueTemporaryPassword({ mode: 'reset', member })
+                return
+              }
+              actionMutation.mutate(confirmation)
+            }} disabled={confirmationBusy}>{confirmationBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{copy.button}</AlertDialogAction></AlertDialogFooter></>
           })()}
         </AlertDialogContent>
       </AlertDialog>

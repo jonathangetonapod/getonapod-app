@@ -525,6 +525,38 @@ export async function setClientPassword(clientId: string, password: string, setB
 }
 
 /**
+ * Set or reset a client portal password from an explicitly selected workspace.
+ * The plaintext password is sent only to the authenticated Edge Function and
+ * is never persisted by this service or returned by the API.
+ */
+export async function setWorkspaceClientPassword(
+  workspaceId: string,
+  clientId: string,
+  password: string,
+): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('manage-client-portal-password', {
+    body: {
+      action: 'set',
+      workspace_id: workspaceId,
+      client_id: clientId,
+      password,
+    },
+  })
+
+  if (error) {
+    throw await toFunctionError(error, 'The client portal password could not be set.')
+  }
+  if (
+    !data
+    || typeof data !== 'object'
+    || data.success !== true
+    || data.configured !== true
+  ) {
+    throw new Error('The client portal password response was invalid.')
+  }
+}
+
+/**
  * Clear client portal password
  */
 export async function clearClientPassword(clientId: string) {

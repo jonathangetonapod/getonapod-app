@@ -30,6 +30,7 @@ const STAFF_STATUSES = [
 const PUBLIC_ACTIONS = [
   "retry_invite",
   "retry_password",
+  "reset_password",
   "update_role",
   "transfer_owner",
   "suspend",
@@ -105,6 +106,12 @@ interface StaffMemberDto {
   suspended_at: string | null;
   pending_review: boolean;
   allowed_actions: PublicAction[];
+}
+
+interface StaffPasswordResetClaim {
+  membership: InternalMembership;
+  attemptId: string;
+  executionId: string;
 }
 
 interface StaffViewDto {
@@ -269,7 +276,13 @@ function memberDto(value: unknown, useRpcCapabilities = true): StaffMemberDto {
     (allowedActions.includes("retry_invite") &&
       setupMethod !== "email_invite") ||
     (allowedActions.includes("retry_password") &&
-      setupMethod !== "admin_temporary_password")
+      setupMethod !== "admin_temporary_password") ||
+    (allowedActions.includes("reset_password") &&
+      !(
+        row.status === "active" ||
+        (row.status === "invited" &&
+          setupMethod === "admin_temporary_password")
+      ))
   ) {
     invalidRpcResponse();
   }
@@ -1310,6 +1323,21 @@ function markerContradicts(
     (membershipId !== undefined && membershipId !== membership.id);
 }
 
+function resetIdentityMarkersAreSafe(
+  user: {
+    app_metadata?: Record<string, unknown>;
+    user_metadata?: Record<string, unknown>;
+  },
+  membership: InternalMembership,
+): boolean {
+  const appMetadata = user.app_metadata ?? {};
+  const appMarkersMatch = markerMatches(appMetadata, membership);
+  const appMarkersAreAbsent = appMetadata.workspace_id == null &&
+    appMetadata.workspace_membership_id == null;
+  return (appMarkersMatch || appMarkersAreAbsent) &&
+    !markerContradicts(user.user_metadata, membership);
+}
+
 async function requireSafeProviderInviteIdentity(
   admin: AdminClient,
   user: {
@@ -1699,6 +1727,307 @@ async function issueStaffTemporaryPassword(
     "PASSWORD_CREATE_RETRY_REQUIRED",
     "Password creation was safely rolled back; generate a new password",
   );
+}
+
+function staffPasswordResetClaim(value: unknown): StaffPasswordResetClaim {
+  const row = responseRecord(value);
+  return {
+    membership: internalMembership(row.membership),
+    attemptId: responseUuid(row.attempt_id),
+    executionId: responseUuid(row.execution_id),
+  };
+}
+
+async function claimStaffPasswordReset(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+    attemptId: string;
+    executionId: string;
+  },
+): Promise<StaffPasswordResetClaim> {
+  const { data, error } = await admin.rpc(
+    "claim_workspace_staff_password_reset_v1",
+    {
+      p_workspace_id: input.workspaceId,
+      p_membership_id: input.membershipId,
+      p_actor_user_id: input.actorUserId,
+      p_token_issued_at: input.tokenIssuedAt,
+      p_attempt_id: input.attemptId,
+      p_execution_id: input.executionId,
+    },
+  );
+  if (error) {
+    rpcFailure(
+      error,
+      "STAFF_PASSWORD_RESET_FAILED",
+      "The workspace user password could not be reset",
+    );
+  }
+  const claim = staffPasswordResetClaim(data);
+  if (
+    claim.membership.id !== input.membershipId ||
+    claim.membership.workspace_id !== input.workspaceId ||
+    claim.membership.status !== "invited" ||
+    claim.membership.provisioning_method !== "admin_temporary_password" ||
+    !claim.membership.password_change_required ||
+    claim.attemptId !== input.attemptId ||
+    claim.executionId !== input.executionId
+  ) {
+    invalidRpcResponse();
+  }
+  return claim;
+}
+
+async function cancelStaffPasswordReset(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+    attemptId: string;
+    executionId: string;
+  },
+): Promise<void> {
+  const { data, error } = await admin.rpc(
+    "cancel_workspace_staff_password_reset_v1",
+    {
+      p_workspace_id: input.workspaceId,
+      p_membership_id: input.membershipId,
+      p_actor_user_id: input.actorUserId,
+      p_token_issued_at: input.tokenIssuedAt,
+      p_attempt_id: input.attemptId,
+      p_execution_id: input.executionId,
+    },
+  );
+  if (error) {
+    throw new HttpError(
+      503,
+      "STAFF_PASSWORD_RECONCILIATION_REQUIRED",
+      "The workspace user password reset requires operator review",
+    );
+  }
+  const restored = internalMembership(data);
+  if (
+    restored.id !== input.membershipId ||
+    restored.workspace_id !== input.workspaceId
+  ) {
+    invalidRpcResponse();
+  }
+}
+
+async function failStaffPasswordResetBeforeProvider(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+    attemptId: string;
+    executionId: string;
+  },
+  error: HttpError,
+): Promise<never> {
+  await cancelStaffPasswordReset(admin, input);
+  throw error;
+}
+
+function resetCredentialVersion(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+    throw new HttpError(
+      409,
+      "CREDENTIAL_STATE_INVALID",
+      "The workspace user credential state requires operator review",
+    );
+  }
+  return value;
+}
+
+function exactStaffPasswordResetMetadata(
+  metadata: Record<string, unknown> | undefined,
+  membership: InternalMembership,
+  attemptId: string,
+  executionId: string,
+  credentialVersion: number,
+): boolean {
+  return markerMatches(metadata, membership) &&
+    metadata?.workspace_provisioning_method === "admin_temporary_password" &&
+    metadata?.workspace_password_change_required === true &&
+    metadata?.workspace_credential_version === credentialVersion &&
+    metadata?.workspace_credential_attempt_id === attemptId &&
+    metadata?.workspace_credential_execution_id === executionId;
+}
+
+async function resetStaffTemporaryPassword(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+  },
+): Promise<{ membership: InternalMembership; temporaryPassword: string }> {
+  const resetInput = {
+    ...input,
+    attemptId: crypto.randomUUID(),
+    executionId: crypto.randomUUID(),
+  };
+  const claim = await claimStaffPasswordReset(admin, resetInput);
+  const membership = claim.membership;
+
+  try {
+    await requireUnprotectedEmail(admin, membership.email_normalized);
+  } catch (error) {
+    return await failStaffPasswordResetBeforeProvider(
+      admin,
+      resetInput,
+      error instanceof HttpError
+        ? error
+        : new HttpError(
+          503,
+          "ACCOUNT_PROTECTION_UNAVAILABLE",
+          "The account protection check is unavailable",
+        ),
+    );
+  }
+
+  if (!membership.user_id) {
+    return await failStaffPasswordResetBeforeProvider(
+      admin,
+      resetInput,
+      new HttpError(
+        409,
+        "STAFF_IDENTITY_UNSAFE",
+        "The workspace user identity requires operator review",
+      ),
+    );
+  }
+
+  const currentResult = await admin.auth.admin.getUserById(membership.user_id);
+  const currentUser = currentResult.data.user;
+  if (currentResult.error || !currentUser) {
+    return await failStaffPasswordResetBeforeProvider(
+      admin,
+      resetInput,
+      new HttpError(
+        503,
+        "STAFF_PASSWORD_RESET_RETRY_REQUIRED",
+        "The workspace user password could not be verified. Try again",
+      ),
+    );
+  }
+  if (
+    currentUser.email?.trim().toLowerCase() !== membership.email_normalized ||
+    !resetIdentityMarkersAreSafe(currentUser, membership)
+  ) {
+    return await failStaffPasswordResetBeforeProvider(
+      admin,
+      resetInput,
+      new HttpError(
+        409,
+        "STAFF_IDENTITY_UNSAFE",
+        "The workspace user identity requires operator review",
+      ),
+    );
+  }
+
+  let nextVersion: number;
+  try {
+    nextVersion = resetCredentialVersion(
+      currentUser.app_metadata?.workspace_credential_version,
+    ) + 1;
+    if (!Number.isSafeInteger(nextVersion)) throw new Error("version overflow");
+  } catch {
+    return await failStaffPasswordResetBeforeProvider(
+      admin,
+      resetInput,
+      new HttpError(
+        409,
+        "CREDENTIAL_STATE_INVALID",
+        "The workspace user credential state requires operator review",
+      ),
+    );
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const nextMetadata = {
+    ...currentUser.app_metadata,
+    workspace_id: membership.workspace_id,
+    workspace_membership_id: membership.id,
+    workspace_provisioning_method: "admin_temporary_password",
+    workspace_password_change_required: true,
+    workspace_credential_version: nextVersion,
+    workspace_credential_attempt_id: claim.attemptId,
+    workspace_credential_execution_id: claim.executionId,
+  };
+  const updatedResult = await admin.auth.admin.updateUserById(
+    membership.user_id,
+    { password: temporaryPassword, app_metadata: nextMetadata },
+  );
+  let updatedUser = updatedResult.data.user;
+  if (updatedResult.error || !updatedUser) {
+    const reconciled = await admin.auth.admin.getUserById(membership.user_id);
+    updatedUser = reconciled.data.user;
+  }
+
+  if (
+    !updatedUser ||
+    updatedUser.email?.trim().toLowerCase() !== membership.email_normalized ||
+    !exactStaffPasswordResetMetadata(
+      updatedUser.app_metadata,
+      membership,
+      claim.attemptId,
+      claim.executionId,
+      nextVersion,
+    )
+  ) {
+    return await failStaffPasswordResetBeforeProvider(
+      admin,
+      resetInput,
+      new HttpError(
+        503,
+        "STAFF_PASSWORD_RESET_RETRY_REQUIRED",
+        "The workspace user password was not changed. Try again",
+      ),
+    );
+  }
+
+  const { data, error } = await admin.rpc(
+    "complete_workspace_staff_password_reset_v1",
+    {
+      p_workspace_id: input.workspaceId,
+      p_membership_id: input.membershipId,
+      p_actor_user_id: input.actorUserId,
+      p_token_issued_at: input.tokenIssuedAt,
+      p_attempt_id: claim.attemptId,
+      p_execution_id: claim.executionId,
+      p_credential_version: nextVersion,
+    },
+  );
+  if (error) {
+    throw new HttpError(
+      503,
+      "STAFF_PASSWORD_RECONCILIATION_REQUIRED",
+      "The password changed, but workspace access requires operator review",
+    );
+  }
+  const completed = internalMembership(data);
+  if (
+    completed.id !== input.membershipId ||
+    completed.workspace_id !== input.workspaceId ||
+    completed.status !== "invited" ||
+    completed.provisioning_method !== "admin_temporary_password" ||
+    !completed.password_change_required
+  ) {
+    invalidRpcResponse();
+  }
+
+  return { membership: completed, temporaryPassword };
 }
 
 async function claimStaffLifecycle(
@@ -2219,6 +2548,23 @@ serve(async (req) => {
       requireOnlyKeys(body, ["action", "workspace_id", "membership_id"]);
       const membershipId = requireUuid(body.membership_id, "membership_id");
       const issued = await issueStaffTemporaryPassword(admin, {
+        workspaceId,
+        membershipId,
+        actorUserId: user.id,
+        tokenIssuedAt,
+      });
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        member: memberDto(issued.membership, false),
+        email: issued.membership.email_normalized,
+        temporary_password: issued.temporaryPassword,
+      });
+    }
+
+    if (action === "reset_password") {
+      requireOnlyKeys(body, ["action", "workspace_id", "membership_id"]);
+      const membershipId = requireUuid(body.membership_id, "membership_id");
+      const issued = await resetStaffTemporaryPassword(admin, {
         workspaceId,
         membershipId,
         actorUserId: user.id,

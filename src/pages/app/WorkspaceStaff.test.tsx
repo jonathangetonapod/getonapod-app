@@ -9,6 +9,7 @@ import {
   inviteWorkspaceStaff,
   listWorkspaceStaff,
   mutateWorkspaceStaff,
+  resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
   updateWorkspaceLogo,
@@ -32,6 +33,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   inviteWorkspaceStaff: vi.fn(),
   listWorkspaceStaff: vi.fn(),
   mutateWorkspaceStaff: vi.fn(),
+  resetWorkspaceStaffTemporaryPassword: vi.fn(),
   retryWorkspaceStaffTemporaryPassword: vi.fn(),
   removeWorkspaceLogo: vi.fn(),
   updateWorkspaceLogo: vi.fn(),
@@ -43,6 +45,7 @@ const mockedCreatePassword = vi.mocked(createWorkspaceStaffTemporaryPassword)
 const mockedInvite = vi.mocked(inviteWorkspaceStaff)
 const mockedList = vi.mocked(listWorkspaceStaff)
 const mockedMutate = vi.mocked(mutateWorkspaceStaff)
+const mockedResetPassword = vi.mocked(resetWorkspaceStaffTemporaryPassword)
 const mockedRetryPassword = vi.mocked(retryWorkspaceStaffTemporaryPassword)
 const mockedRemoveLogo = vi.mocked(removeWorkspaceLogo)
 const mockedUpdateLogo = vi.mocked(updateWorkspaceLogo)
@@ -83,7 +86,7 @@ const admin: WorkspaceStaffMember = {
   accepted_at: '2026-07-22T00:20:00.000Z',
   suspended_at: null,
   pending_review: false,
-  allowed_actions: ['update_role', 'transfer_owner', 'suspend', 'revoke'],
+  allowed_actions: ['reset_password', 'update_role', 'transfer_owner', 'suspend', 'revoke'],
 }
 
 const ownerView: WorkspaceStaffView = {
@@ -175,6 +178,11 @@ describe('WorkspaceStaff', () => {
       temporary_password: temporaryPassword,
     })
     mockedRetryPassword.mockResolvedValue({
+      member: passwordMember,
+      email: passwordMember.email,
+      temporary_password: temporaryPassword,
+    })
+    mockedResetPassword.mockResolvedValue({
       member: passwordMember,
       email: passwordMember.email,
       temporary_password: temporaryPassword,
@@ -346,6 +354,21 @@ describe('WorkspaceStaff', () => {
     expect(await screen.findByRole('dialog', { name: 'Save the temporary password' })).toBeInTheDocument()
   })
 
+  it('lets the workspace owner reset a user password and reveals the temporary password once', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
+    const confirmation = screen.getByRole('alertdialog', { name: 'Reset Agency Admin’s password?' })
+    expect(within(confirmation).getByText(/current workspace sessions will stop working/i)).toBeInTheDocument()
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Reset password' }))
+
+    await waitFor(() => expect(mockedResetPassword).toHaveBeenCalledWith(workspaceId, adminId))
+    const credentialDialog = await screen.findByRole('dialog', { name: 'Save the temporary password' })
+    expect(within(credentialDialog).getByLabelText('Temporary password')).toHaveValue(temporaryPassword)
+    expect(within(credentialDialog).getByText(/must replace the temporary password at first sign-in/i)).toBeInTheDocument()
+  })
+
   it('confirms ownership transfer and refreshes the demoted owner session', async () => {
     renderPage()
     await screen.findByText('Agency Admin')
@@ -412,6 +435,41 @@ describe('WorkspaceStaff', () => {
     expect(refreshSession).not.toHaveBeenCalled()
     expect(refreshAccount).not.toHaveBeenCalled()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('lets the platform owner reset the selected workspace owner without exposing an old password', async () => {
+    const resettableOwner: WorkspaceStaffMember = { ...owner, allowed_actions: ['reset_password'] }
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'platform@example.com' },
+      workspace: null,
+      membership: null,
+      isPlatformAdmin: true,
+      refreshAccount,
+      refreshSession,
+      signOut,
+    } as never)
+    mockedList.mockResolvedValue({ ...ownerView, members: [resettableOwner, admin] })
+    mockedResetPassword.mockResolvedValue({
+      member: {
+        ...owner,
+        status: 'invited',
+        invite_expires_at: '2026-07-30T00:00:00.000Z',
+        accepted_at: owner.accepted_at,
+        allowed_actions: [],
+      },
+      email: owner.email,
+      temporary_password: temporaryPassword,
+    })
+
+    renderPage(workspaceId)
+    const ownerRow = (await screen.findByText('Workspace Owner')).closest('tr')
+    expect(ownerRow).not.toBeNull()
+    fireEvent.click(within(ownerRow as HTMLElement).getByRole('button', { name: 'Reset password' }))
+    const confirmation = screen.getByRole('alertdialog', { name: 'Reset Workspace Owner’s password?' })
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Reset password' }))
+
+    await waitFor(() => expect(mockedResetPassword).toHaveBeenCalledWith(workspaceId, ownerId))
+    expect(await screen.findByRole('dialog', { name: 'Save the temporary password' })).toBeInTheDocument()
   })
 
   it('fails closed when selected-workspace data names a different workspace', async () => {

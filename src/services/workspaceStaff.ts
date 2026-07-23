@@ -8,6 +8,7 @@ export type WorkspaceStaffSetupMethod = 'email_invite' | 'admin_temporary_passwo
 export type WorkspaceStaffAction =
   | 'retry_invite'
   | 'retry_password'
+  | 'reset_password'
   | 'update_role'
   | 'transfer_owner'
   | 'suspend'
@@ -76,6 +77,7 @@ const SETUP_METHODS: WorkspaceStaffSetupMethod[] = ['email_invite', 'admin_tempo
 const ACTIONS: WorkspaceStaffAction[] = [
   'retry_invite',
   'retry_password',
+  'reset_password',
   'update_role',
   'transfer_owner',
   'suspend',
@@ -83,7 +85,7 @@ const ACTIONS: WorkspaceStaffAction[] = [
   'revoke',
 ]
 const LOGO_OBJECT_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp)$/
-const MUTATION_ACTIONS: Array<Exclude<WorkspaceStaffAction, 'update_role' | 'retry_password'>> = [
+const MUTATION_ACTIONS: Array<Exclude<WorkspaceStaffAction, 'update_role' | 'retry_password' | 'reset_password'>> = [
   'retry_invite',
   'transfer_owner',
   'suspend',
@@ -154,12 +156,16 @@ function parseMember(value: unknown): WorkspaceStaffMember {
   }
 
   const actionsMatchState = (
-    (role !== 'owner' || allowedActions.length === 0)
+    (role !== 'owner' || allowedActions.every((action) => action === 'reset_password'))
     && (!allowedActions.includes('retry_invite') || (
       status === 'provisioning' && setupMethod === 'email_invite'
     ))
     && (!allowedActions.includes('retry_password') || (
       status === 'provisioning' && setupMethod === 'admin_temporary_password'
+    ))
+    && (!allowedActions.includes('reset_password') || (
+      status === 'active'
+      || (status === 'invited' && setupMethod === 'admin_temporary_password')
     ))
     && (!allowedActions.includes('update_role') || status === 'active' || status === 'suspended')
     && (!allowedActions.includes('transfer_owner') || status === 'active')
@@ -477,6 +483,20 @@ export async function retryWorkspaceStaffTemporaryPassword(
   return parseTemporaryCredential(data, { membershipId: canonicalMembershipId })
 }
 
+export async function resetWorkspaceStaffTemporaryPassword(
+  workspaceId: string,
+  membershipId: string,
+): Promise<WorkspaceStaffTemporaryCredential> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const canonicalMembershipId = canonicalUuid(membershipId, 'Staff membership ID')
+  const data = await invoke({
+    action: 'reset_password',
+    workspace_id: canonicalWorkspaceId,
+    membership_id: canonicalMembershipId,
+  }, 'The workspace user password could not be reset.')
+  return parseTemporaryCredential(data, { membershipId: canonicalMembershipId })
+}
+
 export async function updateWorkspaceStaffRole(
   workspaceId: string,
   membershipId: string,
@@ -502,7 +522,7 @@ export async function updateWorkspaceStaffRole(
 export async function mutateWorkspaceStaff(
   workspaceId: string,
   membershipId: string,
-  action: Exclude<WorkspaceStaffAction, 'update_role' | 'retry_password'>,
+  action: Exclude<WorkspaceStaffAction, 'update_role' | 'retry_password' | 'reset_password'>,
 ): Promise<WorkspaceStaffMember | null> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const canonicalMembershipId = canonicalUuid(membershipId, 'Staff membership ID')
@@ -530,7 +550,7 @@ export async function mutateWorkspaceStaff(
     return owner
   }
   const member = parseMember(data.member)
-  const expectedStatus: Record<Exclude<WorkspaceStaffAction, 'update_role' | 'retry_password' | 'transfer_owner'>, WorkspaceStaffStatus> = {
+  const expectedStatus: Record<Exclude<WorkspaceStaffAction, 'update_role' | 'retry_password' | 'reset_password' | 'transfer_owner'>, WorkspaceStaffStatus> = {
     retry_invite: 'invited',
     suspend: 'suspended',
     reactivate: 'active',

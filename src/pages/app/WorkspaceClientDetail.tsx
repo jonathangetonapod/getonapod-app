@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import {
@@ -11,6 +11,7 @@ import {
   Copy,
   ExternalLink,
   Eye,
+  EyeOff,
   Globe2,
   KeyRound,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
   MessageSquareText,
   Mic2,
   Radio,
+  RefreshCw,
   Search,
   Sparkles,
   UserRound,
@@ -31,6 +33,10 @@ import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEdi
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -40,6 +46,8 @@ import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
   getWorkspaceClientDetail,
+  generatePassword,
+  setWorkspaceClientPassword,
   type WorkspaceClientBooking,
   type WorkspaceClientOnboardingSummary,
 } from '@/services/clients'
@@ -228,6 +236,15 @@ function MilestoneList({
 const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailProps) => {
   const { clientId = '' } = useParams<{ clientId: string }>()
   const { user, workspace } = useAuth()
+  const [portalPasswordOpen, setPortalPasswordOpen] = useState(false)
+  const [portalPassword, setPortalPassword] = useState('')
+  const [portalPasswordConfirm, setPortalPasswordConfirm] = useState('')
+  const [portalPasswordVisible, setPortalPasswordVisible] = useState(false)
+  const [portalPasswordCommitted, setPortalPasswordCommitted] = useState(false)
+  const [portalPasswordCopied, setPortalPasswordCopied] = useState(false)
+  const [portalPasswordSaved, setPortalPasswordSaved] = useState(false)
+  const [portalPasswordError, setPortalPasswordError] = useState<string | null>(null)
+  const [portalPasswordBusy, setPortalPasswordBusy] = useState(false)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const canonicalClientId = clientId.toLowerCase()
@@ -341,6 +358,74 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     : dashboard.configured
       ? 'border-amber-200 bg-amber-50 text-amber-800'
       : undefined
+  const canManageCredentials = detail.viewer_role === 'owner'
+    || detail.viewer_role === 'platform_admin'
+  const portalPasswordValid = portalPassword.length >= 12
+    && portalPassword.length <= 72
+    && portalPassword === portalPasswordConfirm
+
+  const clearPortalPasswordDialog = () => {
+    setPortalPasswordOpen(false)
+    setPortalPassword('')
+    setPortalPasswordConfirm('')
+    setPortalPasswordVisible(false)
+    setPortalPasswordCommitted(false)
+    setPortalPasswordCopied(false)
+    setPortalPasswordSaved(false)
+    setPortalPasswordError(null)
+    setPortalPasswordBusy(false)
+  }
+
+  const generatePortalPassword = () => {
+    const generated = generatePassword(18)
+    setPortalPassword(generated)
+    setPortalPasswordConfirm(generated)
+    setPortalPasswordVisible(true)
+    setPortalPasswordCopied(false)
+    setPortalPasswordError(null)
+  }
+
+  const openPortalPasswordDialog = () => {
+    clearPortalPasswordDialog()
+    const generated = generatePassword(18)
+    setPortalPassword(generated)
+    setPortalPasswordConfirm(generated)
+    setPortalPasswordVisible(true)
+    setPortalPasswordOpen(true)
+  }
+
+  const copyPortalPassword = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(portalPassword)
+      setPortalPasswordCopied(true)
+      setPortalPasswordError(null)
+    } catch {
+      setPortalPasswordError('Copy failed. Reveal the password and copy it manually.')
+    }
+  }
+
+  // Keep the plaintext only in component state. Using a React Query mutation
+  // here would retain it as a cached mutation variable after the request.
+  const savePortalPassword = async () => {
+    if (!portalPasswordValid || portalPasswordBusy) return
+    setPortalPasswordBusy(true)
+    setPortalPasswordError(null)
+    try {
+      await setWorkspaceClientPassword(workspaceId, canonicalClientId, portalPassword)
+      setPortalPasswordCommitted(true)
+      setPortalPasswordCopied(false)
+      setPortalPasswordSaved(false)
+      await detailQuery.refetch()
+      toast.success('Client portal password updated.')
+    } catch (error) {
+      setPortalPasswordError(
+        error instanceof Error ? error.message : 'The client portal password could not be set.',
+      )
+    } finally {
+      setPortalPasswordBusy(false)
+    }
+  }
 
   const copyPublicLink = async (path: string, label: string) => {
     try {
@@ -617,9 +702,27 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   <DetailRow label="Access" value={client.portal_access_enabled ? 'Enabled' : 'Disabled'} />
                   <DetailRow label="Password" value={client.password_set_at ? `Configured ${formatDate(client.password_set_at)}` : 'Not configured'} />
                   <DetailRow label="Last login" value={formatDateTime(client.portal_last_login_at)} />
-                  <div className="mt-5 rounded-xl border bg-muted/30 p-4 text-sm leading-6 text-muted-foreground">
-                    {canManage ? 'Workspace-safe password reset controls are intentionally kept separate from the public portal. Current credential status is shown here without exposing a password.' : 'Workspace owners and admins manage client portal credentials.'}
-                  </div>
+                  {canManageCredentials ? (
+                    <div className="mt-5 space-y-3 rounded-xl border bg-muted/30 p-4">
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        Existing passwords cannot be viewed. Set a new password and it will be visible here only until you confirm that it was saved.
+                      </p>
+                      <Button
+                        type="button"
+                        className="w-full"
+                        disabled={!client.email}
+                        onClick={openPortalPasswordDialog}
+                      >
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        {client.password_set_at ? 'Change portal password' : 'Set portal password'}
+                      </Button>
+                      {!client.email && <p className="text-xs text-destructive">Add a client email before enabling password login.</p>}
+                    </div>
+                  ) : (
+                    <div className="mt-5 rounded-xl border bg-muted/30 p-4 text-sm leading-6 text-muted-foreground">
+                      Only the workspace owner can manage client portal passwords.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -728,6 +831,169 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog
+        open={portalPasswordOpen}
+        onOpenChange={(open) => {
+          if (open) return
+          if (portalPasswordBusy) return
+          if (portalPasswordCommitted && !portalPasswordSaved) {
+            setPortalPasswordError('Confirm that you saved the one-time password before closing.')
+            return
+          }
+          clearPortalPasswordDialog()
+        }}
+      >
+        <DialogContent
+          onEscapeKeyDown={(event) => {
+            if (portalPasswordBusy || (portalPasswordCommitted && !portalPasswordSaved)) {
+              event.preventDefault()
+            }
+          }}
+          onPointerDownOutside={(event) => {
+            if (portalPasswordBusy || (portalPasswordCommitted && !portalPasswordSaved)) {
+              event.preventDefault()
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{portalPasswordCommitted ? 'Save the client portal password' : client.password_set_at ? 'Change portal password' : 'Set portal password'}</DialogTitle>
+            <DialogDescription>
+              {portalPasswordCommitted
+                ? `This password is shown once. Share it with ${client.email} through a secure channel.`
+                : 'Choose the password this client will use with their email. Saving it enables portal access and signs out any existing portal sessions.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {portalPasswordCommitted ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Login email</p>
+                <p className="font-medium">{client.email}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-portal-saved-password">Portal password</Label>
+                <div className="flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Input
+                      id="client-portal-saved-password"
+                      type={portalPasswordVisible ? 'text' : 'password'}
+                      value={portalPassword}
+                      readOnly
+                      autoComplete="off"
+                      className="pr-10 font-mono"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setPortalPasswordVisible((visible) => !visible)}
+                      aria-label={portalPasswordVisible ? 'Hide portal password' : 'Reveal portal password'}
+                    >
+                      {portalPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => void copyPortalPassword()}>
+                    <Copy className="mr-2 h-4 w-4" />{portalPasswordCopied ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+              </div>
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                Once this window closes, the existing password cannot be retrieved. You can always set a new one here.
+              </p>
+              {portalPasswordError && <p className="text-sm text-destructive" role="alert">{portalPasswordError}</p>}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="client-portal-password-saved"
+                  checked={portalPasswordSaved}
+                  onCheckedChange={(checked) => setPortalPasswordSaved(checked === true)}
+                />
+                <Label htmlFor="client-portal-password-saved" className="font-normal leading-5">
+                  I saved this password in a secure place.
+                </Label>
+              </div>
+              <DialogFooter>
+                <Button type="button" disabled={!portalPasswordSaved} onClick={clearPortalPasswordDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (portalPasswordValid) void savePortalPassword()
+              }}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="client-portal-new-password">New password</Label>
+                <div className="flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Input
+                      id="client-portal-new-password"
+                      type={portalPasswordVisible ? 'text' : 'password'}
+                      value={portalPassword}
+                      minLength={12}
+                      maxLength={72}
+                      autoComplete="new-password"
+                      disabled={portalPasswordBusy}
+                      className="pr-10 font-mono"
+                      onChange={(event) => {
+                        setPortalPassword(event.target.value)
+                        setPortalPasswordCopied(false)
+                        setPortalPasswordError(null)
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      disabled={portalPasswordBusy}
+                      onClick={() => setPortalPasswordVisible((visible) => !visible)}
+                      aria-label={portalPasswordVisible ? 'Hide portal password' : 'Reveal portal password'}
+                    >
+                      {portalPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button type="button" variant="outline" disabled={portalPasswordBusy} onClick={generatePortalPassword}>
+                    <RefreshCw className="mr-2 h-4 w-4" />Generate
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Use at least 12 characters. A secure password is generated by default.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-portal-confirm-password">Confirm password</Label>
+                <Input
+                  id="client-portal-confirm-password"
+                  type={portalPasswordVisible ? 'text' : 'password'}
+                  value={portalPasswordConfirm}
+                  minLength={12}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  disabled={portalPasswordBusy}
+                  className="font-mono"
+                  onChange={(event) => {
+                    setPortalPasswordConfirm(event.target.value)
+                    setPortalPasswordError(null)
+                  }}
+                />
+                {portalPasswordConfirm && portalPassword !== portalPasswordConfirm && (
+                  <p className="text-xs text-destructive">Passwords do not match.</p>
+                )}
+              </div>
+              {portalPasswordError && <p className="text-sm text-destructive" role="alert">{portalPasswordError}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={portalPasswordBusy} onClick={clearPortalPasswordDialog}>Cancel</Button>
+                <Button type="submit" disabled={!portalPasswordValid || portalPasswordBusy}>
+                  {portalPasswordBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {client.password_set_at ? 'Save new password' : 'Enable password login'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </WorkspaceLayout>
   )
 }

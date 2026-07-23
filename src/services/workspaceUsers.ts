@@ -30,6 +30,7 @@ export interface ManagedWorkspaceUser {
   credential_reconciliation_claim_kind:
     | 'temporary_password_rotation'
     | 'initial_password_change'
+    | 'staff_password_reset'
     | null
   credential_reconciliation_review_after: string | null
   workspace?: { id: string; name: string } | null

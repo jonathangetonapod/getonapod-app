@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getClients, getWorkspaceClientDetail, getWorkspaceResearchContext } from '@/services/clients'
+import {
+  getClients,
+  getWorkspaceClientDetail,
+  getWorkspaceResearchContext,
+  setWorkspaceClientPassword,
+} from '@/services/clients'
 
 const { from, invoke } = vi.hoisted(() => ({ from: vi.fn(), invoke: vi.fn() }))
 
@@ -287,5 +292,41 @@ describe('getWorkspaceClientDetail', () => {
     await expect(getWorkspaceClientDetail(workspaceId, clientId)).rejects.toThrow(
       'The client detail response did not match the workspace client address.',
     )
+  })
+})
+
+describe('setWorkspaceClientPassword', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses the explicit workspace/client boundary and accepts only a configured response', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValueOnce({
+      data: { success: true, configured: true },
+      error: null,
+    })
+
+    await expect(setWorkspaceClientPassword(
+      workspaceId,
+      clientId,
+      'Secure-Portal-42!',
+    )).resolves.toBeUndefined()
+    expect(invoke).toHaveBeenCalledWith('manage-client-portal-password', {
+      body: {
+        action: 'set',
+        workspace_id: workspaceId,
+        client_id: clientId,
+        password: 'Secure-Portal-42!',
+      },
+    })
+
+    invoke.mockResolvedValueOnce({ data: { success: true, configured: false }, error: null })
+    await expect(setWorkspaceClientPassword(
+      workspaceId,
+      clientId,
+      'Secure-Portal-42!',
+    )).rejects.toThrow('client portal password response was invalid')
   })
 })
