@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceUsers from '@/pages/admin/WorkspaceUsers'
+import { resetWorkspaceStaffTemporaryPassword } from '@/services/workspaceStaff'
 import {
   createManualWorkspaceAccount,
   listWorkspaceUsers,
@@ -21,10 +22,14 @@ vi.mock('@/services/workspaceUsers', () => ({
   rotateManualWorkspacePassword: vi.fn(),
   updateWorkspaceUserStatus: vi.fn(),
 }))
+vi.mock('@/services/workspaceStaff', () => ({
+  resetWorkspaceStaffTemporaryPassword: vi.fn(),
+}))
 
 const mockedCreate = vi.mocked(createManualWorkspaceAccount)
 const mockedList = vi.mocked(listWorkspaceUsers)
 const mockedRevoke = vi.mocked(revokeManualWorkspaceAccount)
+const mockedResetOwnerPassword = vi.mocked(resetWorkspaceStaffTemporaryPassword)
 
 const Location = () => {
   const location = useLocation()
@@ -132,6 +137,56 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(await screen.findByText(/credential reconciliation is pending until/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /issue new temporary password/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled()
+  })
+
+  it('resets an active workspace owner password directly from the owner account list', async () => {
+    const activeOwner = {
+      ...manualUser,
+      status: 'active' as const,
+      provisioning_method: 'email_invite' as const,
+      password_change_required: false,
+      invite_expires_at: null,
+      accepted_at: '2026-07-22T00:00:00Z',
+    }
+    mockedList.mockResolvedValue([activeOwner])
+    mockedResetOwnerPassword.mockResolvedValue({
+      member: {
+        id: activeOwner.id,
+        email: activeOwner.email,
+        full_name: activeOwner.full_name,
+        role: 'owner',
+        status: 'invited',
+        setup_method: 'admin_temporary_password',
+        invited_at: '2026-07-23T00:00:00Z',
+        invite_expires_at: '2026-07-24T00:00:00Z',
+        accepted_at: null,
+        suspended_at: null,
+        pending_review: false,
+        allowed_actions: ['reset_password'],
+      },
+      email: activeOwner.email,
+      temporary_password: 'Tmp-Reset2345_Reset2345_Reset',
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('link', { name: 'Manage users' })).toHaveAttribute(
+      'href',
+      '/app/workspaces/22222222-2222-4222-8222-222222222222/settings',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
+    const confirmation = screen.getByRole('dialog')
+    expect(within(confirmation).getByText('Reset owner password?')).toBeInTheDocument()
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Reset password' }))
+
+    await waitFor(() => expect(mockedResetOwnerPassword).toHaveBeenCalledWith(
+      activeOwner.workspace_id,
+      activeOwner.id,
+    ))
+    const password = await screen.findByLabelText('Temporary password') as HTMLInputElement
+    expect(password.type).toBe('password')
+    expect(password.value).toBe('Tmp-Reset2345_Reset2345_Reset')
+    expect(screen.getByText(/cannot access workspace data until this password is replaced at first sign-in/i)).toBeInTheDocument()
   })
 
   it('refreshes platform workspace state after a partial manual-create failure', async () => {
