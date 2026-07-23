@@ -4,13 +4,14 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { useAuth } from '@/contexts/AuthContext'
-import { listAdminWorkspaces } from '@/services/adminWorkspaces'
+import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
-vi.mock('@/services/adminWorkspaces', () => ({ listAdminWorkspaces: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ listPodcastResearchWorkspaces: vi.fn() }))
 
 const mockedUseAuth = vi.mocked(useAuth)
-const mockedList = vi.mocked(listAdminWorkspaces)
+const mockedList = vi.mocked(listPodcastResearchWorkspaces)
+const defaultWorkspaceId = '00000000-0000-4000-8000-000000000000'
 
 const Location = () => {
   const location = useLocation()
@@ -39,8 +40,12 @@ function renderSwitcher({
 
 describe('WorkspaceSwitcher', () => {
   beforeEach(() => {
-    mockedUseAuth.mockReturnValue({ isPlatformAdmin: true } as never)
+    mockedUseAuth.mockReturnValue({
+      isPlatformAdmin: true,
+      workspace: { id: defaultWorkspaceId },
+    } as never)
     mockedList.mockResolvedValue([
+      { id: defaultWorkspaceId, name: 'Get On A Pod', slug: 'get-on-a-pod', status: 'active', is_default: true },
       { id: '11111111-1111-4111-8111-111111111111', name: 'Acme', slug: 'acme-one', status: 'active', is_default: false },
       { id: '22222222-2222-4222-8222-222222222222', name: 'Bravo', slug: 'bravo-two', status: 'active', is_default: false },
     ])
@@ -77,6 +82,15 @@ describe('WorkspaceSwitcher', () => {
     expect(screen.queryByText('Switch workspace')).not.toBeInTheDocument()
   })
 
+  it('shows the platform owner workspace while using the regular app routes', async () => {
+    renderSwitcher({ initialPath: '/app/clients', presentation: 'toolbar' })
+
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
+    expect(trigger).toHaveTextContent('Get On A Pod')
+    fireEvent.click(trigger)
+    expect(await screen.findByText('Your workspace')).toBeInTheDocument()
+  })
+
   it('preserves the guest resources module when switching workspaces', async () => {
     renderSwitcher({
       initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/guest-resources',
@@ -103,5 +117,17 @@ describe('WorkspaceSwitcher', () => {
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
       '/admin/workspaces/11111111-1111-4111-8111-111111111111/settings',
     ))
+  })
+
+  it('returns to the owner workspace and preserves onboarding', async () => {
+    renderSwitcher({
+      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/onboarding',
+      presentation: 'toolbar',
+    })
+
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByText('Get On A Pod'))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/app/onboarding'))
   })
 })

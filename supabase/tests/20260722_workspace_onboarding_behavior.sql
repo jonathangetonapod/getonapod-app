@@ -136,6 +136,7 @@ DECLARE
   owner_b_membership_id UUID := gen_random_uuid();
   platform_membership_id UUID := gen_random_uuid();
   client_a_id UUID := gen_random_uuid();
+  default_client_id UUID := gen_random_uuid();
   suffix TEXT := substr(replace(gen_random_uuid()::TEXT, '-', ''), 1, 16);
   token_epoch BIGINT := floor(EXTRACT(EPOCH FROM clock_timestamp()))::BIGINT;
 BEGIN
@@ -208,6 +209,13 @@ BEGIN
     'original-client-' || suffix || '@example.invalid',
     'active',
     true
+  ), (
+    default_client_id,
+    default_workspace_id,
+    'Platform Owner Client',
+    'platform-owner-client-' || suffix || '@example.invalid',
+    'active',
+    true
   );
 
   INSERT INTO public.client_portal_sessions (client_id, session_token, expires_at)
@@ -227,7 +235,8 @@ BEGIN
     ('owner_b', owner_b_id),
     ('platform', platform_id),
     ('member_a_membership', member_a_membership_id),
-    ('client_a', client_a_id);
+    ('client_a', client_a_id),
+    ('default_client', default_client_id);
 END;
 $fixtures$;
 
@@ -236,6 +245,7 @@ DO $workflow$
 <<workflow>>
 DECLARE
   workspace_a_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'workspace_a');
+  default_workspace_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'default_workspace');
   workspace_b_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'workspace_b');
   owner_a_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'owner_a');
   admin_a_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'admin_a');
@@ -244,11 +254,13 @@ DECLARE
   platform_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'platform');
   member_a_membership_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'member_a_membership');
   client_a_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'client_a');
+  default_client_id UUID := (SELECT value FROM goap_onboarding_behavior_state WHERE key = 'default_client');
   token_epoch BIGINT := floor(EXTRACT(EPOCH FROM clock_timestamp()))::BIGINT;
   template_id UUID;
   version_id UUID;
   instance_id UUID := gen_random_uuid();
   rotated_instance_id UUID := gen_random_uuid();
+  default_instance_id UUID := gen_random_uuid();
   asset_id UUID := gen_random_uuid();
   asset_path TEXT;
   response JSONB;
@@ -333,6 +345,60 @@ BEGIN
     OR (response ->> 'can_manage')::BOOLEAN IS DISTINCT FROM true
   THEN
     RAISE EXCEPTION 'platform-owner selected-workspace management was not native';
+  END IF;
+
+  response := public.workspace_onboarding_staff_list_v1(
+    default_workspace_id, platform_id, token_epoch
+  );
+  IF response ->> 'viewer_role' IS DISTINCT FROM 'admin'
+    OR (response ->> 'can_manage')::BOOLEAN IS DISTINCT FROM true
+    OR jsonb_array_length(response -> 'templates') < 1
+  THEN
+    RAISE EXCEPTION 'platform owner did not receive regular onboarding access in the default workspace';
+  END IF;
+
+  SELECT template.id
+  INTO template_id
+  FROM public.workspace_onboarding_templates AS template
+  WHERE template.workspace_id = default_workspace_id
+    AND template.status = 'published'
+    AND template.is_default
+  ORDER BY template.created_at, template.id
+  LIMIT 1;
+
+  response := public.workspace_onboarding_start_v1(
+    default_workspace_id,
+    template_id,
+    default_client_id,
+    jsonb_build_object(
+      'instance_id', default_instance_id,
+      'capability_generation', 1,
+      'capability_hash', repeat('d', 64),
+      'capability_expires_at', now() + interval '14 days',
+      'recipient_name', 'Platform Owner Client',
+      'recipient_email', 'platform-owner-client@example.invalid',
+      'new_client', NULL,
+      'assigned_membership_ids', '[]'::JSONB,
+      'experience', jsonb_build_object(
+        'intro_title', 'Welcome from the owner workspace',
+        'intro_body', 'The default workspace uses the same onboarding flow.',
+        'completion_message', 'Thank you. The owner workspace will review this.',
+        'accent_color', '#665CF2',
+        'logo_path', NULL
+      )
+    ),
+    platform_id,
+    token_epoch
+  );
+  IF response ->> 'workspace_id' IS DISTINCT FROM default_workspace_id::TEXT THEN
+    RAISE EXCEPTION 'default workspace onboarding invitation was not created';
+  END IF;
+
+  response := public.workspace_onboarding_client_operation_v1(
+    'get', default_instance_id, repeat('d', 64), '{}'::JSONB
+  );
+  IF response ->> 'workspace_id' IS DISTINCT FROM default_workspace_id::TEXT THEN
+    RAISE EXCEPTION 'default workspace client onboarding link was unavailable';
   END IF;
 
   rejected := false;

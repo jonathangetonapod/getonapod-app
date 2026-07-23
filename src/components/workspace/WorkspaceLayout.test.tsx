@@ -47,6 +47,7 @@ describe('WorkspaceLayout', () => {
       },
       workspace: { name: 'Acme Workspace' },
       membership: { full_name: 'Owner Name', role: 'owner' },
+      isPlatformAdmin: false,
       signOut,
     } as never)
   })
@@ -83,6 +84,7 @@ describe('WorkspaceLayout', () => {
       user: { email: 'admin@example.com' },
       workspace: { name: 'Acme Workspace' },
       membership: { full_name: 'Agency Admin', role: 'admin' },
+      isPlatformAdmin: false,
       signOut,
     } as never)
     const { unmount } = render(
@@ -97,6 +99,7 @@ describe('WorkspaceLayout', () => {
       user: { email: 'member@example.com' },
       workspace: { name: 'Acme Workspace' },
       membership: { full_name: 'Agency Member', role: 'member' },
+      isPlatformAdmin: false,
       signOut,
     } as never)
     renderLayout()
@@ -109,6 +112,13 @@ describe('WorkspaceLayout', () => {
   })
 
   it('renders a selected workspace as a native platform-owner context', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { email: 'owner@example.com' },
+      workspace: { name: 'Acme Workspace' },
+      membership: { full_name: 'Owner Name', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
     const platformWorkspace: PlatformWorkspaceConfig = {
       workspaceName: 'Selected Workspace',
       logoUrl: 'https://cdn.example/selected-workspace.png',
@@ -143,6 +153,23 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
     expect(screen.getByTestId('workspace-logo-mobile')).toHaveClass('h-12', 'w-20', 'bg-gradient-to-br')
+  })
+
+  it('shows Jonathan the workspace switcher in his own workspace without changing his feature role', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { email: 'jonathan@getonapod.com' },
+      workspace: { name: 'Get On A Pod' },
+      membership: { full_name: 'Jonathan', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+
+    renderLayout()
+
+    expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /back to platform/i })).not.toBeInTheDocument()
+    expect(screen.getByText('owner')).toBeInTheDocument()
+    expect(screen.queryByText('platform owner')).not.toBeInTheDocument()
   })
 
   it('signs a workspace user out without exposing an admin destination', async () => {

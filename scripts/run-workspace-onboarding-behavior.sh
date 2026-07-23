@@ -14,6 +14,8 @@ readonly -a SOURCE_INPUTS=(
   'supabase/migrations/20260722000500_workspace_onboarding.sql'
   'supabase/migrations/20260722000600_workspace_onboarding_white_label.sql'
   'supabase/migrations/20260723000100_workspace_onboarding_activity.sql'
+  'supabase/migrations/20260723000200_workspace_onboarding_answer_approval.sql'
+  'supabase/migrations/20260723000300_default_workspace_onboarding_parity.sql'
   "${BEHAVIOR_TEST}"
 )
 readonly -a REQUIRED_ENV=(

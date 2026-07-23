@@ -24,6 +24,7 @@ const SQL_INPUTS = [
   'supabase/migrations/20260722000600_workspace_onboarding_white_label.sql',
   'supabase/migrations/20260723000100_workspace_onboarding_activity.sql',
   'supabase/migrations/20260723000200_workspace_onboarding_answer_approval.sql',
+  'supabase/migrations/20260723000300_default_workspace_onboarding_parity.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
   'supabase/tests/20260721_workspace_guest_resources_behavior.sql',
   'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql',

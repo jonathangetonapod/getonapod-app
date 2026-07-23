@@ -14,29 +14,35 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
-import { listAdminWorkspaces } from '@/services/adminWorkspaces'
+import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 
 interface WorkspaceSwitcherProps {
   presentation?: 'sidebar' | 'toolbar'
 }
 
 export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitcherProps) => {
-  const { isPlatformAdmin, user } = useAuth()
+  const { isPlatformAdmin, user, workspace } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const routeMatch = matchPath('/admin/workspaces/:workspaceId/*', location.pathname)
-  const selectedId = (routeMatch?.params.workspaceId || '').toLowerCase()
+  const selectedId = (
+    routeMatch?.params.workspaceId
+    || (location.pathname.startsWith('/app') ? workspace?.id : '')
+    || ''
+  ).toLowerCase()
   const selectedModule = location.pathname.endsWith('/settings')
     || location.pathname.endsWith('/workspace-users')
     ? 'settings'
-    : location.pathname.endsWith('/guest-resources')
+    : location.pathname.includes('/onboarding')
+      ? 'onboarding'
+      : location.pathname.endsWith('/guest-resources')
       ? 'guest-resources'
       : 'clients'
 
   const workspacesQuery = useQuery({
-    queryKey: ['platform', user?.id || 'unknown', 'workspaces'],
-    queryFn: listAdminWorkspaces,
+    queryKey: ['platform', user?.id || 'unknown', 'switchable-workspaces', 'v2'],
+    queryFn: listPodcastResearchWorkspaces,
     enabled: isPlatformAdmin,
     staleTime: 30_000,
   })
@@ -96,13 +102,17 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
                     value={`${workspace.name} ${workspace.slug}`}
                     onSelect={() => {
                       setOpen(false)
-                      navigate(`/admin/workspaces/${workspace.id}/${selectedModule}`)
+                      navigate(workspace.is_default
+                        ? `/app/${selectedModule}`
+                        : `/admin/workspaces/${workspace.id}/${selectedModule}`)
                     }}
                   >
                     <Check className={cn('mr-2 h-4 w-4', selectedId === workspace.id ? 'opacity-100' : 'opacity-0')} />
                     <span className="min-w-0 flex-1 overflow-hidden">
                       <span className="block truncate">{workspace.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{workspace.slug}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {workspace.is_default ? 'Your workspace' : workspace.slug}
+                      </span>
                     </span>
                   </CommandItem>
                 ))}

@@ -120,7 +120,7 @@ export const WorkspaceBrandLogo = ({
 )
 
 export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayoutProps) => {
-  const { membership, signOut, user, workspace } = useAuth()
+  const { isPlatformAdmin, membership, signOut, user, workspace } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -192,14 +192,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
               <p className="truncate text-base font-bold tracking-tight">{workspaceName}</p>
               <p className="truncate text-xs font-medium text-muted-foreground">Workspace dashboard</p>
             </div>
-            {platformWorkspace && (
+            {isPlatformAdmin && (
               <div className="mt-4 space-y-2">
                 <WorkspaceSwitcher presentation="toolbar" />
-                <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
-                  <Link to={platformWorkspace.exitHref}>
-                    <ArrowLeft className="mr-2 h-4 w-4" />Back to platform
-                  </Link>
-                </Button>
+                {platformWorkspace && (
+                  <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
+                    <Link to={platformWorkspace.exitHref}>
+                      <ArrowLeft className="mr-2 h-4 w-4" />Back to platform
+                    </Link>
+                  </Button>
+                )}
               </div>
             )}
           </div>
