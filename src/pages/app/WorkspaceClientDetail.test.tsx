@@ -6,7 +6,9 @@ import WorkspaceClientDetail from '@/pages/app/WorkspaceClientDetail'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   getWorkspaceClientDetail,
+  setWorkspaceClientDashboardVisibility,
   setWorkspaceClientPassword,
+  updateWorkspaceClient,
   type WorkspaceClientDetail as WorkspaceClientDetailData,
 } from '@/services/clients'
 
@@ -14,7 +16,9 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({
   generatePassword: vi.fn(() => 'Generated-Portal-42!'),
   getWorkspaceClientDetail: vi.fn(),
+  setWorkspaceClientDashboardVisibility: vi.fn(),
   setWorkspaceClientPassword: vi.fn(),
+  updateWorkspaceClient: vi.fn(),
 }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({ WorkspaceSwitcher: () => <div>Workspace switcher</div> }))
 vi.mock('@/components/workspace/ClientShortlistEditor', () => ({
@@ -23,7 +27,9 @@ vi.mock('@/components/workspace/ClientShortlistEditor', () => ({
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
+const mockedSetDashboardVisibility = vi.mocked(setWorkspaceClientDashboardVisibility)
 const mockedSetPortalPassword = vi.mocked(setWorkspaceClientPassword)
+const mockedUpdateClient = vi.mocked(updateWorkspaceClient)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 const onboardingId = '33333333-3333-4333-8333-333333333333'
@@ -161,7 +167,15 @@ describe('WorkspaceClientDetail', () => {
       signOut: vi.fn(),
     } as never)
     mockedDetail.mockResolvedValue(detail)
+    mockedSetDashboardVisibility.mockResolvedValue({
+      id: clientId,
+      workspace_id: workspaceId,
+      dashboard_slug: detail.client.dashboard_slug,
+      dashboard_enabled: true,
+      updated_at: '2026-07-23T22:00:00.000Z',
+    })
     mockedSetPortalPassword.mockResolvedValue(undefined)
+    mockedUpdateClient.mockResolvedValue(detail.client)
   })
 
   it('rebuilds the legacy client command center inside the workspace shell', async () => {
@@ -195,6 +209,7 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('link', { name: /view & edit podcasts/i })).toHaveAttribute('href', '#client-podcast-list')
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
+    expect(screen.getByRole('button', { name: 'Stop sharing' })).toBeEnabled()
     expect(screen.getByText('Positive').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('Negative').nextElementSibling).toHaveTextContent('3')
     expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')
@@ -218,12 +233,12 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
     expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Organize' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reorder sidebar pages' })).toBeInTheDocument()
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
   })
 
-  it('shows a safe empty state for a hidden dashboard without a shortlist', async () => {
-    mockedDetail.mockResolvedValue({
+  it('lets a manager make a prepared dashboard live from its clear not-shared state', async () => {
+    mockedDetail.mockResolvedValueOnce({
       ...detail,
       client: { ...detail.client, dashboard_enabled: false },
       dashboard: {
@@ -244,11 +259,46 @@ describe('WorkspaceClientDetail', () => {
     await screen.findByRole('heading', { name: 'Taylor Client' })
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
 
-    expect(screen.getAllByText('Hidden').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Not shared').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /preview as client/i })).not.toBeInTheDocument()
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Review completion' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /run fresh discovery/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Make dashboard live' }))
+    await waitFor(() => expect(mockedSetDashboardVisibility).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      true,
+    ))
+    expect(await screen.findByRole('link', { name: /preview as client/i })).toHaveAttribute(
+      'href',
+      '/client/taylor-client-123?preview=1',
+    )
+  })
+
+  it('edits internal account notes without leaving the client command center', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit notes' }))
+    fireEvent.change(screen.getByLabelText('Internal account notes'), {
+      target: { value: 'Prefers concise prep notes and Thursday recordings.' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save notes' }))
+
+    await waitFor(() => expect(mockedUpdateClient).toHaveBeenCalledWith(workspaceId, clientId, {
+      name: 'Taylor Client',
+      email: 'taylor@example.com',
+      contact_person: 'Taylor Smith',
+      linkedin_url: 'https://linkedin.com/in/taylor',
+      website: 'https://taylor.example.com',
+      status: 'active',
+      notes: 'Prefers concise prep notes and Thursday recordings.',
+    }))
+    await waitFor(() => expect(screen.queryByLabelText('Internal account notes')).not.toBeInTheDocument())
   })
 
   it('lets the workspace owner set and reveal a client portal password once', async () => {

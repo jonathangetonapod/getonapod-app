@@ -19,6 +19,7 @@ import {
   Loader2,
   Mail,
   Mic2,
+  Pencil,
   Radio,
   RefreshCw,
   Search,
@@ -39,6 +40,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -46,7 +48,9 @@ import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspa
 import {
   getWorkspaceClientDetail,
   generatePassword,
+  setWorkspaceClientDashboardVisibility,
   setWorkspaceClientPassword,
+  updateWorkspaceClient,
   type WorkspaceClientBooking,
   type WorkspaceClientOnboardingSummary,
 } from '@/services/clients'
@@ -244,6 +248,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const [portalPasswordSaved, setPortalPasswordSaved] = useState(false)
   const [portalPasswordError, setPortalPasswordError] = useState<string | null>(null)
   const [portalPasswordBusy, setPortalPasswordBusy] = useState(false)
+  const [dashboardVisibilityBusy, setDashboardVisibilityBusy] = useState(false)
+  const [notesEditing, setNotesEditing] = useState(false)
+  const [notesDraft, setNotesDraft] = useState('')
+  const [notesBusy, setNotesBusy] = useState(false)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const canonicalClientId = clientId.toLowerCase()
@@ -344,8 +352,8 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const dashboardStatus = dashboard.enabled && dashboard.configured
     ? 'Live'
     : dashboard.configured
-      ? 'Hidden'
-      : 'Not configured'
+      ? 'Not shared'
+      : 'Needs setup'
   const dashboardStatusClassName = dashboard.enabled && dashboard.configured
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
     : dashboard.configured
@@ -428,6 +436,50 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       toast.success(`${label} copied.`)
     } catch {
       toast.error('Copy failed. Open the page and copy the address manually.')
+    }
+  }
+
+  const updateDashboardVisibility = async (enabled: boolean) => {
+    if (!canManage || !dashboard.configured || dashboardVisibilityBusy) return
+    setDashboardVisibilityBusy(true)
+    try {
+      await setWorkspaceClientDashboardVisibility(workspaceId, canonicalClientId, enabled)
+      await detailQuery.refetch()
+      toast.success(enabled
+        ? 'Dashboard is now live for the client.'
+        : 'Dashboard is no longer shared with the client.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Dashboard sharing could not be updated.')
+    } finally {
+      setDashboardVisibilityBusy(false)
+    }
+  }
+
+  const beginEditingNotes = () => {
+    setNotesDraft(client.notes || '')
+    setNotesEditing(true)
+  }
+
+  const saveInternalNotes = async () => {
+    if (!canManage || notesBusy) return
+    setNotesBusy(true)
+    try {
+      await updateWorkspaceClient(workspaceId, canonicalClientId, {
+        name: client.name,
+        email: client.email || '',
+        contact_person: client.contact_person || '',
+        linkedin_url: client.linkedin_url || '',
+        website: client.website || '',
+        status: client.status,
+        notes: notesDraft,
+      })
+      await detailQuery.refetch()
+      setNotesEditing(false)
+      toast.success('Internal notes updated.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Internal notes could not be updated.')
+    } finally {
+      setNotesBusy(false)
     }
   }
 
@@ -586,11 +638,26 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     </div>
                     <h2 className="text-2xl font-bold tracking-tight">Podcast approval dashboard</h2>
                     <p className="mt-2 leading-6 text-muted-foreground">
-                      {dashboard.tagline || `A private shortlist where ${client.name} can review, approve, reject, and comment on podcast opportunities.`}
+                      {dashboard.tagline || `A dedicated shortlist where ${client.name} can review, approve, reject, and comment on podcast opportunities.`}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {canManage && <Button asChild variant="outline"><a href="#client-podcast-list"><LayoutDashboard className="mr-2 h-4 w-4" />View &amp; edit podcasts</a></Button>}
+                    {canManage && dashboard.configured && (
+                      <Button
+                        type="button"
+                        variant={dashboard.enabled ? 'outline' : 'default'}
+                        disabled={dashboardVisibilityBusy}
+                        onClick={() => void updateDashboardVisibility(!dashboard.enabled)}
+                      >
+                        {dashboardVisibilityBusy
+                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          : dashboard.enabled
+                            ? <EyeOff className="mr-2 h-4 w-4" />
+                            : <Globe2 className="mr-2 h-4 w-4" />}
+                        {dashboard.enabled ? 'Stop sharing' : 'Make dashboard live'}
+                      </Button>
+                    )}
                     {dashboardHref && <Button variant="outline" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
                     {dashboardAdminPreviewHref && <Button asChild><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
                   </div>
@@ -622,7 +689,16 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>Dashboard setup</CardTitle><CardDescription>Visibility, address, and client-facing copy.</CardDescription></CardHeader>
+                <CardHeader>
+                  <CardTitle>Dashboard setup</CardTitle>
+                  <CardDescription>
+                    {dashboard.enabled
+                      ? 'The client link is active and ready to share.'
+                      : dashboard.configured
+                        ? 'The dashboard is ready, but the client link is not active yet.'
+                        : 'Create a dashboard address before sharing this page with the client.'}
+                  </CardDescription>
+                </CardHeader>
                 <CardContent>
                   <DetailRow label="Visibility" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
                   <DetailRow label="Address" value={dashboardPreviewHref || 'Not generated'} />
@@ -795,8 +871,48 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>Internal account notes</CardTitle><CardDescription>Workspace-only context for this client.</CardDescription></CardHeader>
-                <CardContent>{client.notes ? <p className="whitespace-pre-wrap leading-7 text-muted-foreground">{client.notes}</p> : <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No internal notes have been added.</div>}</CardContent>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Internal account notes</CardTitle>
+                    <CardDescription>Workspace-only context for this client.</CardDescription>
+                  </div>
+                  {canManage && !notesEditing && (
+                    <Button type="button" variant="outline" size="sm" onClick={beginEditingNotes}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      {client.notes ? 'Edit notes' : 'Add notes'}
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {notesEditing ? (
+                    <div className="space-y-3">
+                      <Label htmlFor="internal-client-notes">Internal account notes</Label>
+                      <Textarea
+                        id="internal-client-notes"
+                        value={notesDraft}
+                        maxLength={10_000}
+                        rows={8}
+                        placeholder="Add context, preferences, follow-ups, or anything your team should know."
+                        disabled={notesBusy}
+                        onChange={(event) => setNotesDraft(event.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">Only workspace staff can see these notes.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" disabled={notesBusy} onClick={() => void saveInternalNotes()}>
+                          {notesBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save notes
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" disabled={notesBusy} onClick={() => setNotesEditing(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : client.notes ? (
+                    <p className="whitespace-pre-wrap leading-7 text-muted-foreground">{client.notes}</p>
+                  ) : (
+                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No internal notes have been added.</div>
+                  )}
+                </CardContent>
               </Card>
             </div>
           </TabsContent>

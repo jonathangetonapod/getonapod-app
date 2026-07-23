@@ -3,6 +3,7 @@ import {
   getClients,
   getWorkspaceClientDetail,
   getWorkspaceResearchContext,
+  setWorkspaceClientDashboardVisibility,
   setWorkspaceClientPassword,
 } from '@/services/clients'
 
@@ -292,6 +293,63 @@ describe('getWorkspaceClientDetail', () => {
     await expect(getWorkspaceClientDetail(workspaceId, clientId)).rejects.toThrow(
       'The client detail response did not match the workspace client address.',
     )
+  })
+})
+
+describe('setWorkspaceClientDashboardVisibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('updates dashboard sharing through the workspace/client boundary', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    const client = {
+      id: clientId,
+      workspace_id: workspaceId,
+      dashboard_slug: 'client-dashboard',
+      dashboard_enabled: true,
+      updated_at: '2026-07-23T22:00:00.000Z',
+    }
+    invoke.mockResolvedValueOnce({ data: { success: true, client }, error: null })
+
+    await expect(setWorkspaceClientDashboardVisibility(
+      workspaceId.toUpperCase(),
+      clientId.toUpperCase(),
+      true,
+    )).resolves.toEqual(client)
+    expect(invoke).toHaveBeenCalledWith('workspace-clients', {
+      body: {
+        action: 'dashboard-visibility-update',
+        workspace_id: workspaceId,
+        client_id: clientId,
+        enabled: true,
+      },
+    })
+  })
+
+  it('rejects a visibility response for a different workspace', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        client: {
+          id: clientId,
+          workspace_id: '33333333-3333-4333-8333-333333333333',
+          dashboard_slug: 'client-dashboard',
+          dashboard_enabled: false,
+          updated_at: '2026-07-23T22:00:00.000Z',
+        },
+      },
+      error: null,
+    })
+
+    await expect(setWorkspaceClientDashboardVisibility(
+      workspaceId,
+      clientId,
+      false,
+    )).rejects.toThrow('client dashboard visibility response was invalid')
   })
 })
 

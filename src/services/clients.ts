@@ -82,6 +82,14 @@ export interface WorkspaceClientDashboardSummary {
   last_feedback_at: string | null
 }
 
+export interface WorkspaceClientDashboardVisibility {
+  id: string
+  workspace_id: string
+  dashboard_slug: string | null
+  dashboard_enabled: boolean
+  updated_at: string
+}
+
 export interface WorkspaceClientOutreachSummary {
   initial_emails_sent: number
   podcasts_contacted: number
@@ -328,6 +336,37 @@ export async function getWorkspaceClientDetail(
   }
 
   return { ...detail, outreach }
+}
+
+export async function setWorkspaceClientDashboardVisibility(
+  workspaceId: string,
+  clientId: string,
+  enabled: boolean,
+): Promise<WorkspaceClientDashboardVisibility> {
+  const canonicalWorkspaceId = workspaceId.toLowerCase()
+  const canonicalClientId = clientId.toLowerCase()
+  const { data, error } = await supabase.functions.invoke('workspace-clients', {
+    body: {
+      action: 'dashboard-visibility-update',
+      workspace_id: canonicalWorkspaceId,
+      client_id: canonicalClientId,
+      enabled,
+    },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to update dashboard sharing.')
+  const client = data?.client as Partial<WorkspaceClientDashboardVisibility> | null | undefined
+  if (
+    data?.success !== true
+    || client?.id !== canonicalClientId
+    || client.workspace_id !== canonicalWorkspaceId
+    || client.dashboard_enabled !== enabled
+    || (client.dashboard_slug !== null && typeof client.dashboard_slug !== 'string')
+    || typeof client.updated_at !== 'string'
+  ) {
+    throw new Error('The client dashboard visibility response was invalid.')
+  }
+  return client as WorkspaceClientDashboardVisibility
 }
 
 export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {
