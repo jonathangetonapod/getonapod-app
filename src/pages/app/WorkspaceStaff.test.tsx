@@ -226,14 +226,19 @@ describe('WorkspaceStaff', () => {
     renderPage()
 
     expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-settings-page')).toHaveClass('min-w-0', 'max-w-full')
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(within(settingsNavigation).getByRole('link', { name: /General/ })).toHaveAttribute('href', '#workspace-general')
+    expect(within(settingsNavigation).getByRole('link', { name: /Sidebar/ })).toHaveAttribute('href', '#sidebar-navigation')
     expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
     expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
     expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Client-facing brand', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Workspace users', level: 2 })).toBeInTheDocument()
+    expect(screen.getByLabelText('Primary color')).toHaveClass('min-w-0', 'flex-1')
+    expect(screen.getByRole('table')).toHaveClass('min-w-[52rem]')
     expect(screen.getByText('Manage the people who can access your workspace.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /make owner/i })).toBeEnabled()
@@ -242,6 +247,17 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
     expect(screen.getByText('Protected owner')).toBeInTheDocument()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('lets only the signed-in workspace owner launch their sidebar organizer', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Organize sidebar' }))
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
+    expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(11)
   })
 
   it('lets the workspace owner change the private workspace name and public client brand independently', async () => {
@@ -461,6 +477,8 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByText('Manage the identity, client experience, and team access for Acme Workspace.')).toBeInTheDocument()
     expect(screen.getByText('Manage the people who can access this workspace.')).toBeInTheDocument()
     expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Sidebar navigation' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Organize sidebar' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /make owner/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: /^suspend$/i })).toBeEnabled()

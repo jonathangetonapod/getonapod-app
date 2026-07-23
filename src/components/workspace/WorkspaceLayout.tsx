@@ -68,6 +68,7 @@ const workspaceNavItems: WorkspaceNavItem[] = [
 ]
 
 const WORKSPACE_NAV_ORDER_STORAGE_PREFIX = 'workspace-nav-order-v2'
+export const WORKSPACE_NAV_ORGANIZE_EVENT = 'goap:workspace-navigation-organize'
 
 function orderedWorkspaceNavItems(value: unknown): WorkspaceNavItem[] {
   if (!Array.isArray(value)) return [...workspaceNavItems]
@@ -298,6 +299,17 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     setIsOrganizing(false)
   }, [canOrganizeNavigation, legacyNavStorageKey, navStorageKey])
 
+  useEffect(() => {
+    if (!canOrganizeNavigation) return
+
+    const openNavigationOrganizer = () => {
+      setIsOrganizing(true)
+      setSidebarOpen(true)
+    }
+    window.addEventListener(WORKSPACE_NAV_ORGANIZE_EVENT, openNavigationOrganizer)
+    return () => window.removeEventListener(WORKSPACE_NAV_ORGANIZE_EVENT, openNavigationOrganizer)
+  }, [canOrganizeNavigation])
+
   const saveNavOrder = (items: WorkspaceNavItem[]) => {
     if (!canOrganizeNavigation) return
     try {
@@ -340,7 +352,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div data-testid="workspace-layout" className="min-h-screen max-w-full overflow-x-clip bg-background">
       {sidebarOpen && (
         <button
           type="button"
@@ -469,7 +481,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
         </div>
       </aside>
 
-      <div className="lg:pl-64">
+      <div className="min-w-0 lg:pl-64">
         <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
           <Button
             variant="ghost"
@@ -506,7 +518,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           </div>
         </header>
 
-        <main className="p-4 sm:p-6">{children}</main>
+        <main className="min-w-0 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   )

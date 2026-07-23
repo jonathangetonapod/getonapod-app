@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import {
+  WORKSPACE_NAV_ORGANIZE_EVENT,
   WorkspaceLayout,
   type PlatformWorkspaceConfig,
 } from '@/components/workspace/WorkspaceLayout'
@@ -58,6 +59,7 @@ describe('WorkspaceLayout', () => {
   it('matches the complete navigation order and enables settings for an owner', () => {
     renderLayout()
 
+    expect(screen.getByTestId('workspace-layout')).toHaveClass('max-w-full', 'overflow-x-clip')
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     const labels = within(navigation).getAllByRole('listitem').map((item) => (
       item.querySelector('span')?.textContent
@@ -106,6 +108,16 @@ describe('WorkspaceLayout', () => {
 
     fireEvent.click(within(navigation).getByRole('button', { name: 'Done' }))
     expect(within(navigation).getByRole('button', { name: 'Organize' })).toBeInTheDocument()
+  })
+
+  it('opens owner organize mode when requested from workspace settings', () => {
+    renderLayout()
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    fireEvent(window, new Event(WORKSPACE_NAV_ORGANIZE_EVENT))
+
+    expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
+    expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(expectedNavigation.length)
   })
 
   it('enables settings for an admin and keeps it unavailable to a member', () => {

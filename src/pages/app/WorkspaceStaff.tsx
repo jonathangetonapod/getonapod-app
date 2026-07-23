@@ -10,6 +10,7 @@ import {
   KeyRound,
   Loader2,
   Palette,
+  PanelLeft,
   PauseCircle,
   PlayCircle,
   RefreshCw,
@@ -21,7 +22,11 @@ import {
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { WorkspaceBrandLogo, WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
+import {
+  WORKSPACE_NAV_ORGANIZE_EVENT,
+  WorkspaceBrandLogo,
+  WorkspaceLayout,
+} from '@/components/workspace/WorkspaceLayout'
 import { useAuth } from '@/contexts/AuthContext'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +38,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 import { WORKSPACE_LOGO_MIME_TYPES, workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
@@ -173,7 +179,7 @@ function confirmationCopy(
 }
 
 const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
-  const { refreshAccount, refreshSession, signOut, user, workspace } = useAuth()
+  const { membership, refreshAccount, refreshSession, signOut, user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [invite, setInvite] = useState<WorkspaceStaffInviteInput>(emptyInvite)
@@ -192,6 +198,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const validWorkspaceId = UUID_PATTERN.test(workspaceId)
+  const canOrganizeSidebar = !isPlatformWorkspace
+    && membership?.role === 'owner'
+    && validWorkspaceId
   const queryKey = [
     isPlatformWorkspace ? 'platform' : 'tenant',
     user?.id || 'unknown',
@@ -449,6 +458,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
   const settingsNavigation = [
     { href: '#workspace-general', label: 'General', description: 'Workspace identity', icon: Building2 },
+    ...(canOrganizeSidebar
+      ? [{ href: '#sidebar-navigation', label: 'Sidebar', description: 'Your page order', icon: PanelLeft }]
+      : []),
     { href: '#client-branding', label: 'Client branding', description: 'Logo, name, and colors', icon: Palette },
     { href: '#workspace-access', label: 'Team & access', description: 'Users, roles, and passwords', icon: Users },
   ]
@@ -465,12 +477,12 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
             </Card>
           )
         : (
-            <div className="mx-auto w-full max-w-7xl space-y-8 pb-12">
+            <div data-testid="workspace-settings-page" className="mx-auto w-full min-w-0 max-w-full space-y-8 pb-12 xl:max-w-7xl">
               <header className="flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
-                <div className="space-y-3">
-                  <Badge variant="secondary" className="w-fit gap-1.5 rounded-full px-3 py-1 font-medium">
+                <div className="min-w-0 space-y-3">
+                  <Badge variant="secondary" className="max-w-full gap-1.5 rounded-full px-3 py-1 font-medium">
                     <Building2 className="h-3.5 w-3.5" />
-                    {data.workspace.name}
+                    <span className="truncate">{data.workspace.name}</span>
                   </Badge>
                   <div>
                     <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
@@ -487,12 +499,18 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                 </Badge>
               </header>
 
-              <div className="grid items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)]">
+              <div className="grid min-w-0 items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)]">
                 <aside className="min-w-0 lg:sticky lg:top-28">
                   <p className="mb-2 hidden px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:block">
                     Workspace settings
                   </p>
-                  <nav aria-label="Settings sections" className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:gap-1">
+                  <nav
+                    aria-label="Settings sections"
+                    className={cn(
+                      'grid gap-2 lg:grid-cols-1 lg:gap-1',
+                      canOrganizeSidebar ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3',
+                    )}
+                  >
                     {settingsNavigation.map((item) => {
                       const Icon = item.icon
                       return (
@@ -518,23 +536,23 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                 </aside>
 
                 <div className="min-w-0 space-y-12">
-                  <section id="workspace-general" className="scroll-mt-28 space-y-4" aria-labelledby="workspace-general-title">
+                  <section id="workspace-general" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="workspace-general-title">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace</p>
                       <h2 id="workspace-general-title" className="mt-1 text-2xl font-semibold tracking-tight">General</h2>
                       <p className="mt-1 text-sm text-muted-foreground">The private identity your team sees inside the app.</p>
                     </div>
 
-                    <Card className="overflow-hidden border-border/70 shadow-sm">
+                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
                       <CardContent className="p-0">
-                        <div className="grid gap-5 p-6 sm:p-7 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+                        <div className="grid min-w-0 gap-5 p-6 sm:p-7 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
                           <div>
                             <p className="font-semibold">Workspace name</p>
                             <p className="mt-1 text-sm leading-6 text-muted-foreground">
                               Used in your workspace selector and throughout the private app.
                             </p>
                           </div>
-                          <div className="max-w-xl space-y-3">
+                          <div className="min-w-0 max-w-xl space-y-3">
                             <Label htmlFor="workspace-name">Workspace name</Label>
                             <Input
                               id="workspace-name"
@@ -577,7 +595,45 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
-                  <section id="client-branding" className="scroll-mt-28 space-y-4" aria-labelledby="client-branding-title">
+                  {canOrganizeSidebar && (
+                    <section id="sidebar-navigation" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="sidebar-navigation-title">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Personalization</p>
+                        <h2 id="sidebar-navigation-title" className="mt-1 text-2xl font-semibold tracking-tight">Sidebar navigation</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Put the pages you use most exactly where you want them.</p>
+                      </div>
+
+                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                        <CardContent className="flex min-w-0 flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
+                          <div className="flex min-w-0 items-start gap-4">
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                              <PanelLeft className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold">Choose your page order</p>
+                                <Badge variant="secondary" className="rounded-full text-[10px]">Owner preference</Badge>
+                              </div>
+                              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                                Drag pages into the order that works for you. Your preference is kept separate for this workspace and owner account on this browser.
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={() => window.dispatchEvent(new Event(WORKSPACE_NAV_ORGANIZE_EVENT))}
+                          >
+                            <PanelLeft className="mr-2 h-4 w-4" />
+                            Organize sidebar
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </section>
+                  )}
+
+                  <section id="client-branding" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="client-branding-title">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">White label</p>
@@ -587,10 +643,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       <Badge variant="outline" className="w-fit rounded-full">Client visible</Badge>
                     </div>
 
-                    <Card className="overflow-hidden border-border/70 shadow-sm">
-                      <CardContent className="p-0">
-                        <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.88fr)]">
-                          <div className="space-y-6 p-6 sm:p-7">
+                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                      <CardContent className="min-w-0 p-0">
+                        <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.88fr)]">
+                          <div className="min-w-0 space-y-6 p-6 sm:p-7">
                             <div className="space-y-2">
                               <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
                               <Input
@@ -615,9 +671,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                 const value = clientBrandDraft[field.key]
                                 const pickerValue = /^#[0-9A-F]{6}$/iu.test(value) ? value : '#0D1B2A'
                                 return (
-                                  <div key={field.key} className="space-y-2">
+                                  <div key={field.key} className="min-w-0 space-y-2">
                                     <Label htmlFor={field.key}>{field.label}</Label>
-                                    <div className="flex gap-2">
+                                    <div className="flex min-w-0 gap-2">
                                       <Input
                                         aria-label={`${field.label} picker`}
                                         type="color"
@@ -627,7 +683,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                           ...current,
                                           [field.key]: event.target.value.toUpperCase(),
                                         }))}
-                                        className="h-10 w-12 cursor-pointer p-1"
+                                        className="h-10 w-12 shrink-0 cursor-pointer p-1"
                                       />
                                       <Input
                                         id={field.key}
@@ -639,7 +695,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                           ...current,
                                           [field.key]: event.target.value.toUpperCase(),
                                         }))}
-                                        className="font-mono uppercase"
+                                        className="min-w-0 flex-1 font-mono uppercase"
                                       />
                                     </div>
                                   </div>
@@ -664,7 +720,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                   workspaceInitials={workspaceInitials}
                                   placement="settings"
                                 />
-                                <div className="space-y-3">
+                                <div className="min-w-0 space-y-3">
                                   <p className="text-sm leading-6 text-muted-foreground">
                                     Shown without a colored backdrop so the original artwork stays intact.
                                   </p>
@@ -720,7 +776,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             ) : null}
                           </div>
 
-                          <div className="border-t border-border/70 bg-muted/25 p-4 sm:p-6 xl:border-l xl:border-t-0">
+                          <div className="min-w-0 border-t border-border/70 bg-muted/25 p-4 sm:p-6 xl:border-l xl:border-t-0">
                             <div className="mb-3 flex items-center justify-between gap-3">
                               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live preview</p>
                               <Badge variant="secondary" className="rounded-full text-[10px]">Shared dashboard</Badge>
@@ -801,7 +857,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
-                  <section id="workspace-access" className="scroll-mt-28 space-y-4" aria-labelledby="workspace-access-title">
+                  <section id="workspace-access" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="workspace-access-title">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Access</p>
@@ -839,14 +895,14 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       </div>
                     </div>
 
-                    <Card className="overflow-hidden border-border/70 shadow-sm">
+                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
                       <CardHeader className="border-b border-border/70 bg-muted/15">
                         <CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5" />Agency team</CardTitle>
                         <CardDescription>Workspace users are separate from client portal users, which are managed inside each client.</CardDescription>
                       </CardHeader>
-                      <CardContent className="p-0">
-                        <div className="overflow-x-auto">
-                    <Table>
+                      <CardContent className="min-w-0 p-0">
+                        <div className="max-w-full overflow-hidden">
+                    <Table className="min-w-[52rem]">
                       <TableHeader className="bg-muted/30"><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined / added</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                       <TableBody>
                         {staff.map((member) => {
