@@ -85,6 +85,7 @@ export interface WorkspaceResearchContext {
     google_sheet_configured: boolean
     updated_at: string
   }
+  existing_podcast_ids: string[]
 }
 
 const cleanWorkspaceClientInput = (input: WorkspaceClientInput) => ({
@@ -121,7 +122,10 @@ export async function getWorkspaceResearchContext(
   })
 
   if (error) throw await toFunctionError(error, 'Failed to load podcast research context.')
-  const context = data as WorkspaceResearchContext | null
+  const context = data as (
+    Omit<WorkspaceResearchContext, 'existing_podcast_ids'>
+    & { existing_podcast_ids?: unknown }
+  ) | null
   if (
     !context?.workspace
     || !context.client
@@ -132,7 +136,29 @@ export async function getWorkspaceResearchContext(
   ) {
     throw new Error('The podcast research context did not match the workspace client address.')
   }
-  return context
+
+  const rawExistingPodcastIds = context.existing_podcast_ids
+  if (
+    rawExistingPodcastIds !== undefined
+    && (
+      !Array.isArray(rawExistingPodcastIds)
+      || rawExistingPodcastIds.length > 20_000
+      || rawExistingPodcastIds.some((podcastId) => (
+        typeof podcastId !== 'string'
+        || !podcastId.trim()
+        || podcastId.length > 200
+      ))
+    )
+  ) {
+    throw new Error('The podcast research history response was invalid.')
+  }
+
+  return {
+    ...context,
+    existing_podcast_ids: Array.from(new Set(Array.isArray(rawExistingPodcastIds)
+      ? rawExistingPodcastIds.map((podcastId) => podcastId.trim())
+      : [])),
+  }
 }
 
 export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {

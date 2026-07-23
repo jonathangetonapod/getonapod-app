@@ -108,7 +108,7 @@ boundary, platform-owner management path, and isolation tests.
 | 2 | Client Podcast System | Workspace-scoped booking/calendar management and portal-credential controls for workspace-owned clients |
 | 3 | Podcast Database | Read-only browse/search/filter over a narrow projection of the shared podcast catalog; no global writes, contact export, cost analytics, or live paid lookups |
 | 4 | Onboarding | Implemented release candidate: versioned workspace forms, per-client white-label presentation, expiring capability links, server autosave, private uploads, review revisions, editable AI pitch drafts, explicit approval mappings, agency-owned follow-up, and archive-before-purge retention; production deployment remains pending |
-| 5 | Podcast Finder | Search for a verified workspace client, server-loaded bio, per-workspace usage limits, and an idempotent export workflow |
+| 5 | Podcast Finder | Direct workspace entry with an in-page active-client selector, server-loaded bio and podcast history, per-workspace usage limits, new-only weekly review, and sheet-verified idempotent export |
 | 6 | Prospect Dashboard | Workspace-owned dashboards, child rows, images, public capabilities, AI work, and Google Sheet operations |
 | 7 | Outreach Platform | Workspace/integration/campaign ownership, provider event ledger, outbox state machine, and idempotent individual approval |
 | 8 | Unibox | Campaign-bound ingestion, quarantined unknown events, read-only inbox first, then AI drafts and idempotent sends |

@@ -36,6 +36,8 @@ export interface ExportToSheetsResult {
   success: boolean
   rowsAdded: number
   updatedRange: string
+  duplicatesSkipped?: number
+  duplicatePodcastIds?: string[]
   cacheSaved?: number
   cacheSkipped?: number
   cacheErrors?: number

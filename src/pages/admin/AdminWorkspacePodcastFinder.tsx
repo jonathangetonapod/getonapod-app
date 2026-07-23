@@ -1,13 +1,12 @@
-import { useParams } from 'react-router-dom'
-import PodcastFinder from '@/pages/admin/PodcastFinder'
+import { Navigate, useParams } from 'react-router-dom'
+import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 
 const AdminWorkspacePodcastFinder = () => {
   const { workspaceId = '', clientId = '' } = useParams()
   return (
-    <PodcastFinder
-      key={`${workspaceId || 'missing'}:${clientId || 'missing'}`}
-      fixedClientId={clientId}
-      platformWorkspaceId={workspaceId}
+    <Navigate
+      to={`${selectedWorkspaceBaseHref(workspaceId)}/podcast-finder?client=${encodeURIComponent(clientId)}`}
+      replace
     />
   )
 }

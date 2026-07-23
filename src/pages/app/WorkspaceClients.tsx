@@ -273,7 +273,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                           <div className="inline-flex items-center gap-1">
                             {client.status === 'active' && (
                               <Button asChild size="sm" variant="outline">
-                                <Link to={`${clientBaseHref}/clients/${client.id}/podcast-finder`} aria-label={`Research podcasts for ${client.name}`}>
+                                <Link to={`${clientBaseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`} aria-label={`Research podcasts for ${client.name}`}>
                                   <Search className="mr-2 h-4 w-4" />Research
                                 </Link>
                               </Button>

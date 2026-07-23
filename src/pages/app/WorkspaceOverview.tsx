@@ -42,7 +42,7 @@ const moduleCards: Array<{
   {
     module: 'podcast-finder',
     name: 'Podcast Finder',
-    description: 'Choose a client and build a workspace-bound podcast outreach list.',
+    description: 'Find new podcasts for any client with weekly history deduplication built in.',
     icon: Search,
   },
   {

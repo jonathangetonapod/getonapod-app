@@ -7,6 +7,7 @@ import {
   requireUuid,
   requireWorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
+import { partitionPodcastExports } from '../_shared/podcastExportDedupe.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -55,7 +56,7 @@ serve(async (req) => {
       await requirePlatformAdminOrService(req)
     }
 
-    if (!clientId || !podcasts || podcasts.length === 0) {
+    if (!clientId || !Array.isArray(podcasts) || podcasts.length === 0) {
       return new Response(
         JSON.stringify({ error: 'Client ID and podcasts array are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -210,21 +211,7 @@ serve(async (req) => {
 
     const { access_token } = await tokenResponse.json()
 
-    // Prepare rows to append - matching template columns:
-    // Column A: Podcast Name
-    // Column B: Description
-    // Column C: Ratings
-    // Column D: Episode Count
-    // Column E: Podscan Podcast ID
-    const rows = podcasts.map(podcast => [
-      podcast.podcast_name || '',
-      podcast.podcast_description || '',
-      podcast.itunes_rating?.toString() || '',
-      podcast.episode_count?.toString() || '',
-      podcast.podscan_podcast_id || podcast.podcast_id || '',
-    ])
-
-    // Check if sheet has headers, if not add them
+    // Resolve the real first sheet before reading history or appending rows.
     const sheetMetadataResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
       {
@@ -242,9 +229,74 @@ serve(async (req) => {
       )
     }
 
+    const sheetMetadata = await sheetMetadataResponse.json()
+    const firstSheetName = sheetMetadata.sheets?.[0]?.properties?.title || 'Sheet1'
+    const quotedFirstSheetName = `'${firstSheetName.replaceAll("'", "''")}'`
+    const existingIdsRange = encodeURIComponent(`${quotedFirstSheetName}!E2:E`)
+    const existingIdsResponse = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${existingIdsRange}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${access_token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+    if (!existingIdsResponse.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to check the client sheet for existing podcasts' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const existingIdsData = await existingIdsResponse.json()
+    const existingPodcastIds = new Set<string>(
+      (existingIdsData.values || [])
+        .map((row: unknown[]) => typeof row?.[0] === 'string' ? row[0].trim().toLowerCase() : '')
+        .filter(Boolean),
+    )
+    const {
+      newPodcasts,
+      duplicatePodcastIds,
+      missingIdentityPodcastNames,
+    } = partitionPodcastExports(podcasts, existingPodcastIds)
+    if (missingIdentityPodcastNames.length > 0) {
+      return new Response(
+        JSON.stringify({ error: 'Every podcast must include a stable Podscan ID before export' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if (newPodcasts.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          rowsAdded: 0,
+          updatedRange: '',
+          duplicatesSkipped: podcasts.length,
+          duplicatePodcastIds,
+          cacheSaved: 0,
+          cacheSkipped: 0,
+          cacheErrors: 0,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    // Prepare rows matching the client template. Column E is the stable
+    // Podscan identifier used by every weekly export deduplication pass.
+    const rows = newPodcasts.map(podcast => [
+      podcast.podcast_name || '',
+      podcast.podcast_description || '',
+      podcast.itunes_rating?.toString() || '',
+      podcast.episode_count?.toString() || '',
+      podcast.podscan_podcast_id || podcast.podcast_id || '',
+    ])
+
     // Append data to the sheet
+    const appendRange = encodeURIComponent(`${quotedFirstSheetName}!A:E`)
     const appendResponse = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1:append?valueInputOption=RAW`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=RAW`,
       {
         method: 'POST',
         headers: {
@@ -274,14 +326,14 @@ serve(async (req) => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('💾 [CACHE SAVE] Saving podcasts to central database...')
     console.log(`   Client: ${client.name}`)
-    console.log(`   Podcasts to cache: ${podcasts.length}`)
+    console.log(`   Podcasts to cache: ${newPodcasts.length}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     let savedCount = 0
     let skippedCount = 0
     let errorCount = 0
 
-    for (const podcast of podcasts) {
+    for (const podcast of newPodcasts) {
       const podcastId = podcast.podscan_podcast_id || podcast.podcast_id
 
       if (!podcastId) {
@@ -291,36 +343,60 @@ serve(async (req) => {
       }
 
       try {
-        // Upsert podcast to central database
-        const { error: upsertError } = await supabase
-          .from('podcasts')
-          .upsert({
-            podscan_id: podcastId,
-            podcast_name: podcast.podcast_name,
-            podcast_description: podcast.podcast_description || null,
-            podcast_image_url: podcast.podcast_image_url || null,
-            podcast_url: podcast.podcast_url || null,
-            publisher_name: podcast.publisher_name || null,
-            episode_count: podcast.episode_count || null,
-            itunes_rating: podcast.itunes_rating || null,
-            audience_size: podcast.audience_size || null,
-            language: podcast.language || null,
-            region: podcast.region || null,
-            podscan_email: podcast.podcast_email || null,
-            rss_url: podcast.rss_feed || null,
-            podcast_categories: podcast.podcast_categories || null,
-            // Mark as saved from podcast finder export
-            podscan_last_fetched_at: new Date().toISOString(),
-          }, {
-            onConflict: 'podscan_id',
-            ignoreDuplicates: false, // Update if exists
-          })
+        const updatedAt = new Date().toISOString()
+        const [centralCache, clientHistory] = await Promise.all([
+          supabase
+            .from('podcasts')
+            .upsert({
+              podscan_id: podcastId,
+              podcast_name: podcast.podcast_name,
+              podcast_description: podcast.podcast_description || null,
+              podcast_image_url: podcast.podcast_image_url || null,
+              podcast_url: podcast.podcast_url || null,
+              publisher_name: podcast.publisher_name || null,
+              episode_count: podcast.episode_count || null,
+              itunes_rating: podcast.itunes_rating || null,
+              audience_size: podcast.audience_size || null,
+              language: podcast.language || null,
+              region: podcast.region || null,
+              podscan_email: podcast.podcast_email || null,
+              rss_url: podcast.rss_feed || null,
+              podcast_categories: podcast.podcast_categories || null,
+              podscan_last_fetched_at: updatedAt,
+            }, {
+              onConflict: 'podscan_id',
+              ignoreDuplicates: false,
+            }),
+          supabase
+            .from('client_dashboard_podcasts')
+            .upsert({
+              client_id: clientId,
+              podcast_id: podcastId,
+              podcast_name: podcast.podcast_name,
+              podcast_description: podcast.podcast_description || null,
+              podcast_image_url: podcast.podcast_image_url || null,
+              podcast_url: podcast.podcast_url || null,
+              publisher_name: podcast.publisher_name || null,
+              episode_count: podcast.episode_count || null,
+              itunes_rating: podcast.itunes_rating || null,
+              audience_size: podcast.audience_size || null,
+              podcast_categories: podcast.podcast_categories || null,
+              updated_at: updatedAt,
+            }, {
+              onConflict: 'client_id,podcast_id',
+              ignoreDuplicates: false,
+            }),
+        ])
 
-        if (upsertError) {
-          console.error('❌ [ERROR] Failed to save podcast:', podcast.podcast_name?.substring(0, 50), upsertError.message)
+        if (centralCache.error || clientHistory.error) {
+          console.error(
+            '❌ [ERROR] Failed to save podcast:',
+            podcast.podcast_name?.substring(0, 50),
+            centralCache.error?.message || clientHistory.error?.message,
+          )
           errorCount++
         } else {
-          console.log(`💾 [SAVED] ${podcast.podcast_name?.substring(0, 50)} → Central DB`)
+          console.log(`💾 [SAVED] ${podcast.podcast_name?.substring(0, 50)} → Central DB + client history`)
           savedCount++
         }
       } catch (error) {
@@ -342,8 +418,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        rowsAdded: podcasts.length,
+        rowsAdded: newPodcasts.length,
         updatedRange: result.updates.updatedRange,
+        duplicatesSkipped: podcasts.length - newPodcasts.length,
+        duplicatePodcastIds,
         cacheSaved: savedCount,
         cacheSkipped: skippedCount,
         cacheErrors: errorCount,

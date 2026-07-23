@@ -235,16 +235,17 @@ curl -X POST https://your-project.supabase.co/functions/v1/delete-reply \
 
 ### export-to-google-sheets
 
-Exports podcast data to a client's Google Sheet and caches the podcasts in the central database for future use.
+Exports new podcast data to a client's Google Sheet, rejects entries without a stable Podscan ID, and caches successful exports in both the central catalog and the client's history.
 
 **Endpoint:** `/functions/v1/export-to-google-sheets`  
 **Method:** `POST`  
-**Authentication:** Service Role Key required via environment variables
+**Authentication:** Authenticated workspace bearer token with `workspaceId`, or the legacy platform-admin/service path when `workspaceId` is omitted
 
 #### Request Body
 ```json
 {
   "clientId": "uuid",
+  "workspaceId": "uuid",
   "podcasts": [
     {
       "podcast_name": "The Joe Rogan Experience",
@@ -275,6 +276,7 @@ Exports podcast data to a client's Google Sheet and caches the podcasts in the c
 
 **Parameters:**
 - `clientId` (string, required): The client's UUID
+- `workspaceId` (string, recommended): Workspace UUID used for tenant authorization and client scoping
 - `podcasts` (array, required): Array of podcast objects to export
 
 **Podcast Object Fields:**
@@ -293,6 +295,8 @@ Exports podcast data to a client's Google Sheet and caches the podcasts in the c
   "success": true,
   "rowsAdded": 5,
   "updatedRange": "Sheet1!A2:E6",
+  "duplicatesSkipped": 2,
+  "duplicatePodcastIds": ["podcast123", "podcast456"],
   "cacheSaved": 5,
   "cacheSkipped": 0,
   "cacheErrors": 0
@@ -302,10 +306,11 @@ Exports podcast data to a client's Google Sheet and caches the podcasts in the c
 #### Description
 1. Looks up client's Google Sheet URL from database
 2. Authenticates with Google using service account with domain-wide delegation
-3. Formats podcast data for sheet columns (Name, Description, Rating, Episodes, Podcast ID)
-4. Appends rows to the Google Sheet
-5. Saves all podcasts to central database cache for future use across all clients
-6. Returns statistics on export and caching operations
+3. Resolves the actual first sheet and reads its stable Podcast ID column
+4. Removes sheet-history duplicates and repeated IDs within the request, case-insensitively
+5. Appends only new rows to the Google Sheet
+6. Saves new podcasts to the central catalog and the client's history
+7. Returns append, duplicate, and caching statistics
 
 #### Example Request
 ```bash

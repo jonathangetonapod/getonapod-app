@@ -354,6 +354,8 @@ invite-only MVP. Its old URL redirects to `/app/overview`.
 
 ### Podcast Finder (`/app/podcast-finder`)
 
+Podcast Finder opens directly in the workspace research workflow. The active client is selected in the page header; client-specific legacy URLs redirect to this canonical route with a `client` query parameter.
+
 #### AI-Powered Discovery
 - **Smart Query Generation**: AI creates optimized search queries from client bios
 - **Compatibility Scoring**: AI analyzes podcast-client fit (1-10 scale)
@@ -364,13 +366,13 @@ invite-only MVP. Its old URL redirects to `/app/overview`.
 - **Multi-criteria Search**: Audience size, episode count, categories, regions
 - **Chart Integration**: Apple Podcasts and Spotify chart data
 - **Bulk Operations**: Process hundreds of podcasts simultaneously
-- **Deduplication**: Intelligent duplicate removal
+- **Weekly Deduplication**: Removes duplicates inside each run and marks podcasts already exported, reviewed, contacted, or booked for the selected client
+- **New-only Default**: Existing client-history matches are hidden and unselectable by default, with an optional reference view
 
-#### Prospect Management
-- **New Prospect Mode**: Research for non-clients
-- **Existing Client Mode**: Research for current clients
-- **Google Sheets Export**: Automated prospect dashboard creation
-- **Sharing System**: Client-facing prospect research dashboards
+#### Client Export
+- **Workspace Client Selector**: Switch among every active client without leaving Podcast Finder
+- **Google Sheets Export**: Appends only stable Podscan IDs not already present in the client sheet
+- **Client History Cache**: Successful exports are recorded for future weekly discovery runs
 
 #### Compatibility Intelligence
 - **Bio Analysis**: Deep analysis of client background and expertise

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
   ArrowRight,
@@ -11,11 +11,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleDot,
   ExternalLink,
   FileSpreadsheet,
   Filter,
-  Globe2,
   Layers3,
   Loader2,
   LockKeyhole,
@@ -75,7 +73,12 @@ import { cn } from '@/lib/utils'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref, workspaceModuleHref } from '@/lib/workspaceRoutes'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
-import { getClients, getWorkspaceResearchContext } from '@/services/clients'
+import {
+  getClients,
+  getWorkspaceClients,
+  getWorkspaceResearchContext,
+  type WorkspaceResearchContext,
+} from '@/services/clients'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
 import {
@@ -187,17 +190,37 @@ function toExportData(result: ResearchResult): PodcastExportData {
 
 interface PodcastFinderProps {
   fixedClientId?: string
+  initialClientId?: string
   platformWorkspaceId?: string
+  workspaceScoped?: boolean
 }
 
-export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: PodcastFinderProps = {}) {
+export default function PodcastFinder({
+  fixedClientId,
+  initialClientId,
+  platformWorkspaceId,
+  workspaceScoped = false,
+}: PodcastFinderProps = {}) {
   const { user, workspace } = useAuth()
+  const queryClient = useQueryClient()
   const storedScope = useMemo(readStoredScope, [])
   const isClientBound = fixedClientId !== undefined
+  const isWorkspaceScoped = isClientBound || workspaceScoped || platformWorkspaceId !== undefined
+  const isClientSelectable = isWorkspaceScoped && !isClientBound
   const fixedWorkspaceId = (platformWorkspaceId || workspace?.id || '').toLowerCase()
   const canonicalFixedClientId = (fixedClientId || '').toLowerCase()
-  const [workspaceId, setWorkspaceId] = useState(isClientBound ? fixedWorkspaceId : storedScope.workspaceId || '')
-  const [clientId, setClientId] = useState(isClientBound ? canonicalFixedClientId : storedScope.clientId || '')
+  const requestedClientId = (initialClientId || '').toLowerCase()
+  const storedScopedClientId = storedScope.workspaceId?.toLowerCase() === fixedWorkspaceId
+    ? storedScope.clientId || ''
+    : ''
+  const [workspaceId, setWorkspaceId] = useState(isWorkspaceScoped ? fixedWorkspaceId : storedScope.workspaceId || '')
+  const [clientId, setClientId] = useState(
+    isClientBound
+      ? canonicalFixedClientId
+      : isClientSelectable
+        ? requestedClientId || storedScopedClientId
+        : storedScope.clientId || '',
+  )
   const [strategy, setStrategy] = useState<DiscoveryStrategy>(storedScope.strategy || 'balanced')
   const [language, setLanguage] = useState('en')
   const [region, setRegion] = useState('US')
@@ -224,6 +247,8 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
   const [resultSearch, setResultSearch] = useState('')
   const [resultSort, setResultSort] = useState<ResultSort>('priority')
   const [contactableOnly, setContactableOnly] = useState(false)
+  const [hideExisting, setHideExisting] = useState(true)
+  const [exportedPodcastIds, setExportedPodcastIds] = useState<Set<string>>(new Set())
   const [resultPage, setResultPage] = useState(1)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [isEnriching, setIsEnriching] = useState(false)
@@ -242,57 +267,91 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
   const workspacesQuery = useQuery({
     queryKey: ['podcast-research', user?.id || 'unknown', 'workspaces'],
     queryFn: listPodcastResearchWorkspaces,
-    enabled: !isClientBound,
+    enabled: !isWorkspaceScoped,
     staleTime: 30_000,
   })
 
   const clientsQuery = useQuery({
     queryKey: ['podcast-research', user?.id || 'unknown', 'workspace', workspaceId, 'clients'],
     queryFn: () => getClients({ workspaceId, status: 'active' }),
-    enabled: !isClientBound && Boolean(workspaceId),
+    enabled: !isWorkspaceScoped && Boolean(workspaceId),
     staleTime: 30_000,
   })
 
-  const researchContextQuery = useQuery({
-    queryKey: ['podcast-research', user?.id || 'unknown', 'workspace', fixedWorkspaceId, 'client', canonicalFixedClientId],
-    queryFn: () => getWorkspaceResearchContext(fixedWorkspaceId, canonicalFixedClientId),
-    enabled: isClientBound && Boolean(fixedWorkspaceId && canonicalFixedClientId),
+  const scopedClientsQuery = useQuery({
+    queryKey: ['podcast-research', user?.id || 'unknown', 'workspace', fixedWorkspaceId, 'client-options'],
+    queryFn: () => getWorkspaceClients(fixedWorkspaceId),
+    enabled: isClientSelectable && Boolean(fixedWorkspaceId),
     staleTime: 30_000,
     retry: false,
   })
 
-  const workspaces = useMemo(() => isClientBound
-    ? researchContextQuery.data?.workspace ? [researchContextQuery.data.workspace] : []
-    : workspacesQuery.data || [], [isClientBound, researchContextQuery.data?.workspace, workspacesQuery.data])
-  const clients = useMemo(() => isClientBound
-    ? researchContextQuery.data?.client ? [researchContextQuery.data.client] : []
-    : clientsQuery.data?.clients || [], [clientsQuery.data?.clients, isClientBound, researchContextQuery.data?.client])
-  const selectedWorkspace = workspaces.find((workspace) => workspace.id === workspaceId)
-  const selectedClient = clients.find((client) => client.id === clientId)
+  const researchContextQueryKey = [
+    'podcast-research',
+    user?.id || 'unknown',
+    'workspace',
+    workspaceId,
+    'client',
+    clientId,
+  ] as const
+  const researchContextQuery = useQuery({
+    queryKey: researchContextQueryKey,
+    queryFn: () => getWorkspaceResearchContext(workspaceId, clientId),
+    enabled: isWorkspaceScoped && Boolean(workspaceId && clientId),
+    staleTime: 30_000,
+    retry: false,
+  })
+
+  const workspaces = useMemo(() => workspacesQuery.data || [], [workspacesQuery.data])
+  const clients = useMemo(() => clientsQuery.data?.clients || [], [clientsQuery.data?.clients])
+  const scopedClientOptions = useMemo(
+    () => (scopedClientsQuery.data || []).filter((client) => client.status === 'active'),
+    [scopedClientsQuery.data],
+  )
+  const selectedWorkspace = isWorkspaceScoped
+    ? researchContextQuery.data?.workspace
+      || (workspace?.id.toLowerCase() === fixedWorkspaceId ? workspace : undefined)
+    : workspaces.find((candidate) => candidate.id === workspaceId)
+  const selectedClient = isWorkspaceScoped
+    ? researchContextQuery.data?.client?.id === clientId
+      ? researchContextQuery.data.client
+      : undefined
+    : clients.find((client) => client.id === clientId)
   const scopeLocked = Boolean(runScope || results.length > 0 || isDiscovering)
 
   useEffect(() => {
-    if (isClientBound) return
+    if (isWorkspaceScoped) return
     if (workspaces.length === 0) return
     if (!workspaces.some((workspace) => workspace.id === workspaceId)) {
       setWorkspaceId((workspaces.find((workspace) => workspace.is_default) || workspaces[0]).id)
       setClientId('')
     }
-  }, [isClientBound, workspaceId, workspaces])
+  }, [isWorkspaceScoped, workspaceId, workspaces])
 
   useEffect(() => {
-    if (isClientBound) return
+    if (isWorkspaceScoped) return
     if (!clientId || clientsQuery.isLoading) return
     if (!clients.some((client) => client.id === clientId)) setClientId('')
-  }, [clientId, clients, clientsQuery.isLoading, isClientBound])
+  }, [clientId, clients, clientsQuery.isLoading, isWorkspaceScoped])
 
   useEffect(() => {
-    if (!isClientBound) return
-    if (workspaceId === fixedWorkspaceId && clientId === canonicalFixedClientId) return
+    if (!isWorkspaceScoped) return
+    if (
+      workspaceId === fixedWorkspaceId
+      && (!isClientBound || clientId === canonicalFixedClientId)
+    ) return
     resetResearch()
     setWorkspaceId(fixedWorkspaceId)
-    setClientId(canonicalFixedClientId)
-  }, [canonicalFixedClientId, clientId, fixedWorkspaceId, isClientBound, workspaceId])
+    if (isClientBound) setClientId(canonicalFixedClientId)
+  }, [canonicalFixedClientId, clientId, fixedWorkspaceId, isClientBound, isWorkspaceScoped, workspaceId])
+
+  useEffect(() => {
+    if (!isClientSelectable || scopedClientsQuery.isLoading) return
+    if (scopedClientOptions.some((client) => client.id === clientId)) return
+    resetResearch()
+    setExportedPodcastIds(new Set())
+    setClientId(scopedClientOptions[0]?.id || '')
+  }, [clientId, isClientSelectable, scopedClientOptions, scopedClientsQuery.isLoading])
 
   useEffect(() => {
     if (isClientBound) return
@@ -305,7 +364,7 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
 
   useEffect(() => {
     setResultPage(1)
-  }, [activeTab, resultSearch, resultSort, contactableOnly])
+  }, [activeTab, resultSearch, resultSort, contactableOnly, hideExisting])
 
   useEffect(() => {
     if (!showChartDiscovery || chartCountries.length > 0) return
@@ -340,6 +399,11 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
     return () => { active = false }
   }, [chartCountry, chartPlatform, showChartDiscovery, workspaceId])
 
+  const existingPodcastIds = useMemo(() => new Set([
+    ...(researchContextQuery.data?.existing_podcast_ids || []),
+    ...exportedPodcastIds,
+  ].map((podcastId) => podcastId.toLowerCase())), [exportedPodcastIds, researchContextQuery.data?.existing_podcast_ids])
+
   const rows = useMemo(() => results.map((result) => {
     const outreach = calculateOutreachPriority(result.podcast)
     const tier = getResearchTier(
@@ -352,18 +416,26 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
       ...result,
       outreach,
       tier,
+      existing: existingPodcastIds.has(result.podcast.podcast_id.toLowerCase()),
       compositeScore: compositeResearchScore(result.relevanceScore, outreach.score),
     }
-  }), [excludedIds, results, tierOverrides])
+  }), [excludedIds, existingPodcastIds, results, tierOverrides])
 
   const tierCounts = useMemo(() => rows.reduce<Record<ResearchTier, number>>((counts, row) => {
     counts[row.tier] += 1
     return counts
   }, { a: 0, b: 0, c: 0, review: 0, excluded: 0 }), [rows])
 
+  const newTierCounts = useMemo(() => rows.reduce<Record<ResearchTier, number>>((counts, row) => {
+    if (!row.existing) counts[row.tier] += 1
+    return counts
+  }, { a: 0, b: 0, c: 0, review: 0, excluded: 0 }), [rows])
+  const displayedTierCounts = hideExisting ? newTierCounts : tierCounts
+
   const filteredRows = useMemo(() => {
     const needle = resultSearch.trim().toLowerCase()
     const filtered = rows.filter((row) => {
+      if (hideExisting && row.existing) return false
       if (activeTab !== 'all' && row.tier !== activeTab) return false
       if (contactableOnly && !row.podcast.reach?.email) return false
       if (!needle) return true
@@ -381,15 +453,26 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
       }
       return right.compositeScore - left.compositeScore
     })
-  }, [activeTab, contactableOnly, resultSearch, resultSort, rows])
+  }, [activeTab, contactableOnly, hideExisting, resultSearch, resultSort, rows])
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / RESULTS_PER_PAGE))
   const visibleRows = filteredRows.slice((resultPage - 1) * RESULTS_PER_PAGE, resultPage * RESULTS_PER_PAGE)
+  const visibleSelectableRows = visibleRows.filter((row) => !row.existing)
   const selectedDetail = rows.find((row) => row.podcast.podcast_id === detailId)
-  const qualifiedCount = tierCounts.a + tierCounts.b + tierCounts.c
-  const selectedResults = results.filter((result) => selectedIds.has(result.podcast.podcast_id) && !excludedIds.has(result.podcast.podcast_id))
+  const existingResultCount = rows.filter((row) => row.existing).length
+  const newResultCount = rows.length - existingResultCount
+  const qualifiedCount = rows.filter((row) => !row.existing && ['a', 'b', 'c'].includes(row.tier)).length
+  const selectedResults = results.filter((result) => (
+    selectedIds.has(result.podcast.podcast_id)
+    && !excludedIds.has(result.podcast.podcast_id)
+    && !existingPodcastIds.has(result.podcast.podcast_id.toLowerCase())
+  ))
   const selectedContactableCount = selectedResults.filter((result) => Boolean(result.podcast.reach?.email)).length
-  const unscoredCount = results.filter((result) => result.relevanceScore === null && !excludedIds.has(result.podcast.podcast_id)).length
+  const unscoredCount = results.filter((result) => (
+    result.relevanceScore === null
+    && !excludedIds.has(result.podcast.podcast_id)
+    && !existingPodcastIds.has(result.podcast.podcast_id.toLowerCase())
+  )).length
 
   function resetResearch() {
     setQueries([])
@@ -402,17 +485,20 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
     setExcludedIds(new Set())
     setActiveTab('all')
     setResultSearch('')
+    setHideExisting(true)
     setDetailId(null)
   }
 
   const handleWorkspaceChange = (nextWorkspaceId: string) => {
     resetResearch()
+    setExportedPodcastIds(new Set())
     setWorkspaceId(nextWorkspaceId)
     setClientId('')
   }
 
   const handleClientChange = (nextClientId: string) => {
     resetResearch()
+    setExportedPodcastIds(new Set())
     setClientId(nextClientId)
   }
 
@@ -605,10 +691,18 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
       return
     }
 
-    const selectedUnscored = results.filter((result) => selectedIds.has(result.podcast.podcast_id) && result.relevanceScore === null)
+    const selectedUnscored = results.filter((result) => (
+      selectedIds.has(result.podcast.podcast_id)
+      && result.relevanceScore === null
+      && !existingPodcastIds.has(result.podcast.podcast_id.toLowerCase())
+    ))
     const candidates = selectedUnscored.length > 0
       ? selectedUnscored
-      : results.filter((result) => result.relevanceScore === null && !excludedIds.has(result.podcast.podcast_id))
+      : results.filter((result) => (
+          result.relevanceScore === null
+          && !excludedIds.has(result.podcast.podcast_id)
+          && !existingPodcastIds.has(result.podcast.podcast_id.toLowerCase())
+        ))
     if (candidates.length === 0) {
       toast.info('There are no unscored podcasts in this selection.')
       return
@@ -696,6 +790,7 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
   }
 
   const handleToggleSelection = (podcastId: string) => {
+    if (existingPodcastIds.has(podcastId.toLowerCase())) return
     setSelectedIds((current) => {
       const next = new Set(current)
       if (next.has(podcastId)) next.delete(podcastId)
@@ -705,7 +800,9 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
   }
 
   const handleToggleVisible = () => {
-    const visibleIds = visibleRows.map((row) => row.podcast.podcast_id)
+    const visibleIds = visibleRows
+      .filter((row) => !row.existing)
+      .map((row) => row.podcast.podcast_id)
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
     setSelectedIds((current) => {
       const next = new Set(current)
@@ -769,7 +866,27 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
         selectedResults.map(toExportData),
         selectedWorkspace.id,
       )
-      toast.success(`Exported ${response.rowsAdded} podcasts for ${selectedClient.name}.`)
+      const handledPodcastIds = selectedResults.map((result) => result.podcast.podcast_id)
+      setExportedPodcastIds((current) => new Set([...current, ...handledPodcastIds]))
+      if (isWorkspaceScoped) {
+        queryClient.setQueryData<WorkspaceResearchContext>(researchContextQueryKey, (current) => current
+          ? {
+              ...current,
+              existing_podcast_ids: Array.from(new Set([
+                ...current.existing_podcast_ids,
+                ...handledPodcastIds,
+              ])),
+            }
+          : current)
+      }
+      const duplicatesSkipped = response.duplicatesSkipped || 0
+      if (response.rowsAdded === 0) {
+        toast.info(`Nothing new to export for ${selectedClient.name}. These podcasts are already in the client sheet.`)
+      } else if (duplicatesSkipped > 0) {
+        toast.success(`Exported ${response.rowsAdded} new podcasts and skipped ${duplicatesSkipped} already in the client sheet.`)
+      } else {
+        toast.success(`Exported ${response.rowsAdded} new podcasts for ${selectedClient.name}.`)
+      }
       setSelectedIds(new Set())
       setExportDialogOpen(false)
     } catch (error) {
@@ -793,11 +910,11 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
   const onboardingHref = `${clientBaseHref}/onboarding`
   const platformWorkspaceConfig: PlatformWorkspaceConfig | undefined = platformWorkspaceId
     ? {
-        workspaceName: researchContextQuery.data?.workspace.name || 'Client workspace',
+        workspaceName: selectedWorkspace?.name || 'Client workspace',
         logoUrl: workspaceLogoUrl(
-          researchContextQuery.data?.workspace.id,
-          researchContextQuery.data?.workspace.logo_path,
-          researchContextQuery.data?.workspace.logo_updated_at,
+          selectedWorkspace?.id,
+          selectedWorkspace?.logo_path,
+          selectedWorkspace?.logo_updated_at,
         ),
         baseHref: clientBaseHref,
       }
@@ -849,24 +966,51 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
           <div>
             <div className="mb-1 flex items-center gap-2">
               <Badge variant="secondary" className="gap-1">
-                <ShieldCheck className="h-3.5 w-3.5" /> Client only
+                <CalendarDays className="h-3.5 w-3.5" /> Weekly discovery
               </Badge>
-              {(isClientBound || runScope) && selectedWorkspace && selectedClient && (
+              {selectedWorkspace && selectedClient && (
                 <Badge variant="outline" className="gap-1">
                   <LockKeyhole className="h-3.5 w-3.5" /> {selectedWorkspace.name} · {selectedClient.name}
                 </Badge>
               )}
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {isClientBound && selectedClient ? `${selectedClient.name} Podcast Research` : 'Podcast Research'}
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Podcast Finder</h1>
             <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-              {isClientBound
-                ? 'Build a high-volume, relevant outreach list for this client.'
-                : 'Build high-volume, relevant outreach lists for approved clients in each workspace.'}
+              Find and score new podcasts for every client. Previous exports, reviews, outreach, and bookings are filtered automatically.
             </p>
           </div>
-          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+            {isClientSelectable && (
+              <div className="min-w-64 space-y-1.5">
+                <Label htmlFor="finder-client-select">Find podcasts for</Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={clientId}
+                    onValueChange={handleClientChange}
+                    disabled={scopeLocked || scopedClientsQuery.isLoading || scopedClientOptions.length === 0}
+                  >
+                    <SelectTrigger id="finder-client-select" className="h-10 bg-card">
+                      <SelectValue placeholder={scopedClientsQuery.isLoading ? 'Loading clients…' : 'No active clients'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {scopedClientOptions.map((client) => (
+                        <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {scopeLocked && (
+                    <Button variant="outline" className="shrink-0" onClick={() => setScopeResetOpen(true)}>
+                      Change
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {researchContextQuery.isLoading
+                    ? 'Loading client history…'
+                    : `${existingPodcastIds.size.toLocaleString()} existing podcast${existingPodcastIds.size === 1 ? '' : 's'} excluded`}
+                </p>
+              </div>
+            )}
             {isClientBound && <Button asChild variant="outline"><Link to={clientsHref}>Back to clients</Link></Button>}
             <div className="rounded-lg border bg-card px-3 py-2 text-left lg:text-right">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podscan quota</p>
@@ -879,28 +1023,75 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
           </div>
         </div>
 
-        <Card>
+        {isClientSelectable && scopedClientsQuery.error && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            Clients could not be loaded. <button className="underline" onClick={() => void scopedClientsQuery.refetch()}>Try again</button>
+          </div>
+        )}
+
+        {isClientSelectable && !scopedClientsQuery.isLoading && !scopedClientsQuery.error && scopedClientOptions.length === 0 && (
+          <Card className="border-dashed">
+            <CardContent className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
+              <Users className="h-9 w-9 text-muted-foreground" />
+              <div>
+                <p className="font-medium">No active clients</p>
+                <p className="text-sm text-muted-foreground">Add or reactivate a client before running weekly podcast discovery.</p>
+              </div>
+              <Button asChild variant="outline"><Link to={clientsHref}>Open clients</Link></Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {isWorkspaceScoped && researchContextQuery.error && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            {researchContextQuery.error instanceof Error
+              ? researchContextQuery.error.message
+              : 'The selected client profile and podcast history could not be loaded.'}{' '}
+            <button className="underline" onClick={() => void researchContextQuery.refetch()}>Try again</button>
+          </div>
+        )}
+
+        {isWorkspaceScoped && selectedClient && (
+          <div className="flex flex-col gap-3 rounded-xl border bg-muted/25 p-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">{selectedClient.name}</p>
+                <Badge variant={selectedClient.bio ? 'secondary' : 'destructive'}>
+                  {selectedClient.bio ? 'Profile ready' : 'Profile required'}
+                </Badge>
+                <Badge variant="outline" className="gap-1">
+                  <ShieldCheck className="h-3 w-3" /> {existingPodcastIds.size.toLocaleString()} in client history
+                </Badge>
+                {selectedClient.email && <span className="text-xs text-muted-foreground">{selectedClient.email}</span>}
+              </div>
+              <p className="mt-1 line-clamp-2 max-w-4xl text-sm text-muted-foreground">
+                {selectedClient.bio || 'Add the approved onboarding answers or client bio before running discovery.'}
+              </p>
+            </div>
+            {!selectedClient.bio && (
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <Link to={isClientBound ? onboardingHref : clientsHref}>{isClientBound ? 'Open onboarding' : 'Open clients'}</Link>
+              </Button>
+            )}
+          </div>
+        )}
+
+        {!isWorkspaceScoped && <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">
-                  {isClientBound ? '1. Confirm the client profile' : '1. Choose the client workspace'}
-                </CardTitle>
-                <CardDescription>
-                  {isClientBound
-                    ? 'This research is permanently bound to the workspace and client shown above.'
-                    : 'Workspace first, then an active client. Prospects stay in Prospect Dashboards.'}
-                </CardDescription>
+                <CardTitle className="text-lg">1. Choose the client workspace</CardTitle>
+                <CardDescription>Workspace first, then an active client. Prospects stay in Prospect Dashboards.</CardDescription>
               </div>
               {scopeLocked && (
                 <Button variant="outline" size="sm" onClick={() => setScopeResetOpen(true)}>
-                  <RefreshCw className="mr-2 h-4 w-4" /> {isClientBound ? 'Start new search' : 'Start another client'}
+                  <RefreshCw className="mr-2 h-4 w-4" /> Start another client
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!isClientBound && <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="workspace-select">Workspace</Label>
                 <Select value={workspaceId} onValueChange={handleWorkspaceChange} disabled={scopeLocked || workspacesQuery.isLoading}>
@@ -932,9 +1123,9 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                   </SelectContent>
                 </Select>
               </div>
-            </div>}
+            </div>
 
-            {!isClientBound && workspacesQuery.error && (
+            {workspacesQuery.error && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                 Workspaces could not be loaded. <button className="underline" onClick={() => void workspacesQuery.refetch()}>Try again</button>
               </div>
@@ -968,11 +1159,11 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         <Card className={cn(!selectedClient && 'opacity-60')}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">2. Set the discovery balance</CardTitle>
+            <CardTitle className="text-lg">{isWorkspaceScoped ? '1.' : '2.'} Set the discovery balance</CardTitle>
             <CardDescription>All modes keep relevant podcasts; the preset controls how broadly and deeply Podscan is searched.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1154,14 +1345,16 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
           <>
             <Card>
               <CardContent className="pt-5">
-                <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-8">
                   {[
                     { label: 'Raw found', value: runScope?.rawResults || results.length, tone: 'text-foreground' },
-                    { label: 'Unique', value: results.length, tone: 'text-foreground' },
-                    { label: 'Tier A', value: tierCounts.a, tone: 'text-emerald-600' },
-                    { label: 'Tier B', value: tierCounts.b, tone: 'text-blue-600' },
-                    { label: 'Tier C', value: tierCounts.c, tone: 'text-amber-600' },
-                    { label: 'Needs review', value: tierCounts.review, tone: 'text-violet-600' },
+                    { label: 'Unique run', value: results.length, tone: 'text-foreground' },
+                    { label: 'New for client', value: newResultCount, tone: 'text-emerald-600' },
+                    { label: 'Already used', value: existingResultCount, tone: 'text-slate-500' },
+                    { label: 'Tier A', value: newTierCounts.a, tone: 'text-emerald-600' },
+                    { label: 'Tier B', value: newTierCounts.b, tone: 'text-blue-600' },
+                    { label: 'Tier C', value: newTierCounts.c, tone: 'text-amber-600' },
+                    { label: 'Needs review', value: newTierCounts.review, tone: 'text-violet-600' },
                   ].map((stat, index, list) => (
                     <div key={stat.label} className="relative rounded-lg border bg-muted/15 px-3 py-3">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{stat.label}</p>
@@ -1171,7 +1364,10 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                   ))}
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>{qualifiedCount.toLocaleString()} outreach-ready · {Math.max(0, (runScope?.rawResults || results.length) - results.length).toLocaleString()} duplicates removed</span>
+                  <span>
+                    {qualifiedCount.toLocaleString()} new outreach-ready · {existingResultCount.toLocaleString()} from client history hidden ·{' '}
+                    {Math.max(0, (runScope?.rawResults || results.length) - results.length).toLocaleString()} within-run duplicates removed
+                  </span>
                   {runScope?.completedAt && <span>Run completed {formatDate(runScope.completedAt)} · {runScope.apiCalls} Podscan calls</span>}
                 </div>
               </CardContent>
@@ -1181,8 +1377,8 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
               <CardHeader className="space-y-3 pb-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <CardTitle className="text-lg">3. Review and route the list</CardTitle>
-                    <CardDescription>Relevance guides fit; outreach priority protects volume by measuring readiness and attainability.</CardDescription>
+                    <CardTitle className="text-lg">{isWorkspaceScoped ? '2.' : '3.'} Review and route the list</CardTitle>
+                    <CardDescription>New podcasts appear first. Client history stays available for reference but cannot be exported twice.</CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={() => void handleScoreResults()} disabled={isScoring || isDiscovering}>
@@ -1237,12 +1433,12 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                 <div className="flex flex-col gap-3 border-t pt-3 lg:flex-row lg:items-center lg:justify-between">
                   <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ResultTab)}>
                     <TabsList className="h-auto flex-wrap justify-start">
-                      <TabsTrigger value="all">All {rows.length}</TabsTrigger>
-                      <TabsTrigger value="a">Tier A {tierCounts.a}</TabsTrigger>
-                      <TabsTrigger value="b">Tier B {tierCounts.b}</TabsTrigger>
-                      <TabsTrigger value="c">Tier C {tierCounts.c}</TabsTrigger>
-                      <TabsTrigger value="review">Review {tierCounts.review}</TabsTrigger>
-                      <TabsTrigger value="excluded">Excluded {tierCounts.excluded}</TabsTrigger>
+                      <TabsTrigger value="all">All {hideExisting ? newResultCount : rows.length}</TabsTrigger>
+                      <TabsTrigger value="a">Tier A {displayedTierCounts.a}</TabsTrigger>
+                      <TabsTrigger value="b">Tier B {displayedTierCounts.b}</TabsTrigger>
+                      <TabsTrigger value="c">Tier C {displayedTierCounts.c}</TabsTrigger>
+                      <TabsTrigger value="review">Review {displayedTierCounts.review}</TabsTrigger>
+                      <TabsTrigger value="excluded">Excluded {displayedTierCounts.excluded}</TabsTrigger>
                     </TabsList>
                   </Tabs>
                   <div className="flex flex-col gap-2 sm:flex-row">
@@ -1262,6 +1458,14 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                     <Button variant={contactableOnly ? 'secondary' : 'outline'} onClick={() => setContactableOnly((value) => !value)}>
                       <Mail className="mr-2 h-4 w-4" /> Has email
                     </Button>
+                    <Button
+                      variant={hideExisting ? 'secondary' : 'outline'}
+                      aria-pressed={hideExisting}
+                      onClick={() => setHideExisting((value) => !value)}
+                    >
+                      <Filter className="mr-2 h-4 w-4" />
+                      {hideExisting ? `New only (${newResultCount})` : `Hide existing (${existingResultCount})`}
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -1274,9 +1478,10 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                         <TableHead className="w-11 pl-4">
                           <Checkbox
                             aria-label="Select all visible podcasts"
-                            checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.has(row.podcast.podcast_id))
+                            disabled={visibleSelectableRows.length === 0}
+                            checked={visibleSelectableRows.length > 0 && visibleSelectableRows.every((row) => selectedIds.has(row.podcast.podcast_id))
                               ? true
-                              : visibleRows.some((row) => selectedIds.has(row.podcast.podcast_id)) ? 'indeterminate' : false}
+                              : visibleSelectableRows.some((row) => selectedIds.has(row.podcast.podcast_id)) ? 'indeterminate' : false}
                             onCheckedChange={handleToggleVisible}
                           />
                         </TableHead>
@@ -1294,9 +1499,22 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                         const podcast = row.podcast
                         const selected = selectedIds.has(podcast.podcast_id)
                         return (
-                          <TableRow key={podcast.podcast_id} className={cn('cursor-pointer', selected && 'bg-primary/[0.04]')} onClick={() => setDetailId(podcast.podcast_id)}>
+                          <TableRow
+                            key={podcast.podcast_id}
+                            className={cn(
+                              'cursor-pointer',
+                              selected && 'bg-primary/[0.04]',
+                              row.existing && 'bg-muted/25 text-muted-foreground',
+                            )}
+                            onClick={() => setDetailId(podcast.podcast_id)}
+                          >
                             <TableCell className="py-2 pl-4" onClick={(event) => event.stopPropagation()}>
-                              <Checkbox aria-label={`Select ${podcast.podcast_name}`} checked={selected} onCheckedChange={() => handleToggleSelection(podcast.podcast_id)} />
+                              <Checkbox
+                                aria-label={`Select ${podcast.podcast_name}`}
+                                checked={selected}
+                                disabled={row.existing}
+                                onCheckedChange={() => handleToggleSelection(podcast.podcast_id)}
+                              />
                             </TableCell>
                             <TableCell className="py-2.5">
                               <div className="flex min-w-0 items-center gap-3">
@@ -1306,7 +1524,10 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><BarChart3 className="h-4 w-4 text-muted-foreground" /></div>
                                 )}
                                 <div className="min-w-0">
-                                  <p className="truncate font-medium">{podcast.podcast_name}</p>
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <p className="truncate font-medium">{podcast.podcast_name}</p>
+                                    {row.existing && <Badge variant="outline" className="shrink-0">Already used</Badge>}
+                                  </div>
                                   <p className="truncate text-xs text-muted-foreground">{podcast.publisher_name || resultReason(row)}</p>
                                   <p className="mt-0.5 line-clamp-1 max-w-xl text-xs text-muted-foreground/80">{resultReason(row)}</p>
                                 </div>
@@ -1326,7 +1547,16 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                         )
                       })}
                       {visibleRows.length === 0 && (
-                        <TableRow><TableCell colSpan={8} className="h-36 text-center text-muted-foreground">No podcasts match this view.</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={8} className="h-36 text-center text-muted-foreground">
+                            {hideExisting && newResultCount === 0 && existingResultCount > 0 ? (
+                              <div className="flex flex-col items-center gap-3">
+                                <span>Every podcast in this run already exists in the client’s history.</span>
+                                <Button variant="outline" size="sm" onClick={() => setHideExisting(false)}>Review existing podcasts</Button>
+                              </div>
+                            ) : 'No podcasts match this view.'}
+                          </TableCell>
+                        </TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -1350,8 +1580,10 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <div className="mb-4 rounded-full bg-primary/10 p-4"><Layers3 className="h-7 w-7 text-primary" /></div>
-              <h2 className="text-lg font-semibold">Ready to build {selectedClient.name}’s outreach pool</h2>
-              <p className="mt-1 max-w-xl text-sm text-muted-foreground">The discovery run will gather broad matches, remove duplicates, and keep lower-cost opportunities available for review instead of prematurely discarding volume.</p>
+              <h2 className="text-lg font-semibold">Ready for {selectedClient.name}’s weekly discovery</h2>
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                Each run gathers broad matches, removes duplicates within the search, and hides podcasts already exported, reviewed, contacted, or booked for this client.
+              </p>
             </CardContent>
           </Card>
         )}
@@ -1389,6 +1621,7 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
 
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline" className={tierClasses(selectedDetail.tier)}>{tierLabel(selectedDetail.tier)}</Badge>
+                {selectedDetail.existing && <Badge variant="secondary">Already used for this client</Badge>}
                 {selectedDetail.sources.map((source) => <Badge key={source} variant="secondary">{source}</Badge>)}
               </div>
 
@@ -1437,10 +1670,10 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
 
               <Separator />
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'a')}>Tier A</Button>
-                <Button size="sm" variant="outline" onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'b')}>Tier B</Button>
-                <Button size="sm" variant="outline" onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'c')}>Tier C</Button>
-                <Button size="sm" variant="destructive" onClick={() => { setExcludedIds((current) => new Set([...current, selectedDetail.podcast.podcast_id])); setDetailId(null) }}><Trash2 className="mr-2 h-4 w-4" /> Exclude</Button>
+                <Button size="sm" variant="outline" disabled={selectedDetail.existing} onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'a')}>Tier A</Button>
+                <Button size="sm" variant="outline" disabled={selectedDetail.existing} onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'b')}>Tier B</Button>
+                <Button size="sm" variant="outline" disabled={selectedDetail.existing} onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'c')}>Tier C</Button>
+                <Button size="sm" variant="destructive" disabled={selectedDetail.existing} onClick={() => { setExcludedIds((current) => new Set([...current, selectedDetail.podcast.podcast_id])); setDetailId(null) }}><Trash2 className="mr-2 h-4 w-4" /> Exclude</Button>
               </div>
             </div>
           )}
@@ -1450,11 +1683,15 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
       <AlertDialog open={scopeResetOpen} onOpenChange={setScopeResetOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{isClientBound ? 'Start a new search?' : 'Start research for another client?'}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isClientBound ? 'Start a new search?' : isClientSelectable ? 'Change client?' : 'Start research for another client?'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {isClientBound
                 ? `This clears the current tab’s queries, results, scores, tiers, and selection for ${selectedClient?.name}. The workspace and client stay fixed.`
-                : 'This clears the current tab’s queries, results, scores, tiers, and selection. The workspace and client will become editable again.'}
+                : isClientSelectable
+                  ? 'This clears the current queries, results, scores, tiers, and selection. The client selector will become editable again.'
+                  : 'This clears the current tab’s queries, results, scores, tiers, and selection. The workspace and client will become editable again.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1481,7 +1718,7 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
     </>
   )
 
-  return isClientBound
+  return isWorkspaceScoped
     ? <WorkspaceLayout platformWorkspace={platformWorkspaceConfig}>{pageContent}</WorkspaceLayout>
     : <DashboardLayout>{pageContent}</DashboardLayout>
 }

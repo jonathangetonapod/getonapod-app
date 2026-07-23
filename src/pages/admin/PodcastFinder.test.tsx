@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PodcastFinder from '@/pages/admin/PodcastFinder'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
-import { getClients, getWorkspaceResearchContext } from '@/services/clients'
+import { getClients, getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
+import { generatePodcastQueries } from '@/services/queryGeneration'
+import { searchPodcastsWithMeta } from '@/services/podscan'
 
 vi.mock('@/components/admin/DashboardLayout', () => ({
   DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -31,6 +33,7 @@ vi.mock('@/services/adminWorkspaces', () => ({
 }))
 vi.mock('@/services/clients', () => ({
   getClients: vi.fn(),
+  getWorkspaceClients: vi.fn(),
   getWorkspaceResearchContext: vi.fn(),
 }))
 vi.mock('@/services/queryGeneration', () => ({ generatePodcastQueries: vi.fn() }))
@@ -46,7 +49,10 @@ vi.mock('@/services/podscan', () => ({
 
 const mockedWorkspaces = vi.mocked(listPodcastResearchWorkspaces)
 const mockedClients = vi.mocked(getClients)
+const mockedWorkspaceClients = vi.mocked(getWorkspaceClients)
 const mockedResearchContext = vi.mocked(getWorkspaceResearchContext)
+const mockedGenerateQueries = vi.mocked(generatePodcastQueries)
+const mockedSearchPodcasts = vi.mocked(searchPodcastsWithMeta)
 
 const myWorkspace = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -110,6 +116,9 @@ describe('PodcastFinder', () => {
         : [client('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', myWorkspace.id, 'Own Client')],
       total: 1,
     }))
+    mockedWorkspaceClients.mockResolvedValue([
+      client('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', myWorkspace.id, 'Own Client'),
+    ])
     mockedResearchContext.mockResolvedValue({
       workspace: {
         id: myWorkspace.id,
@@ -132,6 +141,7 @@ describe('PodcastFinder', () => {
         google_sheet_configured: true,
         updated_at: '2026-07-01T00:00:00.000Z',
       },
+      existing_podcast_ids: [],
     })
   })
 
@@ -162,15 +172,111 @@ describe('PodcastFinder', () => {
     expect(mockedClients).not.toHaveBeenCalledWith(expect.objectContaining({ workspaceId: myWorkspace.id }))
   })
 
-  it('binds a workspace user to the client route without workspace or client selectors', async () => {
+  it('opens the workspace finder directly with a client selector in the page header', async () => {
+    renderPage({ workspaceScoped: true })
+
+    expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
+    expect(await screen.findByRole('combobox', { name: 'Find podcasts for' })).toBeInTheDocument()
+    expect(await screen.findByText('Ready for Own Client’s weekly discovery')).toBeInTheDocument()
+    expect(screen.queryByText('Choose the client workspace')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Workspace')).not.toBeInTheDocument()
+    expect(screen.getByTestId('workspace-layout')).toBeInTheDocument()
+    expect(mockedWorkspaceClients).toHaveBeenCalledWith(myWorkspace.id)
+    expect(mockedResearchContext).toHaveBeenCalledWith(
+      myWorkspace.id,
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    )
+    expect(mockedWorkspaces).not.toHaveBeenCalled()
+    expect(mockedClients).not.toHaveBeenCalled()
+  })
+
+  it('lets the user switch between every active client in the workspace', async () => {
+    const secondClientId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    mockedWorkspaceClients.mockResolvedValue([
+      client('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', myWorkspace.id, 'Own Client'),
+      client(secondClientId, myWorkspace.id, 'Second Client'),
+    ])
+    mockedResearchContext.mockImplementation(async (_workspaceId, selectedClientId) => ({
+      workspace: {
+        ...myWorkspace,
+        logo_path: null,
+        logo_updated_at: null,
+      },
+      client: {
+        id: selectedClientId,
+        workspace_id: myWorkspace.id,
+        name: selectedClientId === secondClientId ? 'Second Client' : 'Own Client',
+        email: null,
+        website: null,
+        status: 'active' as const,
+        bio: 'An approved client bio.',
+        photo_url: null,
+        google_sheet_configured: true,
+        updated_at: '2026-07-01T00:00:00.000Z',
+      },
+      existing_podcast_ids: [],
+    }))
+    renderPage({ workspaceScoped: true })
+
+    const selector = await screen.findByRole('combobox', { name: 'Find podcasts for' })
+    await screen.findByText('Ready for Own Client’s weekly discovery')
+    fireEvent.click(selector)
+    fireEvent.click(await screen.findByRole('option', { name: 'Second Client' }))
+
+    expect(await screen.findByText('Ready for Second Client’s weekly discovery')).toBeInTheDocument()
+    expect(mockedResearchContext).toHaveBeenCalledWith(myWorkspace.id, secondClientId)
+  })
+
+  it('hides podcasts already in client history and keeps them unselectable', async () => {
+    mockedResearchContext.mockResolvedValue({
+      workspace: { ...myWorkspace, logo_path: null, logo_updated_at: null },
+      client: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        workspace_id: myWorkspace.id,
+        name: 'Own Client',
+        email: null,
+        website: null,
+        status: 'active',
+        bio: 'An approved client bio.',
+        photo_url: null,
+        google_sheet_configured: true,
+        updated_at: '2026-07-01T00:00:00.000Z',
+      },
+      existing_podcast_ids: ['pod-existing'],
+    })
+    mockedGenerateQueries.mockResolvedValue(['founder stories'])
+    mockedSearchPodcasts.mockResolvedValue({
+      data: {
+        podcasts: [
+          { podcast_id: 'pod-existing', podcast_name: 'Existing Podcast', podcast_url: 'https://example.com/existing' },
+          { podcast_id: 'pod-new', podcast_name: 'New Podcast', podcast_url: 'https://example.com/new' },
+        ],
+        pagination: { last_page: '1' },
+      },
+    })
+    renderPage({ workspaceScoped: true })
+
+    const runButton = await screen.findByRole('button', { name: 'Run balanced discovery' })
+    await waitFor(() => expect(runButton).toBeEnabled())
+    fireEvent.click(runButton)
+    expect(await screen.findByText('New Podcast')).toBeInTheDocument()
+    expect(screen.queryByText('Existing Podcast')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New only (1)' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'New only (1)' }))
+    expect(await screen.findByText('Existing Podcast')).toBeInTheDocument()
+    expect(screen.getAllByText('Already used')).toHaveLength(2)
+    expect(screen.getByRole('checkbox', { name: 'Select Existing Podcast' })).toBeDisabled()
+  })
+
+  it('binds a workspace user to the legacy fixed-client surface without selectors', async () => {
     const clientId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     renderPage({ fixedClientId: clientId })
 
-    expect(await screen.findByRole('heading', { name: 'Own Client Podcast Research' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
     expect(screen.getByText('Get On A Pod · Own Client')).toBeInTheDocument()
     expect(screen.queryByLabelText('Workspace')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Client')).not.toBeInTheDocument()
-    expect(screen.getByText(/permanently bound to the workspace and client/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Find podcasts for')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to clients' })).toHaveAttribute('href', '/app/clients')
     expect(mockedResearchContext).toHaveBeenCalledWith(myWorkspace.id, clientId)
     expect(mockedWorkspaces).not.toHaveBeenCalled()
@@ -201,13 +307,14 @@ describe('PodcastFinder', () => {
         google_sheet_configured: true,
         updated_at: '2026-07-01T00:00:00.000Z',
       },
+      existing_podcast_ids: [],
     })
 
     renderPage({ fixedClientId: clientId, platformWorkspaceId: agencyWorkspace.id })
 
-    expect(await screen.findByRole('heading', { name: 'Agency Client Podcast Research' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Workspace')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Client')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Find podcasts for')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to clients' })).toHaveAttribute(
       'href',
       `/app/workspaces/${agencyWorkspace.id}/clients`,

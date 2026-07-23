@@ -90,6 +90,7 @@ describe('getWorkspaceResearchContext', () => {
         google_sheet_configured: true,
         updated_at: '2026-07-23T00:00:00.000Z',
       },
+      existing_podcast_ids: ['podcast-one', 'podcast-two'],
     }
     invoke.mockResolvedValue({ data: context, error: null })
 
@@ -101,6 +102,39 @@ describe('getWorkspaceResearchContext', () => {
         client_id: clientId,
       },
     })
+  })
+
+  it('keeps older research responses usable with an empty history', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValue({
+      data: {
+        workspace: { id: workspaceId },
+        client: { id: clientId, workspace_id: workspaceId, status: 'active' },
+      },
+      error: null,
+    })
+
+    await expect(getWorkspaceResearchContext(workspaceId, clientId)).resolves.toMatchObject({
+      existing_podcast_ids: [],
+    })
+  })
+
+  it('rejects malformed client podcast history instead of weakening dedupe', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValue({
+      data: {
+        workspace: { id: workspaceId },
+        client: { id: clientId, workspace_id: workspaceId, status: 'active' },
+        existing_podcast_ids: ['valid-id', ''],
+      },
+      error: null,
+    })
+
+    await expect(getWorkspaceResearchContext(workspaceId, clientId)).rejects.toThrow(
+      'The podcast research history response was invalid.',
+    )
   })
 
   it('rejects a client response from another workspace', async () => {

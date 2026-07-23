@@ -73,7 +73,7 @@ const SelectedWorkspaceRootRedirect = () => {
 
 const LegacyAdminWorkspacePodcastFinderRedirect = () => {
   const { workspaceId = '', clientId = '' } = useParams()
-  return <Navigate to={`${selectedWorkspaceBaseHref(workspaceId)}/clients/${clientId}/podcast-finder`} replace />
+  return <Navigate to={`${selectedWorkspaceBaseHref(workspaceId)}/podcast-finder?client=${encodeURIComponent(clientId)}`} replace />
 }
 
 const App = () => (

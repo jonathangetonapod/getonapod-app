@@ -140,6 +140,40 @@ serve(async (req) => {
         throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Active workspace client not found')
       }
 
+      const historyTables = [
+        'client_dashboard_podcasts',
+        'client_podcast_feedback',
+        'podcast_outreach_actions',
+        'bookings',
+      ] as const
+      const historyResults = await Promise.all(historyTables.map(async (table) => {
+        const podcastIds: string[] = []
+        const pageSize = 1_000
+        const maximumRows = 5_000
+        for (let offset = 0; offset < maximumRows; offset += pageSize) {
+          const { data, error } = await admin
+            .from(table)
+            .select('podcast_id')
+            .eq('client_id', clientId!)
+            .not('podcast_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(offset, offset + pageSize - 1)
+          if (error) {
+            throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client podcast history could not be loaded')
+          }
+          podcastIds.push(...(data || [])
+            .map((row) => typeof row.podcast_id === 'string' ? row.podcast_id.trim() : '')
+            .filter(Boolean))
+          if ((data || []).length < pageSize) break
+        }
+        return podcastIds
+      }))
+
+      const existingPodcastIds = Array.from(new Set(
+        historyResults.flat(),
+      ))
+
       return jsonResponse(req, METHODS, 200, {
         workspace: {
           id: access.workspace.id,
@@ -162,6 +196,7 @@ serve(async (req) => {
           google_sheet_configured: Boolean(client.google_sheet_url),
           updated_at: client.updated_at,
         },
+        existing_podcast_ids: existingPodcastIds,
       })
     }
 

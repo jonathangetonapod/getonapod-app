@@ -100,7 +100,7 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.getByRole('button', { name: 'Remove Tenant Client' })).toBeEnabled()
     expect(screen.getByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
       'href',
-      `/app/clients/${client.id}/podcast-finder`,
+      `/app/podcast-finder?client=${client.id}`,
     )
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.queryByText('Admin preview · Read only')).not.toBeInTheDocument()
@@ -126,7 +126,7 @@ describe('WorkspaceClients tenant mode', () => {
 
     expect(await screen.findByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
       'href',
-      `/app/clients/${client.id}/podcast-finder`,
+      `/app/podcast-finder?client=${client.id}`,
     )
     expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
@@ -147,7 +147,7 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.queryByText('Paused Client')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
       'href',
-      `/app/clients/${client.id}/podcast-finder`,
+      `/app/podcast-finder?client=${client.id}`,
     )
     expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
