@@ -542,6 +542,9 @@ export const rotateOnboardingLink = (
   send_email: false,
 })
 
+export const getOnboardingLink = (workspaceId: string, instanceId: string) =>
+  instanceAction(workspaceId, instanceId, 'get_link')
+
 export const extendOnboardingLink = (
   workspaceId: string,
   instanceId: string,

@@ -297,6 +297,55 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, { instance: await addSignedAssetUrls(admin, result) })
     }
 
+    if (action === 'get_link') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id'])
+      const instanceId = requireUuid(body.instance_id, 'instance_id')
+      const listResult = await admin.rpc('workspace_onboarding_staff_list_v1', {
+        p_workspace_id: workspaceId,
+        p_actor_user_id: user.id,
+        p_token_issued_at: tokenIssuedAt,
+      })
+      if (listResult.error) rpcError(listResult.error)
+      const listResponse = responseRecord(listResult.data, 'workspace list')
+      const workspace = responseRecord(listResponse.workspace, 'workspace')
+      if (workspace.id !== workspaceId || listResponse.can_manage !== true) {
+        throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Workspace manager access is required')
+      }
+
+      const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
+        p_workspace_id: workspaceId,
+        p_instance_id: instanceId,
+        p_actor_user_id: user.id,
+        p_token_issued_at: tokenIssuedAt,
+      })
+      if (detailResult.error) rpcError(detailResult.error)
+      const instance = ensureWorkspaceResponse(detailResult.data, workspaceId)
+      if (!['invited', 'in_progress', 'changes_requested'].includes(String(instance.status))) {
+        throw new HttpError(409, 'ONBOARDING_LINK_UNAVAILABLE', 'This onboarding does not have an active client link')
+      }
+
+      const generation = integerValue(instance.capability_generation, 'capability generation', 1, 2_147_483_646)
+      const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
+      const capabilityCheck = await admin.rpc('workspace_onboarding_client_operation_v1', {
+        p_action: 'get',
+        p_instance_id: instanceId,
+        p_capability_hash: capability.verifierHash,
+        p_payload: {},
+      })
+      if (capabilityCheck.error) {
+        const message = (capabilityCheck.error.message ?? '').toLowerCase()
+        if (capabilityCheck.error.code === 'P0002' || message.includes('not found')) {
+          throw new HttpError(409, 'ONBOARDING_LINK_CHANGED', 'The saved link can no longer be reconstructed. Rotate it once to create a new link')
+        }
+        rpcError(capabilityCheck.error)
+      }
+
+      return jsonResponse(req, METHODS, 200, {
+        instance: await addSignedAssetUrls(admin, instance),
+        onboarding_url: onboardingUrl(capability.token),
+      })
+    }
+
     if (action.startsWith('template_')) {
       const templateAction = action.slice('template_'.length)
       let templateId: string | null = null

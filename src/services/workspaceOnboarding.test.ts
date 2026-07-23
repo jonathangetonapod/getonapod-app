@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getClientOnboarding,
+  getOnboardingLink,
   listWorkspaceOnboarding,
   saveClientOnboarding,
   startWorkspaceOnboarding,
@@ -163,6 +164,28 @@ describe('workspaceOnboarding service', () => {
           ...input.experience,
           brand_logo: null,
         },
+      },
+    })
+  })
+
+  it('retrieves the current secure link without rotating its generation', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        instance: detail,
+        onboarding_url: 'https://getonapod.com/onboarding/redacted-current-token',
+      },
+      error: null,
+    })
+
+    await expect(getOnboardingLink(workspaceId, instanceId)).resolves.toMatchObject({
+      instance: { id: instanceId, capability_generation: 1 },
+      onboarding_url: expect.stringContaining('/onboarding/'),
+    })
+    expect(invoke).toHaveBeenCalledWith('workspace-onboarding', {
+      body: {
+        action: 'get_link',
+        workspace_id: workspaceId,
+        instance_id: instanceId,
       },
     })
   })

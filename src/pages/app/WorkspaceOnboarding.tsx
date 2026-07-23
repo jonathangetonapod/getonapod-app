@@ -30,6 +30,7 @@ import {
   archiveOnboardingTemplate,
   duplicateOnboardingTemplate,
   extendOnboardingLink,
+  getOnboardingLink,
   getWorkspaceOnboardingDetail,
   listWorkspaceOnboarding,
   publishOnboardingTemplate,
@@ -316,19 +317,30 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   })
 
   const linkMutation = useMutation({
-    mutationFn: async ({ action, instance }: { action: 'rotate' | 'extend'; instance: OnboardingInstanceSummary }) => action === 'rotate'
-      ? rotateOnboardingLink(workspaceId, instance.id, 14)
-      : extendOnboardingLink(workspaceId, instance.id, 14),
+    mutationFn: async ({ action, instance }: { action: 'get_link' | 'rotate' | 'extend'; instance: OnboardingInstanceSummary }) => {
+      if (action === 'get_link') return getOnboardingLink(workspaceId, instance.id)
+      return action === 'rotate'
+        ? rotateOnboardingLink(workspaceId, instance.id, 14)
+        : extendOnboardingLink(workspaceId, instance.id, 14)
+    },
     onSuccess: async (result, variables) => {
       await refresh()
-      if (result.onboarding_url) {
-        setInvitation({
-          instance: result.instance as OnboardingInstanceDetail,
+      if (result.onboarding_url && result.instance) {
+        const nextInvitation = {
+          instance: result.instance,
           onboarding_url: result.onboarding_url,
-          delivery: result.delivery ?? { status: 'skipped' },
-        })
+          delivery: result.delivery ?? { status: 'skipped' as const },
+        }
+        setInvitation((current) => current?.instance.id === nextInvitation.instance.id
+          && current.instance.capability_generation > nextInvitation.instance.capability_generation
+          ? current
+          : nextInvitation)
       }
-      toast.success(variables.action === 'rotate' ? 'Secure link rotated.' : 'Link extended by 14 days.')
+      toast.success(variables.action === 'get_link'
+        ? 'Current secure link is ready.'
+        : variables.action === 'rotate'
+          ? 'Secure link rotated. Older links no longer work.'
+          : 'Link extended by 14 days.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the secure link.'),
   })
@@ -540,8 +552,9 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                               <TableCell><OnboardingActivity instance={instance} /></TableCell>
                               <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{statusLabels[instance.status]}</Badge>{instance.open_comment_count > 0 && <p className="mt-1 text-xs text-muted-foreground">{instance.open_comment_count} open notes</p>}</TableCell>
                               <TableCell className="text-right"><div className="inline-flex items-center gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedInstanceId(instance.id)}>View</Button>{canManage && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
-                                {!['submitted', 'approved', 'revoked'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'extend', instance })}>Extend 14 days</DropdownMenuItem>}
+                                {!['approved', 'revoked', 'submitted', 'expired'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'get_link', instance })}><ExternalLink className="mr-2 h-4 w-4" />Open or copy current link</DropdownMenuItem>}
+                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
+                                {!['submitted', 'approved', 'revoked'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'extend', instance })}>Extend 14 days</DropdownMenuItem>}
                                 {!['approved', 'revoked'].includes(instance.status) && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'revoke', instance })}>Revoke link</DropdownMenuItem>}
                                 <DropdownMenuSeparator />
                                 {!instance.archived_at && <DropdownMenuItem onClick={() => setConfirmation({ action: 'archive', instance })}><Archive className="mr-2 h-4 w-4" />Archive</DropdownMenuItem>}

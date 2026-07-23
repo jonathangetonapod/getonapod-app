@@ -73,6 +73,10 @@ preserves the server draft; the previous link stops working immediately.
 
 Expired drafts, revisions, comments, and files are retained for agency review.
 Archiving an active intake revokes its capability and stops notifications.
+Authorized workspace managers can reopen or copy the current deterministic
+capability link without rotating it. Rotation is reserved for intentionally
+invalidating every previously shared URL, and the UI prevents overlapping link
+actions so an immediately stale link cannot replace the newest result.
 Permanent PII purge requires an archived record plus the exact `PURGE`
 confirmation. The Edge Function first deletes every private Storage object and
 only then deletes database intake data, including metadata for previously
