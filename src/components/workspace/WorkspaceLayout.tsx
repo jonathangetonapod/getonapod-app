@@ -264,10 +264,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const viewerRole = platformWorkspace ? 'platform owner' : membership?.role
   const baseHref = platformWorkspace?.baseHref || '/app'
   const navStorageOwner = user?.id || user?.email?.trim().toLowerCase() || 'current-user'
-  const navStorageWorkspace = workspace?.id?.toLowerCase() || 'unavailable-workspace'
-  const canOrganizeNavigation = !platformWorkspace
-    && membership?.role === 'owner'
-    && Boolean(workspace?.id)
+  const navStorageWorkspace = workspace?.id?.toLowerCase()
+    || (isPlatformAdmin ? 'platform-owner' : 'unavailable-workspace')
+  const canOrganizeNavigation = Boolean(user)
+    && (isPlatformAdmin || (!platformWorkspace && membership?.role === 'owner'))
+    && navStorageWorkspace !== 'unavailable-workspace'
   const navStorageKey = `${WORKSPACE_NAV_ORDER_STORAGE_PREFIX}:${navStorageWorkspace}:${navStorageOwner}`
   const legacyNavStorageKey = `workspace-nav-order-v1:${navStorageOwner}`
   const isDefaultNavOrder = navItems.every((item, index) => item.id === workspaceNavItems[index]?.id)
@@ -400,32 +401,42 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           <nav aria-label="Workspace navigation" className="flex-1 overflow-y-auto px-3 py-4">
             <div className="mb-2 flex items-center justify-between gap-2 px-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Navigation</p>
-              {canOrganizeNavigation && (
+              {canOrganizeNavigation && isOrganizing && (
                 <div className="flex items-center gap-1">
-                  {isOrganizing && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={isDefaultNavOrder}
-                      onClick={handleResetNavOrder}
-                    >
-                      Reset
-                    </Button>
-                  )}
                   <Button
                     type="button"
-                    variant={isOrganizing ? 'secondary' : 'ghost'}
+                    variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs"
-                    onClick={() => setIsOrganizing((current) => !current)}
+                    disabled={isDefaultNavOrder}
+                    onClick={handleResetNavOrder}
                   >
-                    {isOrganizing ? 'Done' : 'Organize'}
+                    Reset
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setIsOrganizing(false)}
+                  >
+                    Done
                   </Button>
                 </div>
               )}
             </div>
+            {canOrganizeNavigation && !isOrganizing && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mb-3 w-full justify-start border-dashed text-muted-foreground hover:text-foreground"
+                onClick={() => setIsOrganizing(true)}
+              >
+                <GripVertical className="mr-2 h-4 w-4" />
+                Reorder sidebar pages
+              </Button>
+            )}
             {isOrganizing && (
               <p className="mb-2 px-1 text-xs text-muted-foreground">Drag pages into your preferred order. Changes save automatically.</p>
             )}

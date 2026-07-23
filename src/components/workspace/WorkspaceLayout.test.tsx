@@ -96,7 +96,7 @@ describe('WorkspaceLayout', () => {
       item.querySelector('span')?.textContent
     ))).toEqual(['Clients', 'Podcast Finder', 'Overview']))
 
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Organize' }))
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' }))
     expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(expectedNavigation.length)
     expect(within(navigation).getByText(/changes save automatically/i)).toBeInTheDocument()
 
@@ -107,7 +107,7 @@ describe('WorkspaceLayout', () => {
     expect(window.localStorage.getItem(storageKey)).toBeNull()
 
     fireEvent.click(within(navigation).getByRole('button', { name: 'Done' }))
-    expect(within(navigation).getByRole('button', { name: 'Organize' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' })).toBeInTheDocument()
   })
 
   it('opens owner organize mode when requested from workspace settings', () => {
@@ -134,7 +134,7 @@ describe('WorkspaceLayout', () => {
       </MemoryRouter>,
     )
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/settings')
-    expect(screen.queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reorder sidebar pages' })).not.toBeInTheDocument()
 
     unmount()
     mockedUseAuth.mockReturnValue({
@@ -151,7 +151,7 @@ describe('WorkspaceLayout', () => {
     const settings = within(navigation).getByText('Settings').closest('button')
     expect(settings).toBeDisabled()
     expect(within(settings as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
-    expect(within(navigation).queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
+    expect(within(navigation).queryByRole('button', { name: 'Reorder sidebar pages' })).not.toBeInTheDocument()
   })
 
   it('renders a selected workspace as a native platform-owner context', () => {
@@ -191,7 +191,9 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher').closest('header')).not.toBeNull()
-    expect(within(navigation).queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
+    expect(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' })).toBeInTheDocument()
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' }))
+    expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/settings')
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-transparent')
