@@ -83,10 +83,10 @@ designed to return as many relevant podcasts as possible.
 
 The query should be a phrase or combination of phrases likely to appear in the TITLE of a podcast.
 - Stay broad, but always relevant to the ${isProspectMode ? 'prospect' : 'client'}'s domain
-- Use single quotes 'like this' for exact phrases (e.g., 'leadership podcast')
-- Use * wildcards within quoted phrases (e.g., 'leadership * podcast')
+- Use double quotes "like this" for exact phrases (e.g., "leadership podcast")
+- Use * wildcards within quoted phrases (e.g., "leadership * podcast")
 - Use Boolean operators (AND, OR, NOT) to combine multiple phrases
-- Do NOT use double quotes - use single quotes only
+- Use Podscan's documented double-quote syntax for every exact phrase
 - The new query must NOT be a duplicate of or too similar to: "${oldQuery}"
 - Do not use the ${isProspectMode ? 'prospect' : 'client'}'s name or brand
 
@@ -162,14 +162,14 @@ STRATEGIC MIX (IMPORTANT):
 4. ONE adjacent category query (related but slightly different audience)
 
 ADVANCED SEARCH SYNTAX RULES:
-- Use single quotes 'like this' for exact phrases (e.g., 'digital marketing', 'business leadership')
-- Use * wildcards within quoted phrases for broader matching (e.g., 'startup * podcast', 'business * stories')
+- Use double quotes "like this" for exact phrases (e.g., "digital marketing", "business leadership")
+- Use * wildcards within quoted phrases for broader matching (e.g., "startup * podcast", "business * stories")
 - Use Boolean operators (AND, OR, NOT) to combine multiple search terms
-  Example: 'B2B marketing' OR 'SaaS marketing' OR 'growth hacking'
+  Example: "B2B marketing" OR "SaaS marketing" OR "growth hacking"
 - At least 2 queries MUST use wildcards (*) within quoted phrases
 - At least 2 queries MUST use OR operators to combine multiple phrases
 - Combine synonyms, adjacent industries, and related terms to cast the widest net while staying on-topic
-- IMPORTANT: Use ONLY single quotes ('), never double quotes (")
+- IMPORTANT: Podscan exact phrases require double quotes. Do not use single quotes as phrase operators.
 
 QUALITY GUIDELINES:
 - Do **not** use the ${isProspectMode ? 'prospect' : 'client'}'s name, brand, or job title in queries
@@ -180,11 +180,11 @@ QUALITY GUIDELINES:
 - Queries should find 100-300 podcasts each (broad is good!)
 
 **Examples of excellent, high-coverage queries:**
-- 'business leadership' OR 'executive coaching'
-- 'startup * podcast' OR 'founder * stories'
-- 'digital marketing' OR 'growth marketing' OR 'content strategy'
-- 'sales * leaders' OR 'revenue growth'
-- 'women in tech' OR 'technology innovation'
+- "business leadership" OR "executive coaching"
+- "startup * podcast" OR "founder * stories"
+- "digital marketing" OR "growth marketing" OR "content strategy"
+- "sales * leaders" OR "revenue growth"
+- "women in tech" OR "technology innovation"
 
 Based on the following ${isProspectMode ? 'prospect' : 'client'} data:
 - Name: ${targetName}

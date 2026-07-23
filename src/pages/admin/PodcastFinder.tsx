@@ -1,3549 +1,1356 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import {
+  Archive,
+  ArrowRight,
+  BarChart3,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleDot,
+  ExternalLink,
+  FileSpreadsheet,
+  Filter,
+  Globe2,
+  Layers3,
+  Loader2,
+  LockKeyhole,
+  Mail,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  Trash2,
+  TrendingUp,
+  Users,
+  X,
+} from 'lucide-react'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { Badge } from '@/components/ui/badge'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  Search,
-  Sparkles,
-  RefreshCw,
-  Loader2,
-  Star,
-  ExternalLink,
-  Filter,
-  ChevronDown,
-  ChevronUp,
-  Users,
-  TrendingUp,
-  Globe,
-  Calendar,
-  X,
-  Trash2,
-  FileText,
-  Plus,
-  MoreVertical
-} from 'lucide-react'
-import { getClients } from '@/services/clients'
-import { generatePodcastQueries, regenerateQuery } from '@/services/queryGeneration'
-import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
-import { searchPodcasts, getPodcastById, getPodcastDemographics, getChartCountries, getChartCategories, getTopChartPodcasts, type PodcastData, type PodcastDemographics, type ChartCountry, type ChartCategory } from '@/services/podscan'
-import { deduplicatePodcasts } from '@/services/podcastSearchUtils'
-import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectSheet, type PodcastExportData } from '@/services/googleSheets'
-import { savePodcastsToDatabase } from '@/services/podcastDatabase'
-import { supabase } from '@/lib/supabase'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAuth } from '@/contexts/AuthContext'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import {
+  calculateOutreachPriority,
+  compositeResearchScore,
+  DISCOVERY_STRATEGIES,
+  getResearchTier,
+  mergeResearchResults,
+  normalizePodscanQuery,
+  tierLabel,
+  type DiscoveryStrategy,
+  type ResearchResult,
+  type ResearchTier,
+} from '@/lib/podcastResearch'
+import { cn } from '@/lib/utils'
+import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
+import { getClients } from '@/services/clients'
+import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
+import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
+import {
+  getChartCategories,
+  getChartCountries,
+  getPodcastById,
+  getTopChartPodcasts,
+  searchPodcastsWithMeta,
+  type ChartCategory,
+  type ChartCountry,
+  type PodcastData,
+  type PodscanRateLimit,
+  type SearchOptions,
+} from '@/services/podscan'
+import { generatePodcastQueries } from '@/services/queryGeneration'
 import { toast } from 'sonner'
 
-interface GeneratedQuery {
-  id: string
-  text: string
-  isEditing: boolean
-  isSearching: boolean
-  results: PodcastData[]
-  isScoring: boolean
-  compatibilityScores: Record<string, number | null>
-  scoreReasonings: Record<string, string | undefined>
-  regenerateAttempts: number
+const SCOPE_STORAGE_KEY = 'podcast-finder-client-scope-v3'
+const RESULTS_PER_PAGE = 50
+
+type ResultTab = 'all' | ResearchTier
+type ResultSort = 'priority' | 'relevance' | 'audience' | 'recent'
+type GuestFilter = 'true' | 'any'
+
+interface DiscoveryProgress {
+  completed: number
+  total: number
+  message: string
 }
 
-interface ExistingProspect {
+interface RunScope {
   id: string
-  prospect_name: string
-  prospect_bio: string | null
-  prospect_image_url: string | null
-  spreadsheet_url: string | null
-  slug: string
+  workspaceId: string
+  clientId: string
+  strategy: DiscoveryStrategy
+  startedAt: string
+  completedAt?: string
+  rawResults: number
+  apiCalls: number
+  errors: number
+}
+
+interface StoredScope {
+  workspaceId?: string
+  clientId?: string
+  strategy?: DiscoveryStrategy
+}
+
+function readStoredScope(): StoredScope {
+  try {
+    const value = window.sessionStorage.getItem(SCOPE_STORAGE_KEY)
+    if (!value) return {}
+    return JSON.parse(value) as StoredScope
+  } catch {
+    return {}
+  }
+}
+
+function compactNumber(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+}
+
+function formatDate(value: string | undefined): string {
+  if (!value) return 'Unknown'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+function tierClasses(tier: ResearchTier): string {
+  if (tier === 'a') return 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+  if (tier === 'b') return 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300'
+  if (tier === 'c') return 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+  if (tier === 'excluded') return 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+  return 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300'
+}
+
+function resultReason(result: ResearchResult): string {
+  if (result.relevanceReasoning) return result.relevanceReasoning
+  if (result.matchedQueries.length > 0) return `Matched ${result.matchedQueries[0]}`
+  return `Discovered through ${result.sources.join(', ')}`
+}
+
+function toExportData(result: ResearchResult): PodcastExportData {
+  const podcast = result.podcast
+  return {
+    podcast_id: podcast.podcast_id,
+    podscan_podcast_id: podcast.podcast_id,
+    podcast_name: podcast.podcast_name,
+    podcast_description: podcast.podcast_description,
+    podcast_image_url: podcast.podcast_image_url,
+    podcast_url: podcast.podcast_url,
+    publisher_name: podcast.publisher_name,
+    episode_count: podcast.episode_count,
+    itunes_rating: podcast.reach?.itunes?.itunes_rating_average
+      ? Number.parseFloat(podcast.reach.itunes.itunes_rating_average)
+      : undefined,
+    audience_size: podcast.reach?.audience_size,
+    language: podcast.language,
+    region: podcast.region,
+    podcast_email: podcast.reach?.email,
+    rss_feed: podcast.rss_url,
+    podcast_categories: podcast.podcast_categories,
+    compatibility_score: result.relevanceScore === null ? null : result.relevanceScore / 10,
+    compatibility_reasoning: result.relevanceReasoning,
+  }
 }
 
 export default function PodcastFinder() {
-  const [selectedTarget, setSelectedTarget] = useState<string>('')
-
-  // Prospect mode
-  const [prospectName, setProspectName] = useState('')
-  const [prospectBio, setProspectBio] = useState('')
-  const [prospectImageUrl, setProspectImageUrl] = useState('')
-  const [lastProspectSheet, setLastProspectSheet] = useState<{ url: string; title: string; dashboardUrl: string } | null>(null)
-
-  // Existing prospects
-  const [existingProspects, setExistingProspects] = useState<ExistingProspect[]>([])
-  const [loadingProspects, setLoadingProspects] = useState(false)
-  const [savingProspect, setSavingProspect] = useState(false)
-
-  // Determine mode based on selection
-  const isNewProspectMode = selectedTarget === '__new_prospect__'
-  const isExistingProspectMode = selectedTarget.startsWith('__prospect_')
-  const isProspectMode = isNewProspectMode || isExistingProspectMode
-  const isClientMode = selectedTarget && !isProspectMode
-  const selectedProspectId = isExistingProspectMode ? selectedTarget.replace('__prospect_', '') : null
-  const selectedClient = isClientMode ? selectedTarget : ''
-  const selectedExistingProspect = selectedProspectId ? existingProspects.find(p => p.id === selectedProspectId) : null
-  const existingProspectHasSheet = selectedExistingProspect?.spreadsheet_url ? true : false
+  const { user } = useAuth()
+  const storedScope = useMemo(readStoredScope, [])
+  const [workspaceId, setWorkspaceId] = useState(storedScope.workspaceId || '')
+  const [clientId, setClientId] = useState(storedScope.clientId || '')
+  const [strategy, setStrategy] = useState<DiscoveryStrategy>(storedScope.strategy || 'balanced')
+  const [language, setLanguage] = useState('en')
+  const [region, setRegion] = useState('US')
+  const [activityWindow, setActivityWindow] = useState('180')
+  const [guestFilter, setGuestFilter] = useState<GuestFilter>('true')
+  const [minAudience, setMinAudience] = useState('')
+  const [maxAudience, setMaxAudience] = useState('')
+  const [minEpisodes, setMinEpisodes] = useState('10')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [queries, setQueries] = useState<string[]>([])
+  const [customQuery, setCustomQuery] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const [queries, setQueries] = useState<GeneratedQuery[]>([])
-  const [customKeywords, setCustomKeywords] = useState('')
-  const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null)
-  const [showFilters, setShowFilters] = useState(false)
-  const [scoreModalOpen, setScoreModalOpen] = useState(false)
-  const [selectedPodcastForScore, setSelectedPodcastForScore] = useState<{
-    podcast: PodcastData
-    score: number
-    reasoning?: string
-  } | null>(null)
-  const [podcastDetailsModalOpen, setPodcastDetailsModalOpen] = useState(false)
-  const [selectedPodcastDetails, setSelectedPodcastDetails] = useState<PodcastData | null>(null)
-  const [loadingPodcastDetails, setLoadingPodcastDetails] = useState(false)
-  const [podcastDemographics, setPodcastDemographics] = useState<PodcastDemographics | null>(null)
-  const [loadingDemographics, setLoadingDemographics] = useState(false)
-
-  // Mode toggle (search vs charts)
-  const [finderMode, setFinderMode] = useState<'search' | 'charts'>('search')
-
-  // Charts mode state
+  const [isDiscovering, setIsDiscovering] = useState(false)
+  const [progress, setProgress] = useState<DiscoveryProgress | null>(null)
+  const [runScope, setRunScope] = useState<RunScope | null>(null)
+  const [results, setResults] = useState<ResearchResult[]>([])
+  const [rateLimit, setRateLimit] = useState<PodscanRateLimit | null>(null)
+  const [isScoring, setIsScoring] = useState(false)
+  const [scoringProgress, setScoringProgress] = useState<DiscoveryProgress | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [tierOverrides, setTierOverrides] = useState<Record<string, Exclude<ResearchTier, 'excluded'>>>({})
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState<ResultTab>('all')
+  const [resultSearch, setResultSearch] = useState('')
+  const [resultSort, setResultSort] = useState<ResultSort>('priority')
+  const [contactableOnly, setContactableOnly] = useState(false)
+  const [resultPage, setResultPage] = useState(1)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [isEnriching, setIsEnriching] = useState(false)
+  const [scopeResetOpen, setScopeResetOpen] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [showChartDiscovery, setShowChartDiscovery] = useState(false)
+  const [chartCountries, setChartCountries] = useState<ChartCountry[]>([])
+  const [chartCategories, setChartCategories] = useState<ChartCategory[]>([])
   const [chartPlatform, setChartPlatform] = useState<'apple' | 'spotify'>('apple')
   const [chartCountry, setChartCountry] = useState('us')
   const [chartCategory, setChartCategory] = useState('')
-  const [chartResults, setChartResults] = useState<PodcastData[]>([])
-  const [chartLimit, setChartLimit] = useState(50)
-  const [loadingCharts, setLoadingCharts] = useState(false)
+  const [isLoadingChartOptions, setIsLoadingChartOptions] = useState(false)
+  const [isAddingChartResults, setIsAddingChartResults] = useState(false)
 
-  // Scoring for chart results
-  const [chartScores, setChartScores] = useState<Record<string, number | null>>({})
-  const [chartReasonings, setChartReasonings] = useState<Record<string, string | undefined>>({})
-  const [isChartScoring, setIsChartScoring] = useState(false)
-
-  // Chart filters
-  const [chartShowFilters, setChartShowFilters] = useState(false)
-  const [chartMinAudience, setChartMinAudience] = useState('')
-  const [chartMaxAudience, setChartMaxAudience] = useState('')
-  const [chartMinRating, setChartMinRating] = useState('')
-  const [chartMinFitScore, setChartMinFitScore] = useState('')
-
-  // Dynamic chart options from API
-  const [chartCountries, setChartCountries] = useState<ChartCountry[]>([])
-  const [chartCategories, setChartCategories] = useState<ChartCategory[]>([])
-  const [loadingCountries, setLoadingCountries] = useState(false)
-  const [loadingCategories, setLoadingCategories] = useState(false)
-
-  // Google Sheets Export
-  const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set())
-  const [isExporting, setIsExporting] = useState(false)
-
-  // Ref to track regeneration attempts (avoids stale closure issues)
-  const regenerateAttemptsRef = useRef<Record<string, number>>({})
-
-  // Filters
-  const [minAudience, setMinAudience] = useState('')
-  const [maxAudience, setMaxAudience] = useState('')
-  const [minEpisodes, setMinEpisodes] = useState('')
-  const [region, setRegion] = useState('US')
-  const [hasGuests, setHasGuests] = useState('true') // Default to only podcasts with guests
-  const [hasSponsors, setHasSponsors] = useState('any')
-  const [searchFields, setSearchFields] = useState('name,description')
-  const [activeOnly, setActiveOnly] = useState(false)
-  const [bioExpanded, setBioExpanded] = useState(false)
-
-  // Bulk actions state
-  const [customThresholdDialogOpen, setCustomThresholdDialogOpen] = useState(false)
-  const [customThresholdValue, setCustomThresholdValue] = useState('')
-  const [customThresholdQueryId, setCustomThresholdQueryId] = useState<string | null>(null)
-
-  // Fetch clients
-  const { data: clientsData } = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => getClients()
+  const workspacesQuery = useQuery({
+    queryKey: ['podcast-research', user?.id || 'unknown', 'workspaces'],
+    queryFn: listPodcastResearchWorkspaces,
+    staleTime: 30_000,
   })
 
-  const clients = clientsData?.clients || []
-  const selectedClientData = clients.find(c => c.id === selectedClient)
+  const clientsQuery = useQuery({
+    queryKey: ['podcast-research', user?.id || 'unknown', 'workspace', workspaceId, 'clients'],
+    queryFn: () => getClients({ workspaceId, status: 'active' }),
+    enabled: Boolean(workspaceId),
+    staleTime: 30_000,
+  })
 
-  // Load tab-scoped state and remove legacy persistent customer data.
+  const workspaces = useMemo(() => workspacesQuery.data || [], [workspacesQuery.data])
+  const clients = useMemo(() => clientsQuery.data?.clients || [], [clientsQuery.data?.clients])
+  const selectedWorkspace = workspaces.find((workspace) => workspace.id === workspaceId)
+  const selectedClient = clients.find((client) => client.id === clientId)
+  const scopeLocked = Boolean(runScope || results.length > 0 || isDiscovering)
+
+  useEffect(() => {
+    if (workspaces.length === 0) return
+    if (!workspaces.some((workspace) => workspace.id === workspaceId)) {
+      setWorkspaceId((workspaces.find((workspace) => workspace.is_default) || workspaces[0]).id)
+      setClientId('')
+    }
+  }, [workspaceId, workspaces])
+
+  useEffect(() => {
+    if (!clientId || clientsQuery.isLoading) return
+    if (!clients.some((client) => client.id === clientId)) setClientId('')
+  }, [clientId, clients, clientsQuery.isLoading])
+
   useEffect(() => {
     try {
-      window.localStorage.removeItem('podcast-finder-state')
+      window.sessionStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify({ workspaceId, clientId, strategy }))
     } catch {
-      // Legacy cleanup is best effort.
+      // The selected scope remains usable in memory when browser storage is unavailable.
     }
-    try {
-      const savedState = window.sessionStorage.getItem('podcast-finder-state')
-      if (savedState) {
-        const parsed = JSON.parse(savedState)
-        if (parsed.selectedTarget) setSelectedTarget(parsed.selectedTarget)
-        else if (parsed.selectedClient) setSelectedTarget(parsed.selectedClient) // backwards compat
-        if (parsed.queries) setQueries(parsed.queries)
-        if (parsed.selectedPodcasts) setSelectedPodcasts(new Set(parsed.selectedPodcasts))
-        if (parsed.filters) {
-          if (parsed.filters.minAudience !== undefined) setMinAudience(parsed.filters.minAudience)
-          if (parsed.filters.maxAudience !== undefined) setMaxAudience(parsed.filters.maxAudience)
-          if (parsed.filters.minEpisodes !== undefined) setMinEpisodes(parsed.filters.minEpisodes)
-          if (parsed.filters.region !== undefined) setRegion(parsed.filters.region)
-          if (parsed.filters.hasGuests !== undefined) setHasGuests(parsed.filters.hasGuests)
-          if (parsed.filters.hasSponsors !== undefined) setHasSponsors(parsed.filters.hasSponsors)
-          if (parsed.filters.searchFields !== undefined) setSearchFields(parsed.filters.searchFields)
-          if (parsed.filters.activeOnly !== undefined) setActiveOnly(parsed.filters.activeOnly)
+  }, [workspaceId, clientId, strategy])
+
+  useEffect(() => {
+    setResultPage(1)
+  }, [activeTab, resultSearch, resultSort, contactableOnly])
+
+  useEffect(() => {
+    if (!showChartDiscovery || chartCountries.length > 0) return
+    let active = true
+    setIsLoadingChartOptions(true)
+    void getChartCountries()
+      .then((countries) => {
+        if (!active) return
+        setChartCountries(countries)
+        if (countries.length > 0 && !countries.some((country) => country.code === chartCountry)) {
+          setChartCountry(countries[0].code)
         }
-        // Load chart state
-        if (parsed.finderMode) setFinderMode(parsed.finderMode)
-        if (parsed.chartPlatform) setChartPlatform(parsed.chartPlatform)
-        if (parsed.chartCountry) setChartCountry(parsed.chartCountry)
-        if (parsed.chartCategory) setChartCategory(parsed.chartCategory)
-        if (parsed.chartLimit) setChartLimit(parsed.chartLimit)
-        if (parsed.chartResults) setChartResults(parsed.chartResults)
-        if (parsed.chartScores) setChartScores(parsed.chartScores)
-        if (parsed.chartReasonings) setChartReasonings(parsed.chartReasonings)
-      }
-    } catch (e) {
-      console.error('Failed to load saved state:', e)
-    }
-  }, [])
+      })
+      .catch(() => toast.error('Available chart countries could not be loaded.'))
+      .finally(() => active && setIsLoadingChartOptions(false))
+    return () => { active = false }
+  }, [chartCountries.length, chartCountry, showChartDiscovery])
 
-  // Save customer work only for the lifetime of this browser tab.
   useEffect(() => {
-    const stateToSave = {
-      selectedTarget,
-      queries,
-      selectedPodcasts: Array.from(selectedPodcasts),
-      filters: {
-        minAudience,
-        maxAudience,
-        minEpisodes,
-        region,
-        hasGuests,
-        hasSponsors,
-        searchFields,
-        activeOnly,
-      },
-      // Chart state
-      finderMode,
-      chartPlatform,
-      chartCountry,
-      chartCategory,
-      chartLimit,
-      chartResults,
-      chartScores,
-      chartReasonings,
-    }
-    try {
-      window.sessionStorage.setItem('podcast-finder-state', JSON.stringify(stateToSave))
-    } catch {
-      // In-memory React state remains usable when storage is denied/full.
-    }
-  }, [selectedTarget, queries, selectedPodcasts, minAudience, maxAudience, minEpisodes, region, hasGuests, hasSponsors, searchFields, activeOnly, finderMode, chartPlatform, chartCountry, chartCategory, chartLimit, chartResults, chartScores, chartReasonings])
+    if (!showChartDiscovery || !chartCountry) return
+    let active = true
+    setIsLoadingChartOptions(true)
+    setChartCategory('')
+    void getChartCategories(chartPlatform, chartCountry)
+      .then((categories) => {
+        if (!active) return
+        setChartCategories(categories)
+        if (categories.length > 0) setChartCategory(categories[0].id)
+      })
+      .catch(() => toast.error('Chart categories could not be loaded.'))
+      .finally(() => active && setIsLoadingChartOptions(false))
+    return () => { active = false }
+  }, [chartCountry, chartPlatform, showChartDiscovery])
 
-  // Fetch existing prospects on mount
-  useEffect(() => {
-    const fetchProspects = async () => {
-      setLoadingProspects(true)
-      try {
-        const { data, error } = await supabase
-          .from('prospect_dashboards')
-          .select('id, prospect_name, prospect_bio, prospect_image_url, spreadsheet_url, slug')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
+  const rows = useMemo(() => results.map((result) => {
+    const outreach = calculateOutreachPriority(result.podcast)
+    const tier = getResearchTier(
+      result.relevanceScore,
+      outreach.score,
+      tierOverrides[result.podcast.podcast_id],
+      excludedIds.has(result.podcast.podcast_id),
+    )
+    return {
+      ...result,
+      outreach,
+      tier,
+      compositeScore: compositeResearchScore(result.relevanceScore, outreach.score),
+    }
+  }), [excludedIds, results, tierOverrides])
 
-          if (error) throw error
-          setExistingProspects(data || [])
-        } catch (error) {
-          console.error('Failed to fetch existing prospects:', error)
-        } finally {
-          setLoadingProspects(false)
-        }
+  const tierCounts = useMemo(() => rows.reduce<Record<ResearchTier, number>>((counts, row) => {
+    counts[row.tier] += 1
+    return counts
+  }, { a: 0, b: 0, c: 0, review: 0, excluded: 0 }), [rows])
+
+  const filteredRows = useMemo(() => {
+    const needle = resultSearch.trim().toLowerCase()
+    const filtered = rows.filter((row) => {
+      if (activeTab !== 'all' && row.tier !== activeTab) return false
+      if (contactableOnly && !row.podcast.reach?.email) return false
+      if (!needle) return true
+      const categories = row.podcast.podcast_categories?.map((category) => category.category_name).join(' ') || ''
+      return [row.podcast.podcast_name, row.podcast.publisher_name, row.podcast.podcast_description, categories]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(needle))
+    })
+
+    return filtered.sort((left, right) => {
+      if (resultSort === 'relevance') return (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1)
+      if (resultSort === 'audience') return (right.podcast.reach?.audience_size || 0) - (left.podcast.reach?.audience_size || 0)
+      if (resultSort === 'recent') {
+        return Date.parse(right.podcast.last_posted_at || '1970-01-01') - Date.parse(left.podcast.last_posted_at || '1970-01-01')
       }
-    fetchProspects()
-  }, [])
+      return right.compositeScore - left.compositeScore
+    })
+  }, [activeTab, contactableOnly, resultSearch, resultSort, rows])
 
-  // When selecting an existing prospect, populate the form fields
-  useEffect(() => {
-    if (selectedProspectId) {
-      const prospect = existingProspects.find(p => p.id === selectedProspectId)
-      if (prospect) {
-        setProspectName(prospect.prospect_name)
-        setProspectBio(prospect.prospect_bio || '')
-        setProspectImageUrl(prospect.prospect_image_url || '')
-      }
-    } else if (isNewProspectMode) {
-      // Clear fields when switching to new prospect
-      setProspectName('')
-      setProspectBio('')
-      setProspectImageUrl('')
-    }
-  }, [selectedProspectId, isNewProspectMode, existingProspects])
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / RESULTS_PER_PAGE))
+  const visibleRows = filteredRows.slice((resultPage - 1) * RESULTS_PER_PAGE, resultPage * RESULTS_PER_PAGE)
+  const selectedDetail = rows.find((row) => row.podcast.podcast_id === detailId)
+  const qualifiedCount = tierCounts.a + tierCounts.b + tierCounts.c
+  const selectedResults = results.filter((result) => selectedIds.has(result.podcast.podcast_id) && !excludedIds.has(result.podcast.podcast_id))
+  const selectedContactableCount = selectedResults.filter((result) => Boolean(result.podcast.reach?.email)).length
+  const unscoredCount = results.filter((result) => result.relevanceScore === null && !excludedIds.has(result.podcast.podcast_id)).length
 
-  // Fetch chart countries when entering charts mode
-  useEffect(() => {
-    if (finderMode === 'charts' && chartCountries.length === 0) {
-      const fetchCountries = async () => {
-        setLoadingCountries(true)
-        try {
-          const countries = await getChartCountries()
-          setChartCountries(countries)
-          // Set default country if not already set
-          if (!chartCountry && countries.length > 0) {
-            setChartCountry(countries[0].code)
-          }
-        } catch (error) {
-          console.error('Failed to fetch chart countries:', error)
-          toast.error('Failed to load countries')
-        } finally {
-          setLoadingCountries(false)
-        }
-      }
-      fetchCountries()
-    }
-  }, [finderMode, chartCountries.length, chartCountry])
-
-  // Fetch chart categories when platform or country changes
-  useEffect(() => {
-    if (finderMode === 'charts' && chartPlatform && chartCountry) {
-      const fetchCategories = async () => {
-        setLoadingCategories(true)
-        setChartCategory('') // Reset category when platform/country changes
-        try {
-          const categories = await getChartCategories(chartPlatform, chartCountry)
-          setChartCategories(categories)
-        } catch (error) {
-          console.error('Failed to fetch chart categories:', error)
-          toast.error('Failed to load categories')
-        } finally {
-          setLoadingCategories(false)
-        }
-      }
-      fetchCategories()
-    }
-  }, [finderMode, chartPlatform, chartCountry])
-
-  // Handle fetching top chart podcasts
-  const handleFetchCharts = async () => {
-    if (!chartCategory) {
-      toast.error('Please select a category')
-      return
-    }
-
-    setLoadingCharts(true)
-    setChartResults([])
-    setChartScores({})
-    setChartReasonings({})
-
-    try {
-      const podcasts = await getTopChartPodcasts(chartPlatform, chartCountry, chartCategory, chartLimit)
-      setChartResults(podcasts)
-
-      // Auto-save chart results to database (fire-and-forget)
-      if (podcasts.length > 0) {
-        savePodcastsToDatabase(podcasts).catch(err =>
-          console.error('[PodcastFinder] Auto-save chart results failed:', err)
-        )
-      }
-
-      toast.success(`Found ${podcasts.length} top podcasts`)
-    } catch (error) {
-      console.error('Failed to fetch chart podcasts:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to fetch chart podcasts')
-    } finally {
-      setLoadingCharts(false)
-    }
+  const resetResearch = () => {
+    setQueries([])
+    setResults([])
+    setRunScope(null)
+    setProgress(null)
+    setScoringProgress(null)
+    setSelectedIds(new Set())
+    setTierOverrides({})
+    setExcludedIds(new Set())
+    setActiveTab('all')
+    setResultSearch('')
+    setDetailId(null)
   }
 
-  const handleSaveNewProspect = async () => {
-    if (!prospectName.trim()) {
-      toast.error('Prospect name is required')
-      return
-    }
-    if (!prospectBio.trim()) {
-      toast.error('Prospect bio is required')
-      return
-    }
-    const imageUrlInput = prospectImageUrl.trim()
-    const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
-    if (imageUrlInput && !normalizedImageUrl) {
-      toast.error('Profile picture must be a valid HTTP or HTTPS URL')
-      return
-    }
-    setSavingProspect(true)
-    try {
-      const slug = `prospect-${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`
-
-      const { data, error } = await supabase
-        .from('prospect_dashboards')
-        .insert({
-          slug,
-          prospect_name: prospectName.trim(),
-          prospect_bio: prospectBio.trim(),
-          prospect_image_url: normalizedImageUrl,
-          is_active: true,
-          view_count: 0,
-        })
-        .select('id, prospect_name, prospect_bio, prospect_image_url, spreadsheet_url, slug')
-        .single()
-
-      if (error) throw error
-
-      setExistingProspects(prev => [data, ...prev])
-      setSelectedTarget(`__prospect_${data.id}`)
-      toast.success(`Prospect "${data.prospect_name}" saved! You can now search and export podcasts to their dashboard.`)
-    } catch (error) {
-      console.error('Error saving prospect:', error)
-      toast.error('Failed to save prospect')
-    } finally {
-      setSavingProspect(false)
-    }
+  const handleWorkspaceChange = (nextWorkspaceId: string) => {
+    resetResearch()
+    setWorkspaceId(nextWorkspaceId)
+    setClientId('')
   }
 
-  const handleGenerateQueries = async () => {
-    // Support both client mode and prospect mode
-    const nameToUse = isProspectMode ? prospectName : selectedClientData?.name
-    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
+  const handleClientChange = (nextClientId: string) => {
+    resetResearch()
+    setClientId(nextClientId)
+  }
 
-    if (!isProspectMode && !selectedClientData) {
-      toast.error('Please select a client first')
-      return
-    }
-
-    if (isProspectMode && !prospectName.trim()) {
-      toast.error('Please enter a prospect name')
-      return
-    }
-
-    if (!bioToUse) {
-      toast.error(isProspectMode
-        ? 'Please enter a prospect bio first'
-        : 'Please add a bio for this client first')
-      return
+  const handleGenerateQueries = async (): Promise<string[]> => {
+    if (!selectedClient?.bio) {
+      toast.error('Add an approved client bio before generating a search strategy.')
+      return []
     }
 
     setIsGenerating(true)
-
     try {
-      const generatedQueries = await generatePodcastQueries({
-        clientName: nameToUse!,
-        clientBio: bioToUse,
-        clientEmail: isProspectMode ? undefined : selectedClientData?.email || undefined,
+      const generated = await generatePodcastQueries({
+        clientName: selectedClient.name,
+        clientBio: selectedClient.bio,
+        clientEmail: selectedClient.email || undefined,
       })
-
-      const queries: GeneratedQuery[] = generatedQueries.map((query, index) => ({
-        id: `query-${Date.now()}-${index}`,
-        text: query,
-        isEditing: false,
-        isSearching: false,
-        results: [],
-        isScoring: false,
-        compatibilityScores: {},
-        scoreReasonings: {},
-        regenerateAttempts: 0
-      }))
-
-      // Reset regeneration attempt tracking for new queries
-      regenerateAttemptsRef.current = {}
-
-      setQueries(queries)
-      toast.success('Generated 5 AI-powered search queries!')
+      const normalized = generated.map(normalizePodscanQuery).filter(Boolean)
+      setQueries(normalized)
+      toast.success('Client search strategy is ready.')
+      return normalized
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to generate queries')
-      console.error(error)
+      toast.error(error instanceof Error ? error.message : 'Search strategy could not be generated.')
+      return []
     } finally {
       setIsGenerating(false)
     }
   }
 
-  const handleAddCustomKeywords = () => {
-    if (!customKeywords.trim()) {
-      toast.error('Please enter at least one keyword')
+  const handleAddCustomQuery = () => {
+    const normalized = normalizePodscanQuery(customQuery)
+    if (!normalized) return
+    if (queries.includes(normalized)) {
+      toast.info('That query is already in the strategy.')
       return
     }
-
-    const keywords = customKeywords
-      .split(',')
-      .map(k => k.trim())
-      .filter(k => k.length > 0)
-
-    if (keywords.length === 0) {
-      toast.error('Please enter at least one keyword')
-      return
-    }
-
-    const newQueries: GeneratedQuery[] = keywords.map((keyword, index) => ({
-      id: `custom-${Date.now()}-${index}`,
-      text: keyword,
-      isEditing: false,
-      isSearching: false,
-      results: [],
-      isScoring: false,
-      compatibilityScores: {},
-      scoreReasonings: {},
-      regenerateAttempts: 0
-    }))
-
-    setQueries(prev => [...prev, ...newQueries])
-    setCustomKeywords('')
-    toast.success(`Added ${keywords.length} custom ${keywords.length === 1 ? 'query' : 'queries'}`)
+    setQueries((current) => [...current, normalized])
+    setCustomQuery('')
   }
 
-  const handleRegenerateQuery = async (queryId: string, isAutomatic = false) => {
-    // Support both client mode and prospect mode
-    const nameToUse = isProspectMode ? prospectName : selectedClientData?.name
-    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
+  const buildSearchOptions = (query: string, page: number): SearchOptions => {
+    const options: SearchOptions = {
+      query,
+      page,
+      per_page: 50,
+      order_by: 'best_match',
+      order_dir: 'desc',
+      search_fields: 'name,description,publisher_name',
+    }
+    if (language !== 'any') options.language = language
+    if (region !== 'any') options.region = region
+    if (guestFilter === 'true') options.has_guests = true
+    if (minAudience) options.min_audience_size = Number.parseInt(minAudience, 10)
+    if (maxAudience) options.max_audience_size = Number.parseInt(maxAudience, 10)
+    if (minEpisodes) options.min_episode_count = Number.parseInt(minEpisodes, 10)
+    if (activityWindow !== 'any') {
+      const minimumDate = new Date()
+      minimumDate.setDate(minimumDate.getDate() - Number.parseInt(activityWindow, 10))
+      options.min_last_episode_posted_at = minimumDate.toISOString().slice(0, 10)
+    }
+    return options
+  }
 
-    if (!bioToUse || !nameToUse) return
-
-    const query = queries.find(q => q.id === queryId)
-    if (!query) return
-
-    // Use ref for attempt tracking to avoid stale closure issues
-    const currentAttempts = regenerateAttemptsRef.current[queryId] || 0
-    console.log(`handleRegenerateQuery called: queryId=${queryId}, isAutomatic=${isAutomatic}, currentAttempts=${currentAttempts}`)
-
-    // Limit automatic regenerations to 1 attempt per query (2 total searches)
-    if (isAutomatic && currentAttempts >= 1) {
-      console.log(`Query ${queryId} has reached max regeneration attempts (${currentAttempts}), STOPPING`)
-      toast.error(`No podcasts found after retrying. Try adjusting filters or editing the query manually.`)
+  const handleRunDiscovery = async () => {
+    if (!selectedWorkspace || !selectedClient) {
+      toast.error('Select a workspace and client first.')
+      return
+    }
+    if (!selectedClient.bio) {
+      toast.error('This client needs an approved bio before discovery can run.')
       return
     }
 
-    // Increment ref immediately (synchronous, no closure issues)
-    if (isAutomatic) {
-      regenerateAttemptsRef.current[queryId] = currentAttempts + 1
-    } else {
-      // Manual regenerate resets the counter
-      regenerateAttemptsRef.current[queryId] = 0
+    let searchQueries = queries
+    if (searchQueries.length === 0) searchQueries = await handleGenerateQueries()
+    if (searchQueries.length === 0) return
+
+    const normalizedQueries = Array.from(new Set(searchQueries.map(normalizePodscanQuery).filter(Boolean)))
+    const config = DISCOVERY_STRATEGIES[strategy]
+    const totalRequests = normalizedQueries.length * config.pagesPerQuery
+    const startedAt = new Date().toISOString()
+    const nextRun: RunScope = {
+      id: crypto.randomUUID(),
+      workspaceId: selectedWorkspace.id,
+      clientId: selectedClient.id,
+      strategy,
+      startedAt,
+      rawResults: 0,
+      apiCalls: 0,
+      errors: 0,
     }
 
+    setQueries(normalizedQueries)
+    setResults([])
+    setSelectedIds(new Set())
+    setTierOverrides({})
+    setExcludedIds(new Set())
+    setRunScope(nextRun)
+    setIsDiscovering(true)
+    setProgress({ completed: 0, total: totalRequests, message: 'Starting client discovery…' })
+
+    let collected: ResearchResult[] = []
+    let completed = 0
+    let rawResults = 0
+    let apiCalls = 0
+    let errors = 0
+
     try {
-      if (!isAutomatic) {
-        toast.info('Regenerating query...')
-      }
-
-      console.log(`Query ${queryId}: Calling AI to regenerate query...`)
-
-      const newQueryText = await regenerateQuery(
-        {
-          clientName: nameToUse,
-          clientBio: bioToUse,
-          clientEmail: isProspectMode ? undefined : selectedClientData?.email || undefined,
-        },
-        query.text
-      )
-
-      setQueries(prev => {
-        const updated = prev.map(q =>
-          q.id === queryId
-            ? {
-                ...q,
-                text: newQueryText,
-                results: [],
-                compatibilityScores: {},
-                scoreReasonings: {},
-                regenerateAttempts: regenerateAttemptsRef.current[queryId] || 0
+      for (let queryIndex = 0; queryIndex < normalizedQueries.length; queryIndex += 1) {
+        const query = normalizedQueries[queryIndex]
+        for (let page = 1; page <= config.pagesPerQuery; page += 1) {
+          setProgress({
+            completed,
+            total: totalRequests,
+            message: `Searching strategy ${queryIndex + 1} of ${normalizedQueries.length}, page ${page}…`,
+          })
+          try {
+            let response: Awaited<ReturnType<typeof searchPodcastsWithMeta>> | null = null
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                response = await searchPodcastsWithMeta(buildSearchOptions(query, page))
+                break
+              } catch (error) {
+                const requestError = error as Error & { status?: number; retryAfterSeconds?: number }
+                const throttled = requestError.status === 429
+                  || requestError.name === 'PODSCAN_RATE_LIMIT'
+                  || requestError.name === 'PODSCAN_CONCURRENCY_LIMIT'
+                if (!throttled || attempt === 1) throw error
+                const retrySeconds = Math.min(30, Math.max(1, requestError.retryAfterSeconds || 5))
+                setProgress({
+                  completed,
+                  total: totalRequests,
+                  message: `Podscan is busy. Retrying this page in ${retrySeconds} seconds…`,
+                })
+                await new Promise((resolve) => window.setTimeout(resolve, retrySeconds * 1000))
               }
-            : q
-        )
-        const updatedQuery = updated.find(q => q.id === queryId)
-        console.log(`Query ${queryId}: State updated, new regenerateAttempts=${updatedQuery?.regenerateAttempts}`)
-        return updated
-      })
+            }
+            if (!response) throw new Error('Podscan did not return a search response.')
+            apiCalls += 1
+            if (response.rateLimit) setRateLimit(response.rateLimit)
+            const podcasts = response.data.podcasts || []
+            rawResults += podcasts.length
+            collected = mergeResearchResults(collected, podcasts, 'AI search', query)
+            setResults(collected)
 
-      if (!isAutomatic) {
-        toast.success('Query regenerated!')
-      }
-
-      // If automatic, search with the new query after delay
-      if (isAutomatic) {
-        console.log(`Query ${queryId}: Scheduling next search in 700ms`)
-        // Delay to ensure state is updated and respect rate limits
-        setTimeout(() => {
-          console.log(`Query ${queryId}: Executing scheduled search`)
-          handleSearchQuery(queryId)
-        }, 700)
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to regenerate query')
-      console.error(error)
-    }
-  }
-
-  const handleSearchQuery = async (queryId: string) => {
-    const query = queries.find(q => q.id === queryId)
-    if (!query) return
-
-    // Use ref for attempt tracking (avoids stale closure issues)
-    const currentAttempts = regenerateAttemptsRef.current[queryId] || 0
-
-    // HARD STOP: Prevent infinite loops - max 2 total searches per query
-    if (currentAttempts >= 2) {
-      console.log(`STOPPED: Query ${queryId} has already been regenerated ${currentAttempts} times`)
-      toast.error(`Query has reached maximum retry limit`)
-      return
-    }
-
-    setQueries(prev => prev.map(q =>
-      q.id === queryId ? { ...q, isSearching: true } : q
-    ))
-
-    try {
-      // Build search filters
-      const filters: any = {
-        query: query.text,
-        per_page: 50,
-        order_by: 'audience_size',
-        order_dir: 'desc',
-        language: 'en',
-        search_fields: searchFields,
-      }
-
-      // Apply optional filters
-      if (minAudience) filters.min_audience_size = parseInt(minAudience)
-      if (maxAudience) filters.max_audience_size = parseInt(maxAudience)
-      if (minEpisodes) filters.min_episode_count = parseInt(minEpisodes)
-      if (region !== 'US') filters.region = region
-      if (hasGuests === 'true') filters.has_guests = true
-      else if (hasGuests === 'false') filters.has_guests = false
-
-      // Filter for podcasts with sponsors (professional/monetized)
-      if (hasSponsors === 'true') filters.has_sponsors = true
-      else if (hasSponsors === 'false') filters.has_sponsors = false
-
-      // Filter for active podcasts only (posted in last 6 months)
-      if (activeOnly) {
-        const sixMonthsAgo = new Date()
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-        filters.min_last_episode_posted_at = sixMonthsAgo.toISOString().split('T')[0]
-      }
-
-      const response = await searchPodcasts(filters)
-      const results = response.podcasts || []
-
-      // Auto-save to database (fire-and-forget)
-      if (results.length > 0) {
-        savePodcastsToDatabase(results).catch(err =>
-          console.error('[PodcastFinder] Auto-save failed:', err)
-        )
-      }
-
-      // Re-check ref for current attempts (in case of concurrent calls)
-      const attemptsNow = regenerateAttemptsRef.current[queryId] || 0
-
-      setQueries(prev => prev.map(q =>
-        q.id === queryId
-          ? { ...q, results, isSearching: false, regenerateAttempts: attemptsNow }
-          : q
-      ))
-
-      setExpandedQueryId(queryId)
-
-      console.log(`Query ${queryId}: Found ${results.length} results, currentAttempts=${attemptsNow}`)
-
-      // Check if we should auto-regenerate due to zero results
-      if (results.length === 0 && attemptsNow < 1) {
-        console.log(`Query ${queryId}: Triggering auto-regeneration`)
-        toast.warning(`No podcasts found. Trying a different query...`)
-        // Add delay to respect rate limits (120/min = ~500ms between requests)
-        await new Promise(resolve => setTimeout(resolve, 600))
-        // Automatically regenerate and search with new query
-        await handleRegenerateQuery(queryId, true)
-      } else {
-        if (results.length === 0) {
-          console.log(`Query ${queryId}: Max attempts reached, stopping`)
-          // Message already shown by handleRegenerateQuery when it stops
-        } else {
-          toast.success(`Found ${results.length} podcasts!`)
+            const lastPage = Number.parseInt(response.data.pagination?.last_page || String(config.pagesPerQuery), 10)
+            if (podcasts.length === 0 || page >= lastPage) {
+              completed += config.pagesPerQuery - page + 1
+              break
+            }
+          } catch (error) {
+            errors += 1
+            console.error('Podcast discovery page failed:', error)
+          }
+          completed += 1
+          setProgress({
+            completed,
+            total: totalRequests,
+            message: `${collected.length.toLocaleString()} unique podcasts found so far`,
+          })
+          if (completed < totalRequests) await new Promise((resolve) => window.setTimeout(resolve, 525))
         }
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Search failed')
-      console.error(error)
-      setQueries(prev => prev.map(q =>
-        q.id === queryId ? { ...q, isSearching: false } : q
-      ))
-    }
-  }
 
-  const handleScanCompatibility = async (queryId: string) => {
-    const query = queries.find(q => q.id === queryId)
-    if (!query || !query.results.length) return
-
-    // Support both client mode and prospect mode
-    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
-
-    if (!bioToUse) {
-      toast.error(isProspectMode
-        ? 'Prospect bio is required for compatibility scoring'
-        : 'Client bio is required for compatibility scoring')
-      return
-    }
-
-    if (!isProspectMode && !selectedClientData) {
-      toast.error('Please select a client or enter prospect details')
-      return
-    }
-
-    setQueries(prev => prev.map(q =>
-      q.id === queryId ? { ...q, isScoring: true } : q
-    ))
-
-    try {
-      // Map PodcastData to PodcastForScoring format
-      const podcastsForScoring = query.results.map(p => ({
-        podcast_id: p.podcast_id,
-        podcast_name: p.podcast_name,
-        podcast_description: p.podcast_description,
-        publisher_name: p.publisher_name,
-        podcast_categories: p.podcast_categories,
-        audience_size: p.reach?.audience_size,
-        episode_count: p.episode_count,
-      }))
-
-      // Score with progress callback
-      const scores = await scoreCompatibilityBatch(
-        bioToUse,
-        podcastsForScoring,
-        10,
-        (completed, total) => {
-          // Could add progress indicator in UI here
-          console.log(`Scoring progress: ${completed}/${total}`)
-        },
-        isProspectMode
-      )
-
-      // Build score and reasoning maps
-      const scoreMap: Record<string, number | null> = {}
-      const reasoningMap: Record<string, string | undefined> = {}
-      scores.forEach(s => {
-        scoreMap[s.podcast_id] = s.score
-        reasoningMap[s.podcast_id] = s.reasoning
+      const completedAt = new Date().toISOString()
+      setRunScope({ ...nextRun, completedAt, rawResults, apiCalls, errors })
+      setProgress({
+        completed: totalRequests,
+        total: totalRequests,
+        message: `${collected.length.toLocaleString()} unique podcasts ready for review`,
       })
-
-      setQueries(prev => prev.map(q =>
-        q.id === queryId
-          ? { ...q, compatibilityScores: scoreMap, scoreReasonings: reasoningMap, isScoring: false }
-          : q
-      ))
-
-      // Calculate average score
-      const validScores = scores.filter(s => s.score !== null).map(s => s.score!)
-      const avgScore = validScores.length > 0
-        ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length
-        : 0
-
-      const highScoreCount = validScores.filter(s => s >= 8).length
-
-      toast.success(
-        `Scored ${scores.length} podcasts! Average: ${avgScore.toFixed(1)}/10 • ${highScoreCount} highly compatible (8+)`
-      )
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to calculate compatibility scores')
-      console.error(error)
-      setQueries(prev => prev.map(q =>
-        q.id === queryId ? { ...q, isScoring: false } : q
-      ))
-    }
-  }
-
-  const handleScanChartCompatibility = async () => {
-    if (!chartResults.length) return
-
-    // Support both client mode and prospect mode
-    const bioToUse = isProspectMode ? prospectBio : selectedClientData?.bio
-
-    if (!bioToUse) {
-      toast.error(isProspectMode
-        ? 'Prospect bio is required for compatibility scoring'
-        : 'Client bio is required for compatibility scoring')
-      return
-    }
-
-    if (!isProspectMode && !selectedClientData) {
-      toast.error('Please select a client or enter prospect details')
-      return
-    }
-
-    setIsChartScoring(true)
-
-    try {
-      // Map PodcastData to PodcastForScoring format
-      const podcastsForScoring = chartResults.map(p => ({
-        podcast_id: p.podcast_id,
-        podcast_name: p.podcast_name,
-        podcast_description: p.podcast_description,
-        publisher_name: p.publisher_name,
-        podcast_categories: p.podcast_categories,
-        audience_size: p.reach?.audience_size,
-        episode_count: p.episode_count,
-      }))
-
-      // Score with progress callback
-      const scores = await scoreCompatibilityBatch(
-        bioToUse,
-        podcastsForScoring,
-        10,
-        (completed, total) => {
-          console.log(`Chart scoring progress: ${completed}/${total}`)
-        },
-        isProspectMode
-      )
-
-      // Build score and reasoning maps
-      const scoreMap: Record<string, number | null> = {}
-      const reasoningMap: Record<string, string | undefined> = {}
-      scores.forEach(s => {
-        scoreMap[s.podcast_id] = s.score
-        reasoningMap[s.podcast_id] = s.reasoning
-      })
-
-      setChartScores(scoreMap)
-      setChartReasonings(reasoningMap)
-
-      // Calculate average score
-      const validScores = scores.filter(s => s.score !== null).map(s => s.score!)
-      const avgScore = validScores.length > 0
-        ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length
-        : 0
-
-      const highScoreCount = validScores.filter(s => s >= 8).length
-
-      toast.success(
-        `Scored ${scores.length} podcasts! Average: ${avgScore.toFixed(1)}/10 • ${highScoreCount} highly compatible (8+)`
-      )
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to calculate compatibility scores')
-      console.error(error)
+      if (errors > 0) {
+        toast.warning(`Discovery completed with ${errors} failed request${errors === 1 ? '' : 's'}.`)
+      } else {
+        toast.success(`Found ${collected.length.toLocaleString()} unique podcasts for ${selectedClient.name}.`)
+      }
     } finally {
-      setIsChartScoring(false)
+      setIsDiscovering(false)
     }
   }
 
-  const handleEditQuery = (queryId: string, newText: string) => {
-    setQueries(prev => prev.map(q =>
-      q.id === queryId ? { ...q, text: newText } : q
-    ))
-  }
-
-  const handleDeleteQuery = (queryId: string) => {
-    setQueries(prev => prev.filter(q => q.id !== queryId))
-    toast.success('Query deleted')
-  }
-
-  const handleDeleteChartPodcast = (podcastId: string) => {
-    setChartResults(prev => prev.filter(p => p.podcast_id !== podcastId))
-    // Also remove from scores and reasonings
-    setChartScores(prev => {
-      const updated = { ...prev }
-      delete updated[podcastId]
-      return updated
-    })
-    setChartReasonings(prev => {
-      const updated = { ...prev }
-      delete updated[podcastId]
-      return updated
-    })
-    // Remove from selection if selected
-    setSelectedPodcasts(prev => {
-      const updated = new Set(prev)
-      updated.delete(podcastId)
-      return updated
-    })
-  }
-
-  const toggleQueryExpanded = (queryId: string) => {
-    setExpandedQueryId(prev => prev === queryId ? null : queryId)
-  }
-
-  const handleScoreClick = (podcast: PodcastData, query: GeneratedQuery) => {
-    const score = query.compatibilityScores[podcast.podcast_id]
-    const reasoning = query.scoreReasonings[podcast.podcast_id]
-
-    if (score !== null && score !== undefined) {
-      setSelectedPodcastForScore({
-        podcast,
-        score,
-        reasoning
-      })
-      setScoreModalOpen(true)
+  const handleScoreResults = async () => {
+    if (!selectedClient?.bio || !runScope) {
+      toast.error('A client-bound discovery run is required before scoring.')
+      return
     }
-  }
+    if (runScope.workspaceId !== workspaceId || runScope.clientId !== clientId) {
+      toast.error('This run belongs to a different workspace or client. Start a new run.')
+      return
+    }
 
-  const handleDeletePodcast = (queryId: string, podcastId: string, podcastName: string) => {
-    setQueries(prev => prev.map(q => {
-      if (q.id === queryId) {
-        // Remove the podcast from results
-        const updatedResults = q.results.filter(p => p.podcast_id !== podcastId)
+    const selectedUnscored = results.filter((result) => selectedIds.has(result.podcast.podcast_id) && result.relevanceScore === null)
+    const candidates = selectedUnscored.length > 0
+      ? selectedUnscored
+      : results.filter((result) => result.relevanceScore === null && !excludedIds.has(result.podcast.podcast_id))
+    if (candidates.length === 0) {
+      toast.info('There are no unscored podcasts in this selection.')
+      return
+    }
 
-        // Remove from scores and reasonings too
-        const updatedScores = { ...q.compatibilityScores }
-        const updatedReasonings = { ...q.scoreReasonings }
-        delete updatedScores[podcastId]
-        delete updatedReasonings[podcastId]
-
-        return {
-          ...q,
-          results: updatedResults,
-          compatibilityScores: updatedScores,
-          scoreReasonings: updatedReasonings
-        }
-      }
-      return q
-    }))
-
-    toast.success(`Removed "${podcastName}" from results`)
-  }
-
-  const handlePodcastRowClick = async (podcastId: string) => {
-    setLoadingPodcastDetails(true)
-    setLoadingDemographics(true)
-    setPodcastDemographics(null)
-    setPodcastDetailsModalOpen(true)
-
+    setIsScoring(true)
+    setScoringProgress({ completed: 0, total: candidates.length, message: `Scoring ${candidates.length} podcasts…` })
     try {
-      // Fetch podcast details
-      const details = await getPodcastById(podcastId)
-      setSelectedPodcastDetails(details)
-      setLoadingPodcastDetails(false)
+      const scores = await scoreCompatibilityBatch(
+        selectedClient.bio,
+        candidates.map((result) => ({
+          podcast_id: result.podcast.podcast_id,
+          podcast_name: result.podcast.podcast_name,
+          podcast_description: result.podcast.podcast_description,
+          publisher_name: result.podcast.publisher_name,
+          podcast_categories: result.podcast.podcast_categories,
+          audience_size: result.podcast.reach?.audience_size,
+          episode_count: result.podcast.episode_count,
+        })),
+        10,
+        (completed, total) => setScoringProgress({
+          completed,
+          total,
+          message: `Scored ${completed} of ${total} podcasts`,
+        }),
+        false,
+      )
 
-      // Fetch demographics (non-blocking)
-      try {
-        const demographics = await getPodcastDemographics(podcastId)
-        setPodcastDemographics(demographics)
-      } catch (demoError) {
-        console.log('Demographics not available:', demoError)
-      }
+      const byId = new Map(scores.map((score) => [score.podcast_id, score]))
+      setResults((current) => current.map((result) => {
+        const score = byId.get(result.podcast.podcast_id)
+        if (!score || score.score === null) return result
+        return {
+          ...result,
+          relevanceScore: Math.round(score.score * 10),
+          relevanceReasoning: score.reasoning,
+        }
+      }))
+      toast.success(`Relevance scoring completed for ${candidates.length} podcasts.`)
     } catch (error) {
-      console.error('Error fetching podcast details:', error)
-      toast.error('Failed to load podcast details')
-      setPodcastDetailsModalOpen(false)
+      toast.error(error instanceof Error ? error.message : 'Relevance scoring failed.')
     } finally {
-      setLoadingPodcastDetails(false)
-      setLoadingDemographics(false)
+      setIsScoring(false)
     }
   }
 
-  const handleReset = () => {
-    setQueries([])
-    setExpandedQueryId(null)
-    setSelectedPodcasts(new Set())
-    regenerateAttemptsRef.current = {} // Clear regeneration tracking
+  const handleAddChartResults = async () => {
+    if (!selectedWorkspace || !selectedClient || !chartCategory) return
+    if (runScope && (runScope.workspaceId !== workspaceId || runScope.clientId !== clientId)) {
+      toast.error('Chart discoveries cannot be mixed across clients.')
+      return
+    }
+
+    setIsAddingChartResults(true)
     try {
-      window.sessionStorage.removeItem('podcast-finder-state')
-    } catch {
-      // Resetting in-memory state remains sufficient for this tab.
+      const limit = chartPlatform === 'apple' ? 100 : 50
+      const podcasts = await getTopChartPodcasts(chartPlatform, chartCountry, chartCategory, limit)
+      const source = `${chartPlatform === 'apple' ? 'Apple' : 'Spotify'} charts`
+      setResults((current) => mergeResearchResults(current, podcasts, source))
+      setRunScope((current) => current
+        ? {
+            ...current,
+            completedAt: new Date().toISOString(),
+            rawResults: current.rawResults + podcasts.length,
+            apiCalls: current.apiCalls + 1,
+          }
+        : {
+            id: crypto.randomUUID(),
+            workspaceId,
+            clientId,
+            strategy,
+            startedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            rawResults: podcasts.length,
+            apiCalls: 1,
+            errors: 0,
+          })
+      toast.success(`Added ${podcasts.length} chart podcasts to this client run.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Chart podcasts could not be added.')
+    } finally {
+      setIsAddingChartResults(false)
     }
-    toast.success('Queries cleared')
   }
 
-  // Checkbox selection handlers
-  const handleTogglePodcastSelection = (podcastId: string) => {
-    setSelectedPodcasts(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(podcastId)) {
-        newSet.delete(podcastId)
-      } else {
-        newSet.add(podcastId)
-      }
-      return newSet
+  const handleToggleSelection = (podcastId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(podcastId)) next.delete(podcastId)
+      else next.add(podcastId)
+      return next
     })
   }
 
-  const handleToggleAllInQuery = (query: GeneratedQuery) => {
-    const queryPodcastIds = query.results.map(p => p.podcast_id)
-    const allSelected = queryPodcastIds.every(id => selectedPodcasts.has(id))
-
-    setSelectedPodcasts(prev => {
-      const newSet = new Set(prev)
-      if (allSelected) {
-        // Deselect all in this query
-        queryPodcastIds.forEach(id => newSet.delete(id))
-      } else {
-        // Select all in this query
-        queryPodcastIds.forEach(id => newSet.add(id))
-      }
-      return newSet
+  const handleToggleVisible = () => {
+    const visibleIds = visibleRows.map((row) => row.podcast.podcast_id)
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      visibleIds.forEach((id) => allSelected ? next.delete(id) : next.add(id))
+      return next
     })
   }
 
-  // Bulk actions handlers
-  const handleRemovePodcastsBelowScore = (queryId: string, threshold: number) => {
-    const query = queries.find(q => q.id === queryId)
-    if (!query) return
-
-    const podcastsToRemove = query.results.filter(podcast => {
-      const score = query.compatibilityScores[podcast.podcast_id]
-      return score !== undefined && score !== null && score < threshold
+  const applyTierToIds = (ids: Iterable<string>, tier: Exclude<ResearchTier, 'excluded'>) => {
+    const targetIds = Array.from(ids)
+    if (targetIds.length === 0) return
+    setTierOverrides((current) => {
+      const next = { ...current }
+      targetIds.forEach((id) => { next[id] = tier })
+      return next
     })
-
-    if (podcastsToRemove.length === 0) {
-      toast.info(`No podcasts found with score below ${threshold}`)
-      return
-    }
-
-    setQueries(prev => prev.map(q => {
-      if (q.id === queryId) {
-        const updatedResults = q.results.filter(podcast => {
-          const score = q.compatibilityScores[podcast.podcast_id]
-          return score === undefined || score === null || score >= threshold
-        })
-
-        // Also clean up scores and reasonings
-        const updatedScores = { ...q.compatibilityScores }
-        const updatedReasonings = { ...q.scoreReasonings }
-        podcastsToRemove.forEach(podcast => {
-          delete updatedScores[podcast.podcast_id]
-          delete updatedReasonings[podcast.podcast_id]
-        })
-
-        return {
-          ...q,
-          results: updatedResults,
-          compatibilityScores: updatedScores,
-          scoreReasonings: updatedReasonings
-        }
-      }
-      return q
-    }))
-
-    toast.success(`Removed ${podcastsToRemove.length} podcast${podcastsToRemove.length !== 1 ? 's' : ''} with score below ${threshold}`)
+    setExcludedIds((current) => {
+      const next = new Set(current)
+      targetIds.forEach((id) => next.delete(id))
+      return next
+    })
+    toast.success(`${targetIds.length} podcast${targetIds.length === 1 ? '' : 's'} moved to ${tierLabel(tier)}.`)
   }
 
-  const handleRemoveUnscoredPodcasts = (queryId: string) => {
-    const query = queries.find(q => q.id === queryId)
-    if (!query) return
-
-    const podcastsToRemove = query.results.filter(podcast => {
-      const score = query.compatibilityScores[podcast.podcast_id]
-      return score === undefined || score === null
-    })
-
-    if (podcastsToRemove.length === 0) {
-      toast.info('No unscored podcasts found')
-      return
-    }
-
-    setQueries(prev => prev.map(q => {
-      if (q.id === queryId) {
-        const updatedResults = q.results.filter(podcast => {
-          const score = q.compatibilityScores[podcast.podcast_id]
-          return score !== undefined && score !== null
-        })
-
-        return {
-          ...q,
-          results: updatedResults
-        }
-      }
-      return q
-    }))
-
-    toast.success(`Removed ${podcastsToRemove.length} unscored podcast${podcastsToRemove.length !== 1 ? 's' : ''}`)
+  const handleBulkTier = (tier: Exclude<ResearchTier, 'excluded'>) => {
+    applyTierToIds(selectedIds, tier)
   }
 
-  const handleOpenCustomThresholdDialog = (queryId: string) => {
-    setCustomThresholdQueryId(queryId)
-    setCustomThresholdValue('')
-    setCustomThresholdDialogOpen(true)
+  const handleBulkExclude = () => {
+    if (selectedIds.size === 0) return
+    setExcludedIds((current) => new Set([...current, ...selectedIds]))
+    toast.success(`${selectedIds.size} podcast${selectedIds.size === 1 ? '' : 's'} excluded.`)
+    setSelectedIds(new Set())
   }
 
-  const handleApplyCustomThreshold = () => {
-    const threshold = parseFloat(customThresholdValue)
-
-    if (isNaN(threshold) || threshold < 1 || threshold > 10) {
-      toast.error('Please enter a valid score between 1 and 10')
-      return
+  const handleEnrichDetail = async () => {
+    if (!detailId) return
+    setIsEnriching(true)
+    try {
+      const podcast = await getPodcastById(detailId)
+      setResults((current) => mergeResearchResults(current, [podcast], 'Podscan profile'))
+      toast.success('Full Podscan profile loaded.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Podcast profile could not be loaded.')
+    } finally {
+      setIsEnriching(false)
     }
-
-    if (customThresholdQueryId) {
-      handleRemovePodcastsBelowScore(customThresholdQueryId, threshold)
-    }
-
-    setCustomThresholdDialogOpen(false)
-    setCustomThresholdValue('')
-    setCustomThresholdQueryId(null)
   }
 
-  // Chart mode bulk actions
-  const handleRemoveChartPodcastsBelowScore = (threshold: number) => {
-    const podcastsToRemove = chartResults.filter(podcast => {
-      const score = chartScores[podcast.podcast_id]
-      return score !== undefined && score !== null && score < threshold
-    })
-
-    if (podcastsToRemove.length === 0) {
-      toast.info(`No podcasts found with score below ${threshold}`)
-      return
-    }
-
-    setChartResults(prev => prev.filter(podcast => {
-      const score = chartScores[podcast.podcast_id]
-      return score === undefined || score === null || score >= threshold
-    }))
-
-    // Clean up scores and reasonings
-    setChartScores(prev => {
-      const updated = { ...prev }
-      podcastsToRemove.forEach(podcast => delete updated[podcast.podcast_id])
-      return updated
-    })
-    setChartReasonings(prev => {
-      const updated = { ...prev }
-      podcastsToRemove.forEach(podcast => delete updated[podcast.podcast_id])
-      return updated
-    })
-
-    // Remove from selection if selected
-    setSelectedPodcasts(prev => {
-      const updated = new Set(prev)
-      podcastsToRemove.forEach(podcast => updated.delete(podcast.podcast_id))
-      return updated
-    })
-
-    toast.success(`Removed ${podcastsToRemove.length} podcast${podcastsToRemove.length !== 1 ? 's' : ''} with score below ${threshold}`)
-  }
-
-  const handleRemoveUnscoredChartPodcasts = () => {
-    const podcastsToRemove = chartResults.filter(podcast => {
-      const score = chartScores[podcast.podcast_id]
-      return score === undefined || score === null
-    })
-
-    if (podcastsToRemove.length === 0) {
-      toast.info('No unscored podcasts found')
-      return
-    }
-
-    setChartResults(prev => prev.filter(podcast => {
-      const score = chartScores[podcast.podcast_id]
-      return score !== undefined && score !== null
-    }))
-
-    // Remove from selection if selected
-    setSelectedPodcasts(prev => {
-      const updated = new Set(prev)
-      podcastsToRemove.forEach(podcast => updated.delete(podcast.podcast_id))
-      return updated
-    })
-
-    toast.success(`Removed ${podcastsToRemove.length} unscored podcast${podcastsToRemove.length !== 1 ? 's' : ''}`)
-  }
-
-  const handleOpenCustomThresholdDialogChart = () => {
-    setCustomThresholdQueryId('chart')
-    setCustomThresholdValue('')
-    setCustomThresholdDialogOpen(true)
-  }
-
-  const handleApplyCustomThresholdChart = () => {
-    const threshold = parseFloat(customThresholdValue)
-
-    if (isNaN(threshold) || threshold < 1 || threshold > 10) {
-      toast.error('Please enter a valid score between 1 and 10')
-      return
-    }
-
-    handleRemoveChartPodcastsBelowScore(threshold)
-
-    setCustomThresholdDialogOpen(false)
-    setCustomThresholdValue('')
-    setCustomThresholdQueryId(null)
-  }
-
-  const handleExportToGoogleSheets = async () => {
-    // Validation
-    if (!selectedTarget) {
-      toast.error('Please select a client or prospect first')
-      return
-    }
-
-    if (isNewProspectMode) {
-      if (!prospectName.trim()) {
-        toast.error('Please enter a prospect name')
-        return
-      }
-      if (!prospectBio.trim()) {
-        toast.error('Please enter prospect bio/background')
-        return
-      }
-    }
-
-    if (selectedPodcasts.size === 0) {
-      toast.error('Please select at least one podcast to export')
-      return
-    }
-
-    const imageUrlInput = prospectImageUrl.trim()
-    const normalizedImageUrl = imageUrlInput ? safeExternalUrl(imageUrlInput) : null
-    if (isProspectMode && imageUrlInput && !normalizedImageUrl) {
-      toast.error('Profile picture must be a valid HTTP or HTTPS URL')
+  const handleExport = async () => {
+    if (!selectedWorkspace || !selectedClient || !runScope || selectedResults.length === 0) return
+    if (runScope.workspaceId !== selectedWorkspace.id || runScope.clientId !== selectedClient.id) {
+      toast.error('Export stopped because the active workspace does not match this discovery run.')
       return
     }
 
     setIsExporting(true)
-
     try {
-      const podcastsToExport: PodcastExportData[] = []
-
-      if (finderMode === 'search') {
-        // Collect all selected podcasts from all queries (search mode)
-        queries.forEach(query => {
-          query.results.forEach(podcast => {
-            if (selectedPodcasts.has(podcast.podcast_id)) {
-              podcastsToExport.push({
-                // Core podcast data
-                podcast_id: podcast.podcast_id,
-                podscan_podcast_id: podcast.podcast_id,
-                podcast_name: podcast.podcast_name,
-                podcast_description: podcast.podcast_description,
-                podcast_image_url: podcast.podcast_image_url,
-                podcast_url: podcast.podcast_url,
-                publisher_name: podcast.publisher_name,
-                // Metrics
-                episode_count: podcast.episode_count,
-                itunes_rating: podcast.reach?.itunes?.itunes_rating_average ? parseFloat(podcast.reach.itunes.itunes_rating_average) : undefined,
-                audience_size: podcast.reach?.audience_size,
-                // Additional metadata
-                language: podcast.language,
-                region: podcast.region,
-                podcast_email: podcast.reach?.email,
-                rss_feed: podcast.rss_url,
-                podcast_categories: podcast.podcast_categories,
-                // Compatibility scoring
-                compatibility_score: query.compatibilityScores[podcast.podcast_id],
-                compatibility_reasoning: query.scoreReasonings[podcast.podcast_id],
-              })
-            }
-          })
-        })
-      } else {
-        // Collect selected podcasts from chart results (charts mode)
-        chartResults.forEach(podcast => {
-          if (selectedPodcasts.has(podcast.podcast_id)) {
-            podcastsToExport.push({
-              // Core podcast data
-              podcast_id: podcast.podcast_id,
-              podscan_podcast_id: podcast.podcast_id,
-              podcast_name: podcast.podcast_name,
-              podcast_description: podcast.podcast_description,
-              podcast_image_url: podcast.podcast_image_url,
-              podcast_url: podcast.podcast_url,
-              publisher_name: podcast.publisher_name,
-              // Metrics
-              episode_count: podcast.episode_count,
-              itunes_rating: podcast.reach?.itunes?.itunes_rating_average ? parseFloat(podcast.reach.itunes.itunes_rating_average) : undefined,
-              audience_size: podcast.reach?.audience_size,
-              // Additional metadata
-              language: podcast.language,
-              region: podcast.region,
-              podcast_email: podcast.reach?.email,
-              rss_feed: podcast.rss_url,
-              podcast_categories: podcast.podcast_categories,
-              // Compatibility scoring
-              compatibility_score: chartScores[podcast.podcast_id],
-              compatibility_reasoning: chartReasonings[podcast.podcast_id],
-            })
-          }
-        })
-      }
-
-      // Use different export based on mode
-      if (isExistingProspectMode && selectedProspectId && existingProspectHasSheet) {
-        // Append to existing prospect's sheet
-        const result = await appendToProspectSheet(selectedProspectId, podcastsToExport)
-        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
-        if (!spreadsheetUrl) throw new Error('Sheet provider returned an invalid URL')
-        const appUrl = window.location.origin
-        setLastProspectSheet({
-          url: spreadsheetUrl,
-          title: selectedExistingProspect?.prospect_name || prospectName,
-          dashboardUrl: `${appUrl}/prospect/${encodeURIComponent(selectedExistingProspect?.slug || '')}`
-        })
-        toast.success(`Added ${result.rowsAdded} podcasts to ${selectedExistingProspect?.prospect_name}'s sheet!`)
-      } else if (isExistingProspectMode && selectedProspectId && !existingProspectHasSheet) {
-        // Existing prospect but no sheet - create a new sheet and update the existing prospect record
-        const result = await createProspectSheet(
-          prospectName.trim(),
-          prospectBio.trim(),
-          podcastsToExport,
-          normalizedImageUrl || undefined,
-          selectedProspectId
-        )
-        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
-        if (!spreadsheetUrl) throw new Error('Sheet provider returned an invalid URL')
-
-        // Update local state
-        setExistingProspects(prev =>
-          prev.map(p =>
-            p.id === selectedProspectId
-              ? { ...p, spreadsheet_url: spreadsheetUrl }
-              : p
-          )
-        )
-
-        const appUrl = window.location.origin
-        setLastProspectSheet({
-          url: spreadsheetUrl,
-          title: selectedExistingProspect?.prospect_name || prospectName,
-          dashboardUrl: `${appUrl}/prospect/${encodeURIComponent(selectedExistingProspect?.slug || '')}`
-        })
-        toast.success(`Created sheet for ${selectedExistingProspect?.prospect_name} with ${result.rowsAdded} podcasts!`)
-      } else if (isNewProspectMode) {
-        // Create new prospect sheet
-        const result = await createProspectSheet(prospectName.trim(), prospectBio.trim(), podcastsToExport, normalizedImageUrl || undefined)
-        const spreadsheetUrl = safeExternalUrl(result.spreadsheetUrl)
-        const dashboardUrl = safeExternalUrl(result.dashboardUrl)
-        if (!spreadsheetUrl || !dashboardUrl) throw new Error('Sheet provider returned an invalid URL')
-        // Save sheet info for persistent display
-        setLastProspectSheet({
-          url: spreadsheetUrl,
-          title: result.sheetTitle,
-          dashboardUrl
-        })
-        toast.success(`Created dashboard for ${prospectName} with ${result.rowsAdded} podcasts!`)
-      } else if (isClientMode) {
-        const result = await exportPodcastsToGoogleSheets(selectedClient, podcastsToExport)
-        toast.success(`Successfully exported ${result.rowsAdded} podcasts to Google Sheets!`)
-      }
-
-      setSelectedPodcasts(new Set()) // Clear selection after successful export
+      const response = await exportPodcastsToGoogleSheets(selectedClient.id, selectedResults.map(toExportData))
+      toast.success(`Exported ${response.rowsAdded} podcasts for ${selectedClient.name}.`)
+      setSelectedIds(new Set())
+      setExportDialogOpen(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to export to Google Sheets')
-      console.error('Export error:', error)
+      toast.error(error instanceof Error ? error.message : 'Podcasts could not be exported.')
     } finally {
       setIsExporting(false)
     }
   }
 
-  const handleSearchAllQueries = async () => {
-    if (queries.length === 0) return
-
-    toast.info(`Searching ${queries.length} queries with rate limit delays...`)
-
-    for (const query of queries) {
-      if (!query.isSearching && query.text) {
-        await handleSearchQuery(query.id)
-        // Delay between searches to respect rate limits (120/min = ~600ms)
-        await new Promise(resolve => setTimeout(resolve, 700))
-      }
-    }
-  }
-
-  const handleScoreAllResults = async () => {
-    const queriesToScore = queries.filter(q => q.results.length > 0 && Object.keys(q.compatibilityScores).length === 0)
-
-    if (queriesToScore.length === 0) {
-      toast.error('No unscored results to score')
-      return
-    }
-
-    for (const query of queriesToScore) {
-      await handleScanCompatibility(query.id)
-      // Small delay between scoring batches
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-  }
-
-  // Calculate aggregate statistics
-  const aggregateStats = () => {
-    const allResults = queries.flatMap(q => q.results)
-    const uniquePodcasts = deduplicatePodcasts(allResults)
-
-    const allScores = queries.flatMap(q =>
-      Object.values(q.compatibilityScores).filter((score): score is number => score !== null)
-    )
-
-    const avgScore = allScores.length > 0
-      ? allScores.reduce((sum, score) => sum + score, 0) / allScores.length
-      : 0
-
-    const highScoreCount = allScores.filter(s => s >= 8).length
-    const mediumScoreCount = allScores.filter(s => s >= 5 && s < 8).length
-
-    return {
-      totalResults: allResults.length,
-      uniquePodcasts: uniquePodcasts.length,
-      scoredPodcasts: allScores.length,
-      avgScore,
-      highScoreCount,
-      mediumScoreCount,
-    }
-  }
-
-  const stats = aggregateStats()
-
-  // Sort results by compatibility score (if available) or audience size
-  const getSortedResults = (query: GeneratedQuery) => {
-    const hasScores = Object.keys(query.compatibilityScores).length > 0
-
-    if (hasScores) {
-      return [...query.results].sort((a, b) => {
-        const scoreA = query.compatibilityScores[a.podcast_id] || 0
-        const scoreB = query.compatibilityScores[b.podcast_id] || 0
-        if (scoreB !== scoreA) return scoreB - scoreA // Sort by score descending
-        return (b.reach?.audience_size || 0) - (a.reach?.audience_size || 0) // Then by audience
-      })
-    }
-
-    return query.results // Return unsorted if no scores
-  }
-
-  // Filtered and sorted chart results
-  const filteredChartResults = useMemo(() => {
-    let results = [...chartResults]
-
-    // Filter by minimum audience
-    if (chartMinAudience) {
-      const minAud = parseInt(chartMinAudience)
-      if (!isNaN(minAud)) {
-        results = results.filter(p => {
-          const audience = p.reach?.audience_size || (p as any).audience_size || 0
-          return audience >= minAud
-        })
-      }
-    }
-
-    // Filter by maximum audience
-    if (chartMaxAudience) {
-      const maxAud = parseInt(chartMaxAudience)
-      if (!isNaN(maxAud)) {
-        results = results.filter(p => {
-          const audience = p.reach?.audience_size || (p as any).audience_size || 0
-          return audience <= maxAud
-        })
-      }
-    }
-
-    // Filter by minimum rating
-    if (chartMinRating) {
-      const minRate = parseFloat(chartMinRating)
-      if (!isNaN(minRate)) {
-        results = results.filter(p => {
-          const rating = parseFloat(p.reach?.itunes?.itunes_rating_average || (p as any).rating || '0')
-          return rating >= minRate
-        })
-      }
-    }
-
-    // Filter by minimum fit score (only if scores exist)
-    if (chartMinFitScore && Object.keys(chartScores).length > 0) {
-      const minFit = parseInt(chartMinFitScore)
-      if (!isNaN(minFit)) {
-        results = results.filter(p => {
-          const score = chartScores[p.podcast_id]
-          return score !== null && score !== undefined && score >= minFit
-        })
-      }
-    }
-
-    // Sort by fit score if available, then by audience
-    const hasScores = Object.keys(chartScores).length > 0
-    if (hasScores) {
-      results.sort((a, b) => {
-        const scoreA = chartScores[a.podcast_id] || 0
-        const scoreB = chartScores[b.podcast_id] || 0
-        if (scoreB !== scoreA) return scoreB - scoreA
-        const audA = a.reach?.audience_size || (a as any).audience_size || 0
-        const audB = b.reach?.audience_size || (b as any).audience_size || 0
-        return audB - audA
-      })
-    }
-
-    return results
-  }, [chartResults, chartMinAudience, chartMaxAudience, chartMinRating, chartMinFitScore, chartScores])
-
-  // Count active filters
-  const activeChartFilters = [chartMinAudience, chartMaxAudience, chartMinRating, chartMinFitScore].filter(Boolean).length
+  const runProgress = progress && progress.total > 0
+    ? Math.round((progress.completed / progress.total) * 100)
+    : 0
+  const scoreProgressValue = scoringProgress && scoringProgress.total > 0
+    ? Math.round((scoringProgress.completed / scoringProgress.total) * 100)
+    : 0
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 pb-8">
-        {/* Header */}
-        <div className="space-y-2">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight">Podcast Finder</h1>
-              <p className="text-lg text-muted-foreground">
-                AI-powered podcast discovery with compatibility scoring
-              </p>
+      <div className="mx-auto w-full max-w-[1560px] space-y-5 pb-24">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <Badge variant="secondary" className="gap-1">
+                <ShieldCheck className="h-3.5 w-3.5" /> Client only
+              </Badge>
+              {runScope && selectedWorkspace && selectedClient && (
+                <Badge variant="outline" className="gap-1">
+                  <LockKeyhole className="h-3.5 w-3.5" /> {selectedWorkspace.name} · {selectedClient.name}
+                </Badge>
+              )}
             </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Podscan API Rate Limit</p>
-              <p className="text-sm font-semibold text-primary">120 req/min · 2000 req/day</p>
-            </div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Podcast Research</h1>
+            <p className="mt-1 text-sm text-muted-foreground sm:text-base">
+              Build high-volume, relevant outreach lists for approved clients in each workspace.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card px-3 py-2 text-left lg:text-right">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podscan quota</p>
+            <p className="text-sm font-semibold">
+              {rateLimit?.remaining !== undefined
+                ? `${rateLimit.remaining.toLocaleString()}${rateLimit.limit !== undefined ? ` of ${rateLimit.limit.toLocaleString()}` : ''} remaining`
+                : 'Shown after the first request'}
+            </p>
           </div>
         </div>
 
-        {/* Mode Toggle */}
-        <div className="flex items-center justify-center gap-2 p-4 bg-muted/50 rounded-lg">
-          <Button
-            variant={finderMode === 'search' ? 'default' : 'outline'}
-            onClick={() => setFinderMode('search')}
-            size="lg"
-            className="min-w-[160px]"
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            AI Search Mode
-          </Button>
-          <Button
-            variant={finderMode === 'charts' ? 'default' : 'outline'}
-            onClick={() => setFinderMode('charts')}
-            size="lg"
-            className="min-w-[160px]"
-          >
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Charts Mode
-          </Button>
-        </div>
-
-        {/* Export to Google Sheets */}
-        {selectedPodcasts.size > 0 && (
-          <Card className="border-2 border-green-200 dark:border-green-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 shadow-md">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-600 text-white">
-                    <FileText className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-semibold">
-                      {selectedPodcasts.size} podcast{selectedPodcasts.size !== 1 ? 's' : ''} selected
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Ready to export to Google Sheets
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedPodcasts(new Set())}
-                    disabled={isExporting}
-                  >
-                    Clear Selection
-                  </Button>
-                  <Button
-                    onClick={handleExportToGoogleSheets}
-                    disabled={isExporting || !selectedTarget}
-                    size="lg"
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    {isExporting ? (
-                      <>
-                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                        Exporting...
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="h-5 w-5 mr-2" />
-                        Export to Google Sheets
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Client Selection */}
-        <Card className="border-2 shadow-sm">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
-                1
-              </div>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-xl">Select Client</CardTitle>
-                <CardDescription className="text-base mt-1">
-                  {finderMode === 'search'
-                    ? 'Choose a client and generate AI-powered podcast search queries'
-                    : 'Choose a client to find podcasts for and score compatibility'
-                  }
-                </CardDescription>
+                <CardTitle className="text-lg">1. Choose the client workspace</CardTitle>
+                <CardDescription>Workspace first, then an active client. Prospects stay in Prospect Dashboards.</CardDescription>
               </div>
+              {scopeLocked && (
+                <Button variant="outline" size="sm" onClick={() => setScopeResetOpen(true)}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Start another client
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="target-select">Find Podcasts For</Label>
-                <Select value={selectedTarget} onValueChange={setSelectedTarget}>
-                  <SelectTrigger id="target-select">
-                    <SelectValue placeholder={loadingProspects ? "Loading..." : "Choose prospect or client..."} />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="workspace-select">Workspace</Label>
+                <Select value={workspaceId} onValueChange={handleWorkspaceChange} disabled={scopeLocked || workspacesQuery.isLoading}>
+                  <SelectTrigger id="workspace-select" className="h-10">
+                    <SelectValue placeholder={workspacesQuery.isLoading ? 'Loading workspaces…' : 'Select workspace'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Existing Prospects */}
-                    {existingProspects.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Existing Prospects</div>
-                        {existingProspects.map((prospect) => (
-                          <SelectItem key={prospect.id} value={`__prospect_${prospect.id}`} className="text-purple-600 dark:text-purple-400">
-                            {prospect.prospect_name}
-                          </SelectItem>
-                        ))}
-                        <Separator className="my-1" />
-                      </>
-                    )}
-                    {/* New Prospect */}
-                    <SelectItem value="__new_prospect__" className="font-semibold text-purple-600 dark:text-purple-400">
-                      <span className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4" />
-                        + New Prospect
-                      </span>
-                    </SelectItem>
-                    {/* Clients */}
-                    {clients.length > 0 && (
-                      <>
-                        <Separator className="my-1" />
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Clients</div>
-                        {clients.map((client) => (
-                          <SelectItem key={client.id} value={client.id}>
-                            {client.name}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
+                    {workspaces.map((workspace) => (
+                      <SelectItem key={workspace.id} value={workspace.id}>
+                        <span className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4" />
+                          {workspace.name}{workspace.is_default ? ' — My workspace' : ''}
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-
-              {/* Search mode: Generate Queries button */}
-              {finderMode === 'search' && (
-                <div className="space-y-3">
-                  <div className="flex items-end gap-2">
-                    <Button
-                      onClick={handleGenerateQueries}
-                      disabled={!selectedTarget || isGenerating}
-                      className="flex-1"
-                      size="lg"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-5 w-5 mr-2" />
-                          Generate 5 AI Queries
-                        </>
-                      )}
-                    </Button>
-                    {queries.length > 0 && (
-                      <Button
-                        onClick={handleReset}
-                        variant="outline"
-                        size="lg"
-                        title="Clear all queries and start over"
-                      >
-                        <X className="h-5 w-5" />
-                      </Button>
-                    )}
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <Input
-                        placeholder="Add custom keywords (comma separated)"
-                        value={customKeywords}
-                        onChange={(e) => setCustomKeywords(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddCustomKeywords()}
-                      />
-                    </div>
-                    <Button
-                      onClick={handleAddCustomKeywords}
-                      disabled={!customKeywords.trim()}
-                      variant="outline"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="client-select">Client</Label>
+                <Select value={clientId} onValueChange={handleClientChange} disabled={!workspaceId || scopeLocked || clientsQuery.isLoading}>
+                  <SelectTrigger id="client-select" className="h-10">
+                    <SelectValue placeholder={clientsQuery.isLoading ? 'Loading clients…' : clients.length ? 'Select active client' : 'No active clients'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            {/* Existing Prospect Info */}
-            {isExistingProspectMode && selectedProspectId && (
-              <div className="p-4 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <Users className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">{prospectName}</p>
-                    {prospectBio && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">{prospectBio}</p>
-                    )}
-                  </div>
-                  {existingProspectHasSheet ? (
-                    <p className="text-xs text-purple-600 dark:text-purple-400 whitespace-nowrap">
-                      Podcasts will be added to existing sheet
-                    </p>
-                  ) : (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">
-                      New sheet will be created on export
-                    </p>
-                  )}
-                </div>
+            {workspacesQuery.error && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                Workspaces could not be loaded. <button className="underline" onClick={() => void workspacesQuery.refetch()}>Try again</button>
               </div>
             )}
 
-            {/* New Prospect Form */}
-            {isNewProspectMode && (
-              <div className="p-5 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800 space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-purple-600 rounded-lg">
-                    <Sparkles className="h-4 w-4 text-white" />
+            {selectedClient && (
+              <div className="flex flex-col gap-3 rounded-xl border bg-muted/25 p-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">{selectedClient.name}</p>
+                    <Badge variant={selectedClient.bio ? 'secondary' : 'destructive'}>
+                      {selectedClient.bio ? 'Profile ready' : 'Profile required'}
+                    </Badge>
+                    {selectedClient.email && <span className="text-xs text-muted-foreground">{selectedClient.email}</span>}
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-purple-800 dark:text-purple-200">Create New Prospect</p>
-                    <p className="text-xs text-muted-foreground">Enter prospect details for personalized podcast recommendations</p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="prospect-name" className="text-sm font-medium">
-                      Prospect Name <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="prospect-name"
-                      placeholder="e.g., John Smith, Acme Corp CEO"
-                      value={prospectName}
-                      onChange={(e) => setProspectName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="prospect-bio" className="text-sm font-medium">
-                      Prospect Bio / Background <span className="text-red-500">*</span>
-                    </Label>
-                    <textarea
-                      id="prospect-bio"
-                      placeholder="Describe the prospect's expertise, industry, target audience, and what topics they could speak about on podcasts..."
-                      value={prospectBio}
-                      onChange={(e) => setProspectBio(e.target.value)}
-                      className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The more details you provide, the better the AI can score podcast compatibility.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="prospect-image" className="text-sm font-medium">
-                      Profile Picture URL <span className="text-muted-foreground">(optional)</span>
-                    </Label>
-                    <Input
-                      id="prospect-image"
-                      type="url"
-                      placeholder="https://example.com/profile-picture.jpg"
-                      value={prospectImageUrl}
-                      onChange={(e) => setProspectImageUrl(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Add a profile picture or company logo to personalize the prospect's dashboard.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={handleSaveNewProspect}
-                  disabled={savingProspect || !prospectName.trim() || !prospectBio.trim()}
-                  className="w-full"
-                  variant="outline"
-                >
-                  {savingProspect ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Save Prospect
-                    </>
-                  )}
-                </Button>
-                {(!prospectName || !prospectBio) && (
-                  <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
-                    <span className="text-amber-500">⚠️</span>
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
-                      Fill in both name and bio to enable compatibility scoring and export.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Prospect Sheet Success Message */}
-            {isProspectMode && lastProspectSheet && (
-              <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800 space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="text-green-500 text-lg">✓</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-green-700 dark:text-green-400 font-medium">
-                      {isExistingProspectMode ? 'Podcasts Added' : 'Dashboard Created'}
-                    </p>
-                    <a
-                      href={safeExternalUrl(lastProspectSheet.dashboardUrl) ?? undefined}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-green-600 dark:text-green-300 hover:underline truncate block font-medium"
-                    >
-                      Share this link with prospect →
-                    </a>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(lastProspectSheet.dashboardUrl)
-                      toast.success('Dashboard link copied!')
-                    }}
-                    className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800"
-                  >
-                    Copy
-                  </button>
-                  <button
-                    onClick={() => setLastProspectSheet(null)}
-                    className="text-green-400 hover:text-green-600 text-xs"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="text-xs text-muted-foreground flex items-center gap-2 pl-8">
-                  <span>Admin:</span>
-                  <a
-                    href={safeExternalUrl(lastProspectSheet.url) ?? undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline"
-                  >
-                    Edit Google Sheet
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {/* Client Info Display */}
-            {selectedClientData && isClientMode && (
-              <div className="p-5 bg-gradient-to-br from-muted/50 to-muted/30 rounded-xl border-2 space-y-3 max-h-[400px] overflow-y-auto">
-                <div className="flex items-center gap-2 mb-3 sticky top-0 bg-gradient-to-br from-muted/80 to-muted/60 -mx-5 -mt-5 px-5 pt-5 pb-2 backdrop-blur-sm">
-                  <div className="h-2 w-2 rounded-full bg-primary"></div>
-                  <p className="text-sm font-semibold uppercase tracking-wide text-primary">Selected Client</p>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-base">
-                    <span className="font-semibold">Name:</span> <span className="text-muted-foreground">{selectedClientData.name}</span>
+                  <p className="mt-1 line-clamp-2 max-w-4xl text-sm text-muted-foreground">
+                    {selectedClient.bio || 'Add the approved onboarding answers or client bio before running discovery.'}
                   </p>
-                  {selectedClientData.email && (
-                    <p className="text-base">
-                      <span className="font-semibold">Email:</span> <span className="text-muted-foreground">{selectedClientData.email}</span>
-                    </p>
-                  )}
                 </div>
-                {selectedClientData.bio ? (
-                  <div className="pt-3 border-t-2 border-border/50 mt-3">
-                    <p className="text-sm font-semibold mb-2 flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
-                      Client Bio
-                    </p>
-                    <div className="text-sm text-muted-foreground leading-relaxed bg-background/50 p-3 rounded-lg">
-                      <p className={`whitespace-pre-wrap ${!bioExpanded && selectedClientData.bio.length > 200 ? 'line-clamp-3' : ''}`}>
-                        {selectedClientData.bio}
-                      </p>
-                      {selectedClientData.bio.length > 200 && (
-                        <button
-                          onClick={() => setBioExpanded(!bioExpanded)}
-                          className="text-primary hover:underline text-xs font-medium mt-2 flex items-center gap-1"
-                        >
-                          {bioExpanded ? (
-                            <>Show less <ChevronUp className="h-3 w-3" /></>
-                          ) : (
-                            <>Read more <ChevronDown className="h-3 w-3" /></>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="pt-3 border-t-2 border-border/50 mt-3">
-                    <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                      <span className="text-lg">⚠️</span>
-                      <div>
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-400 mb-1">
-                          No bio added yet
-                        </p>
-                        <p className="text-xs text-amber-700 dark:text-amber-500">
-                          Add a bio in the client details page for better AI query generation.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                {!selectedClient.bio && (
+                  <Button asChild variant="outline" size="sm" className="shrink-0">
+                    <Link to={selectedWorkspace?.is_default ? '/admin/clients' : `/admin/workspaces/${workspaceId}/clients`}>
+                      Open clients
+                    </Link>
+                  </Button>
                 )}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Search Mode Content */}
-        {finderMode === 'search' && (
-          <>
-            {/* Search Filters */}
-            {queries.length > 0 && (
-          <Card className="border-2 shadow-sm">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
-                    2
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Search Filters (Optional)</CardTitle>
-                    <CardDescription className="text-base mt-1">
-                      Refine your podcast search criteria
-                    </CardDescription>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowFilters(!showFilters)}
-                >
-                  <Filter className="h-4 w-4 mr-2" />
-                  {showFilters ? 'Hide' : 'Show'} Filters
-                  {showFilters ? (
-                    <ChevronUp className="h-4 w-4 ml-2" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 ml-2" />
-                  )}
-                </Button>
-              </div>
-            </CardHeader>
-            {showFilters && (
-              <CardContent className="pt-0">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="min-audience" className="text-sm font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Min Audience Size
-                    </Label>
-                    <Input
-                      id="min-audience"
-                      type="number"
-                      placeholder="e.g., 1000"
-                      value={minAudience}
-                      onChange={(e) => setMinAudience(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="max-audience" className="text-sm font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Max Audience Size
-                    </Label>
-                    <Input
-                      id="max-audience"
-                      type="number"
-                      placeholder="e.g., 50000"
-                      value={maxAudience}
-                      onChange={(e) => setMaxAudience(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="min-episodes" className="text-sm font-semibold flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Min Episodes
-                    </Label>
-                    <Input
-                      id="min-episodes"
-                      type="number"
-                      placeholder="e.g., 10"
-                      value={minEpisodes}
-                      onChange={(e) => setMinEpisodes(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="region" className="text-sm font-semibold flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
-                      Region
-                    </Label>
-                    <Select value={region} onValueChange={setRegion}>
-                      <SelectTrigger id="region">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="US">United States</SelectItem>
-                        <SelectItem value="GB">United Kingdom</SelectItem>
-                        <SelectItem value="CA">Canada</SelectItem>
-                        <SelectItem value="AU">Australia</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="has-guests" className="text-sm font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4 text-green-600" />
-                      Guest Format ⭐ (Default: Has Guests Only)
-                    </Label>
-                    <Select value={hasGuests} onValueChange={setHasGuests}>
-                      <SelectTrigger id="has-guests" className="border-green-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any Format</SelectItem>
-                        <SelectItem value="true">✅ Has Guests Only (Recommended)</SelectItem>
-                        <SelectItem value="false">No Guests</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="has-sponsors" className="text-sm font-semibold flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4" />
-                      Monetization
-                    </Label>
-                    <Select value={hasSponsors} onValueChange={setHasSponsors}>
-                      <SelectTrigger id="has-sponsors">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any</SelectItem>
-                        <SelectItem value="true">Has Sponsors</SelectItem>
-                        <SelectItem value="false">No Sponsors</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="search-fields" className="text-sm font-semibold flex items-center gap-2">
-                      <Search className="h-4 w-4" />
-                      Search In
-                    </Label>
-                    <Select value={searchFields} onValueChange={setSearchFields}>
-                      <SelectTrigger id="search-fields">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="name">Podcast Name Only</SelectItem>
-                        <SelectItem value="name,description">Name + Description</SelectItem>
-                        <SelectItem value="name,description,publisher_name">All Fields</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="active-only" className="text-sm font-semibold flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Active Podcasts Only
-                    </Label>
-                    <div className="flex items-center space-x-2 h-10 px-3 border rounded-md bg-background">
-                      <input
-                        type="checkbox"
-                        id="active-only"
-                        checked={activeOnly}
-                        onChange={(e) => setActiveOnly(e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                      />
-                      <Label htmlFor="active-only" className="text-sm text-muted-foreground cursor-pointer font-normal">
-                        Posted in last 6 months
-                      </Label>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        )}
-
-        {/* Aggregate Statistics */}
-        {queries.length > 0 && stats.totalResults > 0 && (
-          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-2 border-blue-200 dark:border-blue-800 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-3 text-xl">
-                <TrendingUp className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                Search Statistics
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
-                <div className="space-y-2 text-center p-3 rounded-lg bg-white/50 dark:bg-black/20">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Total Results</p>
-                  <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{stats.totalResults}</p>
-                </div>
-                <div className="space-y-2 text-center p-3 rounded-lg bg-white/50 dark:bg-black/20">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Unique Podcasts</p>
-                  <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{stats.uniquePodcasts}</p>
-                </div>
-                <div className="space-y-2 text-center p-3 rounded-lg bg-white/50 dark:bg-black/20">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Scored</p>
-                  <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{stats.scoredPodcasts}</p>
-                </div>
-                <div className="space-y-2 text-center p-3 rounded-lg bg-white/50 dark:bg-black/20">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Avg Score</p>
-                  <p className="text-3xl font-bold text-green-600 dark:text-green-400">
-                    {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
-                  </p>
-                </div>
-                <div className="space-y-2 text-center p-3 rounded-lg bg-white/50 dark:bg-black/20">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">High Fit (8+)</p>
-                  <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{stats.highScoreCount}</p>
-                </div>
-                <div className="space-y-2 text-center p-3 rounded-lg bg-white/50 dark:bg-black/20">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Medium Fit (5-7)</p>
-                  <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{stats.mediumScoreCount}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Generated Queries */}
-        {queries.length > 0 && (
-          <Card className="border-2 shadow-sm">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
-                    3
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Search Queries & Results</CardTitle>
-                    <CardDescription className="text-base mt-1">
-                      Edit, regenerate, or search each query. Click "Scan Compatibility" to get AI scores.
-                    </CardDescription>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleSearchAllQueries}
-                    disabled={queries.some(q => q.isSearching)}
-                    variant="outline"
+        <Card className={cn(!selectedClient && 'opacity-60')}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">2. Set the discovery balance</CardTitle>
+            <CardDescription>All modes keep relevant podcasts; the preset controls how broadly and deeply Podscan is searched.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              {(Object.keys(DISCOVERY_STRATEGIES) as DiscoveryStrategy[]).map((strategyId) => {
+                const option = DISCOVERY_STRATEGIES[strategyId]
+                const selected = strategy === strategyId
+                return (
+                  <button
+                    key={strategyId}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={!selectedClient || scopeLocked}
+                    onClick={() => setStrategy(strategyId)}
+                    className={cn(
+                      'rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed',
+                      selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-muted/30',
+                    )}
                   >
-                    <Search className="h-4 w-4 mr-2" />
-                    Search All
-                  </Button>
-                  <Button
-                    onClick={handleScoreAllResults}
-                    disabled={queries.some(q => q.isScoring) || queries.every(q => q.results.length === 0) || !(isProspectMode ? prospectBio : selectedClientData?.bio)}
-                    variant="default"
-                  >
-                    <Star className="h-4 w-4 mr-2" />
-                    Score All
-                  </Button>
-                </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">{option.label}</span>
+                      {selected && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{option.description}</p>
+                    <p className="mt-3 text-xs font-medium text-foreground">
+                      Up to {option.estimatedMaximum.toLocaleString()} raw matches from five AI strategies
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="language">Language</Label>
+                <Select value={language} onValueChange={setLanguage} disabled={scopeLocked}>
+                  <SelectTrigger id="language"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                    <SelectItem value="any">Any language</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {queries.map((query, index) => (
-                <div key={query.id} className="border-2 rounded-xl p-5 space-y-4 bg-muted/30">
-                  {/* Query Header */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="default" className="font-semibold px-3 py-1 text-sm">
-                      Query {index + 1}
-                    </Badge>
-                    {query.results.length > 0 && (
-                      <Badge variant="secondary" className="px-3 py-1">
-                        {query.results.length} results
-                      </Badge>
-                    )}
-                    {Object.keys(query.compatibilityScores).length > 0 && (
-                      <Badge variant="outline" className="px-3 py-1 border-green-500 text-green-700 dark:text-green-400">
-                        <Star className="h-3 w-3 mr-1 fill-green-500" />
-                        Scored
-                      </Badge>
-                    )}
-                    {query.regenerateAttempts > 0 && (
-                      <Badge variant="outline" className="px-3 py-1 border-amber-500 text-amber-700 dark:text-amber-400">
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Auto-refined {query.regenerateAttempts}x
-                      </Badge>
-                    )}
+              <div className="space-y-1.5">
+                <Label htmlFor="region">Region</Label>
+                <Select value={region} onValueChange={setRegion} disabled={scopeLocked}>
+                  <SelectTrigger id="region"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="US">United States</SelectItem>
+                    <SelectItem value="GB">United Kingdom</SelectItem>
+                    <SelectItem value="CA">Canada</SelectItem>
+                    <SelectItem value="AU">Australia</SelectItem>
+                    <SelectItem value="any">Any region</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="activity">Recent activity</Label>
+                <Select value={activityWindow} onValueChange={setActivityWindow} disabled={scopeLocked}>
+                  <SelectTrigger id="activity"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="90">Active within 90 days</SelectItem>
+                    <SelectItem value="180">Active within 180 days</SelectItem>
+                    <SelectItem value="365">Active within one year</SelectItem>
+                    <SelectItem value="any">Any activity</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="guest-format">Format</Label>
+                <Select value={guestFilter} onValueChange={(value) => setGuestFilter(value as GuestFilter)} disabled={scopeLocked}>
+                  <SelectTrigger id="guest-format"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Guest shows only</SelectItem>
+                    <SelectItem value="any">Any format</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Button variant="ghost" size="sm" onClick={() => setShowAdvanced((value) => !value)}>
+                <SlidersHorizontal className="mr-2 h-4 w-4" />
+                Advanced strategy
+                <ChevronDown className={cn('ml-2 h-4 w-4 transition-transform', showAdvanced && 'rotate-180')} />
+              </Button>
+              <Button
+                size="lg"
+                className="sm:min-w-56"
+                onClick={() => void handleRunDiscovery()}
+                disabled={!selectedClient?.bio || isGenerating || isDiscovering || scopeLocked}
+              >
+                {isGenerating || isDiscovering ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {isGenerating ? 'Building strategy…' : 'Discovering…'}</>
+                ) : (
+                  <><Play className="mr-2 h-4 w-4" /> Run {DISCOVERY_STRATEGIES[strategy].label.toLowerCase()} discovery</>
+                )}
+              </Button>
+            </div>
+
+            {showAdvanced && (
+              <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="min-audience">Minimum audience</Label>
+                    <Input id="min-audience" type="number" value={minAudience} onChange={(event) => setMinAudience(event.target.value)} disabled={scopeLocked} placeholder="No minimum" />
                   </div>
-
-                  {/* Query Input & Actions */}
-                  <div className="flex gap-2">
-                    <Input
-                      value={query.text}
-                      onChange={(e) => handleEditQuery(query.id, e.target.value)}
-                      className="flex-1 font-mono text-sm"
-                      placeholder="Enter search query..."
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleRegenerateQuery(query.id)}
-                      title="Regenerate this query"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleDeleteQuery(query.id)}
-                      title="Delete this query"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-audience">Maximum audience</Label>
+                    <Input id="max-audience" type="number" value={maxAudience} onChange={(event) => setMaxAudience(event.target.value)} disabled={scopeLocked} placeholder="No maximum" />
                   </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      onClick={() => handleSearchQuery(query.id)}
-                      disabled={query.isSearching || !query.text}
-                      className="flex-1 min-w-[140px]"
-                    >
-                      {query.isSearching ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Searching...
-                        </>
-                      ) : (
-                        <>
-                          <Search className="h-4 w-4 mr-2" />
-                          Search Podcasts
-                        </>
-                      )}
-                    </Button>
-
-                    {query.results.length > 0 && (
-                      <>
-                        <Button
-                          onClick={() => handleScanCompatibility(query.id)}
-                          disabled={query.isScoring || !(isProspectMode ? prospectBio : selectedClientData?.bio)}
-                          variant="secondary"
-                          className="flex-1 min-w-[160px]"
-                        >
-                          {query.isScoring ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Scoring...
-                            </>
-                          ) : (
-                            <>
-                              <Star className="h-4 w-4 mr-2" />
-                              Scan Compatibility
-                            </>
-                          )}
-                        </Button>
-
-                        <Button
-                          onClick={() => toggleQueryExpanded(query.id)}
-                          variant="outline"
-                          className="min-w-[130px]"
-                        >
-                          {expandedQueryId === query.id ? (
-                            <>
-                              <ChevronUp className="h-4 w-4 mr-2" />
-                              Hide Results
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="h-4 w-4 mr-2" />
-                              Show Results
-                            </>
-                          )}
-                        </Button>
-
-                        {/* Bulk Actions Dropdown */}
-                        {Object.keys(query.compatibilityScores).length > 0 && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="icon" title="Bulk Actions">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuLabel>Remove Podcasts</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleRemovePodcastsBelowScore(query.id, 7)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Remove all below 7
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleRemovePodcastsBelowScore(query.id, 8)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Remove all below 8
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleOpenCustomThresholdDialog(query.id)}
-                              >
-                                <Filter className="h-4 w-4 mr-2" />
-                                Remove below custom score...
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleRemoveUnscoredPodcasts(query.id)}
-                                className="text-muted-foreground"
-                              >
-                                <X className="h-4 w-4 mr-2" />
-                                Remove unscored
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Results Table */}
-                  {expandedQueryId === query.id && query.results.length > 0 && (
-                    <div className="border-2 rounded-xl overflow-hidden shadow-sm">
-                      <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-5 py-3 border-b-2">
-                        <p className="text-sm font-semibold flex items-center gap-2">
-                          {Object.keys(query.compatibilityScores).length > 0 ? (
-                            <>
-                              <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                              Sorted by compatibility score (highest first)
-                            </>
-                          ) : (
-                            <>
-                              <Users className="h-4 w-4" />
-                              Sorted by audience size (largest first)
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/50">
-                            <TableHead className="w-[50px]">
-                              <input
-                                type="checkbox"
-                                className="w-4 h-4 cursor-pointer"
-                                checked={query.results.length > 0 && query.results.every(p => selectedPodcasts.has(p.podcast_id))}
-                                onChange={() => handleToggleAllInQuery(query)}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </TableHead>
-                            <TableHead className="font-semibold">Podcast</TableHead>
-                            <TableHead className="font-semibold">Has Guests</TableHead>
-                            <TableHead className="font-semibold">Audience</TableHead>
-                            <TableHead className="font-semibold">Episodes</TableHead>
-                            <TableHead className="font-semibold">Rating</TableHead>
-                            <TableHead className="font-semibold">Fit Score</TableHead>
-                            <TableHead className="w-[120px] font-semibold">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {getSortedResults(query).map((podcast) => (
-                            <TableRow
-                              key={podcast.podcast_id}
-                              className="hover:bg-muted/30 transition-colors cursor-pointer"
-                              onClick={() => handlePodcastRowClick(podcast.podcast_id)}
-                            >
-                              <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  className="w-4 h-4 cursor-pointer"
-                                  checked={selectedPodcasts.has(podcast.podcast_id)}
-                                  onChange={() => handleTogglePodcastSelection(podcast.podcast_id)}
-                                />
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <div className="max-w-md">
-                                  <p className="font-semibold text-base mb-1">{podcast.podcast_name}</p>
-                                  <p className="text-sm text-muted-foreground line-clamp-2">
-                                    {podcast.podcast_description}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-4">
-                                {podcast.podcast_has_guests ? (
-                                  <Badge className="bg-green-600 hover:bg-green-700 text-white font-semibold px-3 py-1">
-                                    <Users className="h-4 w-4 mr-1" />
-                                    Yes
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="secondary" className="font-semibold px-3 py-1">
-                                    <X className="h-4 w-4 mr-1" />
-                                    No
-                                  </Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <div className="flex items-center gap-2">
-                                  <Users className="h-4 w-4 text-muted-foreground" />
-                                  <span className="font-medium">
-                                    {podcast.reach?.audience_size?.toLocaleString() || 'N/A'}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <span className="font-medium">{podcast.episode_count}</span>
-                              </TableCell>
-                              <TableCell className="py-4">
-                                <div className="flex items-center gap-1">
-                                  <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                                  <span className="font-medium">
-                                    {podcast.reach?.itunes?.itunes_rating_average || 'N/A'}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-4">
-                                {query.compatibilityScores[podcast.podcast_id] !== undefined ? (
-                                  <Badge
-                                    variant={
-                                      (query.compatibilityScores[podcast.podcast_id] || 0) >= 9
-                                        ? 'default'
-                                        : (query.compatibilityScores[podcast.podcast_id] || 0) >= 8
-                                        ? 'default'
-                                        : 'secondary'
-                                    }
-                                    className={`text-base px-3 py-1 cursor-pointer transition-transform hover:scale-105 ${
-                                      (query.compatibilityScores[podcast.podcast_id] || 0) >= 9
-                                        ? 'bg-emerald-600 hover:bg-emerald-700 font-bold'
-                                        : (query.compatibilityScores[podcast.podcast_id] || 0) >= 8
-                                        ? 'bg-blue-600 hover:bg-blue-700 font-bold'
-                                        : (query.compatibilityScores[podcast.podcast_id] || 0) >= 7
-                                        ? 'bg-amber-600 hover:bg-amber-700 font-bold text-white'
-                                        : 'font-bold'
-                                    }`}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleScoreClick(podcast, query)
-                                    }}
-                                    title="Click to see why"
-                                  >
-                                    {(query.compatibilityScores[podcast.podcast_id] || 0) >= 9 ? '🎯' : (query.compatibilityScores[podcast.podcast_id] || 0) >= 8 ? '⭐' : '📊'} {query.compatibilityScores[podcast.podcast_id]}/10
-                                  </Badge>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground font-medium">Not scored</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    asChild
-                                    title="View on Podscan"
-                                  >
-                                    <a href={safeExternalUrl(podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
-                                      <ExternalLink className="h-5 w-5" />
-                                    </a>
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeletePodcast(query.id, podcast.podcast_id, podcast.podcast_name)}
-                                    title="Remove from results"
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                  >
-                                    <Trash2 className="h-5 w-5" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-            {/* Empty State */}
-            {queries.length === 0 && (
-              <Card className="border-2 shadow-sm">
-                <CardContent className="flex flex-col items-center justify-center py-20">
-                  <div className="rounded-full bg-primary/10 p-6 mb-6">
-                    <Sparkles className="h-16 w-16 text-primary" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-3">Ready to Find Podcasts</h3>
-                  <p className="text-muted-foreground text-center max-w-lg text-base mb-8">
-                    Select a client above and click "Generate 5 AI Queries" to get started with AI-powered podcast discovery
-                  </p>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      <span>AI-Powered Queries</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Search className="h-4 w-4" />
-                      <span>Advanced Filters</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Star className="h-4 w-4" />
-                      <span>Compatibility Scoring</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
-
-        {/* Charts Mode Content */}
-        {finderMode === 'charts' && (
-          <>
-            {/* Chart Selection */}
-            <Card className="border-2 shadow-sm">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
-                    2
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl">Browse Top Charts</CardTitle>
-                    <CardDescription className="text-base mt-1">
-                      Select platform, country, and category to browse top-ranked podcasts
-                    </CardDescription>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="min-episodes">Minimum episodes</Label>
+                    <Input id="min-episodes" type="number" value={minEpisodes} onChange={(event) => setMinEpisodes(event.target.value)} disabled={scopeLocked} />
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Platform Selection */}
+
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Platform</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={chartPlatform === 'apple' ? 'default' : 'outline'}
-                      onClick={() => setChartPlatform('apple')}
-                      className="flex-1"
-                    >
-                      Apple Podcasts
-                    </Button>
-                    <Button
-                      variant={chartPlatform === 'spotify' ? 'default' : 'outline'}
-                      onClick={() => setChartPlatform('spotify')}
-                      className="flex-1"
-                    >
-                      Spotify
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <Label>Podscan query strategy</Label>
+                      <p className="text-xs text-muted-foreground">Exact phrases use Podscan’s documented double-quote syntax.</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => void handleGenerateQueries()} disabled={!selectedClient?.bio || isGenerating || scopeLocked}>
+                      {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                      {queries.length ? 'Regenerate' : 'Generate five queries'}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {chartPlatform === 'apple' ? 'Returns up to 200 podcasts' : 'Returns up to 50 podcasts'}
-                  </p>
-                </div>
-
-                {/* Country & Category Selection */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="chart-country" className="text-sm font-semibold flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
-                      Country
-                      {loadingCountries && <Loader2 className="h-3 w-3 animate-spin" />}
-                    </Label>
-                    <Select value={chartCountry} onValueChange={setChartCountry} disabled={loadingCountries}>
-                      <SelectTrigger id="chart-country">
-                        <SelectValue placeholder={loadingCountries ? 'Loading...' : 'Select country...'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {chartCountries.map((country) => (
-                          <SelectItem key={country.code} value={country.code}>
-                            {country.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="chart-category" className="text-sm font-semibold flex items-center gap-2">
-                      <Filter className="h-4 w-4" />
-                      Category
-                      {loadingCategories && <Loader2 className="h-3 w-3 animate-spin" />}
-                    </Label>
-                    <Select value={chartCategory || ''} onValueChange={setChartCategory} disabled={loadingCategories || chartCategories.length === 0}>
-                      <SelectTrigger id="chart-category">
-                        <SelectValue placeholder={loadingCategories ? 'Loading...' : 'Select category...'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {chartCategories.filter(cat => cat.id && cat.name).map((cat) => (
-                          <SelectItem key={cat.id} value={String(cat.id)}>
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="chart-limit" className="text-sm font-semibold flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Limit
-                    </Label>
-                    <Select value={chartLimit.toString()} onValueChange={(v) => setChartLimit(parseInt(v))}>
-                      <SelectTrigger id="chart-limit">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="10">10 podcasts</SelectItem>
-                        <SelectItem value="25">25 podcasts</SelectItem>
-                        <SelectItem value="50">50 podcasts</SelectItem>
-                        <SelectItem value="100">100 podcasts</SelectItem>
-                        <SelectItem value="200">200 podcasts</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Get Top Podcasts Button */}
-                <Button
-                  onClick={handleFetchCharts}
-                  disabled={!chartCategory || loadingCharts}
-                  size="lg"
-                  className="w-full"
-                >
-                  {loadingCharts ? (
-                    <>
-                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                      Loading Charts...
-                    </>
-                  ) : (
-                    <>
-                      <TrendingUp className="h-5 w-5 mr-2" />
-                      Get Top Podcasts
-                    </>
+                  {queries.map((query, index) => (
+                    <div key={`${index}-${query}`} className="flex gap-2">
+                      <Input
+                        aria-label={`Search query ${index + 1}`}
+                        value={query}
+                        disabled={scopeLocked}
+                        onChange={(event) => setQueries((current) => current.map((value, queryIndex) => queryIndex === index ? event.target.value : value))}
+                      />
+                      <Button variant="ghost" size="icon" disabled={scopeLocked} onClick={() => setQueries((current) => current.filter((_, queryIndex) => queryIndex !== index))}>
+                        <X className="h-4 w-4" /><span className="sr-only">Remove query {index + 1}</span>
+                      </Button>
+                    </div>
+                  ))}
+                  {!scopeLocked && (
+                    <div className="flex gap-2">
+                      <Input
+                        value={customQuery}
+                        onChange={(event) => setCustomQuery(event.target.value)}
+                        onKeyDown={(event) => event.key === 'Enter' && handleAddCustomQuery()}
+                        placeholder='Add a custom query, e.g. "founder * stories"'
+                      />
+                      <Button variant="outline" onClick={handleAddCustomQuery} disabled={!customQuery.trim()}>
+                        <Plus className="mr-2 h-4 w-4" /> Add
+                      </Button>
+                    </div>
                   )}
-                </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {(isDiscovering || progress) && (
+          <Card>
+            <CardContent className="pt-5" role="status" aria-atomic="true">
+              <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium">{progress?.message}</span>
+                <span className="text-muted-foreground">{runProgress}%</span>
+              </div>
+              <Progress value={runProgress} className="h-2" />
+              {isDiscovering && results.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">Partial results are available below while discovery continues.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {results.length > 0 && (
+          <>
+            <Card>
+              <CardContent className="pt-5">
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+                  {[
+                    { label: 'Raw found', value: runScope?.rawResults || results.length, tone: 'text-foreground' },
+                    { label: 'Unique', value: results.length, tone: 'text-foreground' },
+                    { label: 'Tier A', value: tierCounts.a, tone: 'text-emerald-600' },
+                    { label: 'Tier B', value: tierCounts.b, tone: 'text-blue-600' },
+                    { label: 'Tier C', value: tierCounts.c, tone: 'text-amber-600' },
+                    { label: 'Needs review', value: tierCounts.review, tone: 'text-violet-600' },
+                  ].map((stat, index, list) => (
+                    <div key={stat.label} className="relative rounded-lg border bg-muted/15 px-3 py-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{stat.label}</p>
+                      <p className={cn('mt-1 text-2xl font-semibold', stat.tone)}>{stat.value.toLocaleString()}</p>
+                      {index < list.length - 1 && <ArrowRight className="absolute -right-3 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-muted-foreground lg:block" />}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{qualifiedCount.toLocaleString()} outreach-ready · {Math.max(0, (runScope?.rawResults || results.length) - results.length).toLocaleString()} duplicates removed</span>
+                  {runScope?.completedAt && <span>Run completed {formatDate(runScope.completedAt)} · {runScope.apiCalls} Podscan calls</span>}
+                </div>
               </CardContent>
             </Card>
 
-            {/* Chart Results */}
-            {chartResults.length > 0 && (
-              <Card className="border-2 shadow-sm">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
-                        3
-                      </div>
-                      <div>
-                        <CardTitle className="text-xl">Chart Results</CardTitle>
-                        <CardDescription className="text-base mt-1">
-                          {filteredChartResults.length === chartResults.length
-                            ? `${chartResults.length} top podcasts`
-                            : `${filteredChartResults.length} of ${chartResults.length} podcasts (filtered)`
-                          } from {chartPlatform === 'apple' ? 'Apple Podcasts' : 'Spotify'}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChartShowFilters(!chartShowFilters)}
-                      >
-                        <Filter className="h-4 w-4 mr-2" />
-                        Filters
-                        {activeChartFilters > 0 && (
-                          <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                            {activeChartFilters}
-                          </Badge>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={handleScanChartCompatibility}
-                        disabled={isChartScoring || !(isProspectMode ? prospectBio : selectedClientData?.bio)}
-                        variant="secondary"
-                      >
-                        {isChartScoring ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Scoring...
-                          </>
-                        ) : (
-                          <>
-                            <Star className="h-4 w-4 mr-2" />
-                            Scan Compatibility
-                          </>
-                        )}
-                      </Button>
+            <Card>
+              <CardHeader className="space-y-3 pb-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <CardTitle className="text-lg">3. Review and route the list</CardTitle>
+                    <CardDescription>Relevance guides fit; outreach priority protects volume by measuring readiness and attainability.</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => void handleScoreResults()} disabled={isScoring || isDiscovering}>
+                      {isScoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Star className="mr-2 h-4 w-4" />}
+                      {selectedIds.size > 0 ? `Score selection (${selectedIds.size})` : `Score unscored (${unscoredCount})`}
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowChartDiscovery((value) => !value)} disabled={isDiscovering}>
+                      <TrendingUp className="mr-2 h-4 w-4" /> Add from charts
+                    </Button>
+                  </div>
+                </div>
 
-                      {/* Bulk Actions Dropdown for Charts */}
-                      {Object.keys(chartScores).length > 0 && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" title="Bulk Actions">
-                              <MoreVertical className="h-4 w-4 mr-2" />
-                              Actions
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuLabel>Remove Podcasts</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleRemoveChartPodcastsBelowScore(7)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Remove all below 7
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleRemoveChartPodcastsBelowScore(8)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Remove all below 8
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={handleOpenCustomThresholdDialogChart}
-                            >
-                              <Filter className="h-4 w-4 mr-2" />
-                              Remove below custom score...
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={handleRemoveUnscoredChartPodcasts}
-                              className="text-muted-foreground"
-                            >
-                              <X className="h-4 w-4 mr-2" />
-                              Remove unscored
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                {isScoring && scoringProgress && (
+                  <div role="status" aria-atomic="true" className="rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-2 flex justify-between text-sm"><span>{scoringProgress.message}</span><span>{scoreProgressValue}%</span></div>
+                    <Progress value={scoreProgressValue} className="h-2" />
+                  </div>
+                )}
+
+                {showChartDiscovery && (
+                  <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 md:grid-cols-4">
+                    <div className="space-y-1.5">
+                      <Label>Platform</Label>
+                      <Select value={chartPlatform} onValueChange={(value) => setChartPlatform(value as 'apple' | 'spotify')}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="apple">Apple Podcasts</SelectItem><SelectItem value="spotify">Spotify</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Available country</Label>
+                      <Select value={chartCountry} onValueChange={setChartCountry} disabled={isLoadingChartOptions}>
+                        <SelectTrigger><SelectValue placeholder="Country" /></SelectTrigger>
+                        <SelectContent>{chartCountries.map((country) => <SelectItem key={country.code} value={country.code}>{country.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Chart category</Label>
+                      <Select value={chartCategory} onValueChange={setChartCategory} disabled={isLoadingChartOptions || chartCategories.length === 0}>
+                        <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
+                        <SelectContent>{chartCategories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button className="w-full" onClick={() => void handleAddChartResults()} disabled={!chartCategory || isAddingChartResults}>
+                        {isAddingChartResults ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                        Add chart results
+                      </Button>
                     </div>
                   </div>
+                )}
 
-                  {/* Collapsible Filters */}
-                  {chartShowFilters && (
-                    <div className="mt-4 p-4 bg-muted/30 rounded-lg border space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Min Audience</Label>
-                          <Input
-                            type="number"
-                            placeholder="e.g., 5000"
-                            value={chartMinAudience}
-                            onChange={(e) => setChartMinAudience(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Max Audience</Label>
-                          <Input
-                            type="number"
-                            placeholder="e.g., 100000"
-                            value={chartMaxAudience}
-                            onChange={(e) => setChartMaxAudience(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Min Rating</Label>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="5"
-                            placeholder="e.g., 4.0"
-                            value={chartMinRating}
-                            onChange={(e) => setChartMinRating(e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">
-                            Min Fit Score
-                            {Object.keys(chartScores).length === 0 && (
-                              <span className="text-xs text-muted-foreground ml-1">(scan first)</span>
-                            )}
-                          </Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="10"
-                            placeholder="e.g., 7"
-                            value={chartMinFitScore}
-                            onChange={(e) => setChartMinFitScore(e.target.value)}
-                            disabled={Object.keys(chartScores).length === 0}
-                          />
-                        </div>
-                      </div>
-                      {activeChartFilters > 0 && (
-                        <div className="flex justify-end">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setChartMinAudience('')
-                              setChartMaxAudience('')
-                              setChartMinRating('')
-                              setChartMinFitScore('')
-                            }}
-                          >
-                            <X className="h-4 w-4 mr-1" />
-                            Clear Filters
-                          </Button>
-                        </div>
-                      )}
+                <div className="flex flex-col gap-3 border-t pt-3 lg:flex-row lg:items-center lg:justify-between">
+                  <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ResultTab)}>
+                    <TabsList className="h-auto flex-wrap justify-start">
+                      <TabsTrigger value="all">All {rows.length}</TabsTrigger>
+                      <TabsTrigger value="a">Tier A {tierCounts.a}</TabsTrigger>
+                      <TabsTrigger value="b">Tier B {tierCounts.b}</TabsTrigger>
+                      <TabsTrigger value="c">Tier C {tierCounts.c}</TabsTrigger>
+                      <TabsTrigger value="review">Review {tierCounts.review}</TabsTrigger>
+                      <TabsTrigger value="excluded">Excluded {tierCounts.excluded}</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative sm:w-64">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={resultSearch} onChange={(event) => setResultSearch(event.target.value)} placeholder="Search results" className="pl-9" />
                     </div>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="border-2 rounded-xl overflow-hidden shadow-sm">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/50">
-                          <TableHead className="w-[50px]">
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 cursor-pointer"
-                              checked={filteredChartResults.length > 0 && filteredChartResults.every(p => selectedPodcasts.has(p.podcast_id))}
-                              onChange={() => {
-                                const allSelected = filteredChartResults.every(p => selectedPodcasts.has(p.podcast_id))
-                                setSelectedPodcasts(prev => {
-                                  const newSet = new Set(prev)
-                                  if (allSelected) {
-                                    filteredChartResults.forEach(p => newSet.delete(p.podcast_id))
-                                  } else {
-                                    filteredChartResults.forEach(p => newSet.add(p.podcast_id))
-                                  }
-                                  return newSet
-                                })
-                              }}
-                            />
-                          </TableHead>
-                          <TableHead className="w-[60px] font-semibold">#</TableHead>
-                          <TableHead className="w-[60px] font-semibold"></TableHead>
-                          <TableHead className="font-semibold">Podcast</TableHead>
-                          <TableHead className="font-semibold">Audience</TableHead>
-                          <TableHead className="font-semibold">Rating</TableHead>
-                          <TableHead className="font-semibold">Fit Score</TableHead>
-                          <TableHead className="w-[80px] font-semibold">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredChartResults.map((podcast, index) => (
-                          <TableRow
-                            key={podcast.podcast_id}
-                            className="hover:bg-muted/30 transition-colors cursor-pointer"
-                            onClick={() => handlePodcastRowClick(podcast.podcast_id)}
-                          >
-                            <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                className="w-4 h-4 cursor-pointer"
-                                checked={selectedPodcasts.has(podcast.podcast_id)}
-                                onChange={() => handleTogglePodcastSelection(podcast.podcast_id)}
-                              />
+                    <Select value={resultSort} onValueChange={(value) => setResultSort(value as ResultSort)}>
+                      <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="priority">Outreach priority</SelectItem>
+                        <SelectItem value="relevance">Relevance</SelectItem>
+                        <SelectItem value="audience">Audience size</SelectItem>
+                        <SelectItem value="recent">Most recent</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant={contactableOnly ? 'secondary' : 'outline'} onClick={() => setContactableOnly((value) => !value)}>
+                      <Mail className="mr-2 h-4 w-4" /> Has email
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto border-t">
+                  <Table>
+                    <caption className="sr-only">Podcast research results for {selectedClient?.name}</caption>
+                    <TableHeader>
+                      <TableRow className="bg-muted/35">
+                        <TableHead className="w-11 pl-4">
+                          <Checkbox
+                            aria-label="Select all visible podcasts"
+                            checked={visibleRows.length > 0 && visibleRows.every((row) => selectedIds.has(row.podcast.podcast_id))
+                              ? true
+                              : visibleRows.some((row) => selectedIds.has(row.podcast.podcast_id)) ? 'indeterminate' : false}
+                            onCheckedChange={handleToggleVisible}
+                          />
+                        </TableHead>
+                        <TableHead className="min-w-[330px]">Podcast</TableHead>
+                        <TableHead className="w-28">Tier</TableHead>
+                        <TableHead className="w-28">Relevance</TableHead>
+                        <TableHead className="w-32">Outreach</TableHead>
+                        <TableHead className="w-28">Audience</TableHead>
+                        <TableHead className="w-32">Last episode</TableHead>
+                        <TableHead className="w-24">Contact</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleRows.map((row) => {
+                        const podcast = row.podcast
+                        const selected = selectedIds.has(podcast.podcast_id)
+                        return (
+                          <TableRow key={podcast.podcast_id} className={cn('cursor-pointer', selected && 'bg-primary/[0.04]')} onClick={() => setDetailId(podcast.podcast_id)}>
+                            <TableCell className="py-2 pl-4" onClick={(event) => event.stopPropagation()}>
+                              <Checkbox aria-label={`Select ${podcast.podcast_name}`} checked={selected} onCheckedChange={() => handleToggleSelection(podcast.podcast_id)} />
                             </TableCell>
-                            <TableCell className="py-4">
-                              <Badge variant="outline" className="font-bold">
-                                {(podcast as any).rank || index + 1}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="py-2">
-                              {podcast.podcast_image_url ? (
-                                <img
-                                  src={podcast.podcast_image_url}
-                                  alt={podcast.podcast_name}
-                                  className="w-12 h-12 rounded-lg object-cover"
-                                />
-                              ) : (
-                                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
-                                  <span className="text-xs text-muted-foreground">No img</span>
+                            <TableCell className="py-2.5">
+                              <div className="flex min-w-0 items-center gap-3">
+                                {podcast.podcast_image_url ? (
+                                  <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" />
+                                ) : (
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><BarChart3 className="h-4 w-4 text-muted-foreground" /></div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium">{podcast.podcast_name}</p>
+                                  <p className="truncate text-xs text-muted-foreground">{podcast.publisher_name || resultReason(row)}</p>
+                                  <p className="mt-0.5 line-clamp-1 max-w-xl text-xs text-muted-foreground/80">{resultReason(row)}</p>
                                 </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="py-4">
-                              <div className="max-w-md">
-                                <p className="font-semibold text-base mb-1">{podcast.podcast_name}</p>
-                                <p className="text-xs text-muted-foreground mb-1">{podcast.publisher_name}</p>
-                                <p className="text-sm text-muted-foreground line-clamp-1">
-                                  {podcast.podcast_description}
-                                </p>
                               </div>
                             </TableCell>
-                            <TableCell className="py-4">
-                              <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-medium">
-                                  {(podcast.reach?.audience_size || (podcast as any).audience_size)?.toLocaleString() || 'N/A'}
-                                </span>
-                              </div>
+                            <TableCell className="py-2.5"><Badge variant="outline" className={tierClasses(row.tier)}>{tierLabel(row.tier)}</Badge></TableCell>
+                            <TableCell className="py-2.5">
+                              {row.relevanceScore === null ? <span className="text-xs text-muted-foreground">Not scored</span> : <span className="font-semibold">{row.relevanceScore}</span>}
                             </TableCell>
-                            <TableCell className="py-4">
-                              <div className="flex items-center gap-1">
-                                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                                <span className="font-medium">
-                                  {podcast.reach?.itunes?.itunes_rating_average || (podcast as any).rating || 'N/A'}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-4">
-                              {chartScores[podcast.podcast_id] !== undefined ? (
-                                <Badge
-                                  variant="default"
-                                  className={`text-base px-3 py-1 cursor-pointer ${
-                                    (chartScores[podcast.podcast_id] || 0) >= 8
-                                      ? 'bg-emerald-600 hover:bg-emerald-700'
-                                      : ''
-                                  }`}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setSelectedPodcastForScore({
-                                      podcast,
-                                      score: chartScores[podcast.podcast_id] || 0,
-                                      reasoning: chartReasonings[podcast.podcast_id]
-                                    })
-                                    setScoreModalOpen(true)
-                                  }}
-                                >
-                                  {chartScores[podcast.podcast_id]}/10
-                                </Badge>
-                              ) : (
-                                <span className="text-sm text-muted-foreground font-medium">Not scored</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  asChild
-                                  title="View on Podscan"
-                                >
-                                  <a href={safeExternalUrl(podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
-                                    <ExternalLink className="h-5 w-5" />
-                                  </a>
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDeleteChartPodcast(podcast.podcast_id)}
-                                  title="Remove from list"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                            <TableCell className="py-2.5"><span className="font-semibold">{row.outreach.score}</span><span className="text-xs text-muted-foreground"> / 100</span></TableCell>
+                            <TableCell className="py-2.5">{compactNumber(podcast.reach?.audience_size)}</TableCell>
+                            <TableCell className="py-2.5 text-sm text-muted-foreground">{formatDate(podcast.last_posted_at)}</TableCell>
+                            <TableCell className="py-2.5">
+                              {podcast.reach?.email ? <Badge variant="secondary" className="gap-1"><Mail className="h-3 w-3" /> Email</Badge> : <span className="text-xs text-muted-foreground">No email</span>}
                             </TableCell>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        )
+                      })}
+                      {visibleRows.length === 0 && (
+                        <TableRow><TableCell colSpan={8} className="h-36 text-center text-muted-foreground">No podcasts match this view.</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex flex-col gap-2 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-muted-foreground">
+                    {filteredRows.length === 0 ? '0 results' : `${((resultPage - 1) * RESULTS_PER_PAGE) + 1}–${Math.min(resultPage * RESULTS_PER_PAGE, filteredRows.length)} of ${filteredRows.length}`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={resultPage <= 1} onClick={() => setResultPage((page) => Math.max(1, page - 1))}><ChevronLeft className="h-4 w-4" /><span className="sr-only">Previous page</span></Button>
+                    <span>Page {resultPage} of {totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={resultPage >= totalPages} onClick={() => setResultPage((page) => Math.min(totalPages, page + 1))}><ChevronRight className="h-4 w-4" /><span className="sr-only">Next page</span></Button>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Charts Empty State */}
-            {chartResults.length === 0 && (
-              <Card className="border-2 shadow-sm">
-                <CardContent className="flex flex-col items-center justify-center py-20">
-                  <div className="rounded-full bg-primary/10 p-6 mb-6">
-                    <TrendingUp className="h-16 w-16 text-primary" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-3">Browse Top Charts</h3>
-                  <p className="text-muted-foreground text-center max-w-lg text-base mb-8">
-                    Select a platform, country, and category above, then click "Get Top Podcasts" to browse the top-ranked podcasts
-                  </p>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4" />
-                      <span>Chart Rankings</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
-                      <span>Multiple Countries</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Star className="h-4 w-4" />
-                      <span>Compatibility Scoring</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
 
-        {/* Score Details Modal */}
-        <Dialog open={scoreModalOpen} onOpenChange={setScoreModalOpen}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
-                Compatibility Score Details
-              </DialogTitle>
-              <DialogDescription>
-                AI analysis of podcast fit for your client
-              </DialogDescription>
-            </DialogHeader>
-
-            {selectedPodcastForScore && (
-              <div className="space-y-4">
-                {/* Podcast Info */}
-                <div className="p-4 bg-muted/50 rounded-lg">
-                  <h3 className="font-semibold text-lg mb-2">
-                    {selectedPodcastForScore.podcast.podcast_name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground line-clamp-3">
-                    {selectedPodcastForScore.podcast.podcast_description}
-                  </p>
-                  <div className="flex gap-4 mt-3 text-sm">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <span>{selectedPodcastForScore.podcast.reach?.audience_size?.toLocaleString() || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span>{selectedPodcastForScore.podcast.episode_count} episodes</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Score */}
-                <div className="text-center p-6 bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg border-2 border-primary/20">
-                  <p className="text-sm text-muted-foreground mb-2">Compatibility Score</p>
-                  <div className="text-5xl font-bold text-primary mb-2">
-                    {selectedPodcastForScore.score}
-                    <span className="text-2xl text-muted-foreground">/10</span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={`text-sm px-3 py-1 ${
-                      selectedPodcastForScore.score >= 9
-                        ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400'
-                        : selectedPodcastForScore.score >= 8
-                        ? 'border-blue-500 text-blue-700 dark:text-blue-400'
-                        : selectedPodcastForScore.score >= 7
-                        ? 'border-amber-500 text-amber-700 dark:text-amber-400'
-                        : 'border-gray-500 text-gray-700 dark:text-gray-400'
-                    }`}
-                  >
-                    {selectedPodcastForScore.score >= 9
-                      ? '🎯 Perfect Fit'
-                      : selectedPodcastForScore.score >= 8
-                      ? '⭐ Great Fit'
-                      : selectedPodcastForScore.score >= 7
-                      ? '📊 Good Fit'
-                      : '📉 Moderate Fit'}
-                  </Badge>
-                </div>
-
-                {/* Reasoning */}
-                <div className="space-y-2">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <Sparkles className="h-4 w-4" />
-                    Why This Score?
-                  </h4>
-                  {selectedPodcastForScore.reasoning ? (
-                    <div className="p-4 bg-background border rounded-lg text-sm leading-relaxed whitespace-pre-wrap">
-                      {selectedPodcastForScore.reasoning}
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-muted/30 border border-dashed rounded-lg text-sm text-muted-foreground text-center">
-                      No detailed reasoning available for this score.
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    asChild
-                  >
-                    <a href={safeExternalUrl(selectedPodcastForScore.podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View on Podscan
-                    </a>
-                  </Button>
-                  <Button
-                    onClick={() => setScoreModalOpen(false)}
-                    className="flex-1"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Podcast Details Modal */}
-        <Dialog open={podcastDetailsModalOpen} onOpenChange={setPodcastDetailsModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5 text-primary" />
-                Podcast Details
-              </DialogTitle>
-              <DialogDescription>
-                Full information about this podcast
-              </DialogDescription>
-            </DialogHeader>
-
-            {loadingPodcastDetails ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : selectedPodcastDetails ? (
-              <div className="space-y-6">
-                {/* Header with Image */}
-                <div className="flex gap-4">
-                  {selectedPodcastDetails.podcast_image_url && (
-                    <img
-                      src={selectedPodcastDetails.podcast_image_url}
-                      alt={selectedPodcastDetails.podcast_name}
-                      className="w-32 h-32 rounded-lg object-cover shadow-lg"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <h2 className="text-2xl font-bold mb-2">{selectedPodcastDetails.podcast_name}</h2>
-                    {selectedPodcastDetails.publisher_name && (
-                      <p className="text-muted-foreground mb-2">
-                        by {selectedPodcastDetails.publisher_name}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      {selectedPodcastDetails.podcast_categories?.map((cat) => (
-                        <Badge key={cat.category_id} variant="secondary">
-                          {cat.category_name}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Description */}
-                {selectedPodcastDetails.podcast_description && (
-                  <div className="space-y-2">
-                    <h3 className="font-semibold text-lg">Description</h3>
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {selectedPodcastDetails.podcast_description}
-                    </p>
-                  </div>
-                )}
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-4 bg-muted/50 rounded-lg text-center">
-                    <Users className="h-5 w-5 mx-auto mb-2 text-primary" />
-                    <p className="text-2xl font-bold">
-                      {selectedPodcastDetails.reach?.audience_size?.toLocaleString() || 'N/A'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Audience Size</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg text-center">
-                    <Calendar className="h-5 w-5 mx-auto mb-2 text-primary" />
-                    <p className="text-2xl font-bold">{selectedPodcastDetails.episode_count || 0}</p>
-                    <p className="text-xs text-muted-foreground">Episodes</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg text-center">
-                    <Star className="h-5 w-5 mx-auto mb-2 text-yellow-500 fill-yellow-500" />
-                    <p className="text-2xl font-bold">
-                      {selectedPodcastDetails.reach?.itunes?.itunes_rating_average || 'N/A'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">iTunes Rating</p>
-                  </div>
-                  <div className="p-4 bg-muted/50 rounded-lg text-center">
-                    <Globe className="h-5 w-5 mx-auto mb-2 text-primary" />
-                    <p className="text-2xl font-bold">{selectedPodcastDetails.language?.toUpperCase() || 'EN'}</p>
-                    <p className="text-xs text-muted-foreground">Language</p>
-                  </div>
-                </div>
-
-                {/* Additional Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {selectedPodcastDetails.reach?.website && (
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold">Website</p>
-                      <a
-                        href={safeExternalUrl(selectedPodcastDetails.reach.website) ?? undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline flex items-center gap-1"
-                      >
-                        {selectedPodcastDetails.reach.website}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  )}
-                  {selectedPodcastDetails.reach?.email && (
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold">Email</p>
-                      <a
-                        href={`mailto:${selectedPodcastDetails.reach.email}`}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        {selectedPodcastDetails.reach.email}
-                      </a>
-                    </div>
-                  )}
-                  {selectedPodcastDetails.rss_url && (
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold">RSS Feed</p>
-                      <a
-                        href={safeExternalUrl(selectedPodcastDetails.rss_url) ?? undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline flex items-center gap-1 truncate"
-                      >
-                        {selectedPodcastDetails.rss_url}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  )}
-                  {selectedPodcastDetails.last_posted_at && (
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold">Last Episode</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(selectedPodcastDetails.last_posted_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Social Links */}
-                {selectedPodcastDetails.reach?.social_links && selectedPodcastDetails.reach.social_links.length > 0 && (
-                  <div className="space-y-2">
-                    <h3 className="font-semibold text-lg">Social Media</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedPodcastDetails.reach.social_links.map((link, idx) => (
-                        <Button
-                          key={idx}
-                          variant="outline"
-                          size="sm"
-                          asChild
-                        >
-                          <a href={safeExternalUrl(link.url) ?? undefined} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            {link.platform}
-                          </a>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Podcast Features */}
-                <div className="flex flex-wrap gap-2 py-2">
-                  {selectedPodcastDetails.podcast_has_guests && (
-                    <Badge variant="outline" className="px-3 py-1">
-                      <Users className="h-3 w-3 mr-1" />
-                      Has Guests
-                    </Badge>
-                  )}
-                  {selectedPodcastDetails.podcast_has_sponsors && (
-                    <Badge variant="outline" className="px-3 py-1">
-                      <TrendingUp className="h-3 w-3 mr-1" />
-                      Has Sponsors
-                    </Badge>
-                  )}
-                  {selectedPodcastDetails.is_active && (
-                    <Badge variant="outline" className="px-3 py-1 border-green-500 text-green-700 dark:text-green-400">
-                      Active
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Demographics Section */}
-                {loadingDemographics ? (
-                  <div className="p-4 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-muted-foreground">Analyzing audience demographics...</span>
-                    </div>
-                  </div>
-                ) : podcastDemographics ? (
-                  <div className="space-y-6 p-5 bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-xl border-2 border-purple-200 dark:border-purple-800">
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 bg-purple-600 rounded-lg">
-                          <Users className="h-5 w-5 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-lg">Audience Intelligence</h3>
-                          <p className="text-xs text-muted-foreground">Deep insights from {podcastDemographics.episodes_analyzed} episodes</p>
-                        </div>
-                      </div>
-                      <Badge className="bg-purple-600 hover:bg-purple-700">AI-Powered</Badge>
-                    </div>
-
-                    {/* Key Metrics Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="p-3 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-xl border border-green-200 dark:border-green-800">
-                        <p className="text-[10px] uppercase tracking-wider text-green-600 dark:text-green-400 font-semibold mb-1">Buying Power</p>
-                        <p className="font-bold text-lg text-green-800 dark:text-green-300">{podcastDemographics.purchasing_power || 'N/A'}</p>
-                      </div>
-                      <div className="p-3 bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/30 dark:to-violet-900/30 rounded-xl border border-purple-200 dark:border-purple-800">
-                        <p className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400 font-semibold mb-1">Education</p>
-                        <p className="font-bold text-lg text-purple-800 dark:text-purple-300">{podcastDemographics.education_level || 'N/A'}</p>
-                      </div>
-                      <div className="p-3 bg-gradient-to-br from-blue-100 to-sky-100 dark:from-blue-900/30 dark:to-sky-900/30 rounded-xl border border-blue-200 dark:border-blue-800">
-                        <p className="text-[10px] uppercase tracking-wider text-blue-600 dark:text-blue-400 font-semibold mb-1">Core Age</p>
-                        <p className="font-bold text-lg text-blue-800 dark:text-blue-300">{podcastDemographics.age || 'N/A'}</p>
-                      </div>
-                      <div className="p-3 bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/30 rounded-xl border border-orange-200 dark:border-orange-800">
-                        <p className="text-[10px] uppercase tracking-wider text-orange-600 dark:text-orange-400 font-semibold mb-1">Engagement</p>
-                        <p className="font-bold text-lg text-orange-800 dark:text-orange-300">{podcastDemographics.engagement_level || 'N/A'}</p>
-                      </div>
-                    </div>
-
-                    {/* Gender & Age Distribution */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {/* Gender */}
-                      {podcastDemographics.gender_skew && (
-                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
-                          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Gender Skew</p>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1">
-                              <div className="h-3 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-full" />
-                            </div>
-                            <span className="font-bold text-sm">{podcastDemographics.gender_skew}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Age Distribution */}
-                      {podcastDemographics.age_distribution && podcastDemographics.age_distribution.length > 0 && (
-                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
-                          <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Age Distribution</p>
-                          <div className="space-y-2">
-                            {podcastDemographics.age_distribution.slice(0, 4).map((item, idx) => (
-                              <div key={idx} className="flex items-center gap-2">
-                                <span className="text-xs w-16 text-muted-foreground">{item.age}</span>
-                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all"
-                                    style={{ width: `${Math.min(item.percentage, 100)}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs font-semibold w-10 text-right">{item.percentage}%</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Geographic & Professional Distribution */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                      {/* Geographic */}
-                      {podcastDemographics.geographic_distribution && podcastDemographics.geographic_distribution.length > 0 && (
-                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Globe className="h-4 w-4 text-blue-500" />
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Regions</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {podcastDemographics.geographic_distribution.slice(0, 5).map((item, idx) => (
-                              <Badge key={idx} variant="outline" className="text-xs">
-                                {item.region} <span className="ml-1 font-bold text-blue-600">{item.percentage}%</span>
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Professional Industry */}
-                      {podcastDemographics.professional_industry && podcastDemographics.professional_industry.length > 0 && (
-                        <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
-                          <div className="flex items-center gap-2 mb-3">
-                            <TrendingUp className="h-4 w-4 text-green-500" />
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Industries</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {podcastDemographics.professional_industry.slice(0, 5).map((item, idx) => (
-                              <Badge key={idx} variant="outline" className="text-xs">
-                                {item.industry} <span className="ml-1 font-bold text-green-600">{item.percentage}%</span>
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Living Environment */}
-                    {podcastDemographics.living_environment && (
-                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
-                        <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Living Environment</p>
-                        <div className="flex gap-2">
-                          <div className="flex-1 text-center p-2 rounded-lg bg-blue-100/50 dark:bg-blue-900/30">
-                            <p className="text-2xl font-bold text-blue-600">{podcastDemographics.living_environment.urban}%</p>
-                            <p className="text-xs text-muted-foreground">Urban</p>
-                          </div>
-                          <div className="flex-1 text-center p-2 rounded-lg bg-green-100/50 dark:bg-green-900/30">
-                            <p className="text-2xl font-bold text-green-600">{podcastDemographics.living_environment.suburban}%</p>
-                            <p className="text-xs text-muted-foreground">Suburban</p>
-                          </div>
-                          <div className="flex-1 text-center p-2 rounded-lg bg-amber-100/50 dark:bg-amber-900/30">
-                            <p className="text-2xl font-bold text-amber-600">{podcastDemographics.living_environment.rural}%</p>
-                            <p className="text-xs text-muted-foreground">Rural</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Brand Relationship */}
-                    {podcastDemographics.brand_relationship && (
-                      <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
-                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-3 uppercase tracking-wider">Brand Relationship</p>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground">Loyalty</p>
-                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.loyalty_level}</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground">Price Sensitivity</p>
-                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.price_sensitivity}</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground">Switching</p>
-                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.brand_switching_frequency}</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground">Advocacy</p>
-                            <p className="font-bold text-amber-700 dark:text-amber-400">{podcastDemographics.brand_relationship.advocacy_potential}</p>
-                          </div>
-                        </div>
-                        {podcastDemographics.brand_relationship.reasoning && (
-                          <p className="text-xs text-muted-foreground italic">"{podcastDemographics.brand_relationship.reasoning}"</p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Technology Adoption */}
-                    {podcastDemographics.technology_adoption && (
-                      <div className="p-4 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 rounded-xl border border-cyan-200 dark:border-cyan-800">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-400 uppercase tracking-wider">Tech Adoption Profile</p>
-                          <Badge className="bg-cyan-600">{Math.round(podcastDemographics.technology_adoption.confidence_score * 100)}% Confidence</Badge>
-                        </div>
-                        <p className="font-bold text-lg text-cyan-800 dark:text-cyan-300 mb-1">{podcastDemographics.technology_adoption.profile}</p>
-                        {podcastDemographics.technology_adoption.reasoning && (
-                          <p className="text-xs text-muted-foreground">"{podcastDemographics.technology_adoption.reasoning}"</p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Content Habits */}
-                    {podcastDemographics.content_habits && (
-                      <div className="p-4 bg-white/60 dark:bg-black/20 rounded-xl border">
-                        <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Content Consumption</p>
-                        <div className="space-y-3">
-                          {podcastDemographics.content_habits.primary_platforms && (
-                            <div>
-                              <p className="text-[10px] text-muted-foreground mb-1">Platforms</p>
-                              <div className="flex flex-wrap gap-1">
-                                {podcastDemographics.content_habits.primary_platforms.map((platform, idx) => (
-                                  <Badge key={idx} variant="secondary" className="text-xs">{platform}</Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {podcastDemographics.content_habits.preferred_formats && (
-                            <div>
-                              <p className="text-[10px] text-muted-foreground mb-1">Preferred Formats</p>
-                              <div className="flex flex-wrap gap-1">
-                                {podcastDemographics.content_habits.preferred_formats.map((format, idx) => (
-                                  <Badge key={idx} variant="outline" className="text-xs">{format}</Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {podcastDemographics.content_habits.consumption_context && (
-                            <div>
-                              <p className="text-[10px] text-muted-foreground mb-1">When They Listen</p>
-                              <div className="flex flex-wrap gap-1">
-                                {podcastDemographics.content_habits.consumption_context.map((context, idx) => (
-                                  <Badge key={idx} variant="outline" className="text-xs bg-purple-50 dark:bg-purple-950/30">{context}</Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* Action Buttons */}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    asChild
-                  >
-                    <a href={safeExternalUrl(selectedPodcastDetails.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View on Podscan
-                    </a>
-                  </Button>
-                  <Button
-                    onClick={() => setPodcastDetailsModalOpen(false)}
-                    className="flex-1"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                No podcast details available
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Custom Threshold Dialog */}
-        <Dialog open={customThresholdDialogOpen} onOpenChange={setCustomThresholdDialogOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5 text-primary" />
-                Remove Podcasts Below Score
-              </DialogTitle>
-              <DialogDescription>
-                Enter a score threshold (1-10). All podcasts with scores below this value will be removed.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="custom-threshold">Score Threshold</Label>
-                <Input
-                  id="custom-threshold"
-                  type="number"
-                  min="1"
-                  max="10"
-                  step="0.1"
-                  placeholder="e.g., 7.5"
-                  value={customThresholdValue}
-                  onChange={(e) => setCustomThresholdValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      if (customThresholdQueryId === 'chart') {
-                        handleApplyCustomThresholdChart()
-                      } else {
-                        handleApplyCustomThreshold()
-                      }
-                    }
-                  }}
-                  autoFocus
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter a number between 1 and 10
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setCustomThresholdDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={customThresholdQueryId === 'chart' ? handleApplyCustomThresholdChart : handleApplyCustomThreshold}
-                disabled={!customThresholdValue}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Remove Podcasts
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {!isDiscovering && results.length === 0 && selectedClient && (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-4 rounded-full bg-primary/10 p-4"><Layers3 className="h-7 w-7 text-primary" /></div>
+              <h2 className="text-lg font-semibold">Ready to build {selectedClient.name}’s outreach pool</h2>
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">The discovery run will gather broad matches, remove duplicates, and keep lower-cost opportunities available for review instead of prematurely discarding volume.</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="fixed inset-x-3 bottom-3 z-40 lg:left-[268px]">
+          <div className="mx-auto flex max-w-5xl flex-col gap-3 rounded-xl border bg-background/95 p-3 shadow-2xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{selectedIds.size}</div>
+              <div><p className="text-sm font-semibold">podcasts selected</p><p className="text-xs text-muted-foreground">{selectedContactableCount} include a direct email</p></div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleBulkTier('a')}>Tier A</Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkTier('b')}>Tier B</Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkTier('c')}>Tier C</Button>
+              <Button variant="outline" size="sm" onClick={handleBulkExclude}><Archive className="mr-2 h-4 w-4" /> Exclude</Button>
+              <Button size="sm" onClick={() => setExportDialogOpen(true)} disabled={selectedResults.length === 0}><FileSpreadsheet className="mr-2 h-4 w-4" /> Export {selectedResults.length}</Button>
+              <Button variant="ghost" size="icon" onClick={() => setSelectedIds(new Set())}><X className="h-4 w-4" /><span className="sr-only">Clear selection</span></Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Sheet open={Boolean(detailId)} onOpenChange={(open) => !open && setDetailId(null)}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          {selectedDetail && (
+            <div className="space-y-6">
+              <SheetHeader>
+                <div className="flex items-start gap-3 pr-8">
+                  {selectedDetail.podcast.podcast_image_url ? <img src={selectedDetail.podcast.podcast_image_url} alt="" className="h-14 w-14 rounded-lg object-cover" /> : <div className="h-14 w-14 rounded-lg bg-muted" />}
+                  <div className="min-w-0"><SheetTitle>{selectedDetail.podcast.podcast_name}</SheetTitle><SheetDescription>{selectedDetail.podcast.publisher_name || 'Publisher unavailable'}</SheetDescription></div>
+                </div>
+              </SheetHeader>
+
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className={tierClasses(selectedDetail.tier)}>{tierLabel(selectedDetail.tier)}</Badge>
+                {selectedDetail.sources.map((source) => <Badge key={source} variant="secondary">{source}</Badge>)}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Relevance</p><p className="mt-1 text-xl font-semibold">{selectedDetail.relevanceScore ?? '—'}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Outreach</p><p className="mt-1 text-xl font-semibold">{selectedDetail.outreach.score}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Audience</p><p className="mt-1 text-xl font-semibold">{compactNumber(selectedDetail.podcast.reach?.audience_size)}</p></div>
+              </div>
+
+              <section>
+                <h3 className="text-sm font-semibold">Why it fits</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{resultReason(selectedDetail)}</p>
+              </section>
+
+              <section>
+                <h3 className="text-sm font-semibold">Outreach priority breakdown</h3>
+                <div className="mt-2 divide-y rounded-lg border">
+                  {selectedDetail.outreach.factors.map((factor) => (
+                    <div key={factor.label} className="flex items-start justify-between gap-4 p-3 text-sm">
+                      <div><p className="font-medium">{factor.label}</p><p className="text-xs text-muted-foreground">{factor.detail}</p></div>
+                      <span className="font-semibold">+{factor.points}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-sm font-semibold">Podcast profile</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedDetail.podcast.podcast_description || 'No description available.'}</p>
+                <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div><dt className="text-xs text-muted-foreground">Last episode</dt><dd>{formatDate(selectedDetail.podcast.last_posted_at)}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Episodes</dt><dd>{selectedDetail.podcast.episode_count?.toLocaleString() || '—'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Guest format</dt><dd>{selectedDetail.podcast.podcast_has_guests === true ? 'Confirmed' : selectedDetail.podcast.podcast_has_guests === false ? 'Not detected' : 'Unknown'}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Email</dt><dd className="truncate">{selectedDetail.podcast.reach?.email || 'Unavailable'}</dd></div>
+                </dl>
+              </section>
+
+              {selectedDetail.matchedQueries.length > 0 && (
+                <section><h3 className="text-sm font-semibold">Matched searches</h3><div className="mt-2 space-y-2">{selectedDetail.matchedQueries.map((query) => <code key={query} className="block rounded bg-muted px-3 py-2 text-xs">{query}</code>)}</div></section>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => void handleEnrichDetail()} disabled={isEnriching}>{isEnriching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} Load full profile</Button>
+                <Button asChild disabled={!safeExternalUrl(selectedDetail.podcast.podcast_url)}><a href={safeExternalUrl(selectedDetail.podcast.podcast_url) ?? undefined} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" /> Open Podscan</a></Button>
+              </div>
+
+              <Separator />
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'a')}>Tier A</Button>
+                <Button size="sm" variant="outline" onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'b')}>Tier B</Button>
+                <Button size="sm" variant="outline" onClick={() => applyTierToIds([selectedDetail.podcast.podcast_id], 'c')}>Tier C</Button>
+                <Button size="sm" variant="destructive" onClick={() => { setExcludedIds((current) => new Set([...current, selectedDetail.podcast.podcast_id])); setDetailId(null) }}><Trash2 className="mr-2 h-4 w-4" /> Exclude</Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <AlertDialog open={scopeResetOpen} onOpenChange={setScopeResetOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Start research for another client?</AlertDialogTitle><AlertDialogDescription>This clears the current tab’s queries, results, scores, tiers, and selection. The workspace and client will become editable again.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Keep this run</AlertDialogCancel><AlertDialogAction onClick={() => { resetResearch(); setScopeResetOpen(false) }}>Clear and switch</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Export {selectedResults.length} podcasts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This list is locked to {selectedClient?.name} in {selectedWorkspace?.name}. {selectedContactableCount} selected podcasts include a direct email.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-lg border bg-muted/25 p-3 text-sm"><p className="font-medium">Destination</p><p className="text-muted-foreground">{selectedClient?.name}’s Google Sheet</p></div>
+          <AlertDialogFooter><AlertDialogCancel disabled={isExporting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={(event) => { event.preventDefault(); void handleExport() }} disabled={isExporting}>{isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />} Export podcasts</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   )
 }

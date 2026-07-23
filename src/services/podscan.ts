@@ -1,10 +1,30 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { normalizeChartCategories } from '@/lib/podcastResearch'
 
-async function invokePodscan<T>(body: Record<string, unknown>): Promise<T> {
+export interface PodscanRateLimit {
+  limit?: number
+  remaining?: number
+  retryAfterSeconds?: number
+  concurrencyLimit?: number
+}
+
+interface PodscanEnvelope<T> {
+  data: T
+  rateLimit?: PodscanRateLimit
+}
+
+async function invokePodscanEnvelope<T>(body: Record<string, unknown>): Promise<PodscanEnvelope<T>> {
   const { data, error } = await supabase.functions.invoke('podscan-proxy', { body })
   if (error) throw await toFunctionError(error, 'Podscan request failed.')
-  return data.data as T
+  return {
+    data: data.data as T,
+    rateLimit: data.meta?.rate_limit as PodscanRateLimit | undefined,
+  }
+}
+
+async function invokePodscan<T>(body: Record<string, unknown>): Promise<T> {
+  return (await invokePodscanEnvelope<T>(body)).data
 }
 
 export interface PodcastData {
@@ -90,6 +110,10 @@ export interface SearchOptions {
  */
 export async function searchPodcasts(options: SearchOptions = {}): Promise<PodcastSearchResponse> {
   return await invokePodscan<PodcastSearchResponse>({ action: 'search', options })
+}
+
+export async function searchPodcastsWithMeta(options: SearchOptions = {}): Promise<PodscanEnvelope<PodcastSearchResponse>> {
+  return await invokePodscanEnvelope<PodcastSearchResponse>({ action: 'search', options })
 }
 
 /**
@@ -303,8 +327,9 @@ export async function searchAllPodcasts(
 
         onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
         break // Success, exit retry loop
-      } catch (error: any) {
-        const is429 = error?.message?.includes('429') || error?.status === 429
+      } catch (error: unknown) {
+        const requestError = error as { message?: string; status?: number }
+        const is429 = requestError.message?.includes('429') || requestError.status === 429
         if (is429 && retries < maxRetries) {
           retries++
           const backoffMs = 1000 * Math.pow(2, retries) // 2s, 4s
@@ -463,6 +488,28 @@ export interface ChartPodcast extends PodcastData {
   image?: string;
 }
 
+interface ChartPodcastPayload extends Partial<PodcastData> {
+  id?: string
+  name?: string
+  title?: string
+  description?: string
+  publisher?: string
+  author?: string
+  thumbnail?: string
+  artwork?: string
+  image?: string
+  artworkUrl?: string
+  imageUrl?: string
+  artwork_url?: string
+  image_url?: string
+  cover?: string
+  audience_size?: number
+  rating?: string | number
+  rank?: number
+  url?: string
+  link?: string
+}
+
 /**
  * Get all supported countries for chart rankings
  */
@@ -503,23 +550,7 @@ export async function getChartCategories(
   const envelope = Array.isArray(data) ? {} : data
   const rawCategories = envelope.categories || envelope.data || data;
 
-  // If it's already an array, map to ensure correct structure
-  if (Array.isArray(rawCategories)) {
-    return rawCategories.map((cat: any) => ({
-      id: String(cat.id || cat.category_id || cat.slug || ''),
-      name: String(cat.name || cat.title || cat.label || cat.id || '')
-    })).filter(cat => cat.id && cat.name);
-  }
-
-  // If it's an object with category IDs as keys (e.g., {id1: "name1", id2: "name2"})
-  if (rawCategories && typeof rawCategories === 'object') {
-    return Object.entries(rawCategories).map(([id, value]) => ({
-      id: String(id),
-      name: typeof value === 'string' ? value : (typeof value === 'object' && value !== null ? (value as any).name || String(id) : String(id))
-    })).filter(cat => cat.id && cat.name);
-  }
-
-  return [];
+  return normalizeChartCategories(rawCategories) as ChartCategory[]
 }
 
 /**
@@ -553,7 +584,8 @@ export async function getTopChartPodcasts(
   }
 
   // Normalize field names and add rank
-  return podcasts.map((podcast: any, index: number) => {
+  return podcasts.map((podcastValue, index: number) => {
+    const podcast = podcastValue as ChartPodcastPayload
     // Get image URL from various possible fields
     const imageUrl = podcast.podcast_image_url || podcast.thumbnail || podcast.artwork ||
                      podcast.image || podcast.artworkUrl || podcast.imageUrl ||
@@ -563,12 +595,13 @@ export async function getTopChartPodcasts(
     const audienceSize = podcast.audience_size || podcast.reach?.audience_size;
 
     // Get rating (chart API has it at top level, search API has it nested)
-    const rating = podcast.rating || podcast.reach?.itunes?.itunes_rating_average;
+    const rawRating = podcast.rating || podcast.reach?.itunes?.itunes_rating_average;
+    const rating = rawRating === undefined || rawRating === null ? undefined : String(rawRating)
 
     return {
       ...podcast,
       // Normalize to standard field names
-      podcast_id: podcast.podcast_id || podcast.id || `chart-${index}`,
+      podcast_id: podcast.podcast_id || podcast.id || '',
       podcast_name: podcast.podcast_name || podcast.name || podcast.title,
       podcast_description: podcast.podcast_description || podcast.description || '',
       publisher_name: podcast.publisher_name || podcast.publisher || podcast.author,
@@ -585,5 +618,5 @@ export async function getTopChartPodcasts(
         },
       },
     };
-  });
+  }).filter((podcast) => Boolean(podcast.podcast_id));
 }

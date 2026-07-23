@@ -135,6 +135,7 @@ export interface ClientWithStats extends Client {
 export async function getClients(options?: {
   search?: string
   status?: 'active' | 'paused' | 'churned'
+  workspaceId?: string
   limit?: number
   offset?: number
 }) {
@@ -145,6 +146,10 @@ export async function getClients(options?: {
   // Filter by status
   if (options?.status) {
     query = query.eq('status', options.status)
+  }
+
+  if (options?.workspaceId) {
+    query = query.eq('workspace_id', options.workspaceId)
   }
 
   // Search by name or email
@@ -169,7 +174,12 @@ export async function getClients(options?: {
     throw new Error(`Failed to fetch clients: ${error.message}`)
   }
 
-  return { clients: data as Client[], total: count || 0 }
+  const clients = data as Client[]
+  if (options?.workspaceId && clients.some((client) => client.workspace_id !== options.workspaceId)) {
+    throw new Error('The selected workspace response did not match the client scope.')
+  }
+
+  return { clients, total: count || 0 }
 }
 
 /**

@@ -77,7 +77,35 @@ function searchParams(value: unknown): URLSearchParams {
   return params
 }
 
-async function fetchPodscan(path: string, params?: URLSearchParams): Promise<unknown> {
+interface PodscanFetchResult {
+  data: unknown
+  rateLimit: {
+    limit?: number
+    remaining?: number
+    retryAfterSeconds?: number
+    concurrencyLimit?: number
+  }
+}
+
+class PodscanRateLimitError extends HttpError {
+  readonly retryAfter: string | null
+  readonly concurrencyLimit: string | null
+
+  constructor(code: string, message: string, headers: Headers) {
+    super(429, code, message)
+    this.retryAfter = headers.get('Retry-After')
+    this.concurrencyLimit = headers.get('X-Concurrency-Limit')
+  }
+}
+
+function positiveHeaderNumber(headers: Headers, name: string): number | undefined {
+  const rawValue = headers.get(name)
+  if (rawValue === null || rawValue.trim() === '') return undefined
+  const value = Number(rawValue)
+  return Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+async function fetchPodscan(path: string, params?: URLSearchParams): Promise<PodscanFetchResult> {
   const url = new URL(`${API_BASE}${path}`)
   if (params) url.search = params.toString()
 
@@ -98,15 +126,40 @@ async function fetchPodscan(path: string, params?: URLSearchParams): Promise<unk
     throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
   }
   if (!response.ok) {
+    if (response.status === 429) {
+      let upstreamCode = ''
+      try {
+        const payload = JSON.parse(raw) as { error?: unknown; code?: unknown }
+        upstreamCode = typeof payload.code === 'string'
+          ? payload.code
+          : typeof payload.error === 'string' ? payload.error : ''
+      } catch {
+        // The status and headers still provide a safe retry path.
+      }
+      const concurrencyExceeded = upstreamCode.includes('concurrency_limit_exceeded')
+      throw new PodscanRateLimitError(
+        concurrencyExceeded ? 'PODSCAN_CONCURRENCY_LIMIT' : 'PODSCAN_RATE_LIMIT',
+        concurrencyExceeded ? 'Podscan concurrency limit reached' : 'Podscan rate limit reached',
+        response.headers,
+      )
+    }
     throw new HttpError(
-      response.status === 429 ? 429 : 502,
+      502,
       `PODSCAN_UPSTREAM_${response.status}`,
       `Podscan API error: ${response.status}`,
     )
   }
 
   try {
-    return JSON.parse(raw)
+    return {
+      data: JSON.parse(raw),
+      rateLimit: {
+        limit: positiveHeaderNumber(response.headers, 'X-RateLimit-Limit'),
+        remaining: positiveHeaderNumber(response.headers, 'X-RateLimit-Remaining'),
+        retryAfterSeconds: positiveHeaderNumber(response.headers, 'Retry-After'),
+        concurrencyLimit: positiveHeaderNumber(response.headers, 'X-Concurrency-Limit'),
+      },
+    }
   } catch {
     throw new HttpError(502, 'PODSCAN_INVALID_RESPONSE', 'Podscan returned an invalid response')
   }
@@ -122,29 +175,29 @@ serve(async (req) => {
     const body = await parseJsonObject(req)
     const action = typeof body.action === 'string' ? body.action : ''
     await requirePlatformAdmin(req)
-    let data: unknown
+    let result: PodscanFetchResult
 
     if (action === 'search') {
       requireOnlyKeys(body, ['action', 'options'])
-      data = await fetchPodscan('/podcasts/search', searchParams(body.options))
+      result = await fetchPodscan('/podcasts/search', searchParams(body.options))
     } else if (action === 'podcast') {
       requireOnlyKeys(body, ['action', 'podcast_id'])
-      data = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}`)
+      result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}`)
     } else if (action === 'related') {
       requireOnlyKeys(body, ['action', 'podcast_id'])
-      data = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`)
+      result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`)
     } else if (action === 'demographics') {
       requireOnlyKeys(body, ['action', 'podcast_id'])
-      data = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics`)
+      result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics`)
     } else if (action === 'chart_countries') {
       requireOnlyKeys(body, ['action'])
-      data = await fetchPodscan('/charts/countries/supported')
+      result = await fetchPodscan('/charts/countries/available')
     } else if (action === 'chart_categories') {
       requireOnlyKeys(body, ['action', 'platform', 'country'])
       const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
       const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
       if (!/^[a-z]{2,8}$/.test(country)) throw new HttpError(400, 'INVALID_FIELD', 'country is invalid')
-      data = await fetchPodscan(`/charts/${platform}/${country}/categories`)
+      result = await fetchPodscan(`/charts/${platform}/${country}/categories`)
     } else if (action === 'chart_top') {
       requireOnlyKeys(body, ['action', 'platform', 'country', 'category', 'limit'])
       const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
@@ -156,7 +209,7 @@ serve(async (req) => {
       const limit = typeof body.limit === 'number' && Number.isInteger(body.limit)
         ? Math.max(1, Math.min(body.limit, platform === 'apple' ? 200 : 50))
         : 10
-      data = await fetchPodscan(
+      result = await fetchPodscan(
         `/charts/${platform}/${country}/${encodeURIComponent(category)}/top`,
         new URLSearchParams({ limit: String(limit) }),
       )
@@ -164,8 +217,19 @@ serve(async (req) => {
       throw new HttpError(400, 'INVALID_ACTION', 'Unknown Podscan action')
     }
 
-    return jsonResponse(req, METHODS, 200, { data })
+    return jsonResponse(req, METHODS, 200, {
+      data: result.data,
+      meta: { rate_limit: result.rateLimit },
+    })
   } catch (error) {
+    if (error instanceof PodscanRateLimitError) {
+      const response = errorResponse(req, METHODS, error)
+      const headers = new Headers(response.headers)
+      headers.set('Access-Control-Expose-Headers', 'Retry-After, X-Concurrency-Limit')
+      if (error.retryAfter) headers.set('Retry-After', error.retryAfter)
+      if (error.concurrencyLimit) headers.set('X-Concurrency-Limit', error.concurrencyLimit)
+      return new Response(response.body, { status: response.status, headers })
+    }
     return errorResponse(req, METHODS, error)
   }
 })

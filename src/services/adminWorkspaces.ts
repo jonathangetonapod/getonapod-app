@@ -88,6 +88,25 @@ export async function listAdminWorkspaces(): Promise<AdminWorkspace[]> {
   return workspaces.filter((workspace) => availableWorkspaceIds.has(workspace.id))
 }
 
+export async function listPodcastResearchWorkspaces(): Promise<AdminWorkspace[]> {
+  const [clientWorkspaces, defaultWorkspaceResult] = await Promise.all([
+    listAdminWorkspaces(),
+    supabase
+      .from('workspaces')
+      .select('id,name,slug,status,is_default,logo_path,logo_updated_at')
+      .eq('is_default', true)
+      .eq('status', 'active')
+      .maybeSingle(),
+  ])
+
+  if (defaultWorkspaceResult.error) {
+    throw new Error('Your workspace could not be loaded.')
+  }
+
+  const defaultWorkspace = defaultWorkspaceResult.data as AdminWorkspace | null
+  return defaultWorkspace ? [defaultWorkspace, ...clientWorkspaces] : clientWorkspaces
+}
+
 export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortSignal): Promise<AdminWorkspaceView> {
   const canonicalWorkspaceId = workspaceId.toLowerCase()
   let workspaceQuery = supabase

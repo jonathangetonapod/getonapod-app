@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getAdminWorkspaceView,
   listAdminWorkspaces,
+  listPodcastResearchWorkspaces,
   type AdminWorkspace,
   type AdminWorkspaceView,
 } from '@/services/adminWorkspaces'
@@ -137,6 +138,73 @@ describe('listAdminWorkspaces', () => {
     )
     expect(membershipBuilder.eq).toHaveBeenCalledWith('role', 'owner')
     expect(membershipBuilder.in).toHaveBeenNthCalledWith(2, 'status', ['active', 'invited'])
+  })
+})
+
+describe('listPodcastResearchWorkspaces', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('places the platform owner workspace before available client workspaces', async () => {
+    const defaultWorkspace: AdminWorkspace = {
+      id: 'd4444444-4444-4444-8444-44444444444d',
+      name: 'Get On A Pod',
+      slug: 'get-on-a-pod',
+      status: 'active',
+      is_default: true,
+    }
+
+    const clientWorkspaceResult = Promise.resolve({ data: [workspace], error: null })
+    const clientWorkspaceBuilder = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      order: vi.fn(),
+    }
+    clientWorkspaceBuilder.select.mockReturnValue(clientWorkspaceBuilder)
+    clientWorkspaceBuilder.eq.mockReturnValue(clientWorkspaceBuilder)
+    clientWorkspaceBuilder.order
+      .mockReturnValueOnce(clientWorkspaceBuilder)
+      .mockReturnValueOnce(clientWorkspaceResult)
+
+    const defaultWorkspaceBuilder = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: defaultWorkspace, error: null }),
+    }
+    defaultWorkspaceBuilder.select.mockReturnValue(defaultWorkspaceBuilder)
+    defaultWorkspaceBuilder.eq.mockReturnValue(defaultWorkspaceBuilder)
+
+    const membershipResult = Promise.resolve({
+      data: [{
+        workspace_id: workspace.id,
+        status: 'active',
+        provisioning_method: 'email_invite',
+        password_change_required: false,
+      }],
+      error: null,
+    })
+    const membershipBuilder = {
+      select: vi.fn(),
+      in: vi.fn(),
+      eq: vi.fn(),
+    }
+    membershipBuilder.select.mockReturnValue(membershipBuilder)
+    membershipBuilder.in
+      .mockReturnValueOnce(membershipBuilder)
+      .mockReturnValueOnce(membershipResult)
+    membershipBuilder.eq.mockReturnValue(membershipBuilder)
+
+    let workspaceQueryCount = 0
+    from.mockImplementation((table: string) => {
+      if (table === 'workspace_memberships') return membershipBuilder
+      workspaceQueryCount += 1
+      return workspaceQueryCount === 1 ? clientWorkspaceBuilder : defaultWorkspaceBuilder
+    })
+
+    await expect(listPodcastResearchWorkspaces()).resolves.toEqual([defaultWorkspace, workspace])
+    expect(defaultWorkspaceBuilder.eq).toHaveBeenNthCalledWith(1, 'is_default', true)
+    expect(defaultWorkspaceBuilder.eq).toHaveBeenNthCalledWith(2, 'status', 'active')
   })
 })
 

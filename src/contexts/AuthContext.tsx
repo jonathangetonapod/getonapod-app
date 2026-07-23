@@ -75,6 +75,7 @@ const clearSensitiveAccountStorage = () => {
   }
   try {
     window.sessionStorage.removeItem('podcast-finder-state')
+    window.sessionStorage.removeItem('podcast-finder-client-scope-v3')
   } catch {
     // Storage can be unavailable in hardened/private browser contexts.
   }
