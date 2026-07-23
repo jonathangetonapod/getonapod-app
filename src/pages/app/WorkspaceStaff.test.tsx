@@ -227,6 +227,12 @@ describe('WorkspaceStaff', () => {
 
     expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
+    const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
+    expect(within(settingsNavigation).getByRole('link', { name: /General/ })).toHaveAttribute('href', '#workspace-general')
+    expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
+    expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
+    expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Client-facing brand', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Workspace users', level: 2 })).toBeInTheDocument()
     expect(screen.getByText('Manage the people who can access your workspace.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
@@ -313,7 +319,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByTestId('workspace-logo-settings')).toHaveClass('h-44', 'w-full', 'max-w-md')
+    expect(screen.getByTestId('workspace-logo-settings')).toHaveClass('h-24', 'w-40', 'sm:h-28', 'sm:w-48')
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove logo' }))
     const dialog = screen.getByRole('alertdialog', { name: 'Remove workspace logo?' })
@@ -452,7 +458,7 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
 
     expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
-    expect(screen.getByText('Manage settings for Acme Workspace.')).toBeInTheDocument()
+    expect(screen.getByText('Manage the identity, client experience, and team access for Acme Workspace.')).toBeInTheDocument()
     expect(screen.getByText('Manage the people who can access this workspace.')).toBeInTheDocument()
     expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
@@ -535,7 +541,7 @@ describe('WorkspaceStaff', () => {
 
     renderPage(workspaceId)
 
-    expect(await screen.findByText('Workspace users unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Workspace settings unavailable')).toBeInTheDocument()
     expect(screen.getByText('The workspace staff response did not match the selected workspace.')).toBeInTheDocument()
     expect(mockedInvite).not.toHaveBeenCalled()
     expect(mockedMutate).not.toHaveBeenCalled()
@@ -571,7 +577,7 @@ describe('WorkspaceStaff', () => {
 
     renderPage(workspaceId)
 
-    expect(await screen.findByText('Workspace users unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Workspace settings unavailable')).toBeInTheDocument()
     expect(screen.getByText('Platform-owner workspace management is not active on the backend yet.')).toBeInTheDocument()
     expect(screen.queryByText(/did not match the signed-in account/i)).not.toBeInTheDocument()
   })

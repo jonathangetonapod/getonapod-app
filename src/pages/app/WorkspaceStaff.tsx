@@ -213,7 +213,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
   useEffect(() => {
     if (staffQuery.error) {
-      toast.error(staffQuery.error instanceof Error ? staffQuery.error.message : 'Workspace users could not be loaded.')
+      toast.error(staffQuery.error instanceof Error ? staffQuery.error.message : 'Workspace settings could not be loaded.')
     }
   }, [staffQuery.error])
 
@@ -447,313 +447,407 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       }
     : undefined
 
+  const settingsNavigation = [
+    { href: '#workspace-general', label: 'General', description: 'Workspace identity', icon: Building2 },
+    { href: '#client-branding', label: 'Client branding', description: 'Logo, name, and colors', icon: Palette },
+    { href: '#workspace-access', label: 'Team & access', description: 'Users, roles, and passwords', icon: Users },
+  ]
+
   const body = !validWorkspaceId
     ? <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>The workspace address is invalid.</CardDescription></CardHeader></Card>
     : staffQuery.isLoading
-      ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" aria-label="Loading workspace users" /></div>
+      ? <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" aria-label="Loading workspace settings" /></div>
       : staffQuery.error || !data
         ? (
             <Card>
-              <CardHeader><CardTitle>Workspace users unavailable</CardTitle><CardDescription>{staffQuery.error instanceof Error ? staffQuery.error.message : 'Workspace users could not be loaded.'}</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Workspace settings unavailable</CardTitle><CardDescription>{staffQuery.error instanceof Error ? staffQuery.error.message : 'Workspace settings could not be loaded.'}</CardDescription></CardHeader>
               <CardContent><Button variant="outline" onClick={() => void staffQuery.refetch()}>Try again</Button></CardContent>
             </Card>
           )
         : (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-                <p className="text-muted-foreground">
-                  {isPlatformWorkspace
-                    ? `Manage settings for ${data.workspace.name}.`
-                    : 'Manage your workspace.'}
-                </p>
-              </div>
-
-              <div className="border-t pt-6">
-                <h2 className="text-xl font-semibold tracking-tight">Workspace branding</h2>
-                <p className="text-muted-foreground">Control the agency identity clients see on shared dashboards and onboarding.</p>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" />Workspace name</CardTitle>
-                  <CardDescription>This private name appears in your workspace selector and inside the app.</CardDescription>
-                </CardHeader>
-                <CardContent className="max-w-xl space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="workspace-name">Workspace name</Label>
-                    <Input
-                      id="workspace-name"
-                      maxLength={120}
-                      value={workspaceNameDraft}
-                      disabled={!canManageWorkspaceName || workspaceNameMutation.isPending}
-                      onChange={(event) => setWorkspaceNameDraft(event.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">Clients do not see this name unless you also use it as the public agency name below.</p>
+            <div className="mx-auto w-full max-w-7xl space-y-8 pb-12">
+              <header className="flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
+                <div className="space-y-3">
+                  <Badge variant="secondary" className="w-fit gap-1.5 rounded-full px-3 py-1 font-medium">
+                    <Building2 className="h-3.5 w-3.5" />
+                    {data.workspace.name}
+                  </Badge>
+                  <div>
+                    <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
+                    <p className="mt-1.5 max-w-2xl text-muted-foreground">
+                      {isPlatformWorkspace
+                        ? `Manage the identity, client experience, and team access for ${data.workspace.name}.`
+                        : 'Manage your workspace identity, client experience, and team access.'}
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      disabled={!canManageWorkspaceName || !workspaceNameDirty || workspaceNameMutation.isPending}
-                      onClick={() => workspaceNameMutation.mutate()}
-                    >
-                      {workspaceNameMutation.isPending
-                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        : <Save className="mr-2 h-4 w-4" />}
-                      Save workspace name
-                    </Button>
-                    {workspaceNameDirty ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        disabled={workspaceNameMutation.isPending}
-                        onClick={() => setWorkspaceNameDraft(data.workspace.name)}
-                      >
-                        Reset
-                      </Button>
-                    ) : null}
-                  </div>
-                  {!canManageWorkspaceName ? (
-                    <p className="text-sm text-muted-foreground">Workspace name controls will activate when the settings backend is released.</p>
-                  ) : null}
-                </CardContent>
-              </Card>
+                </div>
+                <Badge variant="outline" className="w-fit gap-2 rounded-full px-3 py-1.5 text-xs font-medium">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Workspace active
+                </Badge>
+              </header>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" />Client-facing brand</CardTitle>
-                  <CardDescription>This name and color system appears on dashboards your agency shares with clients.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-7 lg:grid-cols-[minmax(0,30rem)_1fr]">
-                  <div className="space-y-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
-                      <Input
-                        id="client-brand-name"
-                        maxLength={120}
-                        value={clientBrandDraft.client_brand_name}
-                        disabled={!canManageClientBranding || clientBrandMutation.isPending}
-                        onChange={(event) => setClientBrandDraft((current) => ({
-                          ...current,
-                          client_brand_name: event.target.value,
-                        }))}
-                        placeholder={data.workspace.name}
-                      />
-                      <p className="text-xs text-muted-foreground">Use the public agency or consultant name clients recognize. This can differ from your private workspace name.</p>
+              <div className="grid items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)]">
+                <aside className="min-w-0 lg:sticky lg:top-28">
+                  <p className="mb-2 hidden px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:block">
+                    Workspace settings
+                  </p>
+                  <nav aria-label="Settings sections" className="grid grid-cols-3 gap-2 lg:grid-cols-1 lg:gap-1">
+                    {settingsNavigation.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <a
+                          key={item.href}
+                          href={item.href}
+                          className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3 py-3 text-left transition hover:border-primary/25 hover:bg-muted/60 lg:border-transparent lg:bg-transparent"
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition group-hover:bg-background group-hover:text-foreground">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-semibold sm:text-sm">{item.label}</span>
+                            <span className="mt-0.5 hidden truncate text-xs text-muted-foreground lg:block">{item.description}</span>
+                          </span>
+                        </a>
+                      )
+                    })}
+                  </nav>
+                  <div className="mt-5 hidden rounded-xl border border-border/70 bg-muted/25 p-3 text-xs leading-5 text-muted-foreground lg:block">
+                    Public brand changes appear on shared client dashboards and onboarding pages.
+                  </div>
+                </aside>
+
+                <div className="min-w-0 space-y-12">
+                  <section id="workspace-general" className="scroll-mt-28 space-y-4" aria-labelledby="workspace-general-title">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace</p>
+                      <h2 id="workspace-general-title" className="mt-1 text-2xl font-semibold tracking-tight">General</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">The private identity your team sees inside the app.</p>
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {[
-                        { key: 'client_brand_primary_color' as const, label: 'Primary color' },
-                        { key: 'client_brand_accent_color' as const, label: 'Accent color' },
-                      ].map((field) => {
-                        const value = clientBrandDraft[field.key]
-                        const pickerValue = /^#[0-9A-F]{6}$/iu.test(value) ? value : '#0D1B2A'
-                        return (
-                          <div key={field.key} className="space-y-2">
-                            <Label htmlFor={field.key}>{field.label}</Label>
-                            <div className="flex gap-2">
+                    <Card className="overflow-hidden border-border/70 shadow-sm">
+                      <CardContent className="p-0">
+                        <div className="grid gap-5 p-6 sm:p-7 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+                          <div>
+                            <p className="font-semibold">Workspace name</p>
+                            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                              Used in your workspace selector and throughout the private app.
+                            </p>
+                          </div>
+                          <div className="max-w-xl space-y-3">
+                            <Label htmlFor="workspace-name">Workspace name</Label>
+                            <Input
+                              id="workspace-name"
+                              maxLength={120}
+                              value={workspaceNameDraft}
+                              disabled={!canManageWorkspaceName || workspaceNameMutation.isPending}
+                              onChange={(event) => setWorkspaceNameDraft(event.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">Clients only see this name if you also use it as the public agency name.</p>
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!canManageWorkspaceName || !workspaceNameDirty || workspaceNameMutation.isPending}
+                                onClick={() => workspaceNameMutation.mutate()}
+                              >
+                                {workspaceNameMutation.isPending
+                                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  : <Save className="mr-2 h-4 w-4" />}
+                                Save workspace name
+                              </Button>
+                              {workspaceNameDirty ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={workspaceNameMutation.isPending}
+                                  onClick={() => setWorkspaceNameDraft(data.workspace.name)}
+                                >
+                                  Reset
+                                </Button>
+                              ) : null}
+                            </div>
+                            {!canManageWorkspaceName ? (
+                              <p className="text-sm text-muted-foreground">Workspace name controls are not available for your role.</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </section>
+
+                  <section id="client-branding" className="scroll-mt-28 space-y-4" aria-labelledby="client-branding-title">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">White label</p>
+                        <h2 id="client-branding-title" className="mt-1 text-2xl font-semibold tracking-tight">Client-facing brand</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Control the identity clients see on dashboards and onboarding.</p>
+                      </div>
+                      <Badge variant="outline" className="w-fit rounded-full">Client visible</Badge>
+                    </div>
+
+                    <Card className="overflow-hidden border-border/70 shadow-sm">
+                      <CardContent className="p-0">
+                        <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.88fr)]">
+                          <div className="space-y-6 p-6 sm:p-7">
+                            <div className="space-y-2">
+                              <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
                               <Input
-                                aria-label={`${field.label} picker`}
-                                type="color"
-                                value={pickerValue}
+                                id="client-brand-name"
+                                maxLength={120}
+                                value={clientBrandDraft.client_brand_name}
                                 disabled={!canManageClientBranding || clientBrandMutation.isPending}
                                 onChange={(event) => setClientBrandDraft((current) => ({
                                   ...current,
-                                  [field.key]: event.target.value.toUpperCase(),
+                                  client_brand_name: event.target.value,
                                 }))}
-                                className="h-10 w-12 cursor-pointer p-1"
+                                placeholder={data.workspace.name}
                               />
-                              <Input
-                                id={field.key}
-                                value={value}
-                                maxLength={7}
-                                spellCheck={false}
-                                disabled={!canManageClientBranding || clientBrandMutation.isPending}
-                                onChange={(event) => setClientBrandDraft((current) => ({
-                                  ...current,
-                                  [field.key]: event.target.value.toUpperCase(),
-                                }))}
-                                className="font-mono uppercase"
-                              />
+                              <p className="text-xs text-muted-foreground">Use the agency or consultant name your clients recognize.</p>
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              {[
+                                { key: 'client_brand_primary_color' as const, label: 'Primary color' },
+                                { key: 'client_brand_accent_color' as const, label: 'Accent color' },
+                              ].map((field) => {
+                                const value = clientBrandDraft[field.key]
+                                const pickerValue = /^#[0-9A-F]{6}$/iu.test(value) ? value : '#0D1B2A'
+                                return (
+                                  <div key={field.key} className="space-y-2">
+                                    <Label htmlFor={field.key}>{field.label}</Label>
+                                    <div className="flex gap-2">
+                                      <Input
+                                        aria-label={`${field.label} picker`}
+                                        type="color"
+                                        value={pickerValue}
+                                        disabled={!canManageClientBranding || clientBrandMutation.isPending}
+                                        onChange={(event) => setClientBrandDraft((current) => ({
+                                          ...current,
+                                          [field.key]: event.target.value.toUpperCase(),
+                                        }))}
+                                        className="h-10 w-12 cursor-pointer p-1"
+                                      />
+                                      <Input
+                                        id={field.key}
+                                        value={value}
+                                        maxLength={7}
+                                        spellCheck={false}
+                                        disabled={!canManageClientBranding || clientBrandMutation.isPending}
+                                        onChange={(event) => setClientBrandDraft((current) => ({
+                                          ...current,
+                                          [field.key]: event.target.value.toUpperCase(),
+                                        }))}
+                                        className="font-mono uppercase"
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            <div className="border-t border-border/70 pt-6">
+                              <div className="mb-4 flex items-start gap-3">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                                  <ImageIcon className="h-4 w-4" />
+                                </span>
+                                <div>
+                                  <p className="font-semibold">Agency logo</p>
+                                  <p className="mt-0.5 text-sm text-muted-foreground">PNG, JPEG, or WebP up to 2 MB.</p>
+                                </div>
+                              </div>
+                              <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+                                <WorkspaceBrandLogo
+                                  logoUrl={logoUrl}
+                                  workspaceName={data.workspace.name}
+                                  workspaceInitials={workspaceInitials}
+                                  placement="settings"
+                                />
+                                <div className="space-y-3">
+                                  <p className="text-sm leading-6 text-muted-foreground">
+                                    Shown without a colored backdrop so the original artwork stays intact.
+                                  </p>
+                                  <Input
+                                    ref={logoInputRef}
+                                    id="workspace-logo"
+                                    aria-label="Workspace logo file"
+                                    type="file"
+                                    className="sr-only"
+                                    accept={WORKSPACE_LOGO_MIME_TYPES.join(',')}
+                                    disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
+                                    onChange={(event) => {
+                                      const file = event.currentTarget.files?.[0]
+                                      event.currentTarget.value = ''
+                                      if (file) logoMutation.mutate(file)
+                                    }}
+                                  />
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
+                                      onClick={() => logoInputRef.current?.click()}
+                                    >
+                                      {logoMutation.isPending
+                                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        : <Upload className="mr-2 h-4 w-4" />}
+                                      {data.workspace.logo_path ? 'Replace logo' : 'Upload logo'}
+                                    </Button>
+                                    {data.workspace.logo_path && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-destructive hover:text-destructive"
+                                        disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
+                                        onClick={() => setLogoRemoveOpen(true)}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" />Remove logo
+                                      </Button>
+                                    )}
+                                  </div>
+                                  {!canManageBranding && (
+                                    <p className="text-sm text-muted-foreground">Logo controls are not available for your role.</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {!canManageClientBranding ? (
+                              <p className="text-sm text-muted-foreground">Client-facing brand controls are not available for your role.</p>
+                            ) : null}
+                          </div>
+
+                          <div className="border-t border-border/70 bg-muted/25 p-4 sm:p-6 xl:border-l xl:border-t-0">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live preview</p>
+                              <Badge variant="secondary" className="rounded-full text-[10px]">Shared dashboard</Badge>
+                            </div>
+                            <div
+                              className="relative min-h-80 overflow-hidden rounded-2xl border border-white/10 p-6 shadow-sm"
+                              style={{
+                                background: `linear-gradient(135deg, ${clientBrandDraft.client_brand_primary_color} 0%, #102033 140%)`,
+                                color: readableColor(clientBrandDraft.client_brand_primary_color),
+                              }}
+                              aria-label="Client dashboard brand preview"
+                            >
+                              <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                              <div className="relative flex items-center gap-3">
+                                {logoUrl ? (
+                                  <span className="flex h-12 w-20 items-center justify-center p-1">
+                                    <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
+                                  </span>
+                                ) : (
+                                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-sm font-bold ring-1 ring-white/20">
+                                    {workspaceInitials}
+                                  </span>
+                                )}
+                                <div>
+                                  <p className="font-semibold">{clientBrandDraft.client_brand_name || data.workspace.name}</p>
+                                  <p className="mt-0.5 text-xs opacity-65">Private podcast campaign</p>
+                                </div>
+                              </div>
+                              <div className="relative mt-12 max-w-sm">
+                                <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Prepared for your client</p>
+                                <p className="mt-3 text-3xl font-semibold leading-tight">The right rooms for their next big ideas.</p>
+                                <span
+                                  className="mt-6 inline-flex rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
+                                  style={{
+                                    backgroundColor: clientBrandDraft.client_brand_accent_color,
+                                    color: readableColor(clientBrandDraft.client_brand_accent_color),
+                                  }}
+                                >
+                                  Review top matches
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        )
-                      })}
-                    </div>
+                        </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        disabled={!canManageClientBranding || !clientBrandDirty || clientBrandMutation.isPending}
-                        onClick={() => clientBrandMutation.mutate()}
-                      >
-                        {clientBrandMutation.isPending
-                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          : <Save className="mr-2 h-4 w-4" />}
-                        Save client brand
-                      </Button>
-                      {clientBrandDirty ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          disabled={clientBrandMutation.isPending}
-                          onClick={() => setClientBrandDraft({
-                            client_brand_name: data.workspace.client_brand_name,
-                            client_brand_primary_color: data.workspace.client_brand_primary_color,
-                            client_brand_accent_color: data.workspace.client_brand_accent_color,
-                          })}
-                        >
-                          Reset
-                        </Button>
-                      ) : null}
-                    </div>
-                    {!canManageClientBranding ? (
-                      <p className="text-sm text-muted-foreground">Client-facing name and color controls will activate when the branding backend is released.</p>
-                    ) : null}
-                  </div>
+                        <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/15 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+                          <p className="text-xs text-muted-foreground">Brand changes apply to every client dashboard in this workspace.</p>
+                          <div className="flex flex-wrap gap-2">
+                            {clientBrandDirty ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={clientBrandMutation.isPending}
+                                onClick={() => setClientBrandDraft({
+                                  client_brand_name: data.workspace.client_brand_name,
+                                  client_brand_primary_color: data.workspace.client_brand_primary_color,
+                                  client_brand_accent_color: data.workspace.client_brand_accent_color,
+                                })}
+                              >
+                                Reset
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={!canManageClientBranding || !clientBrandDirty || clientBrandMutation.isPending}
+                              onClick={() => clientBrandMutation.mutate()}
+                            >
+                              {clientBrandMutation.isPending
+                                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                : <Save className="mr-2 h-4 w-4" />}
+                              Save client brand
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </section>
 
-                  <div
-                    className="relative min-h-64 overflow-hidden rounded-3xl border p-6 shadow-sm"
-                    style={{
-                      background: `linear-gradient(135deg, ${clientBrandDraft.client_brand_primary_color} 0%, #102033 140%)`,
-                      color: readableColor(clientBrandDraft.client_brand_primary_color),
-                    }}
-                    aria-label="Client dashboard brand preview"
-                  >
-                    <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-                    <div className="relative flex items-center gap-3">
-                      {logoUrl ? (
-                        <span className="flex h-12 w-16 items-center justify-center rounded-xl bg-white p-2 shadow-sm">
-                          <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
-                        </span>
-                      ) : (
-                        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 text-sm font-bold ring-1 ring-white/20">
-                          {workspaceInitials}
-                        </span>
-                      )}
+                  <section id="workspace-access" className="scroll-mt-28 space-y-4" aria-labelledby="workspace-access-title">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <div>
-                        <p className="font-semibold">{clientBrandDraft.client_brand_name || data.workspace.name}</p>
-                        <p className="mt-0.5 text-xs opacity-65">Private podcast campaign</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Access</p>
+                        <h2 id="workspace-access-title" className="mt-1 text-2xl font-semibold tracking-tight">Workspace users</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {isPlatformWorkspace
+                            ? 'Manage the people who can access this workspace.'
+                            : 'Manage the people who can access your workspace.'}
+                        </p>
                       </div>
-                    </div>
-                    <div className="relative mt-10 max-w-sm">
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Prepared for your client</p>
-                      <p className="mt-3 text-3xl font-semibold leading-tight">The right rooms for their next big ideas.</p>
-                      <span
-                        className="mt-6 inline-flex rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
-                        style={{
-                          backgroundColor: clientBrandDraft.client_brand_accent_color,
-                          color: readableColor(clientBrandDraft.client_brand_accent_color),
+                      <Button
+                        disabled={!canInvite}
+                        onClick={() => {
+                          setInvite({ ...emptyInvite, role: allowedInviteRoles[0] || 'member' })
+                          setInviteMethod('email_invite')
+                          setInviteOpen(true)
                         }}
                       >
-                        Review top matches
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><ImageIcon className="h-5 w-5" />Workspace logo</CardTitle>
-                  <CardDescription>Use a PNG, JPEG, or WebP image up to 2 MB.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,28rem)_1fr] lg:items-center">
-                  <WorkspaceBrandLogo
-                    logoUrl={logoUrl}
-                    workspaceName={data.workspace.name}
-                    workspaceInitials={workspaceInitials}
-                    placement="settings"
-                  />
-                  <div className="space-y-3">
-                    <div>
-                      <p className="font-semibold">Brand preview</p>
-                      <p className="text-sm text-muted-foreground">
-                        Your logo appears on a clean, transparent surface without a colored backdrop.
-                      </p>
-                    </div>
-                    <Input
-                      ref={logoInputRef}
-                      id="workspace-logo"
-                      aria-label="Workspace logo file"
-                      type="file"
-                      className="sr-only"
-                      accept={WORKSPACE_LOGO_MIME_TYPES.join(',')}
-                      disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
-                      onChange={(event) => {
-                        const file = event.currentTarget.files?.[0]
-                        event.currentTarget.value = ''
-                        if (file) logoMutation.mutate(file)
-                      }}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
-                        onClick={() => logoInputRef.current?.click()}
-                      >
-                        {logoMutation.isPending
-                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          : <Upload className="mr-2 h-4 w-4" />}
-                        {data.workspace.logo_path ? 'Replace logo' : 'Upload logo'}
+                        <UserPlus className="mr-2 h-4 w-4" />Invite user
                       </Button>
-                      {data.workspace.logo_path && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="text-destructive"
-                          disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
-                          onClick={() => setLogoRemoveOpen(true)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />Remove logo
-                        </Button>
-                      )}
                     </div>
-                    {!canManageBranding && (
-                      <p className="text-sm text-muted-foreground">Workspace branding controls are not active on the backend yet.</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
 
-              <div className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tight">Workspace users</h2>
-                  <p className="text-muted-foreground">
-                    {isPlatformWorkspace
-                      ? 'Manage the people who can access this workspace.'
-                      : 'Manage the people who can access your workspace.'}
-                  </p>
-                </div>
-                <Button
-                  disabled={!canInvite}
-                  onClick={() => {
-                    setInvite({ ...emptyInvite, role: allowedInviteRoles[0] || 'member' })
-                    setInviteMethod('email_invite')
-                    setInviteOpen(true)
-                  }}
-                >
-                  <UserPlus className="mr-2 h-4 w-4" />Invite user
-                </Button>
-              </div>
+                    <div className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
+                      <div className="px-3 py-4 sm:px-5">
+                        <p className="text-xs text-muted-foreground">Total users</p>
+                        <p className="mt-1 text-2xl font-semibold tracking-tight">{staff.length}</p>
+                      </div>
+                      <div className="px-3 py-4 sm:px-5">
+                        <p className="text-xs text-muted-foreground">Active</p>
+                        <p className="mt-1 text-2xl font-semibold tracking-tight">{staff.filter((member) => member.status === 'active').length}</p>
+                      </div>
+                      <div className="px-3 py-4 sm:px-5">
+                        <p className="text-xs text-muted-foreground">Pending access</p>
+                        <p className="mt-1 text-2xl font-semibold tracking-tight">{staff.filter((member) => member.status === 'invited' || member.status === 'provisioning').length}</p>
+                      </div>
+                    </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <Card><CardHeader className="pb-2"><CardDescription>Total users</CardDescription><CardTitle>{staff.length}</CardTitle></CardHeader></Card>
-                <Card><CardHeader className="pb-2"><CardDescription>Active</CardDescription><CardTitle>{staff.filter((member) => member.status === 'active').length}</CardTitle></CardHeader></Card>
-                <Card><CardHeader className="pb-2"><CardDescription>Pending access</CardDescription><CardTitle>{staff.filter((member) => member.status === 'invited' || member.status === 'provisioning').length}</CardTitle></CardHeader></Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Agency team</CardTitle>
-                  <CardDescription>Every user belongs to this workspace only. Client portal users are managed separately on each client.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto rounded-md border">
+                    <Card className="overflow-hidden border-border/70 shadow-sm">
+                      <CardHeader className="border-b border-border/70 bg-muted/15">
+                        <CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5" />Agency team</CardTitle>
+                        <CardDescription>Workspace users are separate from client portal users, which are managed inside each client.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined / added</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                      <TableHeader className="bg-muted/30"><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined / added</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                       <TableBody>
                         {staff.map((member) => {
                           const manageable = member.allowed_actions.length > 0
@@ -823,9 +917,12 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                         })}
                       </TableBody>
                     </Table>
-                  </div>
-                </CardContent>
-              </Card>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </section>
+                </div>
+              </div>
             </div>
           )
 

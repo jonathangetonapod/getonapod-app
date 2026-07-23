@@ -185,19 +185,19 @@ interface WorkspaceBrandLogoProps {
 const brandLogoSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
   sidebar: 'h-24 w-full rounded-2xl',
   mobile: 'h-12 w-20 rounded-xl',
-  settings: 'h-44 w-full max-w-md rounded-2xl sm:h-52',
+  settings: 'h-24 w-40 rounded-xl sm:h-28 sm:w-48',
 }
 
 const brandLogoImageSpacing: Record<WorkspaceBrandLogoProps['placement'], string> = {
   sidebar: 'p-2',
   mobile: 'p-1.5',
-  settings: 'p-4 sm:p-5',
+  settings: 'p-2 sm:p-3',
 }
 
 const brandLogoFallbackSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
   sidebar: 'text-3xl',
   mobile: 'text-sm',
-  settings: 'text-5xl',
+  settings: 'text-2xl',
 }
 
 export const WorkspaceBrandLogo = ({
