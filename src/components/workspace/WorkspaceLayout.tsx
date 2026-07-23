@@ -1,11 +1,29 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   BookOpen,
   Building2,
   Calendar,
   ClipboardList,
   Database,
+  GripVertical,
   LayoutDashboard,
   LogOut,
   Mail,
@@ -48,6 +66,103 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'unibox', name: 'Unibox', segment: 'unibox', icon: Users, enabled: false },
   { id: 'settings', name: 'Settings', segment: 'settings', icon: Settings, enabled: false },
 ]
+
+const WORKSPACE_NAV_ORDER_STORAGE_PREFIX = 'workspace-nav-order-v1'
+
+function orderedWorkspaceNavItems(value: unknown): WorkspaceNavItem[] {
+  if (!Array.isArray(value)) return [...workspaceNavItems]
+
+  const itemsById = new Map(workspaceNavItems.map((item) => [item.id, item]))
+  const seen = new Set<string>()
+  const ordered = value.flatMap((candidate) => {
+    if (typeof candidate !== 'string' || seen.has(candidate)) return []
+    const item = itemsById.get(candidate)
+    if (!item) return []
+    seen.add(candidate)
+    return [item]
+  })
+  return [...ordered, ...workspaceNavItems.filter((item) => !seen.has(item.id))]
+}
+
+interface SortableWorkspaceNavItemProps {
+  item: WorkspaceNavItem
+  href: string
+  isActive: boolean
+  isEnabled: boolean
+  isOrganizing: boolean
+  restrictedLabel: string
+  onNavigate: () => void
+}
+
+const SortableWorkspaceNavItem = ({
+  item,
+  href,
+  isActive,
+  isEnabled,
+  isOrganizing,
+  restrictedLabel,
+  onNavigate,
+}: SortableWorkspaceNavItemProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id, disabled: !isOrganizing })
+  const Icon = item.icon
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <li ref={setNodeRef} style={style} className={cn(isDragging && 'relative z-10 opacity-60')}>
+      {isOrganizing ? (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Drag ${item.name}`}
+          className={cn(
+            'flex w-full touch-none cursor-grab items-center gap-2 rounded-lg border border-transparent px-2 py-2 text-left text-sm font-medium active:cursor-grabbing',
+            isActive ? 'border-primary/30 bg-primary/5 text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          <GripVertical className="h-4 w-4 shrink-0" />
+          <Icon className="h-5 w-5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{item.name}</span>
+          {!isEnabled && <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{restrictedLabel}</Badge>}
+        </button>
+      ) : isEnabled ? (
+        <Link
+          to={href}
+          onClick={onNavigate}
+          className={cn(
+            'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+            isActive
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          <Icon className="h-5 w-5 shrink-0" />
+          <span>{item.name}</span>
+        </Link>
+      ) : (
+        <button
+          type="button"
+          disabled
+          className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-muted-foreground/70"
+        >
+          <Icon className="h-5 w-5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{item.name}</span>
+          <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{restrictedLabel}</Badge>
+        </button>
+      )}
+    </li>
+  )
+}
 
 export interface PlatformWorkspaceConfig {
   workspaceName: string
@@ -125,6 +240,8 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [navItems, setNavItems] = useState<WorkspaceNavItem[]>(workspaceNavItems)
+  const [isOrganizing, setIsOrganizing] = useState(false)
   const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
   const workspaceDisplayName = isPlatformAdmin && !platformWorkspace && workspace?.is_default
     ? 'My Workspace'
@@ -144,6 +261,55 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     || 'Workspace user'
   const viewerRole = platformWorkspace ? 'platform owner' : membership?.role
   const baseHref = platformWorkspace?.baseHref || '/app'
+  const navStorageIdentity = user?.id || user?.email?.trim().toLowerCase() || 'current-user'
+  const navStorageKey = `${WORKSPACE_NAV_ORDER_STORAGE_PREFIX}:${navStorageIdentity}`
+  const isDefaultNavOrder = navItems.every((item, index) => item.id === workspaceNavItems[index]?.id)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  useEffect(() => {
+    let savedOrder: unknown = null
+    try {
+      const stored = window.localStorage.getItem(navStorageKey)
+      savedOrder = stored ? JSON.parse(stored) : null
+    } catch {
+      // The default order remains available when browser storage is unavailable or invalid.
+    }
+    setNavItems(orderedWorkspaceNavItems(savedOrder))
+    setIsOrganizing(false)
+  }, [navStorageKey])
+
+  const saveNavOrder = (items: WorkspaceNavItem[]) => {
+    try {
+      window.localStorage.setItem(navStorageKey, JSON.stringify(items.map((item) => item.id)))
+    } catch {
+      // The reordered navigation remains usable in this tab when storage is unavailable.
+    }
+  }
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return
+    setNavItems((current) => {
+      const oldIndex = current.findIndex((item) => item.id === active.id)
+      const newIndex = current.findIndex((item) => item.id === over.id)
+      if (oldIndex < 0 || newIndex < 0) return current
+      const reordered = arrayMove(current, oldIndex, newIndex)
+      saveNavOrder(reordered)
+      return reordered
+    })
+  }
+
+  const handleResetNavOrder = () => {
+    setNavItems([...workspaceNavItems])
+    try {
+      window.localStorage.removeItem(navStorageKey)
+    } catch {
+      // The default order still applies in this tab when storage is unavailable.
+    }
+    toast.success('Sidebar order reset.')
+  }
 
   const handleSignOut = async () => {
     try {
@@ -201,47 +367,62 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           </div>
 
           <nav aria-label="Workspace navigation" className="flex-1 overflow-y-auto px-3 py-4">
-            <ul className="space-y-1">
-              {workspaceNavItems.map((item) => {
-                const Icon = item.icon
-                const href = `${baseHref}/${item.segment}`
-                const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
-                const isSettings = item.id === 'settings'
-                const itemEnabled = isSettings
-                  ? Boolean(isPlatformAdmin || platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin')
-                  : item.enabled
+            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Navigation</p>
+              <div className="flex items-center gap-1">
+                {isOrganizing && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    disabled={isDefaultNavOrder}
+                    onClick={handleResetNavOrder}
+                  >
+                    Reset
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant={isOrganizing ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setIsOrganizing((current) => !current)}
+                >
+                  {isOrganizing ? 'Done' : 'Organize'}
+                </Button>
+              </div>
+            </div>
+            {isOrganizing && (
+              <p className="mb-2 px-1 text-xs text-muted-foreground">Drag pages into your preferred order. Changes save automatically.</p>
+            )}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={navItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-1">
+                  {navItems.map((item) => {
+                    const href = `${baseHref}/${item.segment}`
+                    const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
+                    const isSettings = item.id === 'settings'
+                    const itemEnabled = isSettings
+                      ? Boolean(isPlatformAdmin || platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin')
+                      : item.enabled
 
-                return (
-                  <li key={item.id}>
-                    {itemEnabled ? (
-                      <Link
-                        to={href}
-                        onClick={() => setSidebarOpen(false)}
-                        className={cn(
-                          'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                        )}
-                      >
-                        <Icon className="h-5 w-5 shrink-0" />
-                        <span>{item.name}</span>
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled
-                        className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-muted-foreground/70"
-                      >
-                        <Icon className="h-5 w-5 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{isSettings ? 'Owner/Admin' : 'Soon'}</Badge>
-                      </button>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+                    return (
+                      <SortableWorkspaceNavItem
+                        key={item.id}
+                        item={item}
+                        href={href}
+                        isActive={isActive}
+                        isEnabled={itemEnabled}
+                        isOrganizing={isOrganizing}
+                        restrictedLabel={isSettings ? 'Owner/Admin' : 'Soon'}
+                        onNavigate={() => setSidebarOpen(false)}
+                      />
+                    )
+                  })}
+                </ul>
+              </SortableContext>
+            </DndContext>
           </nav>
 
           <div className="border-t border-border p-4">

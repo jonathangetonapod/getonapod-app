@@ -176,7 +176,7 @@ describe('PodcastFinder', () => {
     renderPage({ workspaceScoped: true })
 
     expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
-    expect(await screen.findByRole('combobox', { name: 'Find podcasts for' })).toBeInTheDocument()
+    expect(await screen.findByRole('combobox', { name: 'Client' })).toBeInTheDocument()
     expect(await screen.findByText('Ready for Own Client’s weekly discovery')).toBeInTheDocument()
     expect(screen.queryByText('Choose the client workspace')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Workspace')).not.toBeInTheDocument()
@@ -188,6 +188,19 @@ describe('PodcastFinder', () => {
     )
     expect(mockedWorkspaces).not.toHaveBeenCalled()
     expect(mockedClients).not.toHaveBeenCalled()
+  })
+
+  it('shows one focused empty state when the workspace has no active clients', async () => {
+    mockedWorkspaceClients.mockResolvedValue([])
+    renderPage({ workspaceScoped: true })
+
+    expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
+    expect(await screen.findByText('No active clients')).toBeInTheDocument()
+    expect(screen.getAllByText('No active clients')).toHaveLength(1)
+    expect(screen.getByText('Add or reactivate a client to start finding podcasts.')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Client' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Podscan quota')).not.toBeInTheDocument()
+    expect(screen.queryByText(/existing podcasts excluded/i)).not.toBeInTheDocument()
   })
 
   it('lets the user switch between every active client in the workspace', async () => {
@@ -218,7 +231,7 @@ describe('PodcastFinder', () => {
     }))
     renderPage({ workspaceScoped: true })
 
-    const selector = await screen.findByRole('combobox', { name: 'Find podcasts for' })
+    const selector = await screen.findByRole('combobox', { name: 'Client' })
     await screen.findByText('Ready for Own Client’s weekly discovery')
     fireEvent.click(selector)
     fireEvent.click(await screen.findByRole('option', { name: 'Second Client' }))
@@ -274,9 +287,9 @@ describe('PodcastFinder', () => {
     renderPage({ fixedClientId: clientId })
 
     expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
-    expect(screen.getByText('Get On A Pod · Own Client')).toBeInTheDocument()
+    expect(screen.getByText('Ready for Own Client’s weekly discovery')).toBeInTheDocument()
     expect(screen.queryByLabelText('Workspace')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Find podcasts for')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Client')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to clients' })).toHaveAttribute('href', '/app/clients')
     expect(mockedResearchContext).toHaveBeenCalledWith(myWorkspace.id, clientId)
     expect(mockedWorkspaces).not.toHaveBeenCalled()
@@ -314,7 +327,7 @@ describe('PodcastFinder', () => {
 
     expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Workspace')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Find podcasts for')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Client')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to clients' })).toHaveAttribute(
       'href',
       `/app/workspaces/${agencyWorkspace.id}/clients`,

@@ -40,6 +40,7 @@ function renderLayout(platformWorkspace?: PlatformWorkspaceConfig) {
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     signOut.mockResolvedValue(undefined)
     mockedUseAuth.mockReturnValue({
       user: {
@@ -74,12 +75,36 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
 
-    const disabledModules = within(navigation).getAllByRole('button')
+    const disabledModules = within(navigation).getAllByRole('button').filter((button) => button.hasAttribute('disabled'))
     expect(disabledModules).toHaveLength(5)
     disabledModules.forEach((module) => expect(module).toBeDisabled())
     expect(screen.getAllByText('Acme Workspace')).toHaveLength(3)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+  })
+
+  it('restores and resets a navigation order saved for the signed-in user', async () => {
+    const storageKey = 'workspace-nav-order-v1:owner@example.com'
+    window.localStorage.setItem(storageKey, JSON.stringify(['clients', 'podcast-finder', 'overview']))
+    renderLayout()
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    await waitFor(() => expect(within(navigation).getAllByRole('listitem').slice(0, 3).map((item) => (
+      item.querySelector('span')?.textContent
+    ))).toEqual(['Clients', 'Podcast Finder', 'Overview']))
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Organize' }))
+    expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(expectedNavigation.length)
+    expect(within(navigation).getByText(/changes save automatically/i)).toBeInTheDocument()
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Reset' }))
+    expect(within(navigation).getAllByRole('listitem').map((item) => (
+      item.querySelector('span')?.textContent
+    ))).toEqual(expectedNavigation)
+    expect(window.localStorage.getItem(storageKey)).toBeNull()
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Done' }))
+    expect(within(navigation).getByRole('button', { name: 'Organize' })).toBeInTheDocument()
   })
 
   it('enables settings for an admin and keeps it unavailable to a member', () => {

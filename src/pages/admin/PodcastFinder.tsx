@@ -6,7 +6,6 @@ import {
   ArrowRight,
   BarChart3,
   Building2,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -16,13 +15,11 @@ import {
   Filter,
   Layers3,
   Loader2,
-  LockKeyhole,
   Mail,
   Play,
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Star,
@@ -964,25 +961,15 @@ export default function PodcastFinder({
       <div className="mx-auto w-full max-w-[1560px] space-y-5 pb-24">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="mb-1 flex items-center gap-2">
-              <Badge variant="secondary" className="gap-1">
-                <CalendarDays className="h-3.5 w-3.5" /> Weekly discovery
-              </Badge>
-              {selectedWorkspace && selectedClient && (
-                <Badge variant="outline" className="gap-1">
-                  <LockKeyhole className="h-3.5 w-3.5" /> {selectedWorkspace.name} · {selectedClient.name}
-                </Badge>
-              )}
-            </div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Podcast Finder</h1>
             <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-              Find and score new podcasts for every client. Previous exports, reviews, outreach, and bookings are filtered automatically.
+              Discover new podcasts for any client. Existing opportunities are filtered automatically.
             </p>
           </div>
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
-            {isClientSelectable && (
+            {isClientSelectable && (scopedClientsQuery.isLoading || scopedClientOptions.length > 0) && (
               <div className="min-w-64 space-y-1.5">
-                <Label htmlFor="finder-client-select">Find podcasts for</Label>
+                <Label htmlFor="finder-client-select">Client</Label>
                 <div className="flex gap-2">
                   <Select
                     value={clientId}
@@ -990,7 +977,7 @@ export default function PodcastFinder({
                     disabled={scopeLocked || scopedClientsQuery.isLoading || scopedClientOptions.length === 0}
                   >
                     <SelectTrigger id="finder-client-select" className="h-10 bg-card">
-                      <SelectValue placeholder={scopedClientsQuery.isLoading ? 'Loading clients…' : 'No active clients'} />
+                      <SelectValue placeholder="Loading clients…" />
                     </SelectTrigger>
                     <SelectContent>
                       {scopedClientOptions.map((client) => (
@@ -1004,22 +991,18 @@ export default function PodcastFinder({
                     </Button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {researchContextQuery.isLoading
-                    ? 'Loading client history…'
-                    : `${existingPodcastIds.size.toLocaleString()} existing podcast${existingPodcastIds.size === 1 ? '' : 's'} excluded`}
-                </p>
+                {!researchContextQuery.isLoading && existingPodcastIds.size > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Filtering {existingPodcastIds.size.toLocaleString()} previously used podcast{existingPodcastIds.size === 1 ? '' : 's'}
+                  </p>
+                )}
               </div>
             )}
             {isClientBound && <Button asChild variant="outline"><Link to={clientsHref}>Back to clients</Link></Button>}
-            <div className="rounded-lg border bg-card px-3 py-2 text-left lg:text-right">
+            {rateLimit?.remaining !== undefined && <div className="rounded-lg border bg-card px-3 py-2 text-left lg:text-right">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podscan quota</p>
-              <p className="text-sm font-semibold">
-                {rateLimit?.remaining !== undefined
-                  ? `${rateLimit.remaining.toLocaleString()}${rateLimit.limit !== undefined ? ` of ${rateLimit.limit.toLocaleString()}` : ''} remaining`
-                  : 'Shown after the first request'}
-              </p>
-            </div>
+              <p className="text-sm font-semibold">{rateLimit.remaining.toLocaleString()}{rateLimit.limit !== undefined ? ` of ${rateLimit.limit.toLocaleString()}` : ''} remaining</p>
+            </div>}
           </div>
         </div>
 
@@ -1035,7 +1018,7 @@ export default function PodcastFinder({
               <Users className="h-9 w-9 text-muted-foreground" />
               <div>
                 <p className="font-medium">No active clients</p>
-                <p className="text-sm text-muted-foreground">Add or reactivate a client before running weekly podcast discovery.</p>
+                <p className="text-sm text-muted-foreground">Add or reactivate a client to start finding podcasts.</p>
               </div>
               <Button asChild variant="outline"><Link to={clientsHref}>Open clients</Link></Button>
             </CardContent>
@@ -1051,28 +1034,15 @@ export default function PodcastFinder({
           </div>
         )}
 
-        {isWorkspaceScoped && selectedClient && (
-          <div className="flex flex-col gap-3 rounded-xl border bg-muted/25 p-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-semibold">{selectedClient.name}</p>
-                <Badge variant={selectedClient.bio ? 'secondary' : 'destructive'}>
-                  {selectedClient.bio ? 'Profile ready' : 'Profile required'}
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <ShieldCheck className="h-3 w-3" /> {existingPodcastIds.size.toLocaleString()} in client history
-                </Badge>
-                {selectedClient.email && <span className="text-xs text-muted-foreground">{selectedClient.email}</span>}
-              </div>
-              <p className="mt-1 line-clamp-2 max-w-4xl text-sm text-muted-foreground">
-                {selectedClient.bio || 'Add the approved onboarding answers or client bio before running discovery.'}
-              </p>
+        {isWorkspaceScoped && selectedClient && !selectedClient.bio && (
+          <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">Client profile required</p>
+              <p className="text-sm text-muted-foreground">Add an approved client bio before running discovery.</p>
             </div>
-            {!selectedClient.bio && (
-              <Button asChild variant="outline" size="sm" className="shrink-0">
-                <Link to={isClientBound ? onboardingHref : clientsHref}>{isClientBound ? 'Open onboarding' : 'Open clients'}</Link>
-              </Button>
-            )}
+            <Button asChild variant="outline" size="sm" className="shrink-0">
+              <Link to={isClientBound ? onboardingHref : clientsHref}>{isClientBound ? 'Open onboarding' : 'Open clients'}</Link>
+            </Button>
           </div>
         )}
 
