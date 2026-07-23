@@ -560,6 +560,20 @@ serve(async (req) => {
       })
     }
 
+    if (action === 'approve_answers') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id'])
+      const { data, error } = await admin.rpc('workspace_onboarding_approve_answers_v1', {
+        p_workspace_id: workspaceId,
+        p_instance_id: instanceId,
+        p_actor_user_id: user.id,
+        p_token_issued_at: tokenIssuedAt,
+      })
+      if (error) rpcError(error)
+      return jsonResponse(req, METHODS, 200, {
+        instance: await addSignedAssetUrls(admin, ensureWorkspaceResponse(data, workspaceId)),
+      })
+    }
+
     const operation = action
     let payload: Record<string, unknown> = {}
     let link: string | null = null

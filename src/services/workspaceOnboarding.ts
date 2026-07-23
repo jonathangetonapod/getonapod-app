@@ -530,6 +530,9 @@ export const approveOnboarding = (
   profile: PitchProfile,
 ) => instanceAction(workspaceId, instanceId, 'approve', { profile })
 
+export const approveOnboardingAnswers = (workspaceId: string, instanceId: string) =>
+  instanceAction(workspaceId, instanceId, 'approve_answers')
+
 export const retryOnboardingAi = (workspaceId: string, instanceId: string) =>
   instanceAction(workspaceId, instanceId, 'retry_ai')
 

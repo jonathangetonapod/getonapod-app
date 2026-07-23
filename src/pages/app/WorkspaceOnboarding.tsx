@@ -25,6 +25,7 @@ import { DEFAULT_ONBOARDING_ACCENT, renderOnboardingBrandText } from '@/lib/onbo
 import { onboardingActivityStage, onboardingStatusLabel, type OnboardingActivityStage } from '@/lib/onboardingActivity'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
+  approveOnboardingAnswers,
   archiveOnboardingInstance,
   archiveOnboardingTemplate,
   duplicateOnboardingTemplate,
@@ -266,6 +267,19 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       toast.success(variables.action === 'duplicate' ? 'Template duplicated.' : variables.action === 'default' ? 'Default template updated.' : 'Template archived.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the template.'),
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedInstanceId) throw new Error('No onboarding is selected.')
+      return approveOnboardingAnswers(workspaceId, selectedInstanceId)
+    },
+    onSuccess: async () => {
+      await refresh()
+      await detailQuery.refetch()
+      toast.success('Onboarding approved.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to approve onboarding.'),
   })
 
   const linkMutation = useMutation({
@@ -615,7 +629,10 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       <OnboardingReviewDialog
         open={Boolean(selectedInstanceId)}
         detail={detailQuery.data ?? null}
+        canManage={canManage}
+        busy={approveMutation.isPending || detailQuery.isFetching}
         onOpenChange={(open) => { if (!open) setSelectedInstanceId(null) }}
+        onApprove={() => approveMutation.mutate()}
       />
 
       {selectedInstanceId && detailQuery.isLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20"><div className="rounded-xl bg-background p-6 shadow-xl"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div></div>}

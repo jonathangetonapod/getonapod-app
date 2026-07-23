@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  approveOnboardingAnswers,
   getClientOnboarding,
   getOnboardingLink,
   listWorkspaceOnboarding,
@@ -184,6 +185,30 @@ describe('workspaceOnboarding service', () => {
     expect(invoke).toHaveBeenCalledWith('workspace-onboarding', {
       body: {
         action: 'get_link',
+        workspace_id: workspaceId,
+        instance_id: instanceId,
+      },
+    })
+  })
+
+  it('approves submitted answers without requiring a pitch profile', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        instance: {
+          ...detail,
+          status: 'approved',
+          approved_at: '2026-07-23T12:00:00.000Z',
+        },
+      },
+      error: null,
+    })
+
+    await expect(approveOnboardingAnswers(workspaceId, instanceId)).resolves.toMatchObject({
+      instance: { id: instanceId, status: 'approved' },
+    })
+    expect(invoke).toHaveBeenCalledWith('workspace-onboarding', {
+      body: {
+        action: 'approve_answers',
         workspace_id: workspaceId,
         instance_id: instanceId,
       },

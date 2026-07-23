@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import OnboardingReviewDialog from '@/components/onboarding/OnboardingReviewDialog'
 import type { OnboardingInstanceDetail } from '@/services/workspaceOnboarding'
@@ -105,7 +105,17 @@ const detail: OnboardingInstanceDetail = {
 
 describe('OnboardingReviewDialog', () => {
   it('shows a clear read-only answer view without change-request or pitch-profile controls', () => {
-    render(<OnboardingReviewDialog open detail={detail} onOpenChange={vi.fn()} />)
+    const onApprove = vi.fn()
+    render(
+      <OnboardingReviewDialog
+        open
+        detail={detail}
+        canManage
+        busy={false}
+        onOpenChange={vi.fn()}
+        onApprove={onApprove}
+      />,
+    )
 
     expect(screen.getByText('Awaiting review')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Submitted answers' })).toBeInTheDocument()
@@ -120,5 +130,8 @@ describe('OnboardingReviewDialog', () => {
     expect(screen.queryByText('Pitch profile draft')).not.toBeInTheDocument()
     expect(screen.queryByText(/AI draft unavailable/u)).not.toBeInTheDocument()
     expect(screen.queryByText(/old review note/u)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve onboarding' }))
+    expect(onApprove).toHaveBeenCalledTimes(1)
   })
 })

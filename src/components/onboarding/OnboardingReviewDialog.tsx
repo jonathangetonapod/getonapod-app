@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,7 +9,10 @@ import type { OnboardingInstanceDetail, OnboardingQuestion } from '@/services/wo
 interface Props {
   open: boolean
   detail: OnboardingInstanceDetail | null
+  canManage: boolean
+  busy: boolean
   onOpenChange: (open: boolean) => void
+  onApprove: () => void
 }
 
 function emptyAnswer(answer: unknown): boolean {
@@ -32,7 +35,7 @@ function displayAnswer(question: OnboardingQuestion, answer: unknown): string {
   return String(answer)
 }
 
-const OnboardingReviewDialog = ({ open, detail, onOpenChange }: Props) => {
+const OnboardingReviewDialog = ({ open, detail, canManage, busy, onOpenChange, onApprove }: Props) => {
   const assetByQuestion = useMemo(
     () => new Map(detail?.assets.map((asset) => [asset.question_id, asset]) ?? []),
     [detail?.assets],
@@ -98,8 +101,14 @@ const OnboardingReviewDialog = ({ open, detail, onOpenChange }: Props) => {
           ))}
         </div>
 
-        <DialogFooter className="border-t pt-5">
-          <Button type="button" onClick={() => onOpenChange(false)}>Close</Button>
+        <DialogFooter className="flex-col gap-2 border-t pt-5 sm:flex-row sm:justify-between">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          {canManage && detail.status === 'submitted' && (
+            <Button type="button" disabled={busy} onClick={onApprove}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              Approve onboarding
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
