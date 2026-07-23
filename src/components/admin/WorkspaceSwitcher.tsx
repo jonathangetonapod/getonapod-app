@@ -14,34 +14,29 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
+import {
+  MY_WORKSPACE_BASE_HREF,
+  selectedWorkspaceBaseHref,
+  workspaceModuleFromPath,
+  workspaceModuleHref,
+} from '@/lib/workspaceRoutes'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 
-interface WorkspaceSwitcherProps {
-  presentation?: 'sidebar' | 'toolbar'
-}
-
-export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitcherProps) => {
+export const WorkspaceSwitcher = () => {
   const { isPlatformAdmin, user, workspace } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const routeMatch = matchPath('/admin/workspaces/:workspaceId/*', location.pathname)
+  const routeMatch = matchPath('/app/workspaces/:workspaceId/*', location.pathname)
   const selectedId = (
     routeMatch?.params.workspaceId
-    || (location.pathname.startsWith('/app') ? workspace?.id : '')
+    || workspace?.id
     || ''
   ).toLowerCase()
-  const selectedModule = location.pathname.endsWith('/settings')
-    || location.pathname.endsWith('/workspace-users')
-    ? 'settings'
-    : location.pathname.includes('/onboarding')
-      ? 'onboarding'
-      : location.pathname.endsWith('/guest-resources')
-      ? 'guest-resources'
-      : 'clients'
+  const selectedModule = workspaceModuleFromPath(location.pathname)
 
   const workspacesQuery = useQuery({
-    queryKey: ['platform', user?.id || 'unknown', 'switchable-workspaces', 'v2'],
+    queryKey: ['platform', user?.id || 'unknown', 'switchable-workspaces', 'v3'],
     queryFn: listPodcastResearchWorkspaces,
     enabled: isPlatformAdmin,
     staleTime: 30_000,
@@ -55,16 +50,8 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
   return (
     <div
       data-testid="workspace-switcher"
-      className={cn(
-        'min-w-0',
-        presentation === 'sidebar' ? 'border-b border-border p-3' : 'w-full max-w-full',
-      )}
+      className="w-full min-w-0 max-w-full"
     >
-      {presentation === 'sidebar' && (
-        <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Switch workspace
-        </p>
-      )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -84,7 +71,9 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
                   ? 'Loading workspaces…'
                   : workspacesQuery.error
                     ? 'Workspaces unavailable'
-                    : selected?.name || 'Select workspace…'}
+                    : selected?.is_default
+                      ? 'My Workspace'
+                      : selected?.name || 'Select workspace…'}
               </span>
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -94,24 +83,27 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
           <Command>
             <CommandInput placeholder="Search workspaces…" />
             <CommandList>
-              <CommandEmpty>No available client workspace found.</CommandEmpty>
+              <CommandEmpty>No available workspace found.</CommandEmpty>
               <CommandGroup>
                 {workspaces.map((workspace) => (
                   <CommandItem
                     key={workspace.id}
-                    value={`${workspace.name} ${workspace.slug}`}
+                    value={`${workspace.is_default ? 'My Workspace' : workspace.name} ${workspace.name} ${workspace.slug}`}
                     onSelect={() => {
                       setOpen(false)
-                      navigate(workspace.is_default
-                        ? `/app/${selectedModule}`
-                        : `/admin/workspaces/${workspace.id}/${selectedModule}`)
+                      const baseHref = workspace.is_default
+                        ? MY_WORKSPACE_BASE_HREF
+                        : selectedWorkspaceBaseHref(workspace.id)
+                      navigate(workspaceModuleHref(baseHref, selectedModule))
                     }}
                   >
                     <Check className={cn('mr-2 h-4 w-4', selectedId === workspace.id ? 'opacity-100' : 'opacity-0')} />
                     <span className="min-w-0 flex-1 overflow-hidden">
-                      <span className="block truncate">{workspace.name}</span>
+                      <span className="block truncate">
+                        {workspace.is_default ? 'My Workspace' : workspace.name}
+                      </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {workspace.is_default ? 'Your workspace' : workspace.slug}
+                        {workspace.is_default ? workspace.name : workspace.slug}
                       </span>
                     </span>
                   </CommandItem>
@@ -126,7 +118,7 @@ export const WorkspaceSwitcher = ({ presentation = 'sidebar' }: WorkspaceSwitche
           type="button"
           variant="ghost"
           size="sm"
-          className={cn('w-full', presentation === 'sidebar' && 'mt-2')}
+          className="w-full"
           onClick={() => void workspacesQuery.refetch()}
         >
           Try again

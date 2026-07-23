@@ -47,7 +47,7 @@ const ChangeInitialPassword = () => {
       return
     }
     if (accountState === 'active') {
-      navigate('/app/clients', { replace: true })
+      navigate('/app/overview', { replace: true })
     }
   }, [accountState, navigate, user])
 

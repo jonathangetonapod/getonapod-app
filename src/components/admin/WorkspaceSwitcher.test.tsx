@@ -19,17 +19,15 @@ const Location = () => {
 }
 
 function renderSwitcher({
-  initialPath = '/admin/dashboard',
-  presentation = 'sidebar',
+  initialPath = '/app/overview',
 }: {
   initialPath?: string
-  presentation?: 'sidebar' | 'toolbar'
 } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <WorkspaceSwitcher presentation={presentation} />
+        <WorkspaceSwitcher />
         <Routes>
           <Route path="*" element={<Location />} />
         </Routes>
@@ -51,13 +49,13 @@ describe('WorkspaceSwitcher', () => {
     ])
   })
 
-  it('navigates to an explicit admin workspace URL', async () => {
+  it('navigates from My Workspace to the same module in a selected workspace', async () => {
     renderSwitcher()
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
-      '/admin/workspaces/11111111-1111-4111-8111-111111111111/clients',
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/overview',
     ))
   })
 
@@ -70,8 +68,7 @@ describe('WorkspaceSwitcher', () => {
 
   it('shows the selected workspace in the compact toolbar', async () => {
     renderSwitcher({
-      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/clients',
-      presentation: 'toolbar',
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/clients',
     })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
@@ -83,51 +80,72 @@ describe('WorkspaceSwitcher', () => {
   })
 
   it('shows the platform owner workspace while using the regular app routes', async () => {
-    renderSwitcher({ initialPath: '/app/clients', presentation: 'toolbar' })
+    renderSwitcher({ initialPath: '/app/clients' })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
-    expect(trigger).toHaveTextContent('Get On A Pod')
+    expect(trigger).toHaveTextContent('My Workspace')
     fireEvent.click(trigger)
-    expect(await screen.findByText('Your workspace')).toBeInTheDocument()
+    expect(await screen.findByText('Get On A Pod')).toBeInTheDocument()
+  })
+
+  it('keeps legacy platform tools anchored to My Workspace', async () => {
+    renderSwitcher({ initialPath: '/admin/prospect-dashboards' })
+
+    const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
+    expect(trigger).toHaveTextContent('My Workspace')
+    fireEvent.click(trigger)
+    fireEvent.click(await screen.findByText('Acme'))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/overview',
+    ))
   })
 
   it('preserves the guest resources module when switching workspaces', async () => {
     renderSwitcher({
-      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/guest-resources',
-      presentation: 'toolbar',
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/guest-resources',
     })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
-      '/admin/workspaces/11111111-1111-4111-8111-111111111111/guest-resources',
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/guest-resources',
     ))
   })
 
   it('preserves the settings module when switching workspaces', async () => {
     renderSwitcher({
-      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/settings',
-      presentation: 'toolbar',
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/settings',
     })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
-      '/admin/workspaces/11111111-1111-4111-8111-111111111111/settings',
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/settings',
     ))
   })
 
   it('returns to the owner workspace and preserves onboarding', async () => {
     renderSwitcher({
-      initialPath: '/admin/workspaces/22222222-2222-4222-8222-222222222222/onboarding',
-      presentation: 'toolbar',
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/onboarding',
     })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
-    fireEvent.click(await screen.findByText('Get On A Pod'))
+    fireEvent.click((await screen.findAllByText('My Workspace')).at(-1) as HTMLElement)
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/app/onboarding'))
+  })
+
+  it('moves client-bound podcast research to the target workspace client chooser', async () => {
+    renderSwitcher({
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/clients/33333333-3333-4333-8333-333333333333/podcast-finder',
+    })
+
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Select a workspace' }))
+    fireEvent.click(await screen.findByText('Acme'))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/podcast-finder',
+    ))
   })
 })

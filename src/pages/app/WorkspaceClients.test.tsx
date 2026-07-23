@@ -45,7 +45,7 @@ const client: WorkspaceClient = {
   updated_at: '2026-07-21T00:00:00.000Z',
 }
 
-function renderPage() {
+function renderPage(mode: 'manage' | 'research' = 'manage') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -56,7 +56,7 @@ function renderPage() {
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <WorkspaceClients />
+        <WorkspaceClients mode={mode} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -131,6 +131,26 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remove Tenant Client' })).not.toBeInTheDocument()
+  })
+
+  it('uses the same workspace client list as the Podcast Finder entry point', async () => {
+    mockedList.mockResolvedValue([
+      client,
+      { ...client, id: '55555555-5555-4555-8555-555555555555', name: 'Paused Client', status: 'paused' },
+    ])
+
+    renderPage('research')
+
+    expect(await screen.findByRole('heading', { name: 'Podcast Finder' })).toBeInTheDocument()
+    expect(screen.getByText('Choose a client')).toBeInTheDocument()
+    expect(screen.getByText('Tenant Client')).toBeInTheDocument()
+    expect(screen.queryByText('Paused Client')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
+      'href',
+      `/app/clients/${client.id}/podcast-finder`,
+    )
+    expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
   })
 
   it('creates a client through the tenant service with the authenticated workspace ID', async () => {

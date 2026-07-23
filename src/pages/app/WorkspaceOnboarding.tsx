@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { DEFAULT_ONBOARDING_ACCENT, renderOnboardingBrandText } from '@/lib/onboardingBrand'
 import { onboardingActivityStage, onboardingStatusLabel, type OnboardingActivityStage } from '@/lib/onboardingActivity'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
   approveOnboardingAnswers,
   archiveOnboardingInstance,
@@ -467,8 +468,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     ? {
         workspaceName: effectiveWorkspace?.name || 'Client workspace',
         logoUrl: workspaceLogoUrl(effectiveWorkspace?.id, effectiveWorkspace?.logo_path, effectiveWorkspace?.logo_updated_at),
-        baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
-        exitHref: '/admin/users',
+        baseHref: selectedWorkspaceBaseHref(selectedWorkspaceId),
       }
     : undefined
 

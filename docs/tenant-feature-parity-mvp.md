@@ -86,12 +86,12 @@ pages does not make it tenant-safe.
 
 ## Shared workspace shell
 
-Workspace accounts use the same responsive left-sidebar structure and module
-order as the platform dashboard, under `/app/*`. A workspace account never
-receives the platform workspace selector or provisioning controls. The
-platform owner's selected-workspace route renders this same workspace shell
-with native controls and a platform-only selector while preserving the
-platform session.
+Every account uses the same responsive workspace shell and module order under
+`/app/*`. The platform owner's default workspace is presented as **My
+Workspace** rather than as a separate administrator workspace. Its
+platform-only selector sits in the top-right header and opens another workspace
+under `/app/workspaces/:workspaceId/*` without changing the platform session.
+Tenant accounts do not receive the selector or provisioning controls.
 
 The shell may name a planned module before its backend is ready, but that entry
 must remain a disabled control rather than a route. Settings (including
@@ -166,7 +166,7 @@ workspace's independent snapshot.
 
 Workspace owners manage the catalog at `/app/guest-resources`. The platform
 owner opens the same component at
-`/admin/workspaces/:workspaceId/guest-resources` and can create, edit, publish,
+`/app/workspaces/:workspaceId/guest-resources` and can create, edit, publish,
 archive, assign, and delete resources for that selected workspace. SQL binds
 the operation to the explicit workspace and records the real platform actor;
 the platform session is never replaced with the workspace owner's session.

@@ -1000,7 +1000,7 @@ export async function getOrderItems(orderId: string): Promise<OrderItem[]>
 | Route | Page/service path | Behavior |
 | --- | --- | --- |
 | `/app/guest-resources` | `WorkspaceGuestResources` + `/src/services/workspaceGuestResources.ts` | Workspace owners/admins create, edit, publish, archive, assign, and delete resources in their own workspace. |
-| `/admin/workspaces/:workspaceId/guest-resources` | `AdminWorkspaceGuestResources` wrapping `WorkspaceGuestResources` | Native selected-workspace management for the platform owner. The same create/edit/delete controls are available while the platform session remains intact. |
+| `/app/workspaces/:workspaceId/guest-resources` | `AdminWorkspaceGuestResources` wrapping `WorkspaceGuestResources` | Native selected-workspace management for the platform owner. The same create/edit/delete controls are available while the platform session remains intact. |
 | `/portal/resources` | `PortalResources` + `getPortalGuestResources()` | Client portal projection. Private-workspace clients receive only published resources visible to that exact client; default-workspace clients retain the platform catalog. |
 | `/admin/guest-resources` | `GuestResourcesManagement` + legacy helpers in `/src/services/guestResources.ts` | Platform/default-workspace template catalog. It seeds one-time snapshots for private workspaces; later template edits do not live-sync to existing workspaces. |
 

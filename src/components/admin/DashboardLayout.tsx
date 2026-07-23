@@ -53,10 +53,10 @@ interface NavItem {
 }
 
 const defaultNavItems: NavItem[] = [
-  { id: 'overview', name: 'Overview', href: '/admin/dashboard', icon: LayoutDashboard },
-  { id: 'workspace-users', name: 'Workspace Users', href: '/admin/users', icon: UserPlus },
-  { id: 'onboarding', name: 'Onboarding', href: '/admin/onboarding', icon: ClipboardList },
-  { id: 'podcast-finder', name: 'Podcast Finder', href: '/admin/podcast-finder', icon: Search },
+  { id: 'overview', name: 'Overview', href: '/app/overview', icon: LayoutDashboard },
+  { id: 'workspace-users', name: 'Settings', href: '/app/settings', icon: UserPlus },
+  { id: 'onboarding', name: 'Onboarding', href: '/app/onboarding', icon: ClipboardList },
+  { id: 'podcast-finder', name: 'Podcast Finder', href: '/app/podcast-finder', icon: Search },
   { id: 'prospect-dashboards', name: 'Prospect Dashboards', href: '/admin/prospect-dashboards', icon: Share2 },
   { id: 'podcast-database', name: 'Podcast Database', href: '/admin/podcast-database', icon: Database },
   { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
@@ -236,8 +236,6 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
             </Button>
           </div>
 
-          <WorkspaceSwitcher />
-
           {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
             <DndContext
@@ -294,16 +292,19 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
       {/* Main content */}
       <div className="lg:pl-64">
-        {/* Mobile header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-card px-4 lg:hidden">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-card px-4 sm:px-6">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(true)}
+            className="lg:hidden"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold">Admin Dashboard</h1>
+          <h1 className="text-lg font-semibold">Platform tools</h1>
+          <div className="ml-auto w-44 min-w-0 sm:w-60 lg:w-72">
+            <WorkspaceSwitcher />
+          </div>
         </header>
 
         {/* Page content */}

@@ -9,11 +9,8 @@ import {
   revokeManualWorkspaceAccount,
 } from '@/services/workspaceUsers'
 
-vi.mock('@/components/admin/DashboardLayout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}))
-vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
-  WorkspaceSwitcher: () => <div>Workspace selector</div>,
+vi.mock('@/components/workspace/WorkspaceLayout', () => ({
+  WorkspaceLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 vi.mock('@/services/workspaceUsers', () => ({
   createManualWorkspaceAccount: vi.fn(),
@@ -118,7 +115,7 @@ describe('WorkspaceUsers manual account flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open workspace' }))
     await waitFor(() => expect(screen.queryByText('Save the temporary password')).not.toBeInTheDocument())
     expect(screen.getByTestId('location')).toHaveTextContent(
-      '/admin/workspaces/22222222-2222-4222-8222-222222222222/clients',
+      '/app/workspaces/22222222-2222-4222-8222-222222222222/overview',
     )
   })
 

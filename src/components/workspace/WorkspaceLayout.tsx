@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft,
   BookOpen,
+  Building2,
   Calendar,
   ClipboardList,
   Database,
@@ -10,6 +10,7 @@ import {
   LogOut,
   Mail,
   Menu,
+  Search,
   Settings,
   Share2,
   User,
@@ -35,8 +36,9 @@ interface WorkspaceNavItem {
 }
 
 const workspaceNavItems: WorkspaceNavItem[] = [
-  { id: 'overview', name: 'Overview', segment: 'overview', icon: LayoutDashboard, enabled: false },
+  { id: 'overview', name: 'Overview', segment: 'overview', icon: LayoutDashboard, enabled: true },
   { id: 'onboarding', name: 'Onboarding', segment: 'onboarding', icon: ClipboardList, enabled: true },
+  { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
   { id: 'prospect-dashboards', name: 'Prospect Dashboards', segment: 'prospect-dashboards', icon: Share2, enabled: false },
   { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: false },
   { id: 'client-podcast-system', name: 'Client Podcast System', segment: 'client-podcast-system', icon: Calendar, enabled: false },
@@ -51,7 +53,6 @@ export interface PlatformWorkspaceConfig {
   workspaceName: string
   logoUrl?: string | null
   baseHref: string
-  exitHref: string
 }
 
 interface WorkspaceLayoutProps {
@@ -125,6 +126,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
+  const workspaceDisplayName = isPlatformAdmin && !platformWorkspace && workspace?.is_default
+    ? 'My Workspace'
+    : workspaceName
   const logoUrl = platformWorkspace
     ? platformWorkspace.logoUrl || null
     : workspaceLogoUrl(workspace?.id, workspace?.logo_path, workspace?.logo_updated_at)
@@ -144,7 +148,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const handleSignOut = async () => {
     try {
       await signOut()
-      navigate(platformWorkspace ? '/admin/login' : '/login', { replace: true })
+      navigate('/login', { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
     }
@@ -189,21 +193,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
               placement="sidebar"
             />
             <div className="mt-3 min-w-0 px-1">
-              <p className="truncate text-base font-bold tracking-tight">{workspaceName}</p>
-              <p className="truncate text-xs font-medium text-muted-foreground">Workspace dashboard</p>
+              <p className="truncate text-base font-bold tracking-tight">{workspaceDisplayName}</p>
+              <p className="truncate text-xs font-medium text-muted-foreground">
+                {workspaceDisplayName === workspaceName ? 'Workspace dashboard' : workspaceName}
+              </p>
             </div>
-            {isPlatformAdmin && (
-              <div className="mt-4 space-y-2">
-                <WorkspaceSwitcher presentation="toolbar" />
-                {platformWorkspace && (
-                  <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
-                    <Link to={platformWorkspace.exitHref}>
-                      <ArrowLeft className="mr-2 h-4 w-4" />Back to platform
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            )}
           </div>
 
           <nav aria-label="Workspace navigation" className="flex-1 overflow-y-auto px-3 py-4">
@@ -214,7 +208,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
                 const isSettings = item.id === 'settings'
                 const itemEnabled = isSettings
-                  ? Boolean(platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin')
+                  ? Boolean(isPlatformAdmin || platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin')
                   : item.enabled
 
                 return (
@@ -274,24 +268,39 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-20 items-center gap-4 border-b border-border bg-card px-4 lg:hidden">
+        <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open workspace navigation"
+            className="lg:hidden"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <WorkspaceBrandLogo
-            logoUrl={logoUrl}
-            workspaceName={workspaceName}
-            workspaceInitials={workspaceInitials}
-            placement="mobile"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-lg font-semibold">{workspaceName}</p>
+          <div className="hidden min-w-0 lg:block">
+            <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {workspaceDisplayName === workspaceName ? 'Workspace dashboard' : workspaceName}
+            </p>
+          </div>
+          <div className="min-w-0 flex-1 lg:hidden">
+            <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
             <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
+          </div>
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
+            {isPlatformAdmin && (
+              <Button variant="outline" size="sm" className="hidden xl:inline-flex" asChild>
+                <Link to="/app/settings">
+                  <Building2 className="mr-2 h-4 w-4" />Manage workspaces
+                </Link>
+              </Button>
+            )}
+            {isPlatformAdmin && (
+              <div className="w-44 min-w-0 sm:w-60 lg:w-72">
+                <WorkspaceSwitcher />
+              </div>
+            )}
           </div>
         </header>
 

@@ -5,7 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
-import { PlatformAdminRoute, ProtectedRoute, WorkspaceStaffRoute } from "@/components/ProtectedRoute";
+import { PlatformAdminRoute, ProtectedRoute } from "@/components/ProtectedRoute";
 import { queryClient } from "@/lib/queryClient";
 import { ClientProtectedRoute } from "@/components/ClientProtectedRoute";
 import Index from "./pages/Index";
@@ -16,7 +16,6 @@ import Course from "./pages/Course";
 import WhatToExpect from "./pages/WhatToExpect";
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/admin/Login";
-import AdminDashboard from "./pages/admin/Dashboard";
 import ProspectDashboards from "./pages/admin/ProspectDashboards";
 import PodcastDatabase from "./pages/admin/PodcastDatabase";
 import AuthCallback from "./pages/admin/Callback";
@@ -34,19 +33,23 @@ import PortalResources from "./pages/portal/Resources";
 import ProspectView from "./pages/prospect/ProspectView";
 import ClientApprovalView from "./pages/client/ClientApprovalView";
 import AcceptInvite from "./pages/admin/AcceptInvite";
-import WorkspaceUsers from "./pages/admin/WorkspaceUsers";
 import WorkspaceClients from "./pages/app/WorkspaceClients";
 import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
-import WorkspaceStaff from "./pages/app/WorkspaceStaff";
+import MyWorkspaceSettings from "./pages/app/MyWorkspaceSettings";
+import WorkspaceOverview from "./pages/app/WorkspaceOverview";
+import WorkspacePodcastFinderHome from "./pages/app/WorkspacePodcastFinderHome";
 import WorkspacePodcastFinder from "./pages/app/WorkspacePodcastFinder";
+import AdminWorkspaceOverview from "./pages/admin/AdminWorkspaceOverview";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
 import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
 import AdminWorkspaceOnboarding from "./pages/admin/AdminWorkspaceOnboarding";
 import AdminWorkspaceStaff from "./pages/admin/AdminWorkspaceStaff";
+import AdminWorkspacePodcastFinderHome from "./pages/admin/AdminWorkspacePodcastFinderHome";
 import AdminWorkspacePodcastFinder from "./pages/admin/AdminWorkspacePodcastFinder";
 import ChangeInitialPassword from "./pages/account/ChangeInitialPassword";
 import ClientOnboarding from "./pages/onboarding/ClientOnboarding";
+import { selectedWorkspaceBaseHref, workspaceModuleHref, type WorkspaceModule } from "@/lib/workspaceRoutes";
 
 const KeyedProspectView = () => {
   const { slug } = useParams()
@@ -58,9 +61,19 @@ const KeyedClientApprovalView = () => {
   return <ClientApprovalView key={slug || 'missing'} />
 }
 
-const LegacyAdminWorkspaceStaffRedirect = () => {
+const LegacyAdminWorkspaceRedirect = ({ module }: { module: WorkspaceModule }) => {
   const { workspaceId = '' } = useParams()
-  return <Navigate to={`/admin/workspaces/${workspaceId}/settings`} replace />
+  return <Navigate to={workspaceModuleHref(selectedWorkspaceBaseHref(workspaceId), module)} replace />
+}
+
+const SelectedWorkspaceRootRedirect = () => {
+  const { workspaceId = '' } = useParams()
+  return <Navigate to={workspaceModuleHref(selectedWorkspaceBaseHref(workspaceId), 'overview')} replace />
+}
+
+const LegacyAdminWorkspacePodcastFinderRedirect = () => {
+  const { workspaceId = '', clientId = '' } = useParams()
+  return <Navigate to={`${selectedWorkspaceBaseHref(workspaceId)}/clients/${clientId}/podcast-finder`} replace />
 }
 
 const App = () => (
@@ -87,14 +100,23 @@ const App = () => (
             <Route path="/login" element={<AdminLogin />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/change-password" element={<ChangeInitialPassword />} />
-            <Route path="/app" element={<Navigate to="/app/clients" replace />} />
+            <Route path="/app" element={<Navigate to="/app/overview" replace />} />
             <Route path="/app/workspace-users" element={<Navigate to="/app/settings" replace />} />
+            <Route path="/app/manage-workspaces" element={<Navigate to="/app/settings" replace />} />
+            <Route
+              path="/app/overview"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceOverview />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/app/settings"
               element={
-                <WorkspaceStaffRoute>
-                  <WorkspaceStaff />
-                </WorkspaceStaffRoute>
+                <ProtectedRoute>
+                  <MyWorkspaceSettings />
+                </ProtectedRoute>
               }
             />
             <Route
@@ -114,6 +136,14 @@ const App = () => (
               }
             />
             <Route
+              path="/app/podcast-finder"
+              element={
+                <ProtectedRoute>
+                  <WorkspacePodcastFinderHome />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/app/clients/:clientId/podcast-finder"
               element={
                 <ProtectedRoute>
@@ -127,6 +157,72 @@ const App = () => (
                 <ProtectedRoute>
                   <WorkspaceGuestResources />
                 </ProtectedRoute>
+              }
+            />
+
+            {/* The platform owner uses the same workspace shell and tools for selected workspaces. */}
+            <Route
+              path="/app/workspaces/:workspaceId"
+              element={
+                <PlatformAdminRoute>
+                  <SelectedWorkspaceRootRedirect />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/overview"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceOverview />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/onboarding"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceOnboarding />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/podcast-finder"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspacePodcastFinderHome />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/clients"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceClients />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/clients/:clientId/podcast-finder"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspacePodcastFinder />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/settings"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceStaff />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/guest-resources"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceGuestResources />
+                </PlatformAdminRoute>
               }
             />
 
@@ -162,40 +258,32 @@ const App = () => (
             />
 
             {/* Admin routes */}
-            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin" element={<Navigate to="/app/overview" replace />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/callback" element={<AuthCallback />} />
 
             {/* Retired admin surfaces redirect to the supported admin landing page. */}
-            <Route path="/admin/ai-sales-director/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/videos/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/blog/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/premium-placements/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/customers/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/orders/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/analytics/*" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/admin/settings/*" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/admin/ai-sales-director/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/videos/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/blog/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/premium-placements/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/customers/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/orders/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/analytics/*" element={<Navigate to="/app/overview" replace />} />
+            <Route path="/admin/settings/*" element={<Navigate to="/app/settings" replace />} />
 
             <Route
               path="/admin/users"
-              element={
-                <PlatformAdminRoute>
-                  <WorkspaceUsers />
-                </PlatformAdminRoute>
-              }
+              element={<Navigate to="/app/settings" replace />}
             />
             <Route
               path="/admin/dashboard"
-              element={
-                <PlatformAdminRoute>
-                  <AdminDashboard />
-                </PlatformAdminRoute>
-              }
+              element={<Navigate to="/app/overview" replace />}
             />
-            <Route path="/admin/onboarding" element={<Navigate to="/admin/users" replace />} />
+            <Route path="/admin/onboarding" element={<Navigate to="/app/onboarding" replace />} />
             <Route
               path="/admin/podcast-finder"
-              element={<Navigate to="/app/clients" replace />}
+              element={<Navigate to="/app/podcast-finder" replace />}
             />
             <Route
               path="/admin/prospect-dashboards"
@@ -255,47 +343,27 @@ const App = () => (
             />
             <Route
               path="/admin/workspaces/:workspaceId/onboarding"
-              element={
-                <PlatformAdminRoute>
-                  <AdminWorkspaceOnboarding />
-                </PlatformAdminRoute>
-              }
+              element={<LegacyAdminWorkspaceRedirect module="onboarding" />}
             />
             <Route
               path="/admin/workspaces/:workspaceId/clients"
-              element={
-                <PlatformAdminRoute>
-                  <AdminWorkspaceClients />
-                </PlatformAdminRoute>
-              }
+              element={<LegacyAdminWorkspaceRedirect module="clients" />}
             />
             <Route
               path="/admin/workspaces/:workspaceId/clients/:clientId/podcast-finder"
-              element={
-                <PlatformAdminRoute>
-                  <AdminWorkspacePodcastFinder />
-                </PlatformAdminRoute>
-              }
+              element={<LegacyAdminWorkspacePodcastFinderRedirect />}
             />
             <Route
               path="/admin/workspaces/:workspaceId/workspace-users"
-              element={<LegacyAdminWorkspaceStaffRedirect />}
+              element={<LegacyAdminWorkspaceRedirect module="settings" />}
             />
             <Route
               path="/admin/workspaces/:workspaceId/settings"
-              element={
-                <PlatformAdminRoute>
-                  <AdminWorkspaceStaff />
-                </PlatformAdminRoute>
-              }
+              element={<LegacyAdminWorkspaceRedirect module="settings" />}
             />
             <Route
               path="/admin/workspaces/:workspaceId/guest-resources"
-              element={
-                <PlatformAdminRoute>
-                  <AdminWorkspaceGuestResources />
-                </PlatformAdminRoute>
-              }
+              element={<LegacyAdminWorkspaceRedirect module="guest-resources" />}
             />
             <Route
               path="/admin/outreach-platform"

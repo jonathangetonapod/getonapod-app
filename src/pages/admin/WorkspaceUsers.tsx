@@ -3,8 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { Copy, Eye, EyeOff, KeyRound, Loader2, PauseCircle, PlayCircle, RefreshCw, Send, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { DashboardLayout } from '@/components/admin/DashboardLayout'
-import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
+import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { selectedWorkspaceBaseHref, workspaceModuleHref } from '@/lib/workspaceRoutes'
 import {
   inviteWorkspaceUser,
   createManualWorkspaceAccount,
@@ -206,12 +206,11 @@ const WorkspaceUsers = () => {
   const users = (usersQuery.data || []).filter((managedUser) => managedUser.status !== 'revoked')
 
   return (
-    <DashboardLayout>
+    <WorkspaceLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div><h1 className="text-3xl font-bold tracking-tight">Workspace users</h1><p className="text-muted-foreground">Create or invite accounts, then open their private client workspaces.</p></div>
           <div className="flex flex-wrap gap-2">
-            <div className="w-full lg:hidden"><WorkspaceSwitcher presentation="toolbar" /></div>
             <Button variant="outline" onClick={() => { clearCredential(); setManualOpen(true) }}>
               <KeyRound className="mr-2 h-4 w-4" />Create workspace
             </Button>
@@ -281,10 +280,10 @@ const WorkspaceUsers = () => {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          {managedUser.status === 'active' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={`/admin/workspaces/${managedUser.workspace.id}/clients`}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'suspend' })}><PauseCircle className="mr-2 h-4 w-4" />Suspend</Button></div>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
+                          {managedUser.status === 'active' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={workspaceModuleHref(selectedWorkspaceBaseHref(managedUser.workspace.id), 'overview')}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'suspend' })}><PauseCircle className="mr-2 h-4 w-4" />Suspend</Button></div>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
                           {managedUser.status === 'suspended' && <div className="inline-flex flex-col items-end gap-2"><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'reactivate' })}><PlayCircle className="mr-2 h-4 w-4" />Reactivate</Button>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
                           {managedUser.status === 'provisioning' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{isManualAccount ? <><Button size="sm" variant="outline" disabled={manualSetupRetryBlocked} onClick={() => void issueManualCredential(managedUser)}>{credentialBusyId === managedUser.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Retry manual setup</Button><Button size="sm" variant="outline" className="text-destructive" disabled={inviteBlocked || revocationCredentialBlocked} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_manual' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></> : <><Button size="sm" variant="outline" disabled={managedUser.invite_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'retry_invite' })}><RefreshCw className="mr-2 h-4 w-4" />Retry</Button><Button size="sm" variant="outline" className="text-destructive" disabled={managedUser.invite_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_pending' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></>}</div>{managedUser.invite_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">{inviteReviewReady ? 'Manual setup cannot resume. Delete this account, then create it again.' : `Manual setup reconciliation is pending until ${formatAccountDate(managedUser.invite_reconciliation_review_after)}.`}</p>}{managedUser.credential_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Credential reconciliation {credentialReviewReady ? 'is ready for an allowed recovery action.' : `is pending until ${formatAccountDate(managedUser.credential_reconciliation_review_after)}.`}</p>}</div>}
-                          {managedUser.status === 'invited' && isManualAccount && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={`/admin/workspaces/${managedUser.workspace.id}/clients`}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={rotationBlocked} onClick={() => setCredentialConfirmation(managedUser)}>{credentialBusyId === managedUser.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Issue new temporary password</Button><Button size="sm" variant="outline" className="text-destructive" disabled={revocationCredentialBlocked} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_manual' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></div>{managedUser.credential_reconciliation_pending ? <p className="max-w-64 text-xs font-medium text-destructive">{credentialReviewReady ? managedUser.credential_reconciliation_claim_kind === 'initial_password_change' ? 'The user may retry password setup, or you may delete this account.' : 'Credential rotation is ready to retry.' : `Credential reconciliation is pending until ${formatAccountDate(managedUser.credential_reconciliation_review_after)}.`}</p> : <p className="max-w-64 text-xs text-muted-foreground">Issuing a replacement immediately invalidates the previous temporary password.</p>}</div>}
+                          {managedUser.status === 'invited' && isManualAccount && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <Button size="sm" variant="outline" asChild><Link to={workspaceModuleHref(selectedWorkspaceBaseHref(managedUser.workspace.id), 'overview')}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button>}<Button size="sm" variant="outline" disabled={rotationBlocked} onClick={() => setCredentialConfirmation(managedUser)}>{credentialBusyId === managedUser.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Issue new temporary password</Button><Button size="sm" variant="outline" className="text-destructive" disabled={revocationCredentialBlocked} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_manual' })}><Trash2 className="mr-2 h-4 w-4" />Delete</Button></div>{managedUser.credential_reconciliation_pending ? <p className="max-w-64 text-xs font-medium text-destructive">{credentialReviewReady ? managedUser.credential_reconciliation_claim_kind === 'initial_password_change' ? 'The user may retry password setup, or you may delete this account.' : 'Credential rotation is ready to retry.' : `Credential reconciliation is pending until ${formatAccountDate(managedUser.credential_reconciliation_review_after)}.`}</p> : <p className="max-w-64 text-xs text-muted-foreground">Issuing a replacement immediately invalidates the previous temporary password.</p>}</div>}
                           {managedUser.status === 'invited' && !isManualAccount && <div className="inline-flex flex-col items-end gap-2"><Button size="sm" variant="outline" className="text-destructive" disabled={managedUser.invite_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'revoke_pending' })}><Trash2 className="mr-2 h-4 w-4" />{inviteExpired ? 'Delete expired invite' : 'Delete'}</Button>{managedUser.invite_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Invitation removal requires operator review.</p>}</div>}
                         </TableCell>
                       </TableRow>
@@ -395,7 +394,7 @@ const WorkspaceUsers = () => {
                     const workspaceId = credential.membership.workspace_id
                     setManualOpen(false)
                     clearCredential()
-                    navigate(`/admin/workspaces/${workspaceId}/clients`)
+                    navigate(workspaceModuleHref(selectedWorkspaceBaseHref(workspaceId), 'overview'))
                   }}
                 >
                   Open workspace
@@ -476,7 +475,7 @@ const WorkspaceUsers = () => {
           <DialogFooter><Button variant="outline" onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation?.action === 'suspend' || confirmation?.action === 'revoke_pending' || confirmation?.action === 'revoke_manual' ? 'destructive' : 'default'} disabled={statusMutation.isPending} onClick={() => confirmation && statusMutation.mutate(confirmation)}>{statusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{confirmation?.action === 'revoke_pending' || confirmation?.action === 'revoke_manual' ? 'Delete' : 'Confirm'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </WorkspaceLayout>
   )
 }
 

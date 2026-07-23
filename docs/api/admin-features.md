@@ -62,37 +62,18 @@ The GOAP (Get On A Podcast) Admin Panel is a comprehensive internal management s
 
 ## Dashboard Overview
 
-### Main Dashboard (`/admin/dashboard`)
+### My Workspace overview (`/app/overview`)
 
-The central command center displaying real-time business metrics and requiring immediate attention.
-
-#### Key Statistics
-- **Active Clients**: Currently serviced clients
-- **Monthly Pipeline**: This month's booking progress with completion rates
-- **Booking Status Breakdown**: In Progress, Booked, Recorded, Published counts
-- **Add-on Service Revenue**: Total revenue from additional services
-
-#### Alerts & Attention Needed
-- **Missing Dates**: Bookings without scheduled/recording/publish dates
-- **Prep Not Sent**: Upcoming recordings without preparation materials
-- **Action Required Items**: Visual alerts for items needing staff intervention
-
-#### Live Activity Feeds
-- **Recent Activity**: Latest booking updates and outreach messages
-- **Upcoming Recordings**: Next 30 days of scheduled recordings
-- **Going Live Soon**: Upcoming podcast publications
-- **Recent Orders**: Latest add-on service purchases
-
-#### Time-based Views
-- **Configurable Time Ranges**: 7d, 14d, 30d, 60d, 90d views
-- **Month Navigation**: Browse historical data by month
-- **Real-time Updates**: Live data refresh without page reload
+The canonical workspace landing page. The platform owner's default workspace
+is labeled **My Workspace**, and selecting another workspace opens the same
+shell at `/app/workspaces/:workspaceId/overview`.
 
 **Key Features:**
-- Real-time pipeline tracking
-- Attention alerts system
-- Multi-timeframe analysis
-- Activity monitoring
+- One shared module order and navigation for every workspace
+- Top-right, platform-only workspace selector
+- Native links to Onboarding, Podcast Finder, Clients, Guest Resources, and Settings
+- Disabled placeholders for modules that are not tenant-safe yet
+- Selected-workspace context without Auth impersonation
 
 ---
 
@@ -253,7 +234,7 @@ The central command center displaying real-time business metrics and requiring i
 ### Retired MVP surfaces
 
 The former `/admin/blog` and `/admin/videos` applications are removed from the
-invite-only MVP. Their old URLs redirect to `/admin/dashboard`; their deleted
+invite-only MVP. Their old URLs redirect to `/app/overview`; their deleted
 editors and video workers are not supported admin features.
 
 ### Guest Resources
@@ -274,7 +255,7 @@ Guest Resources now has separate platform-template, tenant-management, platform 
 - Supports safe rich-text article content and safe external HTTP(S) resource/file URLs.
 - Keeps resource data and selected-client assignments scoped to the same `workspace_id`.
 
-#### Platform-owner selected workspace (`/admin/workspaces/:workspaceId/guest-resources`)
+#### Platform-owner selected workspace (`/app/workspaces/:workspaceId/guest-resources`)
 
 - Renders the same workspace Guest Resources layout and selected workspace data.
 - Supports create, edit, publish, archive, audience assignment, and delete.
@@ -369,9 +350,9 @@ The current Guest Resources feature stores external URLs; it does not upload, or
 ### Retired AI Sales Director
 
 The former `/admin/ai-sales-director` application is removed from the
-invite-only MVP. Its old URL redirects to `/admin/dashboard`.
+invite-only MVP. Its old URL redirects to `/app/overview`.
 
-### Podcast Finder (`/admin/podcast-finder`)
+### Podcast Finder (`/app/podcast-finder`)
 
 #### AI-Powered Discovery
 - **Smart Query Generation**: AI creates optimized search queries from client bios

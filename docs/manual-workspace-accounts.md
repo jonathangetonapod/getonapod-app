@@ -50,20 +50,18 @@ incident response, and cross-tenant administration. A dedicated database may
 become an enterprise option later for contractual residency or isolation, but
 it should not be the default tenancy model.
 
-The administrator workspace route is
-`/admin/workspaces/:workspaceId/clients`. The route parameter is the selected
+The selected-workspace client route is
+`/app/workspaces/:workspaceId/clients`. The route parameter is the selected
 view; it never overwrites `AuthContext.workspace`, Auth/JWT metadata, or a
 membership. Unknown, malformed, default, archived, suspended, or unauthorized
 workspace IDs fail closed. Ordinary unaccepted email invitations are not
 previewable. A manual-password workspace becomes previewable after its
 one-time credential is successfully issued, even though the owner remains
 unable to access tenant data until replacing that password. The migration 7
-view was deliberately read-only.
-It reuses the tenant workspace layout and Clients page, including the same
-client rows and loading, empty, and error states. A persistent preview banner
-and workspace selector preserve administrator context; write controls are
-disabled, mutation dialogs are unavailable, and Exit preview returns to the
-administrator console.
+view was deliberately read-only; later tenant-safe increments now reuse the
+same workspace layout and native Clients controls for the platform owner. The
+top-right selector preserves administrator context and the actual platform
+actor remains attached to audited mutations.
 
 ## Manual-account security contract
 

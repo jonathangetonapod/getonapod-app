@@ -56,14 +56,14 @@ The target MVP intentionally has:
 - no invitation of real users before email delivery and end-to-end acceptance
   are verified.
 
-The platform administrator uses the existing `/admin/*` application. Workspace
-staff use `/app/settings`, `/app/clients`, and
-`/app/guest-resources`. The matching platform-owner management routes are
-`/admin/workspaces/:workspaceId/settings`,
-`/admin/workspaces/:workspaceId/clients`, and
-`/admin/workspaces/:workspaceId/guest-resources`. Only a platform administrator
-receives the workspace selector; the selected context keeps the platform Auth
-session while exposing the supported workspace controls.
+The platform administrator and workspace staff use the same `/app/*` workspace
+shell. The administrator's default workspace is labeled **My Workspace**.
+Matching selected-workspace routes are
+`/app/workspaces/:workspaceId/settings`,
+`/app/workspaces/:workspaceId/clients`, and
+`/app/workspaces/:workspaceId/guest-resources`. Only a platform administrator
+receives the top-right workspace selector; the selected context keeps the
+platform Auth session while exposing the same supported workspace controls.
 Client portal users are separate client records and use `/portal/*`; they are
 not workspace accounts.
 

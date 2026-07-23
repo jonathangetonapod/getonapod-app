@@ -73,7 +73,7 @@ function renderPage(path: string, switchTo?: string) {
       <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         {switchTo && <Link to={switchTo}>Switch workspace</Link>}
         <Routes>
-          <Route path="/admin/workspaces/:workspaceId/clients" element={<AdminWorkspaceClients />} />
+          <Route path="/app/workspaces/:workspaceId/clients" element={<AdminWorkspaceClients />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -97,7 +97,7 @@ describe('AdminWorkspaceClients', () => {
   })
 
   it('shows a native, manageable workspace for the platform owner', async () => {
-    renderPage(`/admin/workspaces/${workspaceId}/clients`)
+    renderPage(`/app/workspaces/${workspaceId}/clients`)
 
     expect(await screen.findByText('Clients in Acme Workspace')).toBeInTheDocument()
     expect(screen.getByText('Acme Client')).toBeInTheDocument()
@@ -110,7 +110,7 @@ describe('AdminWorkspaceClients', () => {
     expect(screen.getByRole('button', { name: 'Remove Acme Client' })).toBeEnabled()
     expect(screen.getByRole('link', { name: 'Research podcasts for Acme Client' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/clients/${workspaceView().clients[0].id}/podcast-finder`,
+      `/app/workspaces/${workspaceId}/clients/${workspaceView().clients[0].id}/podcast-finder`,
     )
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
 
@@ -122,24 +122,24 @@ describe('AdminWorkspaceClients', () => {
       workspaceId,
       expect.objectContaining({ name: 'New Platform Client' }),
     ))
-    expect(screen.getByRole('link', { name: /back to platform/i })).toHaveAttribute('href', '/admin/users')
+    expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/settings')
     expect(screen.queryByText('Default Workspace')).not.toBeInTheDocument()
     expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
   })
 
   it('normalizes an uppercase workspace UUID before querying and linking', async () => {
-    renderPage(`/admin/workspaces/${workspaceId.toUpperCase()}/clients`)
+    renderPage(`/app/workspaces/${workspaceId.toUpperCase()}/clients`)
 
     expect(await screen.findByText('Acme Client')).toBeInTheDocument()
     expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
     expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/clients`,
+      `/app/workspaces/${workspaceId}/clients`,
     )
   })
 
   it('fails closed on a malformed workspace ID without querying clients', async () => {
-    renderPage('/admin/workspaces/not-a-uuid/clients')
+    renderPage('/app/workspaces/not-a-uuid/clients')
     await waitFor(() => expect(screen.getByText('The workspace address is invalid.')).toBeInTheDocument())
     expect(mockedView).not.toHaveBeenCalled()
   })
@@ -151,8 +151,8 @@ describe('AdminWorkspaceClients', () => {
         : workspaceView(secondWorkspaceId, 'Bravo Workspace', 'Bravo Client')
     ))
     renderPage(
-      `/admin/workspaces/${workspaceId}/clients`,
-      `/admin/workspaces/${secondWorkspaceId}/clients`,
+      `/app/workspaces/${workspaceId}/clients`,
+      `/app/workspaces/${secondWorkspaceId}/clients`,
     )
 
     expect(await screen.findByText('Acme Client')).toBeInTheDocument()
@@ -174,8 +174,8 @@ describe('AdminWorkspaceClients', () => {
         : Promise.resolve(workspaceView(secondWorkspaceId, 'Bravo Workspace', 'Bravo Client'))
     ))
     renderPage(
-      `/admin/workspaces/${workspaceId}/clients`,
-      `/admin/workspaces/${secondWorkspaceId}/clients`,
+      `/app/workspaces/${workspaceId}/clients`,
+      `/app/workspaces/${secondWorkspaceId}/clients`,
     )
 
     fireEvent.click(screen.getByRole('link', { name: 'Switch workspace' }))
@@ -196,7 +196,7 @@ describe('AdminWorkspaceClients', () => {
     wrongView.clients[0].name = 'Wrong Workspace Client'
     mockedView.mockResolvedValue(wrongView)
 
-    const queryClient = renderPage(`/admin/workspaces/${workspaceId}/clients`)
+    const queryClient = renderPage(`/app/workspaces/${workspaceId}/clients`)
 
     expect(await screen.findByText('The selected workspace response did not match the workspace address.')).toBeInTheDocument()
     expect(screen.queryByText('Wrong Workspace Client')).not.toBeInTheDocument()
@@ -215,7 +215,7 @@ describe('AdminWorkspaceClients', () => {
     invalidView.workspace = { ...invalidView.workspace, ...workspacePatch }
     mockedView.mockResolvedValue(invalidView)
 
-    const queryClient = renderPage(`/admin/workspaces/${workspaceId}/clients`)
+    const queryClient = renderPage(`/app/workspaces/${workspaceId}/clients`)
 
     expect(await screen.findByText('The selected workspace response did not match the workspace address.')).toBeInTheDocument()
     expect(queryClient.getQueryData(platformQueryKey)).toBeUndefined()

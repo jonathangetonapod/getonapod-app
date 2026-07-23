@@ -13,7 +13,6 @@ import { Label } from '@/components/ui/label'
 const AcceptInvite = () => {
   const {
     accountState,
-    isPlatformAdmin,
     membership,
     refreshAccount,
     user,
@@ -36,9 +35,9 @@ const AcceptInvite = () => {
       return
     }
     if (accountState === 'active') {
-      navigate(isPlatformAdmin ? '/admin/dashboard' : '/app/clients', { replace: true })
+      navigate('/app/overview', { replace: true })
     }
-  }, [accountState, isPlatformAdmin, navigate])
+  }, [accountState, navigate])
 
   const acceptInvite = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -81,7 +80,7 @@ const AcceptInvite = () => {
       const refreshed = await refreshAccount()
       if (!refreshed) throw new Error('Your invitation was accepted. Sign in again to refresh access.')
       toast.success('Invitation accepted.')
-      navigate('/app/clients', { replace: true })
+      navigate('/app/overview', { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to accept this invitation.')
     } finally {

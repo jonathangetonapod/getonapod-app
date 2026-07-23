@@ -79,8 +79,8 @@ function renderPage(id = workspaceId) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/admin/workspaces/${id}/guest-resources`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes><Route path="/admin/workspaces/:workspaceId/guest-resources" element={<AdminWorkspaceGuestResources />} /></Routes>
+      <MemoryRouter initialEntries={[`/app/workspaces/${id}/guest-resources`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes><Route path="/app/workspaces/:workspaceId/guest-resources" element={<AdminWorkspaceGuestResources />} /></Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -113,8 +113,8 @@ describe('AdminWorkspaceGuestResources', () => {
     expect(screen.getByRole('button', { name: 'Edit Preview guide' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Delete Preview guide' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
-    expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute('href', `/admin/workspaces/${workspaceId}/clients`)
-    expect(screen.getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', `/admin/workspaces/${workspaceId}/guest-resources`)
+    expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute('href', `/app/workspaces/${workspaceId}/clients`)
+    expect(screen.getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', `/app/workspaces/${workspaceId}/guest-resources`)
 
     fireEvent.click(screen.getByRole('button', { name: 'View Preview guide' }))
     const detailDialog = screen.getByRole('dialog')

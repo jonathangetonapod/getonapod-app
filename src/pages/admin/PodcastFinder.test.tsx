@@ -210,7 +210,7 @@ describe('PodcastFinder', () => {
     expect(screen.queryByLabelText('Client')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to clients' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${agencyWorkspace.id}/clients`,
+      `/app/workspaces/${agencyWorkspace.id}/clients`,
     )
     expect(mockedResearchContext).toHaveBeenCalledWith(agencyWorkspace.id, clientId)
   })

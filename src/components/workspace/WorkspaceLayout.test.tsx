@@ -18,6 +18,7 @@ const workspaceId = '11111111-1111-4111-8111-111111111111'
 const expectedNavigation = [
   'Overview',
   'Onboarding',
+  'Podcast Finder',
   'Prospect Dashboards',
   'Podcast Database',
   'Client Podcast System',
@@ -62,19 +63,21 @@ describe('WorkspaceLayout', () => {
     expect(labels).toEqual(expectedNavigation)
 
     const links = within(navigation).getAllByRole('link')
-    expect(links).toHaveLength(4)
+    expect(links).toHaveLength(6)
     expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/app/settings',
     )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute('href', '/app/onboarding')
+    expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/app/overview')
+    expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
 
     const disabledModules = within(navigation).getAllByRole('button')
-    expect(disabledModules).toHaveLength(6)
+    expect(disabledModules).toHaveLength(5)
     disabledModules.forEach((module) => expect(module).toBeDisabled())
-    expect(screen.getAllByText('Acme Workspace')).toHaveLength(2)
+    expect(screen.getAllByText('Acme Workspace')).toHaveLength(3)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
   })
@@ -122,43 +125,42 @@ describe('WorkspaceLayout', () => {
     const platformWorkspace: PlatformWorkspaceConfig = {
       workspaceName: 'Selected Workspace',
       logoUrl: 'https://cdn.example/selected-workspace.png',
-      baseHref: `/admin/workspaces/${workspaceId}`,
-      exitHref: '/admin/users',
+      baseHref: `/app/workspaces/${workspaceId}`,
     }
     renderLayout(platformWorkspace)
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/settings`,
+      `/app/workspaces/${workspaceId}/settings`,
     )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/clients`,
+      `/app/workspaces/${workspaceId}/clients`,
     )
     expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/onboarding`,
+      `/app/workspaces/${workspaceId}/onboarding`,
     )
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/guest-resources`,
+      `/app/workspaces/${workspaceId}/guest-resources`,
     )
     expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /back to platform/i })).toHaveAttribute('href', '/admin/users')
+    expect(screen.getByText('Workspace switcher').closest('header')).not.toBeNull()
+    expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/settings')
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
-    expect(screen.getByTestId('workspace-logo-mobile')).toHaveClass('h-12', 'w-20', 'bg-gradient-to-br')
   })
 
   it('shows Jonathan the workspace switcher in his own workspace without changing his feature role', () => {
     mockedUseAuth.mockReturnValue({
       user: { email: 'jonathan@getonapod.com' },
-      workspace: { name: 'Get On A Pod' },
+      workspace: { id: '00000000-0000-4000-8000-000000000000', name: 'Get On A Pod', is_default: true },
       membership: { full_name: 'Jonathan', role: 'owner' },
       isPlatformAdmin: true,
       signOut,
@@ -167,7 +169,8 @@ describe('WorkspaceLayout', () => {
     renderLayout()
 
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /back to platform/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Workspace switcher').closest('header')).not.toBeNull()
+    expect(screen.getAllByText('My Workspace').length).toBeGreaterThan(0)
     expect(screen.getByText('owner')).toBeInTheDocument()
     expect(screen.queryByText('platform owner')).not.toBeInTheDocument()
   })

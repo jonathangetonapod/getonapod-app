@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAdminWorkspaceView, type AdminWorkspaceView } from '@/services/adminWorkspaces'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { hasMeaningfulGuestResourceContent } from '@/lib/guestResourceContent'
 import { sanitizePortalResourceContent } from '@/lib/portalResourceContent'
 import { getWorkspaceClients, type WorkspaceClient } from '@/services/clients'
@@ -266,8 +267,7 @@ const WorkspaceGuestResources = ({ platformWorkspaceId }: WorkspaceGuestResource
           effectiveWorkspace?.logo_path,
           effectiveWorkspace?.logo_updated_at,
         ),
-        baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
-        exitHref: '/admin/users',
+        baseHref: selectedWorkspaceBaseHref(selectedWorkspaceId),
       }
     : undefined
 

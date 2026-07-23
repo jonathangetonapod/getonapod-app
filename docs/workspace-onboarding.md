@@ -11,7 +11,7 @@ portal access.
 The same management experience is available at:
 
 - `/app/onboarding` for the signed-in workspace owner or staff member; and
-- `/admin/workspaces/:workspaceId/onboarding` for the platform owner managing
+- `/app/workspaces/:workspaceId/onboarding` for the platform owner managing
   the explicitly selected workspace without impersonating its owner.
 
 Members can read only onboarding records explicitly assigned to their active

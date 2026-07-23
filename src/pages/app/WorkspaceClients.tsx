@@ -24,6 +24,7 @@ import {
 } from '@/services/clients'
 import { getAdminWorkspaceView, type AdminWorkspaceView } from '@/services/adminWorkspaces'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -39,6 +40,7 @@ const emptyClient: WorkspaceClientInput = {
 
 interface WorkspaceClientsProps {
   platformWorkspaceId?: string
+  mode?: 'manage' | 'research'
 }
 
 function validatePlatformWorkspaceView(view: AdminWorkspaceView, workspaceId: string): AdminWorkspaceView {
@@ -56,7 +58,7 @@ function validatePlatformWorkspaceView(view: AdminWorkspaceView, workspaceId: st
   return view
 }
 
-const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
+const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceClientsProps) => {
   const { canWriteClients, user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -97,9 +99,12 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
     ? platformQuery.data?.workspace || null
     : workspace
   const workspaceId = effectiveWorkspace?.id || ''
-  const clients = isPlatformWorkspace
+  const workspaceClients = isPlatformWorkspace
     ? platformQuery.data?.clients || []
     : tenantClientsQuery.data || []
+  const clients = mode === 'research'
+    ? workspaceClients.filter((client) => client.status === 'active')
+    : workspaceClients
   const clientsLoading = isPlatformWorkspace
     ? validSelectedWorkspaceId && platformQuery.isLoading
     : tenantClientsQuery.isLoading
@@ -111,10 +116,10 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
   const refetchClients = isPlatformWorkspace ? platformQuery.refetch : tenantClientsQuery.refetch
   const activeQueryKey = isPlatformWorkspace ? platformQueryKey : tenantQueryKey
   const managementEnabled = isPlatformWorkspace || canWriteClients
-  const showManagementControls = managementEnabled
+  const showManagementControls = mode === 'manage' && managementEnabled
   const clientBaseHref = isPlatformWorkspace
-    ? `/admin/workspaces/${selectedWorkspaceId}`
-    : '/app'
+    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
+    : MY_WORKSPACE_BASE_HREF
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -185,8 +190,7 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
           effectiveWorkspace?.logo_path,
           effectiveWorkspace?.logo_updated_at,
         ),
-        baseHref: `/admin/workspaces/${selectedWorkspaceId}`,
-        exitHref: '/admin/users',
+        baseHref: selectedWorkspaceBaseHref(selectedWorkspaceId),
       }
     : undefined
 
@@ -195,8 +199,14 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Clients</h1>
-            <p className="text-muted-foreground">Clients in {effectiveWorkspace?.name || 'this workspace'}</p>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {mode === 'research' ? 'Podcast Finder' : 'Clients'}
+            </h1>
+            <p className="text-muted-foreground">
+              {mode === 'research'
+                ? `Choose a client in ${effectiveWorkspace?.name || 'this workspace'} to start podcast research.`
+                : `Clients in ${effectiveWorkspace?.name || 'this workspace'}`}
+            </p>
           </div>
           {showManagementControls && (
             <Button
@@ -210,8 +220,12 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Your clients</CardTitle>
-            <CardDescription>Only members of this workspace can access these records.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />{mode === 'research' ? 'Choose a client' : 'Your clients'}</CardTitle>
+            <CardDescription>
+              {mode === 'research'
+                ? 'Research is permanently bound to the workspace and active client you choose.'
+                : 'Only members of this workspace can access these records.'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {clientsLoading ? (
@@ -229,7 +243,12 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
             ) : clients.length === 0 ? (
               <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
                 <Users className="h-10 w-10 text-muted-foreground" />
-                <div><p className="font-medium">No clients yet</p><p className="text-sm text-muted-foreground">Add your first client to begin.</p></div>
+                <div>
+                  <p className="font-medium">{mode === 'research' ? 'No active clients' : 'No clients yet'}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {mode === 'research' ? 'Add or reactivate a client before starting podcast research.' : 'Add your first client to begin.'}
+                  </p>
+                </div>
                 {showManagementControls && (
                   <Button
                     onClick={openCreate}

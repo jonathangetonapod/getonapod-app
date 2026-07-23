@@ -121,7 +121,7 @@ function renderPage(platformWorkspaceId?: string) {
       <MemoryRouter
         initialEntries={[
           platformWorkspaceId
-            ? `/admin/workspaces/${platformWorkspaceId}/settings`
+            ? `/app/workspaces/${platformWorkspaceId}/settings`
             : '/app/settings',
         ]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
@@ -389,7 +389,7 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
-      `/admin/workspaces/${workspaceId}/settings`,
+      `/app/workspaces/${workspaceId}/settings`,
     )
 
     fireEvent.click(screen.getByRole('button', { name: /invite user/i }))

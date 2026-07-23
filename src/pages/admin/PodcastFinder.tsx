@@ -73,6 +73,7 @@ import {
 } from '@/lib/podcastResearch'
 import { cn } from '@/lib/utils'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref, workspaceModuleHref } from '@/lib/workspaceRoutes'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 import { getClients, getWorkspaceResearchContext } from '@/services/clients'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
@@ -786,8 +787,8 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
     : 0
 
   const clientBaseHref = platformWorkspaceId
-    ? `/admin/workspaces/${fixedWorkspaceId}`
-    : '/app'
+    ? selectedWorkspaceBaseHref(fixedWorkspaceId)
+    : MY_WORKSPACE_BASE_HREF
   const clientsHref = `${clientBaseHref}/clients`
   const onboardingHref = `${clientBaseHref}/onboarding`
   const platformWorkspaceConfig: PlatformWorkspaceConfig | undefined = platformWorkspaceId
@@ -799,7 +800,6 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
           researchContextQuery.data?.workspace.logo_updated_at,
         ),
         baseHref: clientBaseHref,
-        exitHref: '/admin/users',
       }
     : undefined
 
@@ -958,7 +958,9 @@ export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: Po
                   <Button asChild variant="outline" size="sm" className="shrink-0">
                     <Link to={isClientBound
                       ? onboardingHref
-                      : selectedWorkspace?.is_default ? '/admin/clients' : `/admin/workspaces/${workspaceId}/clients`}>
+                      : selectedWorkspace?.is_default
+                        ? workspaceModuleHref(MY_WORKSPACE_BASE_HREF, 'clients')
+                        : workspaceModuleHref(selectedWorkspaceBaseHref(workspaceId), 'clients')}>
                       {isClientBound ? 'Open onboarding' : 'Open clients'}
                     </Link>
                   </Button>

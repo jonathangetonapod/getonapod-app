@@ -31,6 +31,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { WORKSPACE_LOGO_MIME_TYPES, workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
   createWorkspaceStaffTemporaryPassword,
   inviteWorkspaceStaff,
@@ -352,8 +353,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     ? {
         workspaceName: data?.workspace.name || 'Client workspace',
         logoUrl,
-        baseHref: `/admin/workspaces/${workspaceId}`,
-        exitHref: '/admin/users',
+        baseHref: selectedWorkspaceBaseHref(workspaceId),
       }
     : undefined
 

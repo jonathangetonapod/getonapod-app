@@ -48,7 +48,7 @@ const Login = () => {
     }
 
     if (accountState === 'active') {
-      const fallback = isPlatformAdmin ? '/admin/dashboard' : '/app/clients'
+      const fallback = '/app/overview'
       const destination = attemptedPath && (isPlatformAdmin || !attemptedPath.startsWith('/admin'))
         ? attemptedPath
         : fallback

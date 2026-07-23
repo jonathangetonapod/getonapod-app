@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 const AuthCallback = () => {
-  const { accountState, isPlatformAdmin } = useAuth()
+  const { accountState } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -14,11 +14,11 @@ const AuthCallback = () => {
     } else if (accountState === 'password_change_required' || accountState === 'reauthentication_required') {
       navigate('/change-password', { replace: true })
     } else if (accountState === 'active') {
-      navigate(isPlatformAdmin ? '/admin/dashboard' : '/app/clients', { replace: true })
+      navigate('/app/overview', { replace: true })
     } else {
       navigate('/admin/login', { replace: true })
     }
-  }, [accountState, isPlatformAdmin, navigate])
+  }, [accountState, navigate])
 
   return (
     <div className="min-h-screen flex items-center justify-center">

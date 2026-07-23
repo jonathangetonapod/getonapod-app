@@ -205,33 +205,28 @@ The application uses React Router for client-side routing with protected routes 
 
 ## Admin Pages
 
-All admin pages require authentication via `ProtectedRoute` component and use the `DashboardLayout`.
+Canonical `/app/*` workspace pages require `ProtectedRoute` and use
+`WorkspaceLayout`. Legacy platform-only tools under `/admin/*` use
+`DashboardLayout`.
 
-### Admin Dashboard (`/admin/dashboard`)
-**File**: `/src/pages/admin/Dashboard.tsx`  
-**Access**: Admin only
+### My Workspace Overview (`/app/overview`)
+**File**: `/src/pages/app/WorkspaceOverview.tsx`
+**Access**: Active workspace accounts and platform administrators
 
-**Purpose**: Central command center for podcast booking operations.
+**Purpose**: Shared landing page for the currently selected workspace.
 
 **Key Features**:
-- **Monthly pipeline overview**: This month's booking stats with progress visualization
-- **Status breakdown**: In Progress, Booked, Recorded, Published counts
-- **Attention alerts**: Missing dates (scheduled/recording/publish) with actionable items
-- **Upcoming recordings**: Next 30 days with prep status tracking
-- **Going live calendar**: Publishing schedule with episode links
-- **Addon service orders**: Revenue tracking, status management, recent orders
-- **Activity timeline**: Combined bookings and outreach activity feed
-- **Time range filtering**: 7d/14d/30d/60d/90d/180d views
-- **Pagination controls**: For large activity feeds
+- **Unified shell**: The same section order and controls in every workspace
+- **My Workspace identity**: Friendly label for the platform owner's default workspace
+- **Workspace switching**: Platform-only selector in the top-right header
+- **Module entry points**: Onboarding, Podcast Finder, Clients, Guest Resources, and Settings
+- **Fail-closed rollout**: Non-tenant-safe modules remain disabled
 
 **Data Flows**:
-- `getClients()`: Active client count and details
-- `getBookings()`: All booking data for analysis
-- `getAllBookingAddons()`: Addon service order management
-- `getOutreachMessages()`: Outreach activity tracking
-- Complex calculated metrics and filtering
+- The default view uses the active account workspace from `AuthContext`.
+- Selected workspaces use `getAdminWorkspaceView()` while retaining the platform actor.
 
-**User Roles**: Admin staff
+**User Roles**: Workspace member, workspace manager, or platform administrator
 
 ---
 
@@ -337,7 +332,7 @@ All admin pages require authentication via `ProtectedRoute` component and use th
 
 `/admin/ai-sales-director`, `/admin/blog` (including its editor routes), and
 `/admin/videos` are removed from the invite-only MVP. Their page source files
-are deleted and the legacy URLs redirect to `/admin/dashboard`.
+are deleted and the legacy URLs redirect to `/app/overview`.
 
 ---
 
