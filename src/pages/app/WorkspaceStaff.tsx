@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Building2,
   Copy,
   Crown,
   Eye,
@@ -44,6 +45,7 @@ import {
   removeWorkspaceLogo,
   updateWorkspaceLogo,
   updateWorkspaceClientBranding,
+  updateWorkspaceName,
   updateWorkspaceStaffRole,
   type WorkspaceStaffInviteInput,
   type WorkspaceStaffMember,
@@ -183,6 +185,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const [credentialError, setCredentialError] = useState<string | null>(null)
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [logoRemoveOpen, setLogoRemoveOpen] = useState(false)
+  const [workspaceNameDraft, setWorkspaceNameDraft] = useState('')
   const [clientBrandDraft, setClientBrandDraft] = useState(defaultClientBrand)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
@@ -224,6 +227,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const canGeneratePassword = capabilities?.can_generate_password === true
   const canManageBranding = capabilities?.can_manage_branding === true
   const canManageClientBranding = capabilities?.can_manage_client_branding === true
+  const canManageWorkspaceName = capabilities?.can_manage_workspace_name === true
   const allowedInviteRoles = capabilities?.invite_roles || []
   const logoUrl = workspaceLogoUrl(
     data?.workspace.id,
@@ -239,12 +243,15 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
   useEffect(() => {
     if (!data) return
+    setWorkspaceNameDraft(data.workspace.name)
     setClientBrandDraft({
       client_brand_name: data.workspace.client_brand_name,
       client_brand_primary_color: data.workspace.client_brand_primary_color,
       client_brand_accent_color: data.workspace.client_brand_accent_color,
     })
   }, [data])
+
+  const workspaceNameDirty = Boolean(data) && workspaceNameDraft !== data?.workspace.name
 
   const clientBrandDirty = Boolean(data) && (
     clientBrandDraft.client_brand_name !== data?.workspace.client_brand_name
@@ -301,6 +308,23 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       toast.success('Client-facing brand updated.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Client-facing branding could not be updated.'),
+  })
+
+  const workspaceNameMutation = useMutation({
+    mutationFn: () => {
+      if (!data?.workspace.updated_at || !canManageWorkspaceName) {
+        throw new Error('Workspace name controls are not available yet.')
+      }
+      return updateWorkspaceName(workspaceId, {
+        name: workspaceNameDraft,
+        expected_updated_at: data.workspace.updated_at,
+      })
+    },
+    onSuccess: async () => {
+      await refreshBranding()
+      toast.success('Workspace name updated.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Workspace name could not be updated.'),
   })
 
   const inviteMutation = useMutation({
@@ -452,13 +476,58 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
               <Card>
                 <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" />Workspace name</CardTitle>
+                  <CardDescription>This private name appears in your workspace selector and inside the app.</CardDescription>
+                </CardHeader>
+                <CardContent className="max-w-xl space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="workspace-name">Workspace name</Label>
+                    <Input
+                      id="workspace-name"
+                      maxLength={120}
+                      value={workspaceNameDraft}
+                      disabled={!canManageWorkspaceName || workspaceNameMutation.isPending}
+                      onChange={(event) => setWorkspaceNameDraft(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Clients do not see this name unless you also use it as the public agency name below.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      disabled={!canManageWorkspaceName || !workspaceNameDirty || workspaceNameMutation.isPending}
+                      onClick={() => workspaceNameMutation.mutate()}
+                    >
+                      {workspaceNameMutation.isPending
+                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : <Save className="mr-2 h-4 w-4" />}
+                      Save workspace name
+                    </Button>
+                    {workspaceNameDirty ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={workspaceNameMutation.isPending}
+                        onClick={() => setWorkspaceNameDraft(data.workspace.name)}
+                      >
+                        Reset
+                      </Button>
+                    ) : null}
+                  </div>
+                  {!canManageWorkspaceName ? (
+                    <p className="text-sm text-muted-foreground">Workspace name controls will activate when the settings backend is released.</p>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" />Client-facing brand</CardTitle>
                   <CardDescription>This name and color system appears on dashboards your agency shares with clients.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-7 lg:grid-cols-[minmax(0,30rem)_1fr]">
                   <div className="space-y-5">
                     <div className="space-y-2">
-                      <Label htmlFor="client-brand-name">Agency name</Label>
+                      <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
                       <Input
                         id="client-brand-name"
                         maxLength={120}
@@ -470,7 +539,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                         }))}
                         placeholder={data.workspace.name}
                       />
-                      <p className="text-xs text-muted-foreground">Use the public name clients recognize. Your internal workspace name stays unchanged.</p>
+                      <p className="text-xs text-muted-foreground">Use the public agency or consultant name clients recognize. This can differ from your private workspace name.</p>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">

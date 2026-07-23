@@ -36,6 +36,7 @@ export interface WorkspaceStaffCapabilities {
   can_generate_password: boolean
   can_manage_branding: boolean
   can_manage_client_branding: boolean
+  can_manage_workspace_name: boolean
   can_update_roles: boolean
   can_transfer_owner: boolean
 }
@@ -44,6 +45,7 @@ export interface WorkspaceStaffView {
   workspace: {
     id: string
     name: string
+    updated_at: string | null
     status: 'active'
     logo_path: string | null
     logo_updated_at: string | null
@@ -87,6 +89,17 @@ export interface WorkspaceClientBrandingInput {
   client_brand_primary_color: string
   client_brand_accent_color: string
   expected_brand_updated_at: string
+}
+
+export interface WorkspaceName {
+  id: string
+  name: string
+  updated_at: string
+}
+
+export interface WorkspaceNameInput {
+  name: string
+  expected_updated_at: string
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -219,6 +232,7 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
   const canGeneratePassword = value.can_generate_password ?? false
   const canManageBranding = value.can_manage_branding ?? false
   const canManageClientBranding = value.can_manage_client_branding ?? false
+  const canManageWorkspaceName = value.can_manage_workspace_name ?? false
   if (
     typeof value.read_only !== 'boolean'
     || !inviteRoles
@@ -227,6 +241,7 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
     || typeof canGeneratePassword !== 'boolean'
     || typeof canManageBranding !== 'boolean'
     || typeof canManageClientBranding !== 'boolean'
+    || typeof canManageWorkspaceName !== 'boolean'
     || typeof value.can_update_roles !== 'boolean'
     || typeof value.can_transfer_owner !== 'boolean'
     || (value.read_only && (
@@ -234,6 +249,7 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
       || canGeneratePassword
       || canManageBranding
       || canManageClientBranding
+      || canManageWorkspaceName
       || value.can_update_roles
       || value.can_transfer_owner
     ))
@@ -246,6 +262,7 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
     can_generate_password: canGeneratePassword,
     can_manage_branding: canManageBranding,
     can_manage_client_branding: canManageClientBranding,
+    can_manage_workspace_name: canManageWorkspaceName,
     can_update_roles: value.can_update_roles,
     can_transfer_owner: value.can_transfer_owner,
   }
@@ -361,13 +378,18 @@ function parseView(value: unknown, expectedWorkspaceId: string): WorkspaceStaffV
     value.workspace.client_brand_updated_at ?? null,
     true,
   )
+  const workspaceUpdatedAt = isoTimestamp(value.workspace.updated_at ?? null, true)
   if (capabilities.can_manage_client_branding && !clientBrandUpdatedAt) {
     throw new Error('The workspace client branding response was invalid.')
+  }
+  if (capabilities.can_manage_workspace_name && !workspaceUpdatedAt) {
+    throw new Error('The workspace name response was invalid.')
   }
   return {
     workspace: {
       id: workspaceId,
       name: value.workspace.name,
+      updated_at: workspaceUpdatedAt,
       status: 'active',
       logo_path: branding.logo_path,
       logo_updated_at: branding.logo_updated_at,
@@ -431,6 +453,55 @@ function parseClientBrandingMutation(
     client_brand_accent_color: parseClientBrandColor(value.workspace.client_brand_accent_color, ''),
     client_brand_updated_at: isoTimestamp(value.workspace.client_brand_updated_at),
   }
+}
+
+function parseWorkspaceNameMutation(
+  value: unknown,
+  expectedWorkspaceId: string,
+): WorkspaceName {
+  if (!isRecord(value) || value.success !== true || !isRecord(value.workspace)) {
+    throw new Error('The workspace name response was invalid.')
+  }
+  const workspaceId = typeof value.workspace.id === 'string'
+    ? canonicalUuid(value.workspace.id, 'Workspace ID')
+    : ''
+  const name = value.workspace.name
+  if (
+    workspaceId !== expectedWorkspaceId
+    || typeof name !== 'string'
+    || name !== name.trim()
+    || !name
+    || name.length > 120
+    || /[\p{Cc}\p{Cf}]/u.test(name)
+  ) {
+    throw new Error('The workspace name response was invalid.')
+  }
+  return {
+    id: workspaceId,
+    name,
+    updated_at: isoTimestamp(value.workspace.updated_at),
+  }
+}
+
+export async function updateWorkspaceName(
+  workspaceId: string,
+  input: WorkspaceNameInput,
+): Promise<WorkspaceName> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const name = input.name.trim()
+  if (!name || name.length > 120 || /[\p{Cc}\p{Cf}]/u.test(name)) {
+    throw new Error('Workspace name must be between 1 and 120 characters.')
+  }
+  if (!Number.isFinite(Date.parse(input.expected_updated_at))) {
+    throw new Error('Workspace settings changed. Refresh before saving.')
+  }
+  const data = await invoke({
+    action: 'update_workspace_name',
+    workspace_id: canonicalWorkspaceId,
+    expected_updated_at: input.expected_updated_at,
+    workspace_name: name,
+  }, 'Workspace name could not be updated.')
+  return parseWorkspaceNameMutation(data, canonicalWorkspaceId)
 }
 
 export async function updateWorkspaceClientBranding(

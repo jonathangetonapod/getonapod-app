@@ -14,6 +14,7 @@ import {
   removeWorkspaceLogo,
   updateWorkspaceClientBranding,
   updateWorkspaceLogo,
+  updateWorkspaceName,
   updateWorkspaceStaffRole,
   type WorkspaceStaffMember,
   type WorkspaceStaffView,
@@ -39,6 +40,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   removeWorkspaceLogo: vi.fn(),
   updateWorkspaceClientBranding: vi.fn(),
   updateWorkspaceLogo: vi.fn(),
+  updateWorkspaceName: vi.fn(),
   updateWorkspaceStaffRole: vi.fn(),
 }))
 
@@ -52,6 +54,7 @@ const mockedRetryPassword = vi.mocked(retryWorkspaceStaffTemporaryPassword)
 const mockedRemoveLogo = vi.mocked(removeWorkspaceLogo)
 const mockedUpdateClientBrand = vi.mocked(updateWorkspaceClientBranding)
 const mockedUpdateLogo = vi.mocked(updateWorkspaceLogo)
+const mockedUpdateWorkspaceName = vi.mocked(updateWorkspaceName)
 const mockedUpdateRole = vi.mocked(updateWorkspaceStaffRole)
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
@@ -96,6 +99,7 @@ const ownerView: WorkspaceStaffView = {
   workspace: {
     id: workspaceId,
     name: 'Acme Workspace',
+    updated_at: '2026-07-22T00:25:00.000Z',
     status: 'active',
     logo_path: null,
     logo_updated_at: null,
@@ -110,6 +114,7 @@ const ownerView: WorkspaceStaffView = {
     can_generate_password: true,
     can_manage_branding: true,
     can_manage_client_branding: true,
+    can_manage_workspace_name: true,
     can_update_roles: true,
     can_transfer_owner: true,
   },
@@ -208,6 +213,11 @@ describe('WorkspaceStaff', () => {
       client_brand_accent_color: '#E07A5F',
       client_brand_updated_at: '2026-07-22T01:05:00.000Z',
     })
+    mockedUpdateWorkspaceName.mockResolvedValue({
+      id: workspaceId,
+      name: 'Northstar Workspace',
+      updated_at: '2026-07-22T01:04:00.000Z',
+    })
     mockedMutate.mockResolvedValue({ ...admin, role: 'owner', allowed_actions: [] })
     mockedUpdateRole.mockResolvedValue({ ...admin, role: 'member' })
   })
@@ -228,11 +238,19 @@ describe('WorkspaceStaff', () => {
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
   })
 
-  it('lets the workspace owner set the client-facing agency name and colors', async () => {
+  it('lets the workspace owner change the private workspace name and public client brand independently', async () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.change(screen.getByLabelText('Agency name'), { target: { value: 'Northstar Advisory' } })
+    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Northstar Workspace' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save workspace name' }))
+    await waitFor(() => expect(mockedUpdateWorkspaceName).toHaveBeenCalledWith(workspaceId, {
+      name: 'Northstar Workspace',
+      expected_updated_at: '2026-07-22T00:25:00.000Z',
+    }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Workspace name updated.'))
+
+    fireEvent.change(screen.getByLabelText('Agency name shown to clients'), { target: { value: 'Northstar Advisory' } })
     fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
     fireEvent.change(screen.getByLabelText('Accent color'), { target: { value: '#E07A5F' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save client brand' }))
@@ -541,6 +559,7 @@ describe('WorkspaceStaff', () => {
         can_generate_password: false,
         can_manage_branding: false,
         can_manage_client_branding: false,
+        can_manage_workspace_name: false,
         can_update_roles: false,
         can_transfer_owner: false,
       },

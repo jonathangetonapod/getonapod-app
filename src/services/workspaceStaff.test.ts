@@ -9,6 +9,7 @@ import {
   removeWorkspaceLogo,
   updateWorkspaceClientBranding,
   updateWorkspaceLogo,
+  updateWorkspaceName,
   updateWorkspaceStaffRole,
   type WorkspaceStaffMember,
   type WorkspaceStaffView,
@@ -59,6 +60,7 @@ function ownerView(overrides: Partial<WorkspaceStaffView> = {}): WorkspaceStaffV
     workspace: {
       id: workspaceId,
       name: 'Acme Workspace',
+      updated_at: '2026-07-22T00:25:00.000Z',
       status: 'active',
       logo_path: null,
       logo_updated_at: null,
@@ -73,6 +75,7 @@ function ownerView(overrides: Partial<WorkspaceStaffView> = {}): WorkspaceStaffV
       can_generate_password: true,
       can_manage_branding: true,
       can_manage_client_branding: true,
+      can_manage_workspace_name: true,
       can_update_roles: true,
       can_transfer_owner: true,
     },
@@ -239,6 +242,38 @@ describe('workspaceStaff', () => {
     })
   })
 
+  it('updates only the explicitly addressed private workspace name', async () => {
+    const updatedAt = '2026-07-22T01:02:00.000Z'
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        workspace: {
+          id: workspaceId,
+          name: 'Northstar Workspace',
+          updated_at: updatedAt,
+        },
+      },
+      error: null,
+    })
+
+    await expect(updateWorkspaceName(workspaceId, {
+      name: ' Northstar Workspace ',
+      expected_updated_at: invitedAt,
+    })).resolves.toEqual({
+      id: workspaceId,
+      name: 'Northstar Workspace',
+      updated_at: updatedAt,
+    })
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: {
+        action: 'update_workspace_name',
+        workspace_id: workspaceId,
+        expected_updated_at: invitedAt,
+        workspace_name: 'Northstar Workspace',
+      },
+    })
+  })
+
   it('rejects invalid logo files and cross-workspace logo paths before invoking the backend', async () => {
     const oversized = {
       type: 'image/png',
@@ -273,9 +308,10 @@ describe('workspaceStaff', () => {
             read_only: true,
             invite_roles: [],
             can_generate_password: false,
-            can_manage_branding: false,
-            can_manage_client_branding: false,
-            can_update_roles: false,
+          can_manage_branding: false,
+          can_manage_client_branding: false,
+          can_manage_workspace_name: false,
+          can_update_roles: false,
             can_transfer_owner: false,
           },
         }),
