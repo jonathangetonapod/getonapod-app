@@ -102,6 +102,7 @@ assert.match(clientPodcastsEdge, /\.eq\('visibility', 'visible'\)[\s\S]*?\.order
 assert.doesNotMatch(clientPodcastsEdge, /select\('id,name,bio,google_sheet_url/u)
 assert.doesNotMatch(clientPodcastsEdge, /\.from\('client_dashboard_podcasts'\)[\s\S]*?\.delete\(\)/u)
 assert.match(publicDashboardEdge, /\.eq\('visibility', 'visible'\)/u)
+assert.match(publicDashboardEdge, /if \(action === 'metadata'\)[\s\S]*?dashboard_tagline: dashboard\.dashboard_tagline,[\s\S]*?if \(action === 'get'\)[\s\S]*?record_public_client_dashboard_view/u)
 
 assert.match(exportEdge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 assert.match(exportEdge, /fields=sheets\.properties/u)

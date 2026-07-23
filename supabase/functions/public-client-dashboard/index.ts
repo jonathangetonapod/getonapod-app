@@ -82,6 +82,17 @@ serve(async (req) => {
     const action = typeof body.action === 'string' ? body.action : ''
     const admin = createAdminClient()
 
+    if (action === 'metadata') {
+      requireOnlyKeys(body, ['action', 'slug'])
+      const dashboard = await findDashboard(admin, requireSlug(body.slug))
+      return jsonResponse(req, METHODS, 200, {
+        metadata: {
+          name: dashboard.name,
+          dashboard_tagline: dashboard.dashboard_tagline,
+        },
+      })
+    }
+
     if (action === 'get') {
       requireOnlyKeys(body, ['action', 'slug'])
       const slug = requireSlug(body.slug)

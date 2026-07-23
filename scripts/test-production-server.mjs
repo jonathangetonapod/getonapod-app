@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { once } from 'node:events'
 import {
+  clientDashboardShareShell,
   generateOnboardingPreviewPng,
+  loadClientDashboardShareMetadata,
   loadOnboardingShareMetadata,
   whiteLabelOnboardingShell,
 } from './serve-production.mjs'
@@ -42,6 +44,45 @@ assert.equal(metadataRequest.url, 'https://project.supabase.co/functions/v1/clie
 assert.deepEqual(JSON.parse(metadataRequest.options.body), { action: 'metadata', token: capability })
 assert.equal(metadataRequest.options.redirect, 'error')
 
+let clientMetadataRequest
+const clientMetadata = await loadClientDashboardShareMetadata('dallas-fontaine-a0fd037530f8577cc03eb87b', {
+  supabaseUrl: 'https://project.supabase.co',
+  fetchImpl: async (url, options) => {
+    clientMetadataRequest = { url, options }
+    return new Response(JSON.stringify({
+      metadata: {
+        name: 'Dallas <Fontaine>',
+        dashboard_tagline: 'Lead with practical insight & build lasting authority.',
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  },
+})
+assert.deepEqual(clientMetadata, {
+  clientName: 'Dallas <Fontaine>',
+  tagline: 'Lead with practical insight & build lasting authority.',
+})
+assert.equal(clientMetadataRequest.url, 'https://project.supabase.co/functions/v1/public-client-dashboard')
+assert.deepEqual(JSON.parse(clientMetadataRequest.options.body), {
+  action: 'metadata',
+  slug: 'dallas-fontaine-a0fd037530f8577cc03eb87b',
+})
+assert.equal(clientMetadataRequest.options.redirect, 'error')
+
+const fallbackActions = []
+const fallbackClientMetadata = await loadClientDashboardShareMetadata('legacy-client-link', {
+  supabaseUrl: 'https://project.supabase.co',
+  fetchImpl: async (_url, options) => {
+    const action = JSON.parse(options.body).action
+    fallbackActions.push(action)
+    if (action === 'metadata') return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400 })
+    return new Response(JSON.stringify({
+      dashboard: { name: 'Legacy Client', dashboard_tagline: null },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  },
+})
+assert.deepEqual(fallbackActions, ['metadata', 'get'])
+assert.deepEqual(fallbackClientMetadata, { clientName: 'Legacy Client', tagline: null })
+
 const shellSource = '<!doctype html><html><head><title>Marketing</title><meta property="og:title" content="Marketing" /><meta name="twitter:title" content="Marketing" /><script type="application/ld+json">{"name":"Marketing"}</script></head><body></body></html>'
 const brandedShell = whiteLabelOnboardingShell(shellSource, brandedMetadata, {
   previewImageUrl: 'https://getonapod.com/onboarding-link-preview.png?accent=BE185D',
@@ -53,6 +94,18 @@ assert.match(brandedShell, /property="og:site_name" content="Iveth &amp; &lt;Par
 assert.match(brandedShell, /property="og:image" content="https:\/\/getonapod\.com\/onboarding-link-preview\.png\?accent=BE185D"/u)
 assert.match(brandedShell, /rel="apple-touch-icon"[^>]+iveth\/logo\.webp\?version=1&amp;size=large/u)
 assert.doesNotMatch(brandedShell, /11111111-1111-4111-8111-111111111111|Get On A Pod|application\/ld\+json/iu)
+
+const clientShell = clientDashboardShareShell(shellSource, clientMetadata, {
+  pageUrl: 'https://getonapod.com/client/dallas-fontaine-a0fd037530f8577cc03eb87b?preview=1',
+  previewImageUrl: 'https://getonapod.com/client-dashboard-share.png',
+})
+assert.match(clientShell, /<title>Dallas &lt;Fontaine&gt;&#39;s podcast opportunities \| Get On A Pod<\/title>/u)
+assert.match(clientShell, /property="og:title" content="A podcast shortlist prepared for Dallas &lt;Fontaine&gt;"/u)
+assert.match(clientShell, /property="og:description" content="Lead with practical insight &amp; build lasting authority\."/u)
+assert.match(clientShell, /property="og:image" content="https:\/\/getonapod\.com\/client-dashboard-share\.png"/u)
+assert.match(clientShell, /property="og:url" content="https:\/\/getonapod\.com\/client\/dallas-fontaine-a0fd037530f8577cc03eb87b\?preview=1"/u)
+assert.match(clientShell, /name="robots" content="noindex, nofollow, noarchive"/u)
+assert.doesNotMatch(clientShell, /application\/ld\+json|content="Marketing"/iu)
 
 const generatedPreview = generateOnboardingPreviewPng('#BE185D')
 assert.deepEqual([...generatedPreview.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
@@ -138,6 +191,15 @@ try {
   const iconBytes = Buffer.from(await previewIcon.arrayBuffer())
   assert.equal(iconBytes.readUInt32BE(16), 180)
   assert.equal(iconBytes.readUInt32BE(20), 180)
+
+  const clientPreviewImage = await fetch(`${origin}/client-dashboard-share.png`)
+  assert.equal(clientPreviewImage.status, 200)
+  assertSecurityHeaders(clientPreviewImage, '/client-dashboard-share.png')
+  assert.equal(clientPreviewImage.headers.get('content-type'), 'image/png')
+  const clientPreviewBytes = Buffer.from(await clientPreviewImage.arrayBuffer())
+  assert.ok(clientPreviewBytes.length < 10_000_000, 'Client dashboard preview assets must stay under 10 MB')
+  assert.equal(clientPreviewBytes.readUInt32BE(16), 1200)
+  assert.equal(clientPreviewBytes.readUInt32BE(20), 630)
 
   let indexHtml = ''
   for (const route of ['/', '/resources', '/blog/example-post', '/course', '/what-to-expect']) {

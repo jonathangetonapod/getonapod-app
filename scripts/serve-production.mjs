@@ -10,12 +10,15 @@ import { validateBrowserBundle } from './validate-browser-bundle.mjs'
 const MODULE_PATH = fileURLToPath(import.meta.url)
 const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', 'dist')
 const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|resources\/?$|blog(?:\/[^/]+)?\/?$|course\/?$|what-to-expect\/?$)/
-const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
+const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
 const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
 const ONBOARDING_ROUTE_PATTERN = /^\/onboarding\/([^/]+)\/?$/u
+const CLIENT_DASHBOARD_ROUTE_PATTERN = /^\/client\/([^/]+)\/?$/u
 const ONBOARDING_TOKEN_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([1-9][0-9]{0,9})\.([A-Za-z0-9_-]{43})$/iu
+const CLIENT_DASHBOARD_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/iu
 const ONBOARDING_PREVIEW_PATH = '/onboarding-link-preview.png'
 const ONBOARDING_ICON_PATH = '/onboarding-link-icon.png'
+const CLIENT_DASHBOARD_PREVIEW_PATH = '/client-dashboard-share.png'
 const DEFAULT_ONBOARDING_METADATA = Object.freeze({
   workspaceName: 'Client services',
   accentColor: '#334155',
@@ -119,6 +122,112 @@ export async function loadOnboardingShareMetadata(token, {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+function normalizedClientShareText(value, fallback, maxLength) {
+  if (typeof value !== 'string') return fallback
+  const normalized = value.replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/gu, ' ').trim()
+  return normalized ? normalized.slice(0, maxLength) : fallback
+}
+
+export async function loadClientDashboardShareMetadata(slug, {
+  fetchImpl = globalThis.fetch,
+  supabaseUrl = process.env.SUPABASE_PUBLIC_URL ?? process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
+  timeoutMs = 2500,
+} = {}) {
+  if (
+    typeof slug !== 'string'
+    || slug.length > 180
+    || !CLIENT_DASHBOARD_SLUG_PATTERN.test(slug)
+    || typeof fetchImpl !== 'function'
+  ) return null
+
+  const supabaseOrigin = normalizedBaseUrl(supabaseUrl)
+  if (!supabaseOrigin) return null
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const requestDashboard = (action) => fetchImpl(`${supabaseOrigin}/functions/v1/public-client-dashboard`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, slug: slug.toLowerCase() }),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: controller.signal,
+    })
+    let response = await requestDashboard('metadata')
+    // Keep personalized previews available during a safe two-service rollout:
+    // the older public function understands `get` but not `metadata` yet.
+    if (response.status === 400) response = await requestDashboard('get')
+    if (!response.ok) return null
+    const declaredLength = Number(response.headers.get('content-length') ?? 0)
+    if (declaredLength > 16_384) return null
+    const body = await response.text()
+    if (Buffer.byteLength(body) > 16_384) return null
+    const source = JSON.parse(body)
+    const metadata = source && typeof source === 'object' && !Array.isArray(source)
+      ? source.metadata && typeof source.metadata === 'object' && !Array.isArray(source.metadata)
+        ? source.metadata
+        : source.dashboard && typeof source.dashboard === 'object' && !Array.isArray(source.dashboard)
+          ? source.dashboard
+          : null
+      : null
+    if (!metadata) return null
+    return {
+      clientName: normalizedClientShareText(metadata.name, 'Your client', 160),
+      tagline: normalizedClientShareText(metadata.dashboard_tagline, '', 280) || null,
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export function clientDashboardShareShell(source, metadata, assets = {}) {
+  const clientName = normalizedClientShareText(metadata?.clientName, 'Your client', 160)
+  const tagline = normalizedClientShareText(metadata?.tagline, '', 280)
+  const pageUrl = typeof assets.pageUrl === 'string' ? assets.pageUrl : '/client'
+  const previewImageUrl = typeof assets.previewImageUrl === 'string'
+    ? assets.previewImageUrl
+    : CLIENT_DASHBOARD_PREVIEW_PATH
+  const pageTitle = `${clientName}'s podcast opportunities | Get On A Pod`
+  const cardTitle = `A podcast shortlist prepared for ${clientName}`
+  const description = tagline || 'Explore a private, curated shortlist of podcasts chosen around your expertise, audience, and goals.'
+  const withoutStructuredData = source.replace(
+    /\s*<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/giu,
+    '',
+  )
+  const withoutMarketingMeta = withoutStructuredData
+    .replace(/\s*<meta\s+(?:name=["'](?:theme-color|application-name|apple-mobile-web-app-title|msapplication-TileColor|title|description|keywords|author|robots|twitter:[^"']+)["']|property=["']og:[^"']+["'])[^>]*\/>/giu, '')
+    .replace(/\s*<link\s+rel=["']canonical["'][^>]*\/>/giu, '')
+    .replace(/<title>[\s\S]*?<\/title>/iu, `<title>${escapeHtml(pageTitle)}</title>`)
+
+  const privateMetadata = `
+    <meta name="theme-color" content="#0d1b2a" />
+    <meta name="application-name" content="Get On A Pod" />
+    <meta name="apple-mobile-web-app-title" content="Get On A Pod" />
+    <meta name="description" content="${escapeHtml(description)}" />
+    <meta name="author" content="Get On A Pod" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${escapeHtml(pageUrl)}" />
+    <meta property="og:title" content="${escapeHtml(cardTitle)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:site_name" content="Get On A Pod" />
+    <meta property="og:image" content="${escapeHtml(previewImageUrl)}" />
+    <meta property="og:image:secure_url" content="${escapeHtml(previewImageUrl)}" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A curated podcast campaign from Get On A Pod" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(cardTitle)}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
+    <meta name="twitter:image" content="${escapeHtml(previewImageUrl)}" />
+    <meta name="twitter:image:alt" content="A curated podcast campaign from Get On A Pod" />`
+  return withoutMarketingMeta.replace('</head>', `${privateMetadata}\n  </head>`)
 }
 
 export function whiteLabelOnboardingShell(source, metadata = DEFAULT_ONBOARDING_METADATA, assets = {}) {
@@ -483,6 +592,28 @@ export function createProductionServer({
           cleanUrls: false,
           directoryListing: false,
         })
+        return
+      }
+
+      const clientDashboardMatch = pathname.match(CLIENT_DASHBOARD_ROUTE_PATTERN)
+      if (clientDashboardMatch) {
+        let slug = ''
+        try {
+          slug = decodeURIComponent(clientDashboardMatch[1])
+        } catch {
+          // Invalid path encoding receives the generic private dashboard shell.
+        }
+        const metadata = await loadClientDashboardShareMetadata(slug, { fetchImpl, supabaseUrl })
+        const origin = requestOrigin(request, applicationOrigin)
+        const pageUrl = new URL(`${pathname}${requestUrl.search}`, origin).toString()
+        const previewImageUrl = new URL(CLIENT_DASHBOARD_PREVIEW_PATH, origin).toString()
+        const source = await readFile(path.join(publicDirectory, 'index.html'), 'utf8')
+        const html = clientDashboardShareShell(source, metadata, { pageUrl, previewImageUrl })
+        response.statusCode = 200
+        response.setHeader('Content-Type', 'text/html; charset=utf-8')
+        response.setHeader('Content-Length', Buffer.byteLength(html))
+        if (request.method === 'HEAD') response.end()
+        else response.end(html)
         return
       }
 
