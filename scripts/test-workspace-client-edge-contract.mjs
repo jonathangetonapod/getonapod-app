@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/workspace-clients/index.ts', 'utf8')
 const exportEdge = readFileSync('supabase/functions/export-to-google-sheets/index.ts', 'utf8')
+const shortlistEdge = readFileSync('supabase/functions/workspace-client-shortlist/index.ts', 'utf8')
+const publicDashboardEdge = readFileSync('supabase/functions/public-client-dashboard/index.ts', 'utf8')
+const clientPodcastsEdge = readFileSync('supabase/functions/get-client-podcasts/index.ts', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const migration = readFileSync(
   'supabase/migrations/20260722000100_subagency_workspace_foundation.sql',
@@ -10,6 +13,10 @@ const migration = readFileSync(
 )
 const forwardMigration = readFileSync(
   'supabase/migrations/20260722000200_platform_owner_workspace_management.sql',
+  'utf8',
+)
+const shortlistMigration = readFileSync(
+  'supabase/migrations/20260723000400_client_shortlist_editor.sql',
   'utf8',
 )
 
@@ -23,8 +30,8 @@ assert.match(edge, /if \(action === 'detail-get'\)[\s\S]*?await requireWorkspace
 assert.match(edge, /\.from\('clients'\)[\s\S]*?\.eq\('id', clientId!\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
 assert.match(edge, /\.from\('bookings'\)[\s\S]*?\.eq\('client_id', clientId!\)[\s\S]*?\.limit\(500\)/u)
 assert.match(edge, /\.from\('workspace_onboarding_instances'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)[\s\S]*?\.eq\('client_id', clientId!\)/u)
-assert.match(edge, /\.from\('client_dashboard_podcasts'\)[\s\S]*?\.eq\('client_id', clientId!\)[\s\S]*?\.limit\(500\)/u)
-assert.match(edge, /\.from\('client_podcast_feedback'\)[\s\S]*?\.eq\('client_id', clientId!\)[\s\S]*?\.limit\(500\)/u)
+assert.match(edge, /\.from\('client_dashboard_podcasts'\)[\s\S]*?\.eq\('client_id', clientId!\)[\s\S]*?\.limit\(1_000\)/u)
+assert.match(edge, /\.from\('client_podcast_feedback'\)[\s\S]*?\.eq\('client_id', clientId!\)[\s\S]*?\.limit\(1_000\)/u)
 assert.match(edge, /\.from\('outreach_messages'\)[\s\S]*?\.eq\('client_id', clientId!\)[\s\S]*?\.limit\(5_000\)/u)
 assert.match(edge, /viewer_role: access\.role,[\s\S]*?can_manage: \['owner', 'admin', 'platform_admin'\]\.includes\(access\.role\),[\s\S]*?dashboard: \{[\s\S]*?podcast_count: dashboardPodcasts\.length,[\s\S]*?reviewed_count: reviewedCount,[\s\S]*?outreach: \{[\s\S]*?initial_emails_sent: sentOutreach\.length,[\s\S]*?podcasts_contacted: contactedPodcastKeys\.size,[\s\S]*?bookings: bookingsResult\.data \|\| \[\],[\s\S]*?onboarding: access\.role === 'member' \? null : onboardingResult\.data \|\| null/u)
 assert.doesNotMatch(edge, /portal_password/u)
@@ -36,6 +43,31 @@ assert.match(edge, /message\.includes\('active workspace staff'\)/u)
 assert.match(edge, /message\.includes\('active selected workspace'\)/u)
 assert.doesNotMatch(edge, /PREVIEW_READ_ONLY|preview is read-only/u)
 assert.match(config, /\[functions\.workspace-clients\]\s+verify_jwt = true/u)
+assert.doesNotMatch(edge, /\.select\([^\n]*google_sheet_url/u)
+
+assert.match(shortlistEdge, /const authContext = await requireAuthenticatedUser\(req\)/u)
+assert.match(shortlistEdge, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
+assert.match(shortlistEdge, /const access = await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?requireManager\(access\)/u)
+assert.match(shortlistEdge, /\.from\('clients'\)[\s\S]*?\.eq\('id', clientId\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
+assert.match(shortlistEdge, /if \(action === 'list'\)[\s\S]*?if \(action === 'catalog-search'\)[\s\S]*?if \(action === 'add'\)[\s\S]*?if \(action === 'update'\)[\s\S]*?if \(action === 'reorder-featured'\)/u)
+assert.match(shortlistEdge, /archived_at = visibility === 'archived'[\s\S]*?archived_by = visibility === 'archived'/u)
+assert.doesNotMatch(shortlistEdge, /\.from\('client_dashboard_podcasts'\)\.delete\(/u)
+assert.match(shortlistEdge, /podscan_email/u)
+assert.match(shortlistEdge, /rpc\('reorder_client_shortlist_featured_v1'/u)
+assert.match(config, /\[functions\.workspace-client-shortlist\]\s+verify_jwt = true/u)
+
+assert.match(shortlistMigration, /ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'visible'/u)
+assert.match(shortlistMigration, /CHECK \(visibility IN \('visible', 'hidden', 'archived'\)\)/u)
+assert.match(shortlistMigration, /CREATE OR REPLACE FUNCTION public\.reorder_client_shortlist_featured_v1/u)
+assert.match(shortlistMigration, /SECURITY DEFINER[\s\S]*?SET search_path = public, pg_temp/u)
+assert.match(shortlistMigration, /REVOKE ALL ON FUNCTION public\.reorder_client_shortlist_featured_v1\(UUID, TEXT\[\]\)[\s\S]*?FROM PUBLIC, anon, authenticated/u)
+assert.match(shortlistMigration, /GRANT EXECUTE ON FUNCTION public\.reorder_client_shortlist_featured_v1\(UUID, TEXT\[\]\)[\s\S]*?TO service_role/u)
+
+assert.match(clientPodcastsEdge, /DATABASE PATH - querying the curated client list/u)
+assert.match(clientPodcastsEdge, /\.eq\('visibility', 'visible'\)[\s\S]*?\.order\('is_featured'/u)
+assert.doesNotMatch(clientPodcastsEdge, /select\('id,name,bio,google_sheet_url/u)
+assert.doesNotMatch(clientPodcastsEdge, /\.from\('client_dashboard_podcasts'\)[\s\S]*?\.delete\(\)/u)
+assert.match(publicDashboardEdge, /\.eq\('visibility', 'visible'\)/u)
 
 assert.match(exportEdge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 assert.match(exportEdge, /fields=sheets\.properties/u)

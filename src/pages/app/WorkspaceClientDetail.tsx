@@ -11,7 +11,6 @@ import {
   Copy,
   ExternalLink,
   Eye,
-  FileSpreadsheet,
   Globe2,
   KeyRound,
   LayoutDashboard,
@@ -28,6 +27,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
+import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEditor'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -304,7 +304,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     )
   }
 
-  const googleSheetUrl = client.google_sheet_url ? safeExternalUrl(client.google_sheet_url) : null
   const canManage = detail.can_manage
   const dashboard = detail.dashboard
   const mediaKitUrl = client.media_kit_url ? safeExternalUrl(client.media_kit_url) : null
@@ -491,7 +490,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   <DetailRow label="Approval dashboard" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
                   <DetailRow label="Client portal" value={<Badge variant="outline" className={client.portal_access_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{client.portal_access_enabled ? 'Enabled' : 'Disabled'}</Badge>} />
                   <DetailRow label="Onboarding" value={onboarding ? labelForStatus(onboarding.status) : 'Not started'} />
-                  <DetailRow label="Google Sheet" value={googleSheetUrl ? 'Connected' : 'Not connected'} />
                   <DetailRow label="Podcast review" value={dashboard.podcast_count > 0 ? `${dashboard.reviewed_count} of ${dashboard.podcast_count}` : 'No shortlist yet'} />
                 </CardContent>
               </Card>
@@ -514,16 +512,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button asChild variant="outline"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Manage shortlist</Link></Button>
-                    {googleSheetUrl ? (
-                      <Button asChild variant="outline">
-                        <a href={googleSheetUrl} target="_blank" rel="noreferrer">
-                          <FileSpreadsheet className="mr-2 h-4 w-4" />Edit Google Sheet<ExternalLink className="ml-2 h-3.5 w-3.5" />
-                        </a>
-                      </Button>
-                    ) : (
-                      <Button variant="outline" disabled><FileSpreadsheet className="mr-2 h-4 w-4" />No Google Sheet connected</Button>
-                    )}
+                    {canManage && <Button asChild variant="outline"><a href="#client-podcast-list"><LayoutDashboard className="mr-2 h-4 w-4" />View &amp; edit podcasts</a></Button>}
                     {dashboardHref && <Button variant="outline" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
                     {dashboardAdminPreviewHref && <Button asChild><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
                   </div>
@@ -534,12 +523,12 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             <section aria-labelledby="review-progress-heading">
               <div className="mb-3">
                 <h3 id="review-progress-heading" className="text-xl font-semibold">Shortlist decisions</h3>
-                <p className="text-sm text-muted-foreground">Client feedback from the legacy approval experience, summarized here.</p>
+                <p className="text-sm text-muted-foreground">Client feedback from the current approval list, summarized here.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard icon={Mic2} label="Shortlisted" value={dashboard.podcast_count} iconClassName="bg-slate-100 text-slate-700" />
                 <MetricCard icon={CheckCircle2} label="Approved" value={dashboard.approved_count} iconClassName="bg-emerald-50 text-emerald-600" />
-                <MetricCard icon={MessageSquareText} label="Rejected" value={dashboard.rejected_count} iconClassName="bg-rose-50 text-rose-600" />
+                <MetricCard icon={MessageSquareText} label="Passed" value={dashboard.rejected_count} iconClassName="bg-rose-50 text-rose-600" />
                 <MetricCard icon={Clock3} label="To review" value={dashboard.to_review_count} iconClassName="bg-amber-50 text-amber-600" />
               </div>
             </section>
@@ -557,10 +546,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     <Progress value={analysisCompletion} className="h-2.5 [&>div]:bg-violet-600" aria-label="AI fit analysis completion" />
                   </div>
                   {dashboard.podcast_count === 0 && (
-                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No podcasts are on this client’s approval shortlist yet. Use Podcast Finder to add the next weekly discovery batch.</div>
+                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No podcasts are on this client’s approval list yet. Add one below or run a fresh weekly discovery.</div>
                   )}
                   <div className="flex flex-wrap gap-2 border-t pt-5">
-                    <Button asChild><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button>
+                    <Button asChild variant="outline"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Run fresh discovery</Link></Button>
                   </div>
                 </CardContent>
               </Card>
@@ -572,7 +561,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     <DetailRow label="Dashboard views" value={dashboard.view_count.toLocaleString()} />
                     <DetailRow label="Last viewed" value={formatDateTime(dashboard.last_viewed_at)} />
                     <DetailRow label="Last decision" value={formatDateTime(dashboard.last_feedback_at)} />
-                    <DetailRow label="Shortlist synced" value={formatDateTime(dashboard.last_synced_at)} />
+                    <DetailRow label="List updated" value={formatDateTime(dashboard.last_synced_at)} />
                   </CardContent>
                 </Card>
                 <Card>
@@ -585,6 +574,16 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 </Card>
               </div>
             </div>
+
+            {canManage && (
+              <ClientShortlistEditor
+                workspaceId={workspaceId}
+                clientId={client.id}
+                clientName={client.name}
+                finderHref={finderHref}
+                onChanged={() => void detailQuery.refetch()}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="portal" className="mt-0 space-y-6">
@@ -695,12 +694,9 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           <TabsContent value="files" className="mt-0 space-y-6">
             <section aria-labelledby="client-resources-heading">
               <div className="mb-3"><h2 id="client-resources-heading" className="text-xl font-semibold">Onboarding and connected files</h2><p className="text-sm text-muted-foreground">The source material behind research, outreach, and client delivery.</p></div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <ResourceCard icon={BookOpenCheck} title="Onboarding form" description={onboarding ? `Latest activity for ${onboarding.recipient_name}.` : 'Start or review this client’s intake and approved profile.'} status={onboarding ? labelForStatus(onboarding.status) : 'Not started'} statusClassName={onboarding ? onboardingStatusStyles[onboarding.status] : undefined}>
                   <Button asChild variant="outline" className="w-full"><Link to={onboardingHref}>{onboarding ? 'Review onboarding' : 'Open onboarding'}</Link></Button>
-                </ResourceCard>
-                <ResourceCard icon={FileSpreadsheet} title="Google Sheet" description="The exported shortlist and working podcast list for this client." status={googleSheetUrl ? 'Connected' : 'Not connected'} statusClassName={googleSheetUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
-                  {googleSheetUrl ? <Button asChild variant="outline" className="w-full"><a href={googleSheetUrl} target="_blank" rel="noreferrer">Open Google Sheet<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button> : <Button disabled variant="outline" className="w-full">No sheet connected</Button>}
                 </ResourceCard>
                 <ResourceCard icon={Activity} title="Media kit" description="The approved bio, positioning, and speaking assets shared with hosts." status={mediaKitUrl ? 'Connected' : 'Not connected'} statusClassName={mediaKitUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
                   {mediaKitUrl ? <Button asChild variant="outline" className="w-full"><a href={mediaKitUrl} target="_blank" rel="noreferrer">Open media kit<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button> : <Button disabled variant="outline" className="w-full">No media kit connected</Button>}

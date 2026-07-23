@@ -9,6 +9,9 @@ import { getWorkspaceClientDetail, type WorkspaceClientDetail as WorkspaceClient
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({ WorkspaceSwitcher: () => <div>Workspace switcher</div> }))
+vi.mock('@/components/workspace/ClientShortlistEditor', () => ({
+  ClientShortlistEditor: () => <section id="client-podcast-list">Client podcast editor</section>,
+}))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
@@ -41,7 +44,6 @@ const detail: WorkspaceClientDetailData = {
     notes: 'High-priority launch in September.',
     bio: 'Taylor helps founders build durable operations.',
     photo_url: null,
-    google_sheet_url: 'https://docs.google.com/spreadsheets/d/example',
     media_kit_url: 'https://docs.google.com/document/d/example',
     prospect_dashboard_slug: null,
     dashboard_slug: 'taylor-client-123',
@@ -179,7 +181,9 @@ describe('WorkspaceClientDetail', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
     expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(2)
-    expect(screen.getByRole('link', { name: /edit google sheet/i })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/example')
+    expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /view & edit podcasts/i })).toHaveAttribute('href', '#client-podcast-list')
+    expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.getByText('Approved').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')
@@ -200,7 +204,7 @@ describe('WorkspaceClientDetail', () => {
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
     expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
-    expect(screen.getByRole('link', { name: /open google sheet/i })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/example')
+    expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
     expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Organize' })).toBeInTheDocument()
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
@@ -230,8 +234,8 @@ describe('WorkspaceClientDetail', () => {
 
     expect(screen.getAllByText('Hidden').length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: /preview as client/i })).not.toBeInTheDocument()
-    expect(screen.getByText(/No podcasts are on this client’s approval shortlist yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /find podcasts/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+    expect(screen.getByText(/No podcasts are on this client’s approval list yet/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /run fresh discovery/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
   })
 
   it('fails closed before requesting a malformed client address', async () => {

@@ -98,13 +98,26 @@ serve(async (req) => {
     if (action === 'feedback_list') {
       requireOnlyKeys(body, ['action', 'slug'])
       const dashboard = await findDashboard(admin, requireSlug(body.slug))
+      const { data: visiblePodcasts, error: podcastsError } = await admin
+        .from('client_dashboard_podcasts')
+        .select('podcast_id')
+        .eq('client_id', dashboard.id)
+        .eq('visibility', 'visible')
+
+      if (podcastsError) throw new HttpError(500, 'FEEDBACK_LOOKUP_FAILED', 'Feedback could not be loaded')
+      const visiblePodcastIds = (visiblePodcasts ?? []).map((podcast) => podcast.podcast_id)
+      if (visiblePodcastIds.length === 0) {
+        return jsonResponse(req, METHODS, 200, { feedback: [] })
+      }
       const { data, error } = await admin
         .from('client_podcast_feedback')
         .select(FEEDBACK_FIELDS)
         .eq('client_id', dashboard.id)
 
       if (error) throw new HttpError(500, 'FEEDBACK_LOOKUP_FAILED', 'Feedback could not be loaded')
-      return jsonResponse(req, METHODS, 200, { feedback: data ?? [] })
+      const visiblePodcastIdSet = new Set(visiblePodcastIds)
+      const feedback = (data ?? []).filter((entry) => visiblePodcastIdSet.has(entry.podcast_id))
+      return jsonResponse(req, METHODS, 200, { feedback })
     }
 
     if (action === 'feedback_upsert') {
@@ -124,6 +137,7 @@ serve(async (req) => {
         .select('id,podcast_name')
         .eq('client_id', dashboard.id)
         .eq('podcast_id', podcastId)
+        .eq('visibility', 'visible')
         .maybeSingle()
 
       if (podcastError) throw new HttpError(500, 'PODCAST_LOOKUP_FAILED', 'Podcast could not be verified')

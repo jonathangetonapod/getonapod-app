@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PodcastFinder from '@/pages/admin/PodcastFinder'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
+import { addClientShortlistPodcasts } from '@/services/clientShortlist'
 import { getClients, getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
 import { generatePodcastQueries } from '@/services/queryGeneration'
 import { searchPodcastsWithMeta } from '@/services/podscan'
@@ -38,7 +39,7 @@ vi.mock('@/services/clients', () => ({
 }))
 vi.mock('@/services/queryGeneration', () => ({ generatePodcastQueries: vi.fn() }))
 vi.mock('@/services/compatibilityScoring', () => ({ scoreCompatibilityBatch: vi.fn() }))
-vi.mock('@/services/googleSheets', () => ({ exportPodcastsToGoogleSheets: vi.fn() }))
+vi.mock('@/services/clientShortlist', () => ({ addClientShortlistPodcasts: vi.fn() }))
 vi.mock('@/services/podscan', () => ({
   getChartCategories: vi.fn(),
   getChartCountries: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock('@/services/podscan', () => ({
 }))
 
 const mockedWorkspaces = vi.mocked(listPodcastResearchWorkspaces)
+const mockedAddToShortlist = vi.mocked(addClientShortlistPodcasts)
 const mockedClients = vi.mocked(getClients)
 const mockedWorkspaceClients = vi.mocked(getWorkspaceClients)
 const mockedResearchContext = vi.mocked(getWorkspaceResearchContext)
@@ -138,11 +140,11 @@ describe('PodcastFinder', () => {
         status: 'active',
         bio: 'Own Client helps founders grow durable companies.',
         photo_url: null,
-        google_sheet_configured: true,
         updated_at: '2026-07-01T00:00:00.000Z',
       },
       existing_podcast_ids: [],
     })
+    mockedAddToShortlist.mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['pod-new'] })
   })
 
   it('defaults to the platform owner workspace and keeps the surface client-only', async () => {
@@ -224,7 +226,6 @@ describe('PodcastFinder', () => {
         status: 'active' as const,
         bio: 'An approved client bio.',
         photo_url: null,
-        google_sheet_configured: true,
         updated_at: '2026-07-01T00:00:00.000Z',
       },
       existing_podcast_ids: [],
@@ -252,7 +253,6 @@ describe('PodcastFinder', () => {
         status: 'active',
         bio: 'An approved client bio.',
         photo_url: null,
-        google_sheet_configured: true,
         updated_at: '2026-07-01T00:00:00.000Z',
       },
       existing_podcast_ids: ['pod-existing'],
@@ -280,6 +280,43 @@ describe('PodcastFinder', () => {
     expect(await screen.findByText('Existing Podcast')).toBeInTheDocument()
     expect(screen.getAllByText('Already used')).toHaveLength(2)
     expect(screen.getByRole('checkbox', { name: 'Select Existing Podcast' })).toBeDisabled()
+  })
+
+  it('adds selected discovery results directly to the client database list', async () => {
+    mockedGenerateQueries.mockResolvedValue(['founder stories'])
+    mockedSearchPodcasts.mockResolvedValue({
+      data: {
+        podcasts: [{
+          podcast_id: 'pod-new',
+          podcast_name: 'New Podcast',
+          podcast_url: 'https://example.com/new',
+          podcast_description: 'A show for company builders.',
+          publisher_name: 'Example Media',
+          last_posted_at: '2026-07-20T00:00:00.000Z',
+        }],
+        pagination: { last_page: '1' },
+      },
+    })
+    renderPage({ workspaceScoped: true })
+
+    const runButton = await screen.findByRole('button', { name: 'Run balanced discovery' })
+    await waitFor(() => expect(runButton).toBeEnabled())
+    fireEvent.click(runButton)
+    await screen.findByText('New Podcast')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select New Podcast' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 to shortlist' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to shortlist' }))
+
+    await waitFor(() => expect(mockedAddToShortlist).toHaveBeenCalledWith(
+      myWorkspace.id,
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      [expect.objectContaining({
+        podcast_id: 'pod-new',
+        podcast_name: 'New Podcast',
+        last_posted_at: '2026-07-20T00:00:00.000Z',
+      })],
+    ))
+    expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
   })
 
   it('binds a workspace user to the legacy fixed-client surface without selectors', async () => {
@@ -317,7 +354,6 @@ describe('PodcastFinder', () => {
         status: 'active',
         bio: 'Agency Client helps founders grow durable companies.',
         photo_url: null,
-        google_sheet_configured: true,
         updated_at: '2026-07-01T00:00:00.000Z',
       },
       existing_podcast_ids: [],

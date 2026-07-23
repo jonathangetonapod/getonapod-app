@@ -87,7 +87,6 @@ describe('getWorkspaceResearchContext', () => {
         status: 'active',
         bio: 'Approved client profile',
         photo_url: null,
-        google_sheet_configured: true,
         updated_at: '2026-07-23T00:00:00.000Z',
       },
       existing_podcast_ids: ['podcast-one', 'podcast-two'],

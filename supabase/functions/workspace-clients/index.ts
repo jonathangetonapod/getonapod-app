@@ -127,7 +127,7 @@ serve(async (req) => {
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
       const { data: client, error: clientError } = await admin
         .from('clients')
-        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,google_sheet_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_tagline,dashboard_enabled,dashboard_view_count,dashboard_last_viewed_at,portal_access_enabled,portal_last_login_at,password_set_at,created_at,updated_at')
+        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_tagline,dashboard_enabled,dashboard_view_count,dashboard_last_viewed_at,portal_access_enabled,portal_last_login_at,password_set_at,created_at,updated_at')
         .eq('id', clientId!)
         .eq('workspace_id', workspaceId)
         .maybeSingle()
@@ -157,16 +157,16 @@ serve(async (req) => {
           .maybeSingle(),
         admin
           .from('client_dashboard_podcasts')
-          .select('client_id,podcast_id,ai_analyzed_at,updated_at')
+          .select('client_id,podcast_id,ai_analyzed_at,visibility,updated_at')
           .eq('client_id', clientId!)
           .order('updated_at', { ascending: false })
-          .limit(500),
+          .limit(1_000),
         admin
           .from('client_podcast_feedback')
           .select('client_id,podcast_id,status,updated_at')
           .eq('client_id', clientId!)
           .order('updated_at', { ascending: false })
-          .limit(500),
+          .limit(1_000),
         admin
           .from('outreach_messages')
           .select('client_id,podcast_id,podcast_name,status,sent_at,created_at')
@@ -206,7 +206,9 @@ serve(async (req) => {
         throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client outreach activity could not be loaded')
       }
 
-      const dashboardPodcasts = dashboardPodcastsResult.data || []
+      const allDashboardPodcasts = dashboardPodcastsResult.data || []
+      const dashboardPodcasts = allDashboardPodcasts
+        .filter((podcast) => podcast.visibility === 'visible')
       const dashboardPodcastIds = new Set(dashboardPodcasts.map((podcast) => podcast.podcast_id))
       const dashboardFeedbackByPodcast = new Map<string, { status: string | null; updated_at: string | null }>()
       for (const feedback of dashboardFeedbackResult.data || []) {
@@ -233,7 +235,6 @@ serve(async (req) => {
           : ''
         return podcastId ? `id:${podcastId}` : podcastName ? `name:${podcastName}` : ''
       }).filter(Boolean))
-
       return jsonResponse(req, METHODS, 200, {
         workspace: {
           id: access.workspace.id,
@@ -259,7 +260,7 @@ serve(async (req) => {
           rejected_count: rejectedCount,
           to_review_count: Math.max(0, dashboardPodcasts.length - reviewedCount),
           analyzed_count: dashboardPodcasts.filter((podcast) => Boolean(podcast.ai_analyzed_at)).length,
-          last_synced_at: latestTimestamp(dashboardPodcasts.map((podcast) => podcast.updated_at)),
+          last_synced_at: latestTimestamp(allDashboardPodcasts.map((podcast) => podcast.updated_at)),
           last_feedback_at: latestTimestamp(dashboardFeedback.map((feedback) => feedback.updated_at)),
         },
         outreach: {
@@ -279,7 +280,7 @@ serve(async (req) => {
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
       const { data: client, error: clientError } = await admin
         .from('clients')
-        .select('id,workspace_id,name,email,website,status,bio,photo_url,google_sheet_url,updated_at')
+        .select('id,workspace_id,name,email,website,status,bio,photo_url,updated_at')
         .eq('id', clientId!)
         .eq('workspace_id', workspaceId)
         .eq('status', 'active')
@@ -345,7 +346,6 @@ serve(async (req) => {
           status: client.status,
           bio: client.bio,
           photo_url: client.photo_url,
-          google_sheet_configured: Boolean(client.google_sheet_url),
           updated_at: client.updated_at,
         },
         existing_podcast_ids: existingPodcastIds,

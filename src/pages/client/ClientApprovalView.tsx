@@ -105,6 +105,9 @@ interface OutreachPodcast {
   audience_size: number | null
   podcast_categories?: PodcastCategory[] | null
   last_posted_at: string | null
+  is_featured?: boolean
+  featured_order?: number | null
+  display_order?: number
   // Cached AI analysis fields
   ai_clean_description?: string | null
   ai_fit_reasons?: string[] | null
@@ -245,7 +248,7 @@ function ClientApprovalViewContent() {
         throw new Error(payload.error || 'Podcasts could not be loaded')
       }
       const data = await response.json()
-      console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
+      console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from the curated database list`)
       return data.podcasts || []
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
@@ -623,6 +626,18 @@ function ClientApprovalViewContent() {
   const topRatedPodcast = [...podcasts].sort((a, b) => (b.itunes_rating || 0) - (a.itunes_rating || 0))[0]
   const highestReachPodcast = [...podcasts].sort((a, b) => (b.audience_size || 0) - (a.audience_size || 0))[0]
   const mostEpisodesPodcast = [...podcasts].sort((a, b) => (b.episode_count || 0) - (a.episode_count || 0))[0]
+  const curatedFeaturedPodcasts = podcasts
+    .filter((podcast) => podcast.is_featured)
+    .sort((left, right) => (left.featured_order ?? 999) - (right.featured_order ?? 999))
+    .slice(0, 6)
+  const automaticFeaturedPodcasts = [highestReachPodcast, topRatedPodcast, mostEpisodesPodcast]
+    .filter((podcast, index, candidates): podcast is OutreachPodcast => (
+      Boolean(podcast)
+      && candidates.findIndex((candidate) => candidate?.podcast_id === podcast?.podcast_id) === index
+    ))
+  const featuredPodcasts = curatedFeaturedPodcasts.length > 0
+    ? curatedFeaturedPodcasts
+    : automaticFeaturedPodcasts
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
@@ -884,94 +899,48 @@ function ClientApprovalViewContent() {
         </div>
       </div>
 
-      {/* Featured Podcasts Section */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
-          Featured Opportunities
-        </p>
-        <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 sm:grid sm:grid-cols-3 sm:overflow-visible scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0">
-          {/* Highest Reach */}
-          {highestReachPodcast && highestReachPodcast.audience_size && (
-            <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-green-50/80 to-emerald-50/80 dark:from-green-950/50 dark:to-emerald-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
-              style={{ animationDelay: '100ms' }}
-              onClick={() => setSelectedPodcast(highestReachPodcast)}
-            >
-              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
-                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                  {highestReachPodcast.podcast_image_url ? (
-                    <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  ) : (
-                    <div className="w-full h-full bg-green-200 flex items-center justify-center">
-                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-xs font-semibold text-green-600 uppercase tracking-wide">Highest Reach</p>
-                  <p className="font-semibold truncate text-sm sm:text-base">{highestReachPodcast.podcast_name}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground">{formatNumber(highestReachPodcast.audience_size)} listeners</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Top Rated */}
-          {topRatedPodcast && topRatedPodcast.itunes_rating && (
-            <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-amber-50/80 to-yellow-50/80 dark:from-amber-950/50 dark:to-yellow-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
-              style={{ animationDelay: '200ms' }}
-              onClick={() => setSelectedPodcast(topRatedPodcast)}
-            >
-              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
-                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                  {topRatedPodcast.podcast_image_url ? (
-                    <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  ) : (
-                    <div className="w-full h-full bg-amber-200 flex items-center justify-center">
-                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-xs font-semibold text-amber-600 uppercase tracking-wide">Top Rated</p>
-                  <p className="font-semibold truncate text-sm sm:text-base">{topRatedPodcast.podcast_name}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-1">
-                    <Star className="h-3 w-3 sm:h-4 sm:w-4 fill-amber-500 text-amber-500" />
-                    {Number(topRatedPodcast.itunes_rating).toFixed(1)} rating
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Most Established */}
-          {mostEpisodesPodcast && mostEpisodesPodcast.episode_count && (
-            <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-purple-50/80 to-violet-50/80 dark:from-purple-950/50 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
-              style={{ animationDelay: '300ms' }}
-              onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
-            >
-              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
-                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                  {mostEpisodesPodcast.podcast_image_url ? (
-                    <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                  ) : (
-                    <div className="w-full h-full bg-purple-200 flex items-center justify-center">
-                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-xs font-semibold text-purple-600 uppercase tracking-wide">Most Established</p>
-                  <p className="font-semibold truncate text-sm sm:text-base">{mostEpisodesPodcast.podcast_name}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground">{mostEpisodesPodcast.episode_count} episodes</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+      {featuredPodcasts.length > 0 && (
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
+            Featured Opportunities
+          </p>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {featuredPodcasts.map((podcast, index) => (
+              <Card
+                key={podcast.podcast_id}
+                className="border-0 shadow-xl bg-gradient-to-br from-primary/5 via-white to-violet-50/80 dark:from-primary/10 dark:via-slate-950 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up"
+                style={{ animationDelay: `${Math.min(index + 1, 6) * 100}ms` }}
+                onClick={() => setSelectedPodcast(podcast)}
+              >
+                <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+                  <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
+                    {podcast.podcast_image_url ? (
+                      <img src={podcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-full bg-primary/10 flex items-center justify-center">
+                        <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] sm:text-xs font-semibold text-primary uppercase tracking-wide">Recommended for you</p>
+                    <p className="font-semibold truncate text-sm sm:text-base">{podcast.podcast_name}</p>
+                    <p className="truncate text-xs sm:text-sm text-muted-foreground">
+                      {podcast.audience_size
+                        ? `${formatNumber(podcast.audience_size)} listeners`
+                        : podcast.itunes_rating
+                          ? `${Number(podcast.itunes_rating).toFixed(1)} rating`
+                          : podcast.episode_count
+                            ? `${podcast.episode_count.toLocaleString()} episodes`
+                            : podcast.publisher_name || 'Selected for your goals'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Podcast Grid */}
       <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-12">

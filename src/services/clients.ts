@@ -57,7 +57,6 @@ export interface WorkspaceClientProfile extends WorkspaceClient {
   bio: string | null
   photo_url: string | null
   calendar_link: string | null
-  google_sheet_url: string | null
   media_kit_url: string | null
   prospect_dashboard_slug: string | null
   dashboard_slug: string | null
@@ -165,7 +164,6 @@ export interface WorkspaceResearchContext {
     status: 'active'
     bio: string | null
     photo_url: string | null
-    google_sheet_configured: boolean
     updated_at: string
   }
   existing_podcast_ids: string[]

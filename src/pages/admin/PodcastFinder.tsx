@@ -11,9 +11,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  FileSpreadsheet,
   Filter,
   Layers3,
+  ListPlus,
   Loader2,
   Mail,
   Play,
@@ -77,7 +77,7 @@ import {
   type WorkspaceResearchContext,
 } from '@/services/clients'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
-import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
+import { addClientShortlistPodcasts, type ClientShortlistPodcastInput } from '@/services/clientShortlist'
 import {
   getChartCategories,
   getChartCountries,
@@ -160,7 +160,7 @@ function resultReason(result: ResearchResult): string {
   return `Discovered through ${result.sources.join(', ')}`
 }
 
-function toExportData(result: ResearchResult): PodcastExportData {
+function toShortlistPodcast(result: ResearchResult): ClientShortlistPodcastInput {
   const podcast = result.podcast
   return {
     podcast_id: podcast.podcast_id,
@@ -175,6 +175,7 @@ function toExportData(result: ResearchResult): PodcastExportData {
       ? Number.parseFloat(podcast.reach.itunes.itunes_rating_average)
       : undefined,
     audience_size: podcast.reach?.audience_size,
+    last_posted_at: podcast.last_posted_at,
     language: podcast.language,
     region: podcast.region,
     podcast_email: podcast.reach?.email,
@@ -245,13 +246,13 @@ export default function PodcastFinder({
   const [resultSort, setResultSort] = useState<ResultSort>('priority')
   const [contactableOnly, setContactableOnly] = useState(false)
   const [hideExisting, setHideExisting] = useState(true)
-  const [exportedPodcastIds, setExportedPodcastIds] = useState<Set<string>>(new Set())
+  const [addedPodcastIds, setAddedPodcastIds] = useState<Set<string>>(new Set())
   const [resultPage, setResultPage] = useState(1)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [isEnriching, setIsEnriching] = useState(false)
   const [scopeResetOpen, setScopeResetOpen] = useState(false)
-  const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [isAdding, setIsAdding] = useState(false)
   const [showChartDiscovery, setShowChartDiscovery] = useState(false)
   const [chartCountries, setChartCountries] = useState<ChartCountry[]>([])
   const [chartCategories, setChartCategories] = useState<ChartCategory[]>([])
@@ -346,7 +347,7 @@ export default function PodcastFinder({
     if (!isClientSelectable || scopedClientsQuery.isLoading) return
     if (scopedClientOptions.some((client) => client.id === clientId)) return
     resetResearch()
-    setExportedPodcastIds(new Set())
+    setAddedPodcastIds(new Set())
     setClientId(scopedClientOptions[0]?.id || '')
   }, [clientId, isClientSelectable, scopedClientOptions, scopedClientsQuery.isLoading])
 
@@ -398,8 +399,8 @@ export default function PodcastFinder({
 
   const existingPodcastIds = useMemo(() => new Set([
     ...(researchContextQuery.data?.existing_podcast_ids || []),
-    ...exportedPodcastIds,
-  ].map((podcastId) => podcastId.toLowerCase())), [exportedPodcastIds, researchContextQuery.data?.existing_podcast_ids])
+    ...addedPodcastIds,
+  ].map((podcastId) => podcastId.toLowerCase())), [addedPodcastIds, researchContextQuery.data?.existing_podcast_ids])
 
   const rows = useMemo(() => results.map((result) => {
     const outreach = calculateOutreachPriority(result.podcast)
@@ -488,14 +489,14 @@ export default function PodcastFinder({
 
   const handleWorkspaceChange = (nextWorkspaceId: string) => {
     resetResearch()
-    setExportedPodcastIds(new Set())
+    setAddedPodcastIds(new Set())
     setWorkspaceId(nextWorkspaceId)
     setClientId('')
   }
 
   const handleClientChange = (nextClientId: string) => {
     resetResearch()
-    setExportedPodcastIds(new Set())
+    setAddedPodcastIds(new Set())
     setClientId(nextClientId)
   }
 
@@ -849,22 +850,22 @@ export default function PodcastFinder({
     }
   }
 
-  const handleExport = async () => {
+  const handleAddToShortlist = async () => {
     if (!selectedWorkspace || !selectedClient || !runScope || selectedResults.length === 0) return
     if (runScope.workspaceId !== selectedWorkspace.id || runScope.clientId !== selectedClient.id) {
-      toast.error('Export stopped because the active workspace does not match this discovery run.')
+      toast.error('Add stopped because the active workspace does not match this discovery run.')
       return
     }
 
-    setIsExporting(true)
+    setIsAdding(true)
     try {
-      const response = await exportPodcastsToGoogleSheets(
-        selectedClient.id,
-        selectedResults.map(toExportData),
+      const response = await addClientShortlistPodcasts(
         selectedWorkspace.id,
+        selectedClient.id,
+        selectedResults.map(toShortlistPodcast),
       )
       const handledPodcastIds = selectedResults.map((result) => result.podcast.podcast_id)
-      setExportedPodcastIds((current) => new Set([...current, ...handledPodcastIds]))
+      setAddedPodcastIds((current) => new Set([...current, ...handledPodcastIds]))
       if (isWorkspaceScoped) {
         queryClient.setQueryData<WorkspaceResearchContext>(researchContextQueryKey, (current) => current
           ? {
@@ -876,20 +877,20 @@ export default function PodcastFinder({
             }
           : current)
       }
-      const duplicatesSkipped = response.duplicatesSkipped || 0
-      if (response.rowsAdded === 0) {
-        toast.info(`Nothing new to export for ${selectedClient.name}. These podcasts are already in the client sheet.`)
+      const duplicatesSkipped = response.skipped || 0
+      if (response.added === 0) {
+        toast.info(`Nothing new to add for ${selectedClient.name}. These podcasts are already on the client shortlist.`)
       } else if (duplicatesSkipped > 0) {
-        toast.success(`Exported ${response.rowsAdded} new podcasts and skipped ${duplicatesSkipped} already in the client sheet.`)
+        toast.success(`Added ${response.added} new podcasts and skipped ${duplicatesSkipped} already on the client shortlist.`)
       } else {
-        toast.success(`Exported ${response.rowsAdded} new podcasts for ${selectedClient.name}.`)
+        toast.success(`Added ${response.added} new podcasts to ${selectedClient.name}’s shortlist.`)
       }
       setSelectedIds(new Set())
-      setExportDialogOpen(false)
+      setAddDialogOpen(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Podcasts could not be exported.')
+      toast.error(error instanceof Error ? error.message : 'Podcasts could not be added.')
     } finally {
-      setIsExporting(false)
+      setIsAdding(false)
     }
   }
 
@@ -1348,7 +1349,7 @@ export default function PodcastFinder({
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <CardTitle className="text-lg">{isWorkspaceScoped ? '2.' : '3.'} Review and route the list</CardTitle>
-                    <CardDescription>New podcasts appear first. Client history stays available for reference but cannot be exported twice.</CardDescription>
+                    <CardDescription>New podcasts appear first. Client history stays available for reference and cannot be added twice.</CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={() => void handleScoreResults()} disabled={isScoring || isDiscovering}>
@@ -1552,7 +1553,7 @@ export default function PodcastFinder({
               <div className="mb-4 rounded-full bg-primary/10 p-4"><Layers3 className="h-7 w-7 text-primary" /></div>
               <h2 className="text-lg font-semibold">Ready for {selectedClient.name}’s weekly discovery</h2>
               <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-                Each run gathers broad matches, removes duplicates within the search, and hides podcasts already exported, reviewed, contacted, or booked for this client.
+                Each run gathers broad matches, removes duplicates within the search, and hides podcasts already added, reviewed, contacted, or booked for this client.
               </p>
             </CardContent>
           </Card>
@@ -1571,7 +1572,7 @@ export default function PodcastFinder({
               <Button variant="outline" size="sm" onClick={() => handleBulkTier('b')}>Tier B</Button>
               <Button variant="outline" size="sm" onClick={() => handleBulkTier('c')}>Tier C</Button>
               <Button variant="outline" size="sm" onClick={handleBulkExclude}><Archive className="mr-2 h-4 w-4" /> Exclude</Button>
-              <Button size="sm" onClick={() => setExportDialogOpen(true)} disabled={selectedResults.length === 0}><FileSpreadsheet className="mr-2 h-4 w-4" /> Export {selectedResults.length}</Button>
+              <Button size="sm" onClick={() => setAddDialogOpen(true)} disabled={selectedResults.length === 0}><ListPlus className="mr-2 h-4 w-4" /> Add {selectedResults.length} to shortlist</Button>
               <Button variant="ghost" size="icon" onClick={() => setSelectedIds(new Set())}><X className="h-4 w-4" /><span className="sr-only">Clear selection</span></Button>
             </div>
           </div>
@@ -1673,16 +1674,16 @@ export default function PodcastFinder({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+      <AlertDialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Export {selectedResults.length} podcasts?</AlertDialogTitle>
+            <AlertDialogTitle>Add {selectedResults.length} podcasts to the shortlist?</AlertDialogTitle>
             <AlertDialogDescription>
               This list is locked to {selectedClient?.name} in {selectedWorkspace?.name}. {selectedContactableCount} selected podcasts include a direct email.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="rounded-lg border bg-muted/25 p-3 text-sm"><p className="font-medium">Destination</p><p className="text-muted-foreground">{selectedClient?.name}’s Google Sheet</p></div>
-          <AlertDialogFooter><AlertDialogCancel disabled={isExporting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={(event) => { event.preventDefault(); void handleExport() }} disabled={isExporting}>{isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />} Export podcasts</AlertDialogAction></AlertDialogFooter>
+          <div className="rounded-lg border bg-muted/25 p-3 text-sm"><p className="font-medium">Destination</p><p className="text-muted-foreground">{selectedClient?.name}’s private approval shortlist</p></div>
+          <AlertDialogFooter><AlertDialogCancel disabled={isAdding}>Cancel</AlertDialogCancel><AlertDialogAction onClick={(event) => { event.preventDefault(); void handleAddToShortlist() }} disabled={isAdding}>{isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListPlus className="mr-2 h-4 w-4" />} Add to shortlist</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

@@ -109,6 +109,9 @@ verify_jwt = true
 [functions.workspace-clients]
 verify_jwt = true
 
+[functions.workspace-client-shortlist]
+verify_jwt = true
+
 [functions.workspace-guest-resources]
 verify_jwt = true
 

@@ -122,6 +122,7 @@ interface CachedPodcast {
   itunes_rating: number | null
   episode_count: number | null
   audience_size: number | null
+  last_posted_at: string | null
   podscan_email?: string | null
   podcast_categories: PodcastCategory[] | null
   ai_clean_description: string | null
@@ -244,7 +245,8 @@ serve(async (req) => {
     }
 
     const body = await parseJsonObject(req, 16_384) as GetClientPodcastsRequest
-    let { spreadsheetId, clientId, clientName, clientBio } = body
+    const { spreadsheetId } = body
+    let { clientId, clientName, clientBio } = body
     const { dashboardSlug, cacheOnly, skipAiAnalysis, aiAnalysisOnly, checkStatusOnly } = body
 
     console.log('[Get Client Podcasts] Request accepted', cacheOnly ? '(cache only)' : '', skipAiAnalysis ? '(skip AI)' : '')
@@ -285,37 +287,28 @@ serve(async (req) => {
 
       const { data: dashboard, error: dashboardError } = await supabase
         .from('clients')
-        .select('id,name,bio,google_sheet_url,dashboard_enabled,workspace:workspaces(status)')
+        .select('id,name,bio,dashboard_enabled,workspace:workspaces(status)')
         .eq('id', clientId)
         .eq('dashboard_slug', dashboardSlug.trim().toLowerCase())
         .eq('dashboard_enabled', true)
         .maybeSingle()
 
-      const sheetMatch = dashboard?.google_sheet_url?.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
       const workspace = dashboard?.workspace as { status?: string } | null
-      if (dashboardError || !dashboard || workspace?.status !== 'active' || !sheetMatch) {
+      if (dashboardError || !dashboard || workspace?.status !== 'active') {
         return new Response(
           JSON.stringify({ error: 'Dashboard not found' }),
           { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
-      spreadsheetId = sheetMatch[1]
       clientId = dashboard.id
       clientName = dashboard.name
       clientBio = dashboard.bio || ''
     }
 
-    if (!spreadsheetId) {
-      return new Response(
-        JSON.stringify({ error: 'Spreadsheet ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // FAST PATH: For cacheOnly mode, skip Google Sheets entirely and return cached data directly
+    // DATABASE PATH: Client dashboards read their curated list directly from Supabase.
     if (cacheOnly && clientId) {
-      console.log('[Get Client Podcasts] FAST PATH - querying cache directly, skipping Google Sheets')
+      console.log('[Get Client Podcasts] DATABASE PATH - querying the curated client list')
       const { data: cached, error: cacheError } = await supabase
         .from('client_dashboard_podcasts')
         .select([
@@ -335,16 +328,24 @@ serve(async (req) => {
           'ai_pitch_angles',
           'ai_analyzed_at',
           'demographics',
+          'is_featured',
+          'featured_order',
+          'display_order',
         ].join(','))
         .eq('client_id', clientId)
-        .limit(500)
+        .eq('visibility', 'visible')
+        .order('is_featured', { ascending: false })
+        .order('featured_order', { ascending: true, nullsFirst: false })
+        .order('display_order', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(1_000)
 
       if (cacheError) {
         console.error('[Get Client Podcasts] Cache query error:', cacheError)
         throw cacheError
       }
 
-      console.log('[Get Client Podcasts] FAST PATH - returning', cached?.length || 0, 'cached podcasts')
+      console.log('[Get Client Podcasts] DATABASE PATH - returning', cached?.length || 0, 'podcasts')
       return new Response(
         JSON.stringify({
           success: true,
@@ -352,9 +353,16 @@ serve(async (req) => {
           total: cached?.length || 0,
           cached: cached?.length || 0,
           missing: 0,
-          fastPath: true,
+          databaseSource: true,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!spreadsheetId) {
+      return new Response(
+        JSON.stringify({ error: 'Spreadsheet ID is required for legacy synchronization' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -404,49 +412,9 @@ serve(async (req) => {
     console.log('[Get Client Podcasts] Found', podcastIds.length, 'podcast IDs in sheet')
     console.log('[Get Client Podcasts] Total rows:', rows.length)
 
-    // Clean up stale cache entries (podcasts no longer in sheet)
-    if (clientId && podcastIds.length >= 0) {
-      // Get all cached podcast IDs for this dashboard
-      const { data: allCached } = await supabase
-        .from('client_dashboard_podcasts')
-        .select('podcast_id')
-        .eq('client_id', clientId)
-
-      if (allCached && allCached.length > 0) {
-        const sheetPodcastIds = new Set(podcastIds)
-        const staleIds = allCached
-          .map(p => p.podcast_id)
-          .filter(id => !sheetPodcastIds.has(id))
-
-        if (staleIds.length > 0) {
-          console.log('[Get Client Podcasts] Removing', staleIds.length, 'stale podcasts from cache')
-
-          // Delete stale podcasts from cache
-          const { error: deleteError } = await supabase
-            .from('client_dashboard_podcasts')
-            .delete()
-            .eq('client_id', clientId)
-            .in('podcast_id', staleIds)
-
-          if (deleteError) {
-            console.error('[Get Client Podcasts] Error deleting stale cache:', deleteError)
-          } else {
-            console.log('[Get Client Podcasts] Deleted stale cache entries')
-          }
-
-          // Also delete stale feedback
-          const { error: feedbackDeleteError } = await supabase
-            .from('client_podcast_feedback')
-            .delete()
-            .eq('client_id', clientId)
-            .in('podcast_id', staleIds)
-
-          if (feedbackDeleteError) {
-            console.error('[Get Client Podcasts] Error deleting stale feedback:', feedbackDeleteError)
-          }
-        }
-      }
-    }
+    // Legacy Sheet imports are additive only. The database owns visibility and
+    // campaign history, so removing a row from an old Sheet never deletes or
+    // archives the corresponding database podcast or its client feedback.
 
     if (podcastIds.length === 0) {
       return new Response(
@@ -474,6 +442,7 @@ serve(async (req) => {
       itunes_rating: p.itunes_rating,
       episode_count: p.episode_count,
       audience_size: p.audience_size,
+      last_posted_at: p.last_posted_at || null,
       podcast_categories: p.podcast_categories,
       demographics: p.demographics,
       ai_clean_description: null,  // Will load from client_podcast_analyses if needed
@@ -810,6 +779,7 @@ serve(async (req) => {
                 itunes_rating: podcast.reach?.itunes?.itunes_rating_average || podcast.rating || null,
                 episode_count: podcast.episode_count || null,
                 audience_size: podcast.reach?.audience_size || podcast.audience_size || null,
+                last_posted_at: podcast.last_posted_at || null,
                 podscan_email: podcast.reach?.email || null,
                 podcast_categories: podcast.podcast_categories || null,
                 ai_clean_description: null,
@@ -874,6 +844,7 @@ serve(async (req) => {
                 itunes_rating: podcastData.itunes_rating ?? undefined,
                 episode_count: podcastData.episode_count ?? undefined,
                 audience_size: podcastData.audience_size ?? undefined,
+                last_posted_at: podcastData.last_posted_at ?? undefined,
                 podscan_email: podcastData.podscan_email ?? undefined,
                 podcast_categories: podcastData.podcast_categories,
                 demographics: podcastData.demographics,
