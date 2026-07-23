@@ -61,6 +61,7 @@ import {
 } from '@/services/clientShortlist'
 
 type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'hidden' | 'archived'
+type ListSort = 'list_order' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
 
 interface ClientShortlistEditorProps {
   workspaceId: string
@@ -70,7 +71,20 @@ interface ClientShortlistEditorProps {
   onChanged?: () => void
 }
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 10
+
+function compareOptionalNumbers(
+  left: number | null | undefined,
+  right: number | null | undefined,
+  direction: 'asc' | 'desc',
+): number {
+  const leftValue = typeof left === 'number' && Number.isFinite(left) ? left : null
+  const rightValue = typeof right === 'number' && Number.isFinite(right) ? right : null
+  if (leftValue === null && rightValue === null) return 0
+  if (leftValue === null) return 1
+  if (rightValue === null) return -1
+  return direction === 'asc' ? leftValue - rightValue : rightValue - leftValue
+}
 
 function compactNumber(value: number | null | undefined): string {
   if (!value) return '—'
@@ -133,6 +147,7 @@ export function ClientShortlistEditor({
 }: ClientShortlistEditorProps) {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<ListFilter>('all')
+  const [sort, setSort] = useState<ListSort>('list_order')
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
   const [addOpen, setAddOpen] = useState(false)
@@ -165,7 +180,7 @@ export function ClientShortlistEditor({
     return () => window.clearTimeout(timeout)
   }, [catalogQuery])
 
-  useEffect(() => setPage(1), [filter, searchQuery])
+  useEffect(() => setPage(1), [filter, searchQuery, sort])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
   const featured = useMemo(() => podcasts
@@ -181,7 +196,7 @@ export function ClientShortlistEditor({
   }), [podcasts])
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    return podcasts.filter((podcast) => {
+    const matching = podcasts.filter((podcast) => {
       if (query && !`${podcast.podcast_name} ${podcast.publisher_name || ''}`.toLowerCase().includes(query)) return false
       if (filter === 'all') return podcast.visibility !== 'archived'
       if (filter === 'hidden') return podcast.visibility === 'hidden'
@@ -191,7 +206,24 @@ export function ClientShortlistEditor({
       if (filter === 'rejected') return podcast.feedback_status === 'rejected'
       return podcast.feedback_status === null
     })
-  }, [filter, podcasts, searchQuery])
+    if (sort === 'list_order') return matching
+    return [...matching].sort((left, right) => {
+      if (sort === 'audience_desc') return compareOptionalNumbers(left.audience_size, right.audience_size, 'desc')
+      if (sort === 'audience_asc') return compareOptionalNumbers(left.audience_size, right.audience_size, 'asc')
+      if (sort === 'rating_desc') return compareOptionalNumbers(left.itunes_rating, right.itunes_rating, 'desc')
+      if (sort === 'rating_asc') return compareOptionalNumbers(left.itunes_rating, right.itunes_rating, 'asc')
+      if (sort === 'recent_desc') {
+        const leftTimestamp = left.last_posted_at ? Date.parse(left.last_posted_at) : Number.NaN
+        const rightTimestamp = right.last_posted_at ? Date.parse(right.last_posted_at) : Number.NaN
+        return compareOptionalNumbers(
+          Number.isFinite(leftTimestamp) ? leftTimestamp : null,
+          Number.isFinite(rightTimestamp) ? rightTimestamp : null,
+          'desc',
+        )
+      }
+      return left.podcast_name.localeCompare(right.podcast_name, undefined, { sensitivity: 'base' })
+    })
+  }, [filter, podcasts, searchQuery, sort])
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages])
   const visiblePage = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -378,7 +410,23 @@ export function ClientShortlistEditor({
         <CardHeader className="space-y-4">
           <div><CardTitle>All podcasts</CardTitle><CardDescription>Search, filter, feature, hide, archive, or restore shows from one place.</CardDescription></div>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="relative w-full max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search podcasts or publishers…" className="pl-9" /></div>
+            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
+              <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search podcasts or publishers…" className="pl-9" /></div>
+              <select
+                aria-label="Sort podcasts"
+                value={sort}
+                onChange={(event) => setSort(event.target.value as ListSort)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-56"
+              >
+                <option value="list_order">Client list order</option>
+                <option value="audience_desc">Audience: largest first</option>
+                <option value="audience_asc">Audience: smallest first</option>
+                <option value="rating_desc">Rating: highest first</option>
+                <option value="rating_asc">Rating: lowest first</option>
+                <option value="recent_desc">Recently published</option>
+                <option value="name_asc">Name: A–Z</option>
+              </select>
+            </div>
             <div className="flex flex-wrap gap-2">
               {([
                 ['all', `All ${counts.active + counts.hidden}`],

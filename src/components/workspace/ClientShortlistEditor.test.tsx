@@ -133,6 +133,58 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('Archived', { exact: true })).toBeInTheDocument()
   })
 
+  it('shows no more than ten podcasts on each list page', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: Array.from({ length: 12 }, (_, index) => podcast({
+        id: `shortlist-row-${index + 1}`,
+        podcast_id: `podcast-${index + 1}`,
+        podcast_name: `Podcast ${index + 1}`,
+        display_order: index,
+        is_featured: false,
+        featured_order: null,
+      })),
+    })
+    renderEditor()
+
+    expect(await screen.findByRole('button', { name: 'View details for Podcast 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View details for Podcast 10' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View details for Podcast 11' })).not.toBeInTheDocument()
+    expect(screen.getByText('Showing 10 of 12 podcasts')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByRole('button', { name: 'View details for Podcast 11' })).toBeInTheDocument()
+    expect(screen.getByText('Showing 2 of 12 podcasts')).toBeInTheDocument()
+  })
+
+  it('sorts all podcasts by audience or rating', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [
+        podcast({ id: 'row-small', podcast_id: 'small-show', podcast_name: 'Small Show', audience_size: 1_000, itunes_rating: 4.9, is_featured: false, featured_order: null }),
+        podcast({ id: 'row-large', podcast_id: 'large-show', podcast_name: 'Large Show', audience_size: 100_000, itunes_rating: 4.1, is_featured: false, featured_order: null }),
+        podcast({ id: 'row-medium', podcast_id: 'medium-show', podcast_name: 'Medium Show', audience_size: 25_000, itunes_rating: 4.6, is_featured: false, featured_order: null }),
+      ],
+    })
+    renderEditor()
+    await screen.findByRole('button', { name: 'View details for Small Show' })
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort podcasts' }), { target: { value: 'audience_desc' } })
+    expect(screen.getAllByRole('button', { name: /View details for/ }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View details for Large Show',
+      'View details for Medium Show',
+      'View details for Small Show',
+    ])
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort podcasts' }), { target: { value: 'rating_desc' } })
+    expect(screen.getAllByRole('button', { name: /View details for/ }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      'View details for Small Show',
+      'View details for Medium Show',
+      'View details for Large Show',
+    ])
+  })
+
   it('searches the shared catalog and adds a selected podcast directly to the database list', async () => {
     vi.mocked(searchClientPodcastCatalog).mockResolvedValue([
       {
