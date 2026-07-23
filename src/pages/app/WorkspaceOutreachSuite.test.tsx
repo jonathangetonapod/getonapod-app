@@ -5,9 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import WorkspaceOutreachSuite, { type OutreachWorkspaceModule } from '@/pages/app/WorkspaceOutreachSuite'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
+import { getWorkspaceClients } from '@/services/clients'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/clients', () => ({
+  getWorkspaceClients: vi.fn(),
+  getWorkspaceClientDetail: vi.fn(),
+}))
+vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
   WorkspaceLayout: ({ children, platformWorkspace }: {
     children: React.ReactNode
@@ -25,6 +31,7 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedView = vi.mocked(getAdminWorkspaceView)
+const mockedClients = vi.mocked(getWorkspaceClients)
 const defaultWorkspaceId = '00000000-0000-4000-8000-000000000000'
 const selectedWorkspaceId = '11111111-1111-4111-8111-111111111111'
 
@@ -84,18 +91,19 @@ describe('WorkspaceOutreachSuite', () => {
       },
       clients: [],
     })
+    mockedClients.mockResolvedValue([])
   })
 
   it.each([
-    ['client-campaigns', 'Client Campaigns', 'No Instantly campaigns synced yet'],
+    ['client-campaigns', 'Client Campaigns', 'No active clients'],
     ['master-inbox', 'Master Inbox', 'Your master inbox is ready'],
     ['mailboxes', 'Mailboxes', 'No mailboxes synced yet'],
-  ] as const)('renders the %s workspace foundation without invented provider data', (module, title, emptyState) => {
+  ] as const)('renders the %s workspace foundation without invented provider data', async (module, title, emptyState) => {
     renderPage(module)
 
     expect(screen.getByRole('heading', { name: title, level: 1 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: emptyState })).toBeInTheDocument()
-    expect(screen.getByTestId('instantly-connection-state')).toHaveTextContent('Not connected')
+    expect(await screen.findByRole('heading', { name: emptyState })).toBeInTheDocument()
+    expect(screen.getByTestId('instantly-connection-state')).toHaveTextContent('not connected')
     expect(screen.getByText('My Workspace')).toBeInTheDocument()
     expect(mockedView).not.toHaveBeenCalled()
   })
@@ -119,7 +127,7 @@ describe('WorkspaceOutreachSuite', () => {
     const baseHref = `/app/workspaces/${selectedWorkspaceId}`
     expect(screen.getByTestId('workspace-layout')).toHaveAttribute('data-base-href', baseHref)
     expect(screen.getByRole('link', { name: /handle every reply in one queue/i })).toHaveAttribute('href', `${baseHref}/master-inbox`)
-    expect(screen.getByRole('link', { name: /review workspace clients/i })).toHaveAttribute('href', `${baseHref}/clients`)
+    expect(screen.getByRole('link', { name: /open clients/i })).toHaveAttribute('href', `${baseHref}/clients`)
     expect(mockedView).toHaveBeenCalledWith(selectedWorkspaceId, expect.any(AbortSignal))
   })
 })

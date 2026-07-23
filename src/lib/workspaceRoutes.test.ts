@@ -27,6 +27,12 @@ describe('workspace routes', () => {
     },
   )
 
+  it('returns a client campaign detail to the campaign index when switching workspaces', () => {
+    expect(workspaceModuleFromPath(
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/client-campaigns/22222222-2222-4222-8222-222222222222',
+    )).toBe('client-campaigns')
+  })
+
   it('falls back to overview outside a workspace module', () => {
     expect(workspaceModuleFromPath('/app/manage-workspaces')).toBe('overview')
     expect(workspaceModuleFromPath('/admin/dashboard')).toBe('overview')

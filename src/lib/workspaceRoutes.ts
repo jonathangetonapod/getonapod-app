@@ -33,6 +33,7 @@ export function workspaceModuleHref(baseHref: string, module: WorkspaceModule): 
 
 export function workspaceModuleFromPath(pathname: string): WorkspaceModule {
   if (pathname.includes('/podcast-finder')) return 'podcast-finder'
+  if (pathname.includes('/client-campaigns')) return 'client-campaigns'
 
   const segments = pathname.split('/').filter(Boolean)
   const candidate = segments.at(-1)

@@ -38,7 +38,7 @@ Each client command center includes an approval-dashboard editor. The agency can
 
 ### 4. Run outreach
 
-The workspace outreach suite is organized into Client Campaigns, Master Inbox, and Mailboxes. Instantly.ai is the target provider. The workspace-native page foundations and routes are present; provider authentication, synchronization, webhooks, and write actions still require a tenant-safe server implementation.
+The workspace outreach suite is organized into Client Campaigns, Master Inbox, and Mailboxes. Each active client has one ongoing campaign, with new podcast opportunities added in weekly waves. Workspace operators select client-positive podcasts by default, may explicitly include an owner-approved exception, and review a custom pitch for each show in a dedicated campaign workspace. Instantly.ai is the target sending provider; provider authentication, synchronization, webhooks, draft persistence, and send actions still require a tenant-safe server implementation.
 
 ### 5. Deliver a white-label client experience
 
@@ -54,7 +54,7 @@ Workspace branding controls the agency name, logo, primary color, and accent col
 | Onboarding | Available | Forms, invitations, autosave, review, revisions, files, and pitch approval |
 | Podcast Finder | Available | Client-selectable recurring discovery with history deduplication |
 | Clients | Available | Client records and command centers |
-| Client Campaigns | Integration foundation | Instantly campaign roster, client assignment, and performance surface |
+| Client Campaigns | Operations layout | Client campaign index, weekly pitch queue, pitch detail drawer, activity, performance, and settings surfaces |
 | Master Inbox | Integration foundation | Cross-campaign reply queue with client and thread context |
 | Mailboxes | Integration foundation | Sending-account health, warmup, capacity, and assignment surface |
 | Guest Resources | Available | Workspace-authored resources for all clients or selected clients |
@@ -71,13 +71,16 @@ The outreach experience is intentionally split by job-to-be-done:
 
 ### Client Campaigns
 
-The campaign control plane should show:
+The campaign experience is organized around one ongoing podcast-booking campaign per client:
 
-- the GOAP client assigned to each Instantly campaign;
-- draft, active, paused, completed, and error states;
-- lead counts, sends, replies, positive replies, and last synchronization time;
-- sequence visibility and the next operational action; and
-- a direct path from a campaign reply to its Master Inbox conversation.
+- an operational index surfaces campaign status, the current weekly wave, pitch readiness, contacted podcasts, bookings, and the next action;
+- a two-step creation flow chooses the client and first wave without pretending to create remote provider data;
+- client-positive podcasts are selected automatically, while an owner can deliberately include another shortlisted show;
+- the campaign workspace groups podcasts by weekly wave and supports focused pitch-queue views;
+- selecting a podcast opens a right-side workspace with host contact details, fit context, suggested angles, and an individual pitch editor; and
+- activity, performance, and campaign settings have dedicated tabs ready for workspace-scoped Instantly data.
+
+The same campaign surfaces are available in My Workspace and in a platform-owner-selected workspace. Client command centers link directly to their campaign.
 
 ### Master Inbox
 
@@ -155,7 +158,8 @@ See [`docs/subagency-saas-architecture.md`](docs/subagency-saas-architecture.md)
 | `/app/podcast-finder` | Client-selectable podcast discovery |
 | `/app/clients` | Clients |
 | `/app/clients/:clientId` | Client command center |
-| `/app/client-campaigns` | Instantly campaign foundation |
+| `/app/client-campaigns` | Client campaign operations index |
+| `/app/client-campaigns/:clientId` | Weekly pitch queue and campaign workspace |
 | `/app/master-inbox` | Instantly inbox foundation |
 | `/app/mailboxes` | Instantly mailbox foundation |
 | `/app/guest-resources` | Workspace guest resources |
@@ -172,6 +176,7 @@ The same modules are reused under:
 /app/workspaces/:workspaceId/clients
 /app/workspaces/:workspaceId/clients/:clientId
 /app/workspaces/:workspaceId/client-campaigns
+/app/workspaces/:workspaceId/client-campaigns/:clientId
 /app/workspaces/:workspaceId/master-inbox
 /app/workspaces/:workspaceId/mailboxes
 /app/workspaces/:workspaceId/guest-resources

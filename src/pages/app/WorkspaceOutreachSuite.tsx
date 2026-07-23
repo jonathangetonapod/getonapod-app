@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
+import WorkspaceCampaigns from '@/pages/app/WorkspaceCampaigns'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
@@ -28,6 +28,7 @@ import {
   type WorkspaceModule,
 } from '@/lib/workspaceRoutes'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
+import { getWorkspaceClients } from '@/services/clients'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -150,48 +151,6 @@ const DetailList = ({
   </div>
 )
 
-const CampaignsContent = ({ baseHref }: { baseHref: string }) => (
-  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
-    <Card className="overflow-hidden">
-      <CardHeader className="border-b border-border/70 bg-muted/20 sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
-        <div>
-          <CardTitle>Campaign roster</CardTitle>
-          <CardDescription>Client assignments, sending state, volume, and performance will live here.</CardDescription>
-        </div>
-        <Badge variant="outline" className="mt-3 w-fit sm:mt-0">Awaiting first sync</Badge>
-      </CardHeader>
-      <CardContent className="flex min-h-72 flex-col items-center justify-center px-6 py-12 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <Megaphone className="h-7 w-7" />
-        </div>
-        <h2 className="mt-5 text-xl font-semibold">No Instantly campaigns synced yet</h2>
-        <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-          Once this workspace is connected, campaigns will be matched to GOAP clients and managed from this roster.
-        </p>
-        <Button asChild variant="outline" className="mt-6">
-          <Link to={workspaceModuleHref(baseHref, 'clients')}>
-            Review workspace clients<ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
-
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Campaign operations</CardTitle>
-        <CardDescription>The workspace view is designed around the decisions your team makes every day.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <DetailList items={[
-          { title: 'Client ownership', description: 'Tie every campaign to one client and preserve workspace boundaries.', icon: Users },
-          { title: 'Sequence visibility', description: 'See launch state, lead volume, sending progress, and next steps.', icon: Layers3 },
-          { title: 'Reply performance', description: 'Follow positive replies and open conversations into the Master Inbox.', icon: Inbox },
-        ]} />
-      </CardContent>
-    </Card>
-  </div>
-)
-
 const InboxContent = () => (
   <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
     <Card className="overflow-hidden">
@@ -286,6 +245,12 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
     retry: false,
     gcTime: 0,
   })
+  const tenantClientsQuery = useQuery({
+    queryKey: ['tenant', user?.id || 'unknown', workspace?.id || 'missing', 'campaign-clients'],
+    queryFn: () => getWorkspaceClients(workspace?.id || ''),
+    enabled: module === 'client-campaigns' && !isSelectedWorkspace && Boolean(workspace?.id),
+    retry: false,
+  })
 
   const effectiveWorkspace = isSelectedWorkspace
     ? selectedWorkspaceQuery.data?.workspace || null
@@ -337,50 +302,35 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
 
   const ActiveIcon = config.icon
   const workspaceLabel = effectiveWorkspace.is_default ? 'My Workspace' : effectiveWorkspace.name
+  const campaignClients = isSelectedWorkspace
+    ? selectedWorkspaceQuery.data?.clients || []
+    : tenantClientsQuery.data || []
+  const campaignClientsLoading = isSelectedWorkspace
+    ? selectedWorkspaceQuery.isLoading
+    : tenantClientsQuery.isLoading
+  const campaignClientsError = isSelectedWorkspace
+    ? selectedWorkspaceQuery.error instanceof Error ? selectedWorkspaceQuery.error : null
+    : tenantClientsQuery.error instanceof Error ? tenantClientsQuery.error : null
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="min-w-0 space-y-5 sm:space-y-6">
-        <section className="relative isolate overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-7 lg:p-8">
-          <div className="pointer-events-none absolute -right-20 -top-24 -z-10 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
-          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-end">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">Instantly-powered outreach</Badge>
-                <span className="text-xs font-medium text-muted-foreground">{workspaceLabel}</span>
-              </div>
-              <p className="mt-6 text-sm font-semibold text-primary">{config.eyebrow}</p>
-              <div className="mt-2 flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <ActiveIcon className="h-5 w-5" />
-                </div>
-                <h1 className="min-w-0 text-3xl font-bold tracking-tight sm:text-4xl">{config.name}</h1>
-              </div>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-                {config.description}
-              </p>
+        <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-primary">{config.eyebrow}</span>
+              <span className="text-xs text-muted-foreground">{workspaceLabel}</span>
             </div>
-
-            <div data-testid="instantly-connection-state" className="rounded-2xl border border-border/80 bg-background/85 p-4 shadow-sm backdrop-blur">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                  <PlugZap className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Instantly connection</p>
-                  <p className="text-xs text-muted-foreground">Required before the first sync</p>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/70 px-3 py-2 text-xs font-medium">
-                <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
-                Not connected
-              </div>
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                Credentials will stay server-side and data will be isolated to this workspace.
-              </p>
+            <div className="mt-2 flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><ActiveIcon className="h-5 w-5" /></div>
+              <h1 className="min-w-0 text-3xl font-bold tracking-tight">{config.name}</h1>
             </div>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{config.description}</p>
           </div>
-        </section>
+          <div data-testid="instantly-connection-state" className="flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+            <PlugZap className="h-3.5 w-3.5" />Instantly not connected
+          </div>
+        </header>
 
         <nav aria-label="Outreach suite" className="grid gap-3 lg:grid-cols-3">
           {suiteItems.map((item) => {
@@ -414,9 +364,20 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
           })}
         </nav>
 
-        <MetricStrip metrics={config.metrics} />
-
-        {module === 'client-campaigns' && <CampaignsContent baseHref={baseHref} />}
+        {module === 'client-campaigns' && (
+          <WorkspaceCampaigns
+            workspaceId={effectiveWorkspace.id}
+            clients={campaignClients}
+            clientsLoading={campaignClientsLoading}
+            clientsError={campaignClientsError}
+            baseHref={baseHref}
+            onRetryClients={() => {
+              if (isSelectedWorkspace) void selectedWorkspaceQuery.refetch()
+              else void tenantClientsQuery.refetch()
+            }}
+          />
+        )}
+        {module !== 'client-campaigns' && <MetricStrip metrics={config.metrics} />}
         {module === 'master-inbox' && <InboxContent />}
         {module === 'mailboxes' && <MailboxesContent />}
 

@@ -18,6 +18,7 @@ import {
   Linkedin,
   Loader2,
   Mail,
+  Megaphone,
   Mic2,
   Pencil,
   Radio,
@@ -348,6 +349,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     : null
   const onboardingHref = `${baseHref}/onboarding?client=${encodeURIComponent(client.id)}${onboarding ? `&instance=${encodeURIComponent(onboarding.id)}` : ''}`
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
+  const campaignHref = `${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`
   const clientInitials = client.name.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'C'
   const dashboardStatus = dashboard.enabled && dashboard.configured
     ? 'Live'
@@ -514,6 +516,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline"><Link to={onboardingHref}><BookOpenCheck className="mr-2 h-4 w-4" />Onboarding</Link></Button>
+              <Button asChild variant="outline"><Link to={campaignHref}><Megaphone className="mr-2 h-4 w-4" />Client Campaign</Link></Button>
               <Button asChild><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Podcast Finder</Link></Button>
             </div>
           </div>

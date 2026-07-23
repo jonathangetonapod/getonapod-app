@@ -37,10 +37,12 @@ import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
 import MyWorkspaceSettings from "./pages/app/MyWorkspaceSettings";
 import WorkspaceOverview from "./pages/app/WorkspaceOverview";
+import WorkspaceCampaignDetail from "./pages/app/WorkspaceCampaignDetail";
 import WorkspaceOutreachSuite from "./pages/app/WorkspaceOutreachSuite";
 import WorkspacePodcastFinderHome from "./pages/app/WorkspacePodcastFinderHome";
 import WorkspacePodcastFinder from "./pages/app/WorkspacePodcastFinder";
 import AdminWorkspaceOverview from "./pages/admin/AdminWorkspaceOverview";
+import AdminWorkspaceCampaignDetail from "./pages/admin/AdminWorkspaceCampaignDetail";
 import AdminWorkspaceOutreachSuite from "./pages/admin/AdminWorkspaceOutreachSuite";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
 import AdminWorkspaceClientDetail from "./pages/admin/AdminWorkspaceClientDetail";
@@ -178,6 +180,14 @@ const App = () => (
               }
             />
             <Route
+              path="/app/client-campaigns/:clientId"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceCampaignDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/app/master-inbox"
               element={
                 <ProtectedRoute>
@@ -274,6 +284,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceOutreachSuite module="client-campaigns" />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/client-campaigns/:clientId"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceCampaignDetail />
                 </PlatformAdminRoute>
               }
             />

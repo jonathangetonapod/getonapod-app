@@ -189,6 +189,10 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getAllByRole('link', { name: 'Onboarding' }).find((link) => (
       link.getAttribute('href')?.includes(`client=${clientId}`)
     ))).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
+    expect(screen.getByRole('link', { name: 'Client Campaign' })).toHaveAttribute(
+      'href',
+      `/app/client-campaigns/${clientId}`,
+    )
     const progress = screen.getByRole('heading', { name: 'Campaign snapshot' }).closest('section')
     expect(progress).not.toBeNull()
     expect(within(progress as HTMLElement).getByText('Booked').nextElementSibling).toHaveTextContent('1')
