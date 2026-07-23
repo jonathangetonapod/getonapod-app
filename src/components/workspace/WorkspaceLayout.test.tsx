@@ -182,7 +182,8 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).queryByRole('button', { name: 'Organize' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/settings')
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
-    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-gradient-to-br')
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-transparent')
+    expect(screen.getByTestId('workspace-logo-sidebar')).not.toHaveClass('bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
   })
 

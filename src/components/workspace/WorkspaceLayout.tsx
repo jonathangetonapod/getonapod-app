@@ -210,7 +210,8 @@ export const WorkspaceBrandLogo = ({
     data-testid={`workspace-logo-${placement}`}
     data-logo-state={logoUrl ? 'uploaded' : 'initials'}
     className={cn(
-      'isolate overflow-hidden border border-white/15 bg-gradient-to-br from-[#141229] via-[#302a70] to-[#665cf2] shadow-[0_18px_40px_-24px_rgba(34,28,100,0.95)] ring-1 ring-black/10',
+      'isolate overflow-hidden shadow-none ring-0',
+      logoUrl ? 'border border-transparent bg-transparent' : 'border border-border bg-muted',
       brandLogoSizes[placement],
     )}
   >
@@ -219,14 +220,14 @@ export const WorkspaceBrandLogo = ({
         src={logoUrl}
         alt={`${workspaceName} logo`}
         className={cn(
-          'aspect-auto h-full w-full object-contain drop-shadow-[0_5px_14px_rgba(0,0,0,0.3)]',
+          'aspect-auto h-full w-full object-contain',
           brandLogoImageSpacing[placement],
         )}
       />
     )}
     <AvatarFallback
       className={cn(
-        'rounded-[inherit] bg-transparent font-bold tracking-tight text-white',
+        'rounded-[inherit] bg-muted font-bold tracking-tight text-foreground',
         brandLogoFallbackSizes[placement],
       )}
     >

@@ -670,7 +670,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     <div>
                       <p className="font-semibold">Brand preview</p>
                       <p className="text-sm text-muted-foreground">
-                        Your logo uses a high-contrast backdrop so transparent and light artwork stays visible.
+                        Your logo appears on a clean, transparent surface without a colored backdrop.
                       </p>
                     </div>
                     <Input

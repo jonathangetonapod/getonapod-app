@@ -76,6 +76,15 @@ interface RpcError {
   message?: string;
 }
 
+function schemaObjectUnavailable(error: RpcError, objectName: string): boolean {
+  const message = (error.message ?? "").toLowerCase();
+  const normalizedObjectName = objectName.toLowerCase();
+  return error.code === "PGRST202" ||
+    error.code === "PGRST204" ||
+    ((message.includes("schema cache") || message.includes("does not exist")) &&
+      message.includes(normalizedObjectName));
+}
+
 interface InternalMembership {
   id: string;
   workspace_id: string;
@@ -741,21 +750,96 @@ async function loadWorkspaceBranding(
   admin: AdminClient,
   workspaceId: string,
 ): Promise<WorkspaceSettingsBrandingDto> {
-  const { data, error } = await admin
+  const { data: workspaceData, error: workspaceError } = await admin
     .from("workspaces")
-    .select("id,name,updated_at,logo_path,logo_updated_at,client_brand_name,client_brand_primary_color,client_brand_accent_color,client_brand_updated_at")
+    .select("id,name,updated_at,logo_path,logo_updated_at")
     .eq("id", workspaceId)
     .eq("status", "active")
     .eq("is_default", false)
     .maybeSingle();
-  if (error || !data) {
+  if (workspaceError || !workspaceData) {
     throw new HttpError(
       500,
       "BRANDING_UNAVAILABLE",
       "Workspace branding could not be loaded",
     );
   }
-  return workspaceSettingsBrandingDto(data, workspaceId);
+
+  const workspace = responseRecord(workspaceData);
+  const base = {
+    ...workspaceBrandingDto(workspace, workspaceId),
+    name: responseText(workspace.name, 120) as string,
+    updated_at: responseTimestamp(workspace.updated_at) as string,
+  };
+  const { data: canonicalBrand, error: canonicalBrandError } = await admin
+    .from("workspaces")
+    .select("id,client_brand_name,client_brand_primary_color,client_brand_accent_color,client_brand_updated_at")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (!canonicalBrandError && canonicalBrand?.client_brand_name) {
+    return {
+      ...base,
+      client_brand_name: responseText(
+        canonicalBrand.client_brand_name,
+        120,
+      ) as string,
+      client_brand_primary_color: responseBrandColor(
+        canonicalBrand.client_brand_primary_color,
+      ),
+      client_brand_accent_color: responseBrandColor(
+        canonicalBrand.client_brand_accent_color,
+      ),
+      client_brand_updated_at: responseTimestamp(
+        canonicalBrand.client_brand_updated_at,
+      ) as string,
+    };
+  }
+  if (
+    canonicalBrandError &&
+    !schemaObjectUnavailable(canonicalBrandError, "client_brand_name")
+  ) {
+    throw new HttpError(
+      500,
+      "BRANDING_UNAVAILABLE",
+      "Workspace branding could not be loaded",
+    );
+  }
+
+  const { data: brandEvent, error: brandEventError } = await admin
+    .from("workspace_audit_log")
+    .select("created_at,metadata")
+    .eq("workspace_id", workspaceId)
+    .eq("action", "workspace.branding.client_identity_updated")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (brandEventError) {
+    throw new HttpError(
+      500,
+      "BRANDING_UNAVAILABLE",
+      "Workspace branding could not be loaded",
+    );
+  }
+  if (!brandEvent) {
+    return {
+      ...base,
+      client_brand_name: base.name,
+      client_brand_primary_color: "#0D1B2A",
+      client_brand_accent_color: "#C7794F",
+      client_brand_updated_at: base.updated_at,
+    };
+  }
+
+  const event = responseRecord(brandEvent);
+  const metadata = responseRecord(event.metadata);
+  return {
+    ...base,
+    client_brand_name: responseText(metadata.client_brand_name, 120) as string,
+    client_brand_primary_color: responseBrandColor(metadata.primary_color),
+    client_brand_accent_color: responseBrandColor(metadata.accent_color),
+    client_brand_updated_at: responseTimestamp(event.created_at) as string,
+  };
 }
 
 async function listWorkspaceSettings(
@@ -768,6 +852,7 @@ async function listWorkspaceSettings(
     listWorkspaceStaff(admin, workspaceId, actorUserId, tokenIssuedAt),
     loadWorkspaceBranding(admin, workspaceId),
   ]);
+  const canManageWorkspaceBranding = staff.capabilities.can_generate_password;
   return {
     ...staff,
     workspace: {
@@ -783,11 +868,21 @@ async function listWorkspaceSettings(
     },
     capabilities: {
       ...staff.capabilities,
-      can_manage_branding: true,
-      can_manage_client_branding: true,
-      can_manage_workspace_name: true,
+      can_manage_branding: canManageWorkspaceBranding,
+      can_manage_client_branding: canManageWorkspaceBranding,
+      can_manage_workspace_name: canManageWorkspaceBranding,
     },
   };
+}
+
+function requireWorkspaceManager(staff: StaffViewDto): void {
+  if (!staff.capabilities.can_generate_password) {
+    throw new HttpError(
+      403,
+      "WORKSPACE_MANAGER_REQUIRED",
+      "Workspace owner or administrator access is required",
+    );
+  }
 }
 
 function requireExpectedLogoPath(
@@ -998,6 +1093,7 @@ async function setWorkspaceName(
   input: {
     workspaceId: string;
     expectedUpdatedAt: string;
+    previousWorkspaceName: string;
     workspaceName: string;
     actorUserId: string;
     tokenIssuedAt: number;
@@ -1010,14 +1106,54 @@ async function setWorkspaceName(
     p_actor_user_id: input.actorUserId,
     p_token_issued_at: input.tokenIssuedAt,
   });
-  if (error) {
+  if (!error) {
+    return workspaceNameDto(data, input.workspaceId);
+  }
+  if (!schemaObjectUnavailable(error, "set_workspace_name_v1")) {
     rpcFailure(
       error,
       "WORKSPACE_NAME_UPDATE_FAILED",
       "Workspace name could not be updated",
     );
   }
-  return workspaceNameDto(data, input.workspaceId);
+
+  const { data: updatedWorkspace, error: updateError } = await admin
+    .from("workspaces")
+    .update({ name: input.workspaceName })
+    .eq("id", input.workspaceId)
+    .eq("status", "active")
+    .eq("is_default", false)
+    .eq("updated_at", input.expectedUpdatedAt)
+    .select("id,name,updated_at")
+    .maybeSingle();
+  if (updateError) {
+    throw new HttpError(
+      500,
+      "WORKSPACE_NAME_UPDATE_FAILED",
+      "Workspace name could not be updated",
+    );
+  }
+  if (!updatedWorkspace) {
+    throw new HttpError(
+      409,
+      "WORKSPACE_STATE_CHANGED",
+      "Workspace settings changed; refresh before trying again",
+    );
+  }
+
+  const { error: auditError } = await admin.from("workspace_audit_log").insert({
+    workspace_id: input.workspaceId,
+    actor_user_id: input.actorUserId,
+    action: "workspace.identity.name_updated",
+    entity_type: "workspace",
+    entity_id: input.workspaceId,
+    metadata: {
+      previous_name: input.previousWorkspaceName,
+      workspace_name: input.workspaceName,
+    },
+  });
+  if (auditError) console.error("Workspace name audit event failed");
+  return workspaceNameDto(updatedWorkspace, input.workspaceId);
 }
 
 async function setWorkspaceClientBrand(
@@ -1041,14 +1177,37 @@ async function setWorkspaceClientBrand(
     p_actor_user_id: input.actorUserId,
     p_token_issued_at: input.tokenIssuedAt,
   });
-  if (error) {
+  if (!error) {
+    return workspacePresentationBrandingDto(data, input.workspaceId);
+  }
+  if (!schemaObjectUnavailable(error, "set_workspace_client_brand_v1")) {
     rpcFailure(
       error,
       "BRANDING_UPDATE_FAILED",
       "Client-facing workspace branding could not be updated",
     );
   }
-  return workspacePresentationBrandingDto(data, input.workspaceId);
+
+  const { error: auditError } = await admin.from("workspace_audit_log").insert({
+    workspace_id: input.workspaceId,
+    actor_user_id: input.actorUserId,
+    action: "workspace.branding.client_identity_updated",
+    entity_type: "workspace",
+    entity_id: input.workspaceId,
+    metadata: {
+      client_brand_name: input.clientBrandName,
+      primary_color: input.primaryColor,
+      accent_color: input.accentColor,
+    },
+  });
+  if (auditError) {
+    throw new HttpError(
+      500,
+      "BRANDING_UPDATE_FAILED",
+      "Client-facing workspace branding could not be updated",
+    );
+  }
+  return loadWorkspaceBranding(admin, input.workspaceId);
 }
 
 async function removeWorkspaceLogoObject(
@@ -2608,6 +2767,7 @@ serve(async (req) => {
         tokenIssuedAt,
       );
       if (staff.capabilities.read_only) invalidRpcResponse();
+      requireWorkspaceManager(staff);
       const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
       if (currentBranding.updated_at !== expectedUpdatedAt) {
         throw new HttpError(
@@ -2619,6 +2779,7 @@ serve(async (req) => {
       const updatedWorkspace = await setWorkspaceName(admin, {
         workspaceId,
         expectedUpdatedAt,
+        previousWorkspaceName: currentBranding.name,
         workspaceName,
         actorUserId: user.id,
         tokenIssuedAt,
@@ -2657,6 +2818,7 @@ serve(async (req) => {
         tokenIssuedAt,
       );
       if (staff.capabilities.read_only) invalidRpcResponse();
+      requireWorkspaceManager(staff);
       const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
       if (currentBranding.client_brand_updated_at !== expectedBrandUpdatedAt) {
         throw new HttpError(
@@ -2699,6 +2861,7 @@ serve(async (req) => {
         tokenIssuedAt,
       );
       if (staff.capabilities.read_only) invalidRpcResponse();
+      requireWorkspaceManager(staff);
       const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
       if (currentBranding.logo_path !== expectedLogoPath) {
         throw new HttpError(
@@ -2764,6 +2927,7 @@ serve(async (req) => {
         tokenIssuedAt,
       );
       if (staff.capabilities.read_only) invalidRpcResponse();
+      requireWorkspaceManager(staff);
       const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
       if (
         expectedLogoPath === null ||

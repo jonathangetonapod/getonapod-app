@@ -48,6 +48,21 @@ type ClientDashboardRow = Record<string, unknown> & {
   } | null
 }
 
+interface DatabaseError {
+  code?: string
+  message?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function brandSchemaUnavailable(error: DatabaseError): boolean {
+  const message = (error.message ?? '').toLowerCase()
+  return error.code === 'PGRST204'
+    || ((message.includes('schema cache') || message.includes('does not exist')) && message.includes('client_brand_'))
+}
+
 function presentedWorkspaceName(value: unknown): string {
   if (typeof value !== 'string' || !value.trim() || value.length > 200) {
     throw new HttpError(500, 'INVALID_WORKSPACE_BRAND', 'Dashboard branding could not be loaded')
@@ -96,6 +111,52 @@ function presentedWorkspaceLogo(
   return logoUrl.toString()
 }
 
+async function loadWorkspacePresentation(
+  admin: ReturnType<typeof createAdminClient>,
+  workspace: NonNullable<ClientDashboardRow['workspace']>,
+) {
+  const workspaceId = workspace.id
+  if (typeof workspaceId !== 'string') {
+    throw new HttpError(500, 'INVALID_WORKSPACE_BRAND', 'Dashboard branding could not be loaded')
+  }
+
+  const { data: canonicalBrand, error: canonicalBrandError } = await admin
+    .from('workspaces')
+    .select('client_brand_name,client_brand_primary_color,client_brand_accent_color')
+    .eq('id', workspaceId)
+    .maybeSingle()
+  if (!canonicalBrandError && canonicalBrand?.client_brand_name) {
+    return {
+      name: presentedWorkspaceName(canonicalBrand.client_brand_name),
+      logo_url: presentedWorkspaceLogo(workspaceId, workspace.logo_path, workspace.logo_updated_at),
+      primary_color: presentedWorkspaceColor(canonicalBrand.client_brand_primary_color, '#0D1B2A'),
+      accent_color: presentedWorkspaceColor(canonicalBrand.client_brand_accent_color, '#C7794F'),
+    }
+  }
+  if (canonicalBrandError && !brandSchemaUnavailable(canonicalBrandError)) {
+    throw new HttpError(500, 'INVALID_WORKSPACE_BRAND', 'Dashboard branding could not be loaded')
+  }
+
+  const { data: brandEvent, error: brandEventError } = await admin
+    .from('workspace_audit_log')
+    .select('metadata')
+    .eq('workspace_id', workspaceId)
+    .eq('action', 'workspace.branding.client_identity_updated')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (brandEventError) {
+    throw new HttpError(500, 'INVALID_WORKSPACE_BRAND', 'Dashboard branding could not be loaded')
+  }
+  const metadata = brandEvent && isRecord(brandEvent.metadata) ? brandEvent.metadata : null
+  return {
+    name: presentedWorkspaceName(metadata?.client_brand_name ?? workspace.name),
+    logo_url: presentedWorkspaceLogo(workspaceId, workspace.logo_path, workspace.logo_updated_at),
+    primary_color: presentedWorkspaceColor(metadata?.primary_color, '#0D1B2A'),
+    accent_color: presentedWorkspaceColor(metadata?.accent_color, '#C7794F'),
+  }
+}
+
 function requireSlug(value: unknown): string {
   const slug = requireString(value, 'slug', { max: 180 })
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(slug)) {
@@ -110,7 +171,7 @@ async function findDashboard(
 ) {
   const { data, error } = await admin
     .from('clients')
-    .select(`${DASHBOARD_FIELDS},workspace:workspaces(id,name,status,logo_path,logo_updated_at,client_brand_name,client_brand_primary_color,client_brand_accent_color)`)
+    .select(`${DASHBOARD_FIELDS},workspace:workspaces(id,name,status,logo_path,logo_updated_at)`)
     .eq('dashboard_slug', slug)
     .eq('dashboard_enabled', true)
     .maybeSingle()
@@ -126,22 +187,7 @@ async function findDashboard(
   const { workspace, ...dashboard } = row
   return {
     ...dashboard,
-    workspace: {
-      name: presentedWorkspaceName(workspace.client_brand_name ?? workspace.name),
-      logo_url: presentedWorkspaceLogo(
-        workspace.id,
-        workspace.logo_path,
-        workspace.logo_updated_at,
-      ),
-      primary_color: presentedWorkspaceColor(
-        workspace.client_brand_primary_color,
-        '#0D1B2A',
-      ),
-      accent_color: presentedWorkspaceColor(
-        workspace.client_brand_accent_color,
-        '#C7794F',
-      ),
-    },
+    workspace: await loadWorkspacePresentation(admin, workspace),
   }
 }
 
