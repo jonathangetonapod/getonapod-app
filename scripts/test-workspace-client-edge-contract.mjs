@@ -28,6 +28,10 @@ const portalPasswordRepairMigration = readFileSync(
   'supabase/migrations/20260723000600_fix_client_portal_password_management.sql',
   'utf8',
 )
+const clientBrandingMigration = readFileSync(
+  'supabase/migrations/20260723000700_workspace_client_branding.sql',
+  'utf8',
+)
 
 assert.match(edge, /if \(req\.method === 'OPTIONS'\) return optionsResponse\(req, METHODS\)/u)
 assert.match(edge, /return errorResponse\(req, METHODS, error\)/u)
@@ -102,7 +106,13 @@ assert.match(clientPodcastsEdge, /\.eq\('visibility', 'visible'\)[\s\S]*?\.order
 assert.doesNotMatch(clientPodcastsEdge, /select\('id,name,bio,google_sheet_url/u)
 assert.doesNotMatch(clientPodcastsEdge, /\.from\('client_dashboard_podcasts'\)[\s\S]*?\.delete\(\)/u)
 assert.match(publicDashboardEdge, /\.eq\('visibility', 'visible'\)/u)
-assert.match(publicDashboardEdge, /if \(action === 'metadata'\)[\s\S]*?dashboard_tagline: dashboard\.dashboard_tagline,[\s\S]*?if \(action === 'get'\)[\s\S]*?record_public_client_dashboard_view/u)
+assert.match(publicDashboardEdge, /workspace:workspaces\(id,name,status,logo_path,logo_updated_at,client_brand_name,client_brand_primary_color,client_brand_accent_color\)/u)
+assert.match(publicDashboardEdge, /name: presentedWorkspaceName\(workspace\.client_brand_name \?\? workspace\.name\)/u)
+assert.match(publicDashboardEdge, /primary_color: presentedWorkspaceColor[\s\S]*?accent_color: presentedWorkspaceColor/u)
+assert.match(publicDashboardEdge, /if \(action === 'metadata'\)[\s\S]*?dashboard_tagline: dashboard\.dashboard_tagline,[\s\S]*?workspace: dashboard\.workspace,[\s\S]*?if \(action === 'get'\)[\s\S]*?record_public_client_dashboard_view/u)
+assert.match(clientBrandingMigration, /client_brand_name TEXT/u)
+assert.match(clientBrandingMigration, /client_brand_primary_color TEXT/u)
+assert.match(clientBrandingMigration, /client_brand_accent_color TEXT/u)
 
 assert.match(exportEdge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 assert.match(exportEdge, /fields=sheets\.properties/u)

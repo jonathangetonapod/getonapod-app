@@ -20,6 +20,7 @@ interface PageSEOProps {
   whiteLabel?: boolean
   brandName?: string
   themeColor?: string
+  favicon?: string | null
 }
 
 export default function PageSEO({
@@ -35,6 +36,7 @@ export default function PageSEO({
   whiteLabel = false,
   brandName,
   themeColor = DEFAULT_THEME_COLOR,
+  favicon,
 }: PageSEOProps) {
   const canonicalUrl = toAbsoluteUrl(path)
   const imageUrl = toAbsoluteUrl(image)
@@ -52,6 +54,8 @@ export default function PageSEO({
       <meta name="theme-color" content={themeColor} />
       <meta name="application-name" content={whiteLabel ? brandName || 'Client onboarding' : SITE_NAME} />
       <meta name="apple-mobile-web-app-title" content={whiteLabel ? brandName || 'Client onboarding' : SITE_NAME} />
+      {whiteLabel && favicon ? <link rel="icon" href={favicon} /> : null}
+      {whiteLabel && favicon ? <link rel="apple-touch-icon" href={favicon} /> : null}
       {!whiteLabel ? <link rel="canonical" href={canonicalUrl} /> : null}
 
       {!whiteLabel ? <>

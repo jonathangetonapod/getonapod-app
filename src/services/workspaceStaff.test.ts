@@ -7,6 +7,7 @@ import {
   resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
+  updateWorkspaceClientBranding,
   updateWorkspaceLogo,
   updateWorkspaceStaffRole,
   type WorkspaceStaffMember,
@@ -61,12 +62,17 @@ function ownerView(overrides: Partial<WorkspaceStaffView> = {}): WorkspaceStaffV
       status: 'active',
       logo_path: null,
       logo_updated_at: null,
+      client_brand_name: 'Acme Agency',
+      client_brand_primary_color: '#0D1B2A',
+      client_brand_accent_color: '#C7794F',
+      client_brand_updated_at: '2026-07-22T00:30:00.000Z',
     },
     capabilities: {
       read_only: false,
       invite_roles: ['admin', 'member'],
       can_generate_password: true,
       can_manage_branding: true,
+      can_manage_client_branding: true,
       can_update_roles: true,
       can_transfer_owner: true,
     },
@@ -121,6 +127,7 @@ describe('workspaceStaff', () => {
 
     expect(result.capabilities.can_generate_password).toBe(false)
     expect(result.capabilities.can_manage_branding).toBe(false)
+    expect(result.capabilities.can_manage_client_branding).toBe(false)
   })
 
   it('accepts the platform-owner-only password reset action on a workspace owner', async () => {
@@ -192,6 +199,46 @@ describe('workspaceStaff', () => {
     })
   })
 
+  it('updates only the explicitly addressed client-facing brand state', async () => {
+    const updatedAt = '2026-07-22T01:00:00.000Z'
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        workspace: {
+          id: workspaceId,
+          client_brand_name: 'Northstar Advisory',
+          client_brand_primary_color: '#16324F',
+          client_brand_accent_color: '#E07A5F',
+          client_brand_updated_at: updatedAt,
+        },
+      },
+      error: null,
+    })
+
+    await expect(updateWorkspaceClientBranding(workspaceId, {
+      client_brand_name: ' Northstar Advisory ',
+      client_brand_primary_color: '#16324f',
+      client_brand_accent_color: '#e07a5f',
+      expected_brand_updated_at: invitedAt,
+    })).resolves.toEqual({
+      id: workspaceId,
+      client_brand_name: 'Northstar Advisory',
+      client_brand_primary_color: '#16324F',
+      client_brand_accent_color: '#E07A5F',
+      client_brand_updated_at: updatedAt,
+    })
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: {
+        action: 'update_brand',
+        workspace_id: workspaceId,
+        expected_brand_updated_at: invitedAt,
+        client_brand_name: 'Northstar Advisory',
+        client_brand_primary_color: '#16324F',
+        client_brand_accent_color: '#E07A5F',
+      },
+    })
+  })
+
   it('rejects invalid logo files and cross-workspace logo paths before invoking the backend', async () => {
     const oversized = {
       type: 'image/png',
@@ -212,11 +259,9 @@ describe('workspaceStaff', () => {
       .mockResolvedValueOnce({
         data: ownerView({
           workspace: {
+            ...ownerView().workspace,
             id: otherWorkspaceId,
             name: 'Other',
-            status: 'active',
-            logo_path: null,
-            logo_updated_at: null,
           },
         }),
         error: null,
@@ -229,6 +274,7 @@ describe('workspaceStaff', () => {
             invite_roles: [],
             can_generate_password: false,
             can_manage_branding: false,
+            can_manage_client_branding: false,
             can_update_roles: false,
             can_transfer_owner: false,
           },

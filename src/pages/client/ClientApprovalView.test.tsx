@@ -17,6 +17,12 @@ const dashboard = {
   dashboard_view_count: 12,
   dashboard_last_viewed_at: null,
   dashboard_enabled: true,
+  workspace: {
+    name: 'Northstar Advisory',
+    logo_url: 'https://project.supabase.co/storage/v1/object/public/workspace-logos/northstar/logo.png',
+    primary_color: '#16324F',
+    accent_color: '#E07A5F',
+  },
 }
 
 const podcasts = [
@@ -146,6 +152,9 @@ describe('ClientApprovalView', () => {
 
     expect(await screen.findByRole('heading', { name: 'The right rooms for your next big ideas.' })).toBeInTheDocument()
     expect(screen.getByText('Prepared for Dallas Fontaine')).toBeInTheDocument()
+    expect(screen.getAllByText('Northstar Advisory').length).toBeGreaterThan(0)
+    expect(screen.getByAltText('Northstar Advisory logo')).toBeInTheDocument()
+    expect(screen.queryByText('Get On A Pod')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Choose 10 shows' })).toBeInTheDocument()
     const firstBatch = screen.getByRole('heading', { name: 'Choose 10 shows' }).closest('aside')
     expect(firstBatch).not.toBeNull()
@@ -187,5 +196,33 @@ describe('ClientApprovalView', () => {
 
     await waitFor(() => expect(feedback.find((entry) => entry.podcast_id === 'show-two')?.status).toBe('approved'))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Focused review' })).not.toBeInTheDocument())
+  })
+
+  it('scopes focused review to My picks when that view is active', async () => {
+    renderDashboard()
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+
+    fireEvent.click(screen.getByRole('tab', { name: /My picks 1/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Focused review · My picks' }))
+
+    const review = screen.getByRole('dialog', { name: 'Focused review' })
+    expect(within(review).getByRole('heading', { name: 'The Clear Leader' })).toBeInTheDocument()
+    expect(within(review).getByText(/My picks · Match 1 of 1/iu)).toBeInTheDocument()
+  })
+
+  it('uses the active Explore all filters for focused review', async () => {
+    renderDashboard()
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+
+    fireEvent.click(screen.getByRole('tab', { name: /Explore all 2/i }))
+    fireEvent.change(screen.getByPlaceholderText('Search shows, hosts, or topics'), {
+      target: { value: 'Founder' },
+    })
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'The Clear Leader' })).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Focused review · Explore all' }))
+
+    const review = screen.getByRole('dialog', { name: 'Focused review' })
+    expect(within(review).getByRole('heading', { name: 'Founder Signal' })).toBeInTheDocument()
+    expect(within(review).getByText(/Explore all · Match 1 of 1/iu)).toBeInTheDocument()
   })
 })

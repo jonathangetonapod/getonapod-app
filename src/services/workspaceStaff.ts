@@ -35,6 +35,7 @@ export interface WorkspaceStaffCapabilities {
   invite_roles: Array<Exclude<WorkspaceStaffRole, 'owner'>>
   can_generate_password: boolean
   can_manage_branding: boolean
+  can_manage_client_branding: boolean
   can_update_roles: boolean
   can_transfer_owner: boolean
 }
@@ -46,6 +47,10 @@ export interface WorkspaceStaffView {
     status: 'active'
     logo_path: string | null
     logo_updated_at: string | null
+    client_brand_name: string
+    client_brand_primary_color: string
+    client_brand_accent_color: string
+    client_brand_updated_at: string | null
   }
   capabilities: WorkspaceStaffCapabilities
   members: WorkspaceStaffMember[]
@@ -67,6 +72,21 @@ export interface WorkspaceBranding {
   id: string
   logo_path: string | null
   logo_updated_at: string | null
+}
+
+export interface WorkspaceClientBranding {
+  id: string
+  client_brand_name: string
+  client_brand_primary_color: string
+  client_brand_accent_color: string
+  client_brand_updated_at: string
+}
+
+export interface WorkspaceClientBrandingInput {
+  client_brand_name: string
+  client_brand_primary_color: string
+  client_brand_accent_color: string
+  expected_brand_updated_at: string
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -198,6 +218,7 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
     : null
   const canGeneratePassword = value.can_generate_password ?? false
   const canManageBranding = value.can_manage_branding ?? false
+  const canManageClientBranding = value.can_manage_client_branding ?? false
   if (
     typeof value.read_only !== 'boolean'
     || !inviteRoles
@@ -205,12 +226,14 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
     || new Set(inviteRoles).size !== inviteRoles.length
     || typeof canGeneratePassword !== 'boolean'
     || typeof canManageBranding !== 'boolean'
+    || typeof canManageClientBranding !== 'boolean'
     || typeof value.can_update_roles !== 'boolean'
     || typeof value.can_transfer_owner !== 'boolean'
     || (value.read_only && (
       inviteRoles.length > 0
       || canGeneratePassword
       || canManageBranding
+      || canManageClientBranding
       || value.can_update_roles
       || value.can_transfer_owner
     ))
@@ -222,6 +245,7 @@ function parseCapabilities(value: unknown): WorkspaceStaffCapabilities {
     invite_roles: inviteRoles,
     can_generate_password: canGeneratePassword,
     can_manage_branding: canManageBranding,
+    can_manage_client_branding: canManageClientBranding,
     can_update_roles: value.can_update_roles,
     can_transfer_owner: value.can_transfer_owner,
   }
@@ -266,6 +290,28 @@ function parseBranding(
   }
 }
 
+function parseClientBrandName(value: unknown, fallback: string): string {
+  if (value === undefined || value === null) return fallback
+  if (
+    typeof value !== 'string'
+    || value !== value.trim()
+    || !value
+    || value.length > 120
+    || /[\p{Cc}\p{Cf}]/u.test(value)
+  ) {
+    throw new Error('The workspace client branding response was invalid.')
+  }
+  return value
+}
+
+function parseClientBrandColor(value: unknown, fallback: string): string {
+  if (value === undefined || value === null) return fallback
+  if (typeof value !== 'string' || !/^#[0-9A-F]{6}$/u.test(value)) {
+    throw new Error('The workspace client branding response was invalid.')
+  }
+  return value
+}
+
 function parseView(value: unknown, expectedWorkspaceId: string): WorkspaceStaffView {
   if (!isRecord(value) || !isRecord(value.workspace) || !Array.isArray(value.members)) {
     throw new Error('The workspace staff response was invalid.')
@@ -299,6 +345,25 @@ function parseView(value: unknown, expectedWorkspaceId: string): WorkspaceStaffV
   if (capabilities.read_only && members.some((member) => member.allowed_actions.length > 0)) {
     throw new Error('The workspace staff response was invalid.')
   }
+  const clientBrandName = parseClientBrandName(
+    value.workspace.client_brand_name,
+    value.workspace.name,
+  )
+  const clientBrandPrimaryColor = parseClientBrandColor(
+    value.workspace.client_brand_primary_color,
+    '#0D1B2A',
+  )
+  const clientBrandAccentColor = parseClientBrandColor(
+    value.workspace.client_brand_accent_color,
+    '#C7794F',
+  )
+  const clientBrandUpdatedAt = isoTimestamp(
+    value.workspace.client_brand_updated_at ?? null,
+    true,
+  )
+  if (capabilities.can_manage_client_branding && !clientBrandUpdatedAt) {
+    throw new Error('The workspace client branding response was invalid.')
+  }
   return {
     workspace: {
       id: workspaceId,
@@ -306,6 +371,10 @@ function parseView(value: unknown, expectedWorkspaceId: string): WorkspaceStaffV
       status: 'active',
       logo_path: branding.logo_path,
       logo_updated_at: branding.logo_updated_at,
+      client_brand_name: clientBrandName,
+      client_brand_primary_color: clientBrandPrimaryColor,
+      client_brand_accent_color: clientBrandAccentColor,
+      client_brand_updated_at: clientBrandUpdatedAt,
     },
     capabilities,
     members,
@@ -335,6 +404,65 @@ function parseBrandingMutation(
     throw new Error('The workspace branding response was invalid.')
   }
   return parseBranding(value.workspace, expectedWorkspaceId)
+}
+
+function parseClientBrandingMutation(
+  value: unknown,
+  expectedWorkspaceId: string,
+): WorkspaceClientBranding {
+  if (!isRecord(value) || value.success !== true || !isRecord(value.workspace)) {
+    throw new Error('The workspace client branding response was invalid.')
+  }
+  const workspaceId = typeof value.workspace.id === 'string'
+    ? canonicalUuid(value.workspace.id, 'Workspace ID')
+    : ''
+  if (
+    workspaceId !== expectedWorkspaceId
+    || typeof value.workspace.client_brand_name !== 'string'
+    || typeof value.workspace.client_brand_primary_color !== 'string'
+    || typeof value.workspace.client_brand_accent_color !== 'string'
+  ) {
+    throw new Error('The workspace client branding response was invalid.')
+  }
+  return {
+    id: workspaceId,
+    client_brand_name: parseClientBrandName(value.workspace.client_brand_name, ''),
+    client_brand_primary_color: parseClientBrandColor(value.workspace.client_brand_primary_color, ''),
+    client_brand_accent_color: parseClientBrandColor(value.workspace.client_brand_accent_color, ''),
+    client_brand_updated_at: isoTimestamp(value.workspace.client_brand_updated_at),
+  }
+}
+
+export async function updateWorkspaceClientBranding(
+  workspaceId: string,
+  input: WorkspaceClientBrandingInput,
+): Promise<WorkspaceClientBranding> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const clientBrandName = input.client_brand_name.trim()
+  if (
+    !clientBrandName
+    || clientBrandName.length > 120
+    || /[\p{Cc}\p{Cf}]/u.test(clientBrandName)
+  ) {
+    throw new Error('Agency name must be between 1 and 120 characters.')
+  }
+  const primaryColor = input.client_brand_primary_color.trim().toUpperCase()
+  const accentColor = input.client_brand_accent_color.trim().toUpperCase()
+  if (!/^#[0-9A-F]{6}$/u.test(primaryColor) || !/^#[0-9A-F]{6}$/u.test(accentColor)) {
+    throw new Error('Brand colors must use six-digit hexadecimal values.')
+  }
+  if (!Number.isFinite(Date.parse(input.expected_brand_updated_at))) {
+    throw new Error('Workspace branding changed. Refresh before saving.')
+  }
+  const data = await invoke({
+    action: 'update_brand',
+    workspace_id: canonicalWorkspaceId,
+    expected_brand_updated_at: input.expected_brand_updated_at,
+    client_brand_name: clientBrandName,
+    client_brand_primary_color: primaryColor,
+    client_brand_accent_color: accentColor,
+  }, 'Client-facing workspace branding could not be updated.')
+  return parseClientBrandingMutation(data, canonicalWorkspaceId)
 }
 
 async function fileBase64(file: File): Promise<string> {

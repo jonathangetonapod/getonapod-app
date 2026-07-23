@@ -130,6 +130,11 @@ function normalizedClientShareText(value, fallback, maxLength) {
   return normalized ? normalized.slice(0, maxLength) : fallback
 }
 
+function normalizedClientBrandColor(value, fallback) {
+  const color = typeof value === 'string' ? value.trim().toUpperCase() : ''
+  return /^#[0-9A-F]{6}$/u.test(color) ? color : fallback
+}
+
 export async function loadClientDashboardShareMetadata(slug, {
   fetchImpl = globalThis.fetch,
   supabaseUrl = process.env.SUPABASE_PUBLIC_URL ?? process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
@@ -174,9 +179,16 @@ export async function loadClientDashboardShareMetadata(slug, {
           : null
       : null
     if (!metadata) return null
+    const workspace = metadata.workspace && typeof metadata.workspace === 'object' && !Array.isArray(metadata.workspace)
+      ? metadata.workspace
+      : null
     return {
       clientName: normalizedClientShareText(metadata.name, 'Your client', 160),
       tagline: normalizedClientShareText(metadata.dashboard_tagline, '', 280) || null,
+      workspaceName: normalizedClientShareText(workspace?.name, 'Your podcast team', 160),
+      logoUrl: normalizedLogoUrl(workspace?.logo_url, supabaseOrigin),
+      primaryColor: normalizedClientBrandColor(workspace?.primary_color, '#0D1B2A'),
+      accentColor: normalizedClientBrandColor(workspace?.accent_color, '#C7794F'),
     }
   } catch {
     return null
@@ -188,11 +200,18 @@ export async function loadClientDashboardShareMetadata(slug, {
 export function clientDashboardShareShell(source, metadata, assets = {}) {
   const clientName = normalizedClientShareText(metadata?.clientName, 'Your client', 160)
   const tagline = normalizedClientShareText(metadata?.tagline, '', 280)
+  const workspaceName = normalizedClientShareText(metadata?.workspaceName, 'Your podcast team', 160)
+  const primaryColor = normalizedClientBrandColor(metadata?.primaryColor, '#0D1B2A')
+  const logoUrl = typeof metadata?.logoUrl === 'string' ? metadata.logoUrl : null
   const pageUrl = typeof assets.pageUrl === 'string' ? assets.pageUrl : '/client'
   const previewImageUrl = typeof assets.previewImageUrl === 'string'
     ? assets.previewImageUrl
     : CLIENT_DASHBOARD_PREVIEW_PATH
-  const pageTitle = `${clientName}'s podcast opportunities | Get On A Pod`
+  const fallbackIconUrl = typeof assets.fallbackIconUrl === 'string'
+    ? assets.fallbackIconUrl
+    : ONBOARDING_ICON_PATH
+  const iconUrl = logoUrl ?? fallbackIconUrl
+  const pageTitle = `${clientName}'s podcast opportunities | ${workspaceName}`
   const cardTitle = `A podcast shortlist prepared for ${clientName}`
   const description = tagline || 'Explore a private, curated shortlist of podcasts chosen around your expertise, audience, and goals.'
   const withoutStructuredData = source.replace(
@@ -201,32 +220,34 @@ export function clientDashboardShareShell(source, metadata, assets = {}) {
   )
   const withoutMarketingMeta = withoutStructuredData
     .replace(/\s*<meta\s+(?:name=["'](?:theme-color|application-name|apple-mobile-web-app-title|msapplication-TileColor|title|description|keywords|author|robots|twitter:[^"']+)["']|property=["']og:[^"']+["'])[^>]*\/>/giu, '')
-    .replace(/\s*<link\s+rel=["']canonical["'][^>]*\/>/giu, '')
+    .replace(/\s*<link\s+rel=["'](?:canonical|manifest|icon|apple-touch-icon)["'][^>]*\/?>/giu, '')
     .replace(/<title>[\s\S]*?<\/title>/iu, `<title>${escapeHtml(pageTitle)}</title>`)
 
   const privateMetadata = `
-    <meta name="theme-color" content="#0d1b2a" />
-    <meta name="application-name" content="Get On A Pod" />
-    <meta name="apple-mobile-web-app-title" content="Get On A Pod" />
+    <meta name="theme-color" content="${escapeHtml(primaryColor)}" />
+    <meta name="application-name" content="${escapeHtml(workspaceName)}" />
+    <meta name="apple-mobile-web-app-title" content="${escapeHtml(workspaceName)}" />
     <meta name="description" content="${escapeHtml(description)}" />
-    <meta name="author" content="Get On A Pod" />
+    <meta name="author" content="${escapeHtml(workspaceName)}" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${escapeHtml(pageUrl)}" />
     <meta property="og:title" content="${escapeHtml(cardTitle)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
-    <meta property="og:site_name" content="Get On A Pod" />
+    <meta property="og:site_name" content="${escapeHtml(workspaceName)}" />
     <meta property="og:image" content="${escapeHtml(previewImageUrl)}" />
     <meta property="og:image:secure_url" content="${escapeHtml(previewImageUrl)}" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="A curated podcast campaign from Get On A Pod" />
+    <meta property="og:image:alt" content="A curated podcast campaign prepared by ${escapeHtml(workspaceName)}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(cardTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <meta name="twitter:image" content="${escapeHtml(previewImageUrl)}" />
-    <meta name="twitter:image:alt" content="A curated podcast campaign from Get On A Pod" />`
+    <meta name="twitter:image:alt" content="A curated podcast campaign prepared by ${escapeHtml(workspaceName)}" />
+    <link rel="icon" href="${escapeHtml(iconUrl)}" />
+    <link rel="apple-touch-icon" sizes="180x180" href="${escapeHtml(iconUrl)}" />`
   return withoutMarketingMeta.replace('</head>', `${privateMetadata}\n  </head>`)
 }
 
@@ -607,8 +628,17 @@ export function createProductionServer({
         const origin = requestOrigin(request, applicationOrigin)
         const pageUrl = new URL(`${pathname}${requestUrl.search}`, origin).toString()
         const previewImageUrl = new URL(CLIENT_DASHBOARD_PREVIEW_PATH, origin).toString()
+        const fallbackIconUrl = onboardingAssetUrl(
+          origin,
+          ONBOARDING_ICON_PATH,
+          metadata?.primaryColor ?? '#0D1B2A',
+        )
         const source = await readFile(path.join(publicDirectory, 'index.html'), 'utf8')
-        const html = clientDashboardShareShell(source, metadata, { pageUrl, previewImageUrl })
+        const html = clientDashboardShareShell(source, metadata, {
+          pageUrl,
+          previewImageUrl,
+          fallbackIconUrl,
+        })
         response.statusCode = 200
         response.setHeader('Content-Type', 'text/html; charset=utf-8')
         response.setHeader('Content-Length', Buffer.byteLength(html))

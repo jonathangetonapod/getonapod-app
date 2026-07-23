@@ -8,10 +8,12 @@ import {
   ImageIcon,
   KeyRound,
   Loader2,
+  Palette,
   PauseCircle,
   PlayCircle,
   RefreshCw,
   ShieldCheck,
+  Save,
   Trash2,
   Upload,
   UserPlus,
@@ -41,6 +43,7 @@ import {
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
   updateWorkspaceLogo,
+  updateWorkspaceClientBranding,
   updateWorkspaceStaffRole,
   type WorkspaceStaffInviteInput,
   type WorkspaceStaffMember,
@@ -72,6 +75,21 @@ const emptyInvite: WorkspaceStaffInviteInput = {
   email: '',
   full_name: '',
   role: 'member',
+}
+
+const defaultClientBrand = {
+  client_brand_name: '',
+  client_brand_primary_color: '#0D1B2A',
+  client_brand_accent_color: '#C7794F',
+}
+
+function readableColor(background: string): string {
+  const color = /^#[0-9A-F]{6}$/iu.test(background) ? background.slice(1) : '0D1B2A'
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255)
+  const luminance = channels
+    .map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0)
+  return luminance > 0.42 ? '#102033' : '#FFFFFF'
 }
 
 function validateView(
@@ -165,6 +183,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const [credentialError, setCredentialError] = useState<string | null>(null)
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [logoRemoveOpen, setLogoRemoveOpen] = useState(false)
+  const [clientBrandDraft, setClientBrandDraft] = useState(defaultClientBrand)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
@@ -204,6 +223,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const canInvite = Boolean(capabilities?.invite_roles.length)
   const canGeneratePassword = capabilities?.can_generate_password === true
   const canManageBranding = capabilities?.can_manage_branding === true
+  const canManageClientBranding = capabilities?.can_manage_client_branding === true
   const allowedInviteRoles = capabilities?.invite_roles || []
   const logoUrl = workspaceLogoUrl(
     data?.workspace.id,
@@ -216,6 +236,21 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('') || 'W'
+
+  useEffect(() => {
+    if (!data) return
+    setClientBrandDraft({
+      client_brand_name: data.workspace.client_brand_name,
+      client_brand_primary_color: data.workspace.client_brand_primary_color,
+      client_brand_accent_color: data.workspace.client_brand_accent_color,
+    })
+  }, [data])
+
+  const clientBrandDirty = Boolean(data) && (
+    clientBrandDraft.client_brand_name !== data?.workspace.client_brand_name
+    || clientBrandDraft.client_brand_primary_color.toUpperCase() !== data?.workspace.client_brand_primary_color
+    || clientBrandDraft.client_brand_accent_color.toUpperCase() !== data?.workspace.client_brand_accent_color
+  )
 
   const refreshBranding = async () => {
     await queryClient.invalidateQueries({ queryKey })
@@ -249,6 +284,23 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       toast.success('Workspace logo removed.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The workspace logo could not be removed.'),
+  })
+
+  const clientBrandMutation = useMutation({
+    mutationFn: () => {
+      if (!data?.workspace.client_brand_updated_at || !canManageClientBranding) {
+        throw new Error('Client-facing branding controls are not available yet.')
+      }
+      return updateWorkspaceClientBranding(workspaceId, {
+        ...clientBrandDraft,
+        expected_brand_updated_at: data.workspace.client_brand_updated_at,
+      })
+    },
+    onSuccess: async () => {
+      await refreshBranding()
+      toast.success('Client-facing brand updated.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Client-facing branding could not be updated.'),
   })
 
   const inviteMutation = useMutation({
@@ -395,8 +447,143 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
               <div className="border-t pt-6">
                 <h2 className="text-xl font-semibold tracking-tight">Workspace branding</h2>
-                <p className="text-muted-foreground">Upload the logo shown throughout this workspace.</p>
+                <p className="text-muted-foreground">Control the agency identity clients see on shared dashboards and onboarding.</p>
               </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" />Client-facing brand</CardTitle>
+                  <CardDescription>This name and color system appears on dashboards your agency shares with clients.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-7 lg:grid-cols-[minmax(0,30rem)_1fr]">
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <Label htmlFor="client-brand-name">Agency name</Label>
+                      <Input
+                        id="client-brand-name"
+                        maxLength={120}
+                        value={clientBrandDraft.client_brand_name}
+                        disabled={!canManageClientBranding || clientBrandMutation.isPending}
+                        onChange={(event) => setClientBrandDraft((current) => ({
+                          ...current,
+                          client_brand_name: event.target.value,
+                        }))}
+                        placeholder={data.workspace.name}
+                      />
+                      <p className="text-xs text-muted-foreground">Use the public name clients recognize. Your internal workspace name stays unchanged.</p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {[
+                        { key: 'client_brand_primary_color' as const, label: 'Primary color' },
+                        { key: 'client_brand_accent_color' as const, label: 'Accent color' },
+                      ].map((field) => {
+                        const value = clientBrandDraft[field.key]
+                        const pickerValue = /^#[0-9A-F]{6}$/iu.test(value) ? value : '#0D1B2A'
+                        return (
+                          <div key={field.key} className="space-y-2">
+                            <Label htmlFor={field.key}>{field.label}</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                aria-label={`${field.label} picker`}
+                                type="color"
+                                value={pickerValue}
+                                disabled={!canManageClientBranding || clientBrandMutation.isPending}
+                                onChange={(event) => setClientBrandDraft((current) => ({
+                                  ...current,
+                                  [field.key]: event.target.value.toUpperCase(),
+                                }))}
+                                className="h-10 w-12 cursor-pointer p-1"
+                              />
+                              <Input
+                                id={field.key}
+                                value={value}
+                                maxLength={7}
+                                spellCheck={false}
+                                disabled={!canManageClientBranding || clientBrandMutation.isPending}
+                                onChange={(event) => setClientBrandDraft((current) => ({
+                                  ...current,
+                                  [field.key]: event.target.value.toUpperCase(),
+                                }))}
+                                className="font-mono uppercase"
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        disabled={!canManageClientBranding || !clientBrandDirty || clientBrandMutation.isPending}
+                        onClick={() => clientBrandMutation.mutate()}
+                      >
+                        {clientBrandMutation.isPending
+                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          : <Save className="mr-2 h-4 w-4" />}
+                        Save client brand
+                      </Button>
+                      {clientBrandDirty ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={clientBrandMutation.isPending}
+                          onClick={() => setClientBrandDraft({
+                            client_brand_name: data.workspace.client_brand_name,
+                            client_brand_primary_color: data.workspace.client_brand_primary_color,
+                            client_brand_accent_color: data.workspace.client_brand_accent_color,
+                          })}
+                        >
+                          Reset
+                        </Button>
+                      ) : null}
+                    </div>
+                    {!canManageClientBranding ? (
+                      <p className="text-sm text-muted-foreground">Client-facing name and color controls will activate when the branding backend is released.</p>
+                    ) : null}
+                  </div>
+
+                  <div
+                    className="relative min-h-64 overflow-hidden rounded-3xl border p-6 shadow-sm"
+                    style={{
+                      background: `linear-gradient(135deg, ${clientBrandDraft.client_brand_primary_color} 0%, #102033 140%)`,
+                      color: readableColor(clientBrandDraft.client_brand_primary_color),
+                    }}
+                    aria-label="Client dashboard brand preview"
+                  >
+                    <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+                    <div className="relative flex items-center gap-3">
+                      {logoUrl ? (
+                        <span className="flex h-12 w-16 items-center justify-center rounded-xl bg-white p-2 shadow-sm">
+                          <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
+                        </span>
+                      ) : (
+                        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 text-sm font-bold ring-1 ring-white/20">
+                          {workspaceInitials}
+                        </span>
+                      )}
+                      <div>
+                        <p className="font-semibold">{clientBrandDraft.client_brand_name || data.workspace.name}</p>
+                        <p className="mt-0.5 text-xs opacity-65">Private podcast campaign</p>
+                      </div>
+                    </div>
+                    <div className="relative mt-10 max-w-sm">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Prepared for your client</p>
+                      <p className="mt-3 text-3xl font-semibold leading-tight">The right rooms for their next big ideas.</p>
+                      <span
+                        className="mt-6 inline-flex rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
+                        style={{
+                          backgroundColor: clientBrandDraft.client_brand_accent_color,
+                          color: readableColor(clientBrandDraft.client_brand_accent_color),
+                        }}
+                      >
+                        Review top matches
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               <Card>
                 <CardHeader>

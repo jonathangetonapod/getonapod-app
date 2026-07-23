@@ -53,6 +53,12 @@ const clientMetadata = await loadClientDashboardShareMetadata('dallas-fontaine-a
       metadata: {
         name: 'Dallas <Fontaine>',
         dashboard_tagline: 'Lead with practical insight & build lasting authority.',
+        workspace: {
+          name: 'Northstar & <Advisory>',
+          logo_url: 'https://project.supabase.co/storage/v1/object/public/workspace-logos/northstar/logo.webp',
+          primary_color: '#16324F',
+          accent_color: '#E07A5F',
+        },
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   },
@@ -60,6 +66,10 @@ const clientMetadata = await loadClientDashboardShareMetadata('dallas-fontaine-a
 assert.deepEqual(clientMetadata, {
   clientName: 'Dallas <Fontaine>',
   tagline: 'Lead with practical insight & build lasting authority.',
+  workspaceName: 'Northstar & <Advisory>',
+  logoUrl: 'https://project.supabase.co/storage/v1/object/public/workspace-logos/northstar/logo.webp',
+  primaryColor: '#16324F',
+  accentColor: '#E07A5F',
 })
 assert.equal(clientMetadataRequest.url, 'https://project.supabase.co/functions/v1/public-client-dashboard')
 assert.deepEqual(JSON.parse(clientMetadataRequest.options.body), {
@@ -81,9 +91,16 @@ const fallbackClientMetadata = await loadClientDashboardShareMetadata('legacy-cl
   },
 })
 assert.deepEqual(fallbackActions, ['metadata', 'get'])
-assert.deepEqual(fallbackClientMetadata, { clientName: 'Legacy Client', tagline: null })
+assert.deepEqual(fallbackClientMetadata, {
+  clientName: 'Legacy Client',
+  tagline: null,
+  workspaceName: 'Your podcast team',
+  logoUrl: null,
+  primaryColor: '#0D1B2A',
+  accentColor: '#C7794F',
+})
 
-const shellSource = '<!doctype html><html><head><title>Marketing</title><meta property="og:title" content="Marketing" /><meta name="twitter:title" content="Marketing" /><script type="application/ld+json">{"name":"Marketing"}</script></head><body></body></html>'
+const shellSource = '<!doctype html><html><head><title>Marketing</title><link rel="icon" href="/favicon.svg" /><link rel="manifest" href="/site.webmanifest" /><meta property="og:title" content="Marketing" /><meta name="twitter:title" content="Marketing" /><script type="application/ld+json">{"name":"Marketing"}</script></head><body></body></html>'
 const brandedShell = whiteLabelOnboardingShell(shellSource, brandedMetadata, {
   previewImageUrl: 'https://getonapod.com/onboarding-link-preview.png?accent=BE185D',
   fallbackIconUrl: 'https://getonapod.com/onboarding-link-icon.png?accent=BE185D',
@@ -98,14 +115,17 @@ assert.doesNotMatch(brandedShell, /11111111-1111-4111-8111-111111111111|Get On A
 const clientShell = clientDashboardShareShell(shellSource, clientMetadata, {
   pageUrl: 'https://getonapod.com/client/dallas-fontaine-a0fd037530f8577cc03eb87b?preview=1',
   previewImageUrl: 'https://getonapod.com/client-dashboard-share.png',
+  fallbackIconUrl: 'https://getonapod.com/onboarding-link-icon.png?accent=16324F',
 })
-assert.match(clientShell, /<title>Dallas &lt;Fontaine&gt;&#39;s podcast opportunities \| Get On A Pod<\/title>/u)
+assert.match(clientShell, /<title>Dallas &lt;Fontaine&gt;&#39;s podcast opportunities \| Northstar &amp; &lt;Advisory&gt;<\/title>/u)
 assert.match(clientShell, /property="og:title" content="A podcast shortlist prepared for Dallas &lt;Fontaine&gt;"/u)
 assert.match(clientShell, /property="og:description" content="Lead with practical insight &amp; build lasting authority\."/u)
+assert.match(clientShell, /property="og:site_name" content="Northstar &amp; &lt;Advisory&gt;"/u)
 assert.match(clientShell, /property="og:image" content="https:\/\/getonapod\.com\/client-dashboard-share\.png"/u)
 assert.match(clientShell, /property="og:url" content="https:\/\/getonapod\.com\/client\/dallas-fontaine-a0fd037530f8577cc03eb87b\?preview=1"/u)
 assert.match(clientShell, /name="robots" content="noindex, nofollow, noarchive"/u)
-assert.doesNotMatch(clientShell, /application\/ld\+json|content="Marketing"/iu)
+assert.match(clientShell, /rel="icon" href="https:\/\/project\.supabase\.co\/storage\/v1\/object\/public\/workspace-logos\/northstar\/logo\.webp"/u)
+assert.doesNotMatch(clientShell, /application\/ld\+json|content="Marketing"|Get On A Pod|site\.webmanifest|favicon\.svg/iu)
 
 const generatedPreview = generateOnboardingPreviewPng('#BE185D')
 assert.deepEqual([...generatedPreview.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])

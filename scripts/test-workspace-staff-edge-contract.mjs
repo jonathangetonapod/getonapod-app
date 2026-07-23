@@ -19,6 +19,10 @@ const brandingMigration = readFileSync(
   'supabase/migrations/20260722000400_workspace_branding.sql',
   'utf8',
 )
+const clientBrandingMigration = readFileSync(
+  'supabase/migrations/20260723000700_workspace_client_branding.sql',
+  'utf8',
+)
 const ownerPasswordMigration = readFileSync(
   'supabase/migrations/20260723000500_workspace_owner_password_management.sql',
   'utf8',
@@ -253,8 +257,11 @@ assert.match(ownerPasswordMigration, /status = 'invited',[\s\S]*?password_change
 assert.doesNotMatch(ownerPasswordMigration, /temporary_password\s+(?:TEXT|VARCHAR)/iu)
 assert.match(source, /capabilities\.can_generate_password \?\? false/u)
 assert.match(source, /capabilities\.can_manage_branding \?\? false/u)
+assert.match(source, /capabilities\.can_manage_client_branding \?\? false/u)
 assert.match(source, /action === "update_logo"/u)
 assert.match(source, /action === "remove_logo"/u)
+assert.match(source, /action === "update_brand"/u)
+assert.match(source, /"set_workspace_client_brand_v1", \{\s*p_workspace_id: input\.workspaceId,\s*p_expected_brand_updated_at: input\.expectedBrandUpdatedAt,\s*p_client_brand_name: input\.clientBrandName,\s*p_client_brand_primary_color: input\.primaryColor,\s*p_client_brand_accent_color: input\.accentColor,\s*p_actor_user_id: input\.actorUserId,\s*p_token_issued_at: input\.tokenIssuedAt/u)
 assert.match(source, /parseJsonObject\(req, MAX_WORKSPACE_LOGO_REQUEST_BYTES\)/u)
 assert.match(source, /MAX_WORKSPACE_LOGO_BYTES = 2 \* 1024 \* 1024/u)
 assert.match(source, /"image\/jpeg": "jpg"[\s\S]*?"image\/png": "png"[\s\S]*?"image\/webp": "webp"/u)
@@ -268,6 +275,23 @@ assert.match(brandingMigration, /ARRAY\['image\/jpeg', 'image\/png', 'image\/web
 assert.match(brandingMigration, /workspace\.logo_path IS NOT DISTINCT FROM p_expected_logo_path/u)
 assert.match(brandingMigration, /workspace\.branding\.logo_updated/u)
 assert.match(brandingMigration, /workspace\.branding\.logo_removed/u)
+assert.match(clientBrandingMigration, /ADD COLUMN IF NOT EXISTS client_brand_name TEXT/u)
+assert.match(clientBrandingMigration, /client_brand_primary_color TEXT NOT NULL DEFAULT '#0D1B2A'/u)
+assert.match(clientBrandingMigration, /client_brand_accent_color TEXT NOT NULL DEFAULT '#C7794F'/u)
+assert.match(
+  clientBrandingMigration,
+  sqlPattern('CREATE OR REPLACE FUNCTION public.set_workspace_client_brand_v1( p_workspace_id UUID, p_expected_brand_updated_at TIMESTAMPTZ, p_client_brand_name TEXT, p_client_brand_primary_color TEXT, p_client_brand_accent_color TEXT, p_actor_user_id UUID, p_token_issued_at BIGINT )'),
+)
+assert.match(clientBrandingMigration, /actor_role NOT IN \('owner', 'admin', 'platform_admin'\)/u)
+assert.match(clientBrandingMigration, /workspace\.branding\.client_identity_updated/u)
+assert.match(
+  clientBrandingMigration,
+  sqlPattern('REVOKE ALL ON FUNCTION public.set_workspace_client_brand_v1( UUID, TIMESTAMPTZ, TEXT, TEXT, TEXT, UUID, BIGINT ) FROM PUBLIC, anon, authenticated, service_role;'),
+)
+assert.match(
+  clientBrandingMigration,
+  sqlPattern('GRANT EXECUTE ON FUNCTION public.set_workspace_client_brand_v1( UUID, TIMESTAMPTZ, TEXT, TEXT, TEXT, UUID, BIGINT ) TO service_role;'),
+)
 assert.doesNotMatch(source, /console\.[a-z]+\([^\n]*temporaryPassword/u)
 assert.match(source, /data: \{[\s\S]*?workspace_id: membership\.workspace_id,[\s\S]*?workspace_membership_id: membership\.id/u)
 assert.match(source, /app_metadata: \{[\s\S]*?workspace_id: membership\.workspace_id,[\s\S]*?workspace_membership_id: membership\.id/u)

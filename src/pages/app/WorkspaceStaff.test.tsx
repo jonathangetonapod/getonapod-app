@@ -12,6 +12,7 @@ import {
   resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
+  updateWorkspaceClientBranding,
   updateWorkspaceLogo,
   updateWorkspaceStaffRole,
   type WorkspaceStaffMember,
@@ -36,6 +37,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   resetWorkspaceStaffTemporaryPassword: vi.fn(),
   retryWorkspaceStaffTemporaryPassword: vi.fn(),
   removeWorkspaceLogo: vi.fn(),
+  updateWorkspaceClientBranding: vi.fn(),
   updateWorkspaceLogo: vi.fn(),
   updateWorkspaceStaffRole: vi.fn(),
 }))
@@ -48,6 +50,7 @@ const mockedMutate = vi.mocked(mutateWorkspaceStaff)
 const mockedResetPassword = vi.mocked(resetWorkspaceStaffTemporaryPassword)
 const mockedRetryPassword = vi.mocked(retryWorkspaceStaffTemporaryPassword)
 const mockedRemoveLogo = vi.mocked(removeWorkspaceLogo)
+const mockedUpdateClientBrand = vi.mocked(updateWorkspaceClientBranding)
 const mockedUpdateLogo = vi.mocked(updateWorkspaceLogo)
 const mockedUpdateRole = vi.mocked(updateWorkspaceStaffRole)
 
@@ -96,12 +99,17 @@ const ownerView: WorkspaceStaffView = {
     status: 'active',
     logo_path: null,
     logo_updated_at: null,
+    client_brand_name: 'Acme Agency',
+    client_brand_primary_color: '#0D1B2A',
+    client_brand_accent_color: '#C7794F',
+    client_brand_updated_at: '2026-07-22T00:30:00.000Z',
   },
   capabilities: {
     read_only: false,
     invite_roles: ['admin', 'member'],
     can_generate_password: true,
     can_manage_branding: true,
+    can_manage_client_branding: true,
     can_update_roles: true,
     can_transfer_owner: true,
   },
@@ -193,6 +201,13 @@ describe('WorkspaceStaff', () => {
       logo_updated_at: '2026-07-22T01:00:00.000Z',
     })
     mockedRemoveLogo.mockResolvedValue({ id: workspaceId, logo_path: null, logo_updated_at: null })
+    mockedUpdateClientBrand.mockResolvedValue({
+      id: workspaceId,
+      client_brand_name: 'Northstar Advisory',
+      client_brand_primary_color: '#16324F',
+      client_brand_accent_color: '#E07A5F',
+      client_brand_updated_at: '2026-07-22T01:05:00.000Z',
+    })
     mockedMutate.mockResolvedValue({ ...admin, role: 'owner', allowed_actions: [] })
     mockedUpdateRole.mockResolvedValue({ ...admin, role: 'member' })
   })
@@ -211,6 +226,24 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
     expect(screen.getByText('Protected owner')).toBeInTheDocument()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('lets the workspace owner set the client-facing agency name and colors', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    fireEvent.change(screen.getByLabelText('Agency name'), { target: { value: 'Northstar Advisory' } })
+    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
+    fireEvent.change(screen.getByLabelText('Accent color'), { target: { value: '#E07A5F' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save client brand' }))
+
+    await waitFor(() => expect(mockedUpdateClientBrand).toHaveBeenCalledWith(workspaceId, {
+      client_brand_name: 'Northstar Advisory',
+      client_brand_primary_color: '#16324F',
+      client_brand_accent_color: '#E07A5F',
+      expected_brand_updated_at: '2026-07-22T00:30:00.000Z',
+    }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Client-facing brand updated.'))
   })
 
   it('invites through the authenticated workspace and its allowed default role', async () => {
@@ -476,11 +509,9 @@ describe('WorkspaceStaff', () => {
     mockedList.mockResolvedValue({
       ...ownerView,
       workspace: {
+        ...ownerView.workspace,
         id: otherWorkspaceId,
         name: 'Other Workspace',
-        status: 'active',
-        logo_path: null,
-        logo_updated_at: null,
       },
     })
 
@@ -509,6 +540,7 @@ describe('WorkspaceStaff', () => {
         invite_roles: [],
         can_generate_password: false,
         can_manage_branding: false,
+        can_manage_client_branding: false,
         can_update_roles: false,
         can_transfer_owner: false,
       },

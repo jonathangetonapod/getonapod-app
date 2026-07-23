@@ -121,6 +121,10 @@ interface StaffViewDto {
     status: "active";
     logo_path: string | null;
     logo_updated_at: string | null;
+    client_brand_name: string;
+    client_brand_primary_color: string;
+    client_brand_accent_color: string;
+    client_brand_updated_at: string | null;
   };
   members: StaffMemberDto[];
   capabilities: {
@@ -128,6 +132,7 @@ interface StaffViewDto {
     invite_roles: InviteRole[];
     can_generate_password: boolean;
     can_manage_branding: boolean;
+    can_manage_client_branding: boolean;
     can_update_roles: boolean;
     can_transfer_owner: boolean;
   };
@@ -137,6 +142,13 @@ interface WorkspaceBrandingDto {
   id: string;
   logo_path: string | null;
   logo_updated_at: string | null;
+}
+
+interface WorkspacePresentationBrandingDto extends WorkspaceBrandingDto {
+  client_brand_name: string;
+  client_brand_primary_color: string;
+  client_brand_accent_color: string;
+  client_brand_updated_at: string;
 }
 
 function invalidRpcResponse(): never {
@@ -218,6 +230,38 @@ function workspaceBrandingDto(
     id,
     logo_path: logoPath,
     logo_updated_at: logoUpdatedAt,
+  };
+}
+
+function responseBrandColor(value: unknown): string {
+  if (typeof value !== "string" || !/^#[0-9A-F]{6}$/u.test(value)) {
+    invalidRpcResponse();
+  }
+  return value;
+}
+
+function workspacePresentationBrandingDto(
+  value: unknown,
+  expectedWorkspaceId: string,
+  fallbackName?: string,
+): WorkspacePresentationBrandingDto {
+  const row = responseRecord(Array.isArray(value) ? value[0] : value);
+  const logo = workspaceBrandingDto(row, expectedWorkspaceId);
+  return {
+    ...logo,
+    client_brand_name: responseText(
+      row.client_brand_name ?? fallbackName,
+      120,
+    ) as string,
+    client_brand_primary_color: responseBrandColor(
+      row.client_brand_primary_color,
+    ),
+    client_brand_accent_color: responseBrandColor(
+      row.client_brand_accent_color,
+    ),
+    client_brand_updated_at: responseTimestamp(
+      row.client_brand_updated_at,
+    ) as string,
   };
 }
 
@@ -367,16 +411,20 @@ function staffViewDto(value: unknown): StaffViewDto {
   );
   const canGeneratePassword = capabilities.can_generate_password ?? false;
   const canManageBranding = capabilities.can_manage_branding ?? false;
+  const canManageClientBranding =
+    capabilities.can_manage_client_branding ?? false;
   if (new Set(inviteRoles).size !== inviteRoles.length) invalidRpcResponse();
   if (
     typeof canGeneratePassword !== "boolean" ||
     typeof canManageBranding !== "boolean" ||
+    typeof canManageClientBranding !== "boolean" ||
     typeof capabilities.can_update_roles !== "boolean" ||
     typeof capabilities.can_transfer_owner !== "boolean" ||
     (capabilities.read_only &&
       (inviteRoles.length > 0 ||
         canGeneratePassword ||
         canManageBranding ||
+        canManageClientBranding ||
         capabilities.can_update_roles ||
         capabilities.can_transfer_owner))
   ) {
@@ -391,6 +439,10 @@ function staffViewDto(value: unknown): StaffViewDto {
       status: workspaceStatus,
       logo_path: null,
       logo_updated_at: null,
+      client_brand_name: responseText(workspace.name, 120) as string,
+      client_brand_primary_color: "#0D1B2A",
+      client_brand_accent_color: "#C7794F",
+      client_brand_updated_at: null,
     },
     members,
     capabilities: {
@@ -398,6 +450,7 @@ function staffViewDto(value: unknown): StaffViewDto {
       invite_roles: inviteRoles,
       can_generate_password: canGeneratePassword,
       can_manage_branding: canManageBranding,
+      can_manage_client_branding: canManageClientBranding,
       can_update_roles: capabilities.can_update_roles,
       can_transfer_owner: capabilities.can_transfer_owner,
     },
@@ -638,10 +691,10 @@ async function listWorkspaceStaff(
 async function loadWorkspaceBranding(
   admin: AdminClient,
   workspaceId: string,
-): Promise<WorkspaceBrandingDto> {
+): Promise<WorkspacePresentationBrandingDto> {
   const { data, error } = await admin
     .from("workspaces")
-    .select("id,logo_path,logo_updated_at")
+    .select("id,name,logo_path,logo_updated_at,client_brand_name,client_brand_primary_color,client_brand_accent_color,client_brand_updated_at")
     .eq("id", workspaceId)
     .eq("status", "active")
     .eq("is_default", false)
@@ -653,7 +706,11 @@ async function loadWorkspaceBranding(
       "Workspace branding could not be loaded",
     );
   }
-  return workspaceBrandingDto(data, workspaceId);
+  return workspacePresentationBrandingDto(
+    data,
+    workspaceId,
+    responseText(responseRecord(data).name, 120) as string,
+  );
 }
 
 async function listWorkspaceSettings(
@@ -672,10 +729,15 @@ async function listWorkspaceSettings(
       ...staff.workspace,
       logo_path: branding.logo_path,
       logo_updated_at: branding.logo_updated_at,
+      client_brand_name: branding.client_brand_name,
+      client_brand_primary_color: branding.client_brand_primary_color,
+      client_brand_accent_color: branding.client_brand_accent_color,
+      client_brand_updated_at: branding.client_brand_updated_at,
     },
     capabilities: {
       ...staff.capabilities,
       can_manage_branding: true,
+      can_manage_client_branding: true,
     },
   };
 }
@@ -815,6 +877,76 @@ async function setWorkspaceLogo(
     );
   }
   return workspaceBrandingDto(data, input.workspaceId);
+}
+
+function requireClientBrandName(value: unknown): string {
+  const name = requireString(value, "client_brand_name", { max: 120 }).trim();
+  if (!name || /[\p{Cc}\p{Cf}]/u.test(name)) {
+    throw new HttpError(
+      400,
+      "INVALID_BRAND_NAME",
+      "Client-facing agency name is invalid",
+    );
+  }
+  return name;
+}
+
+function requireClientBrandColor(value: unknown, field: string): string {
+  const color = requireString(value, field, { max: 7 }).trim().toUpperCase();
+  if (!/^#[0-9A-F]{6}$/u.test(color)) {
+    throw new HttpError(
+      400,
+      "INVALID_BRAND_COLOR",
+      `${field} must be a six-digit hexadecimal color`,
+    );
+  }
+  return color;
+}
+
+function requireBrandUpdatedAt(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length > 64 ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    throw new HttpError(
+      400,
+      "INVALID_FIELD",
+      "expected_brand_updated_at is invalid",
+    );
+  }
+  return value;
+}
+
+async function setWorkspaceClientBrand(
+  admin: AdminClient,
+  input: {
+    workspaceId: string;
+    expectedBrandUpdatedAt: string;
+    clientBrandName: string;
+    primaryColor: string;
+    accentColor: string;
+    actorUserId: string;
+    tokenIssuedAt: number;
+  },
+): Promise<WorkspacePresentationBrandingDto> {
+  const { data, error } = await admin.rpc("set_workspace_client_brand_v1", {
+    p_workspace_id: input.workspaceId,
+    p_expected_brand_updated_at: input.expectedBrandUpdatedAt,
+    p_client_brand_name: input.clientBrandName,
+    p_client_brand_primary_color: input.primaryColor,
+    p_client_brand_accent_color: input.accentColor,
+    p_actor_user_id: input.actorUserId,
+    p_token_issued_at: input.tokenIssuedAt,
+  });
+  if (error) {
+    rpcFailure(
+      error,
+      "BRANDING_UPDATE_FAILED",
+      "Client-facing workspace branding could not be updated",
+    );
+  }
+  return workspacePresentationBrandingDto(data, input.workspaceId);
 }
 
 async function removeWorkspaceLogoObject(
@@ -2354,6 +2486,57 @@ serve(async (req) => {
         invalidRpcResponse();
       }
       return jsonResponse(req, METHODS, 200, result);
+    }
+
+    if (action === "update_brand") {
+      requireOnlyKeys(body, [
+        "action",
+        "workspace_id",
+        "expected_brand_updated_at",
+        "client_brand_name",
+        "client_brand_primary_color",
+        "client_brand_accent_color",
+      ]);
+      const expectedBrandUpdatedAt = requireBrandUpdatedAt(
+        body.expected_brand_updated_at,
+      );
+      const clientBrandName = requireClientBrandName(body.client_brand_name);
+      const primaryColor = requireClientBrandColor(
+        body.client_brand_primary_color,
+        "client_brand_primary_color",
+      );
+      const accentColor = requireClientBrandColor(
+        body.client_brand_accent_color,
+        "client_brand_accent_color",
+      );
+      const staff = await listWorkspaceStaff(
+        admin,
+        workspaceId,
+        user.id,
+        tokenIssuedAt,
+      );
+      if (staff.capabilities.read_only) invalidRpcResponse();
+      const currentBranding = await loadWorkspaceBranding(admin, workspaceId);
+      if (currentBranding.client_brand_updated_at !== expectedBrandUpdatedAt) {
+        throw new HttpError(
+          409,
+          "BRANDING_STATE_CHANGED",
+          "Workspace branding changed; refresh before trying again",
+        );
+      }
+      const branding = await setWorkspaceClientBrand(admin, {
+        workspaceId,
+        expectedBrandUpdatedAt,
+        clientBrandName,
+        primaryColor,
+        accentColor,
+        actorUserId: user.id,
+        tokenIssuedAt,
+      });
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        workspace: branding,
+      });
     }
 
     if (action === "update_logo") {

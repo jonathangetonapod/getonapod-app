@@ -15,6 +15,8 @@ readonly -a SOURCE_INPUTS=(
   'supabase/migrations/20260722000300_workspace_staff_temporary_passwords.sql'
   'supabase/migrations/20260722000400_workspace_branding.sql'
   'supabase/migrations/20260723000500_workspace_owner_password_management.sql'
+  'supabase/migrations/20260723000600_fix_client_portal_password_management.sql'
+  'supabase/migrations/20260723000700_workspace_client_branding.sql'
   "${BEHAVIOR_TEST}"
 )
 readonly -a REQUIRED_ENV=(

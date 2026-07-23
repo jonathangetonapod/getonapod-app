@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
@@ -74,6 +74,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, 
 import { toast } from 'sonner'
 import PageSEO from '@/components/seo/PageSEO'
 import { openExternalUrl } from '@/lib/externalUrl'
+import { onboardingWorkspaceInitials } from '@/lib/onboardingBrand'
 
 export default function ClientApprovalView() {
   return <ClientApprovalViewContent />
@@ -89,6 +90,12 @@ interface ClientDashboard {
   dashboard_view_count: number
   dashboard_last_viewed_at: string | null
   dashboard_enabled: boolean | null
+  workspace?: {
+    name?: string | null
+    logo_url?: string | null
+    primary_color?: string | null
+    accent_color?: string | null
+  } | null
 }
 
 interface PodcastCategory {
@@ -150,6 +157,20 @@ const CARDS_PER_PAGE = 10
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+function normalizedBrandColor(value: string | null | undefined, fallback: string): string {
+  const color = value?.trim().toUpperCase() || ''
+  return /^#[0-9A-F]{6}$/u.test(color) ? color : fallback
+}
+
+function readableBrandColor(background: string): string {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(background.slice(offset, offset + 2), 16) / 255)
+  const [red, green, blue] = channels.map((channel) => (
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  ))
+  const luminance = (red * 0.2126) + (green * 0.7152) + (blue * 0.0722)
+  return luminance > 0.42 ? '#102033' : '#FFFFFF'
+}
 
 async function invokePublicClientDashboard<T>(body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/public-client-dashboard`, {
@@ -234,6 +255,9 @@ function ClientApprovalViewContent() {
   const [showFilters, setShowFilters] = useState(false)
   const [showFocusedReview, setShowFocusedReview] = useState(false)
   const [reviewIndex, setReviewIndex] = useState(0)
+  const [focusedReviewIds, setFocusedReviewIds] = useState<string[]>([])
+  const [focusedReviewPendingOnly, setFocusedReviewPendingOnly] = useState(true)
+  const [brandLogoUnavailable, setBrandLogoUnavailable] = useState(false)
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -371,6 +395,10 @@ function ClientApprovalViewContent() {
       setPersonalizedTagline(null)
     }
   }, [dashboard])
+
+  useEffect(() => {
+    setBrandLogoUnavailable(false)
+  }, [dashboard?.workspace?.logo_url])
 
   // Show tutorial on first visit or if ?tour=1 is in URL
   useEffect(() => {
@@ -679,6 +707,21 @@ function ClientApprovalViewContent() {
     )
   }
 
+  const brandName = dashboard.workspace?.name?.trim() || 'Your podcast team'
+  const brandLogoUrl = dashboard.workspace?.logo_url && !brandLogoUnavailable
+    ? dashboard.workspace.logo_url
+    : null
+  const brandPrimaryColor = normalizedBrandColor(dashboard.workspace?.primary_color, '#0D1B2A')
+  const brandAccentColor = normalizedBrandColor(dashboard.workspace?.accent_color, '#C7794F')
+  const brandPrimaryForeground = readableBrandColor(brandPrimaryColor)
+  const brandAccentForeground = readableBrandColor(brandAccentColor)
+  const campaignStyle = {
+    '--campaign-primary': brandPrimaryColor,
+    '--campaign-primary-foreground': brandPrimaryForeground,
+    '--campaign-accent': brandAccentColor,
+    '--campaign-accent-foreground': brandAccentForeground,
+  } as CSSProperties
+
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
     if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
@@ -744,8 +787,6 @@ function ClientApprovalViewContent() {
   const reviewedTopMatches = topMatches.filter((podcast) => Boolean(feedbackMap.get(podcast.podcast_id)?.status)).length
   const firstBatchApproved = Math.min(feedbackStats.approved, SHORTLIST_GOAL)
   const shortlistProgress = Math.min(100, Math.round((firstBatchApproved / SHORTLIST_GOAL) * 100))
-  const firstPendingReviewIndex = topMatches.findIndex((podcast) => !feedbackMap.get(podcast.podcast_id)?.status)
-
   const viewPodcasts = dashboardView === 'top'
     ? topMatches
     : dashboardView === 'picks'
@@ -827,7 +868,20 @@ function ClientApprovalViewContent() {
   const totalPages = Math.ceil(sortedPodcasts.length / CARDS_PER_PAGE)
   const startIndex = (currentPage - 1) * CARDS_PER_PAGE
   const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  const focusedPodcast = topMatches[Math.min(reviewIndex, Math.max(topMatches.length - 1, 0))]
+  const focusedReviewPodcasts = focusedReviewIds
+    .map((podcastId) => uniquePodcasts.find((podcast) => podcast.podcast_id === podcastId))
+    .filter((podcast): podcast is OutreachPodcast => Boolean(podcast))
+  const focusedPodcast = focusedReviewPodcasts[
+    Math.min(reviewIndex, Math.max(focusedReviewPodcasts.length - 1, 0))
+  ]
+  const focusedReviewedCount = focusedReviewPodcasts.filter((podcast) => (
+    Boolean(feedbackMap.get(podcast.podcast_id)?.status)
+  )).length
+  const focusedReviewViewLabel = dashboardView === 'top'
+    ? 'Top matches'
+    : dashboardView === 'picks'
+      ? 'My picks'
+      : 'Explore all'
 
   const clearFilters = () => {
     setSearchQuery('')
@@ -839,7 +893,13 @@ function ClientApprovalViewContent() {
   }
 
   const startFocusedReview = () => {
-    setReviewIndex(firstPendingReviewIndex >= 0 ? firstPendingReviewIndex : 0)
+    if (sortedPodcasts.length === 0) return
+    const firstPendingIndex = sortedPodcasts.findIndex((podcast) => (
+      !feedbackMap.get(podcast.podcast_id)?.status
+    ))
+    setFocusedReviewIds(sortedPodcasts.map((podcast) => podcast.podcast_id))
+    setFocusedReviewPendingOnly(firstPendingIndex >= 0)
+    setReviewIndex(firstPendingIndex >= 0 ? firstPendingIndex : 0)
     setShowFocusedReview(true)
   }
 
@@ -853,28 +913,33 @@ function ClientApprovalViewContent() {
     )
     if (!saved) return
 
-    const nextPendingIndex = topMatches.findIndex((podcast, index) => (
-      index > reviewIndex
-      && podcast.podcast_id !== focusedPodcast.podcast_id
-      && !feedbackMap.get(podcast.podcast_id)?.status
-    ))
-    if (nextPendingIndex >= 0) {
-      setReviewIndex(nextPendingIndex)
-      return
-    }
+    if (focusedReviewPendingOnly) {
+      const nextPendingIndex = focusedReviewPodcasts.findIndex((podcast, index) => (
+        index > reviewIndex
+        && podcast.podcast_id !== focusedPodcast.podcast_id
+        && !feedbackMap.get(podcast.podcast_id)?.status
+      ))
+      if (nextPendingIndex >= 0) {
+        setReviewIndex(nextPendingIndex)
+        return
+      }
 
-    const earlierPendingIndex = topMatches.findIndex((podcast, index) => (
-      index < reviewIndex
-      && podcast.podcast_id !== focusedPodcast.podcast_id
-      && !feedbackMap.get(podcast.podcast_id)?.status
-    ))
-    if (earlierPendingIndex >= 0) {
-      setReviewIndex(earlierPendingIndex)
+      const earlierPendingIndex = focusedReviewPodcasts.findIndex((podcast, index) => (
+        index < reviewIndex
+        && podcast.podcast_id !== focusedPodcast.podcast_id
+        && !feedbackMap.get(podcast.podcast_id)?.status
+      ))
+      if (earlierPendingIndex >= 0) {
+        setReviewIndex(earlierPendingIndex)
+        return
+      }
+    } else if (reviewIndex < focusedReviewPodcasts.length - 1) {
+      setReviewIndex((index) => index + 1)
       return
     }
 
     setShowFocusedReview(false)
-    toast.success('Your top matches are reviewed. We’ll use these choices to guide outreach.')
+    toast.success(`${focusedReviewViewLabel} review complete. Your choices will guide outreach.`)
   }
 
   const shareDashboard = async () => {
@@ -898,35 +963,53 @@ function ClientApprovalViewContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f1e9] text-[#102033]">
+    <div className="min-h-screen bg-[#f6f1e9] text-[#102033]" style={campaignStyle}>
       <PageSEO
-        title={dashboard.name + "'s podcast opportunities | Get On A Pod"}
+        title={dashboard.name + "'s podcast opportunities | " + brandName}
         description={"A curated podcast shortlist prepared for " + dashboard.name + ". Review the best-fit shows and choose where you would like to be featured."}
         path={"/client/" + (slug || '') + (isAdminPreview ? '?preview=1' : '')}
         image="/client-dashboard-share.png"
-        imageAlt="A curated podcast campaign from Get On A Pod"
+        imageAlt={"A curated podcast campaign prepared by " + brandName}
         noindex
-        themeColor="#0d1b2a"
+        whiteLabel
+        brandName={brandName}
+        favicon={brandLogoUrl}
+        themeColor={brandPrimaryColor}
       />
 
-      <header className="relative overflow-hidden bg-[#0d1b2a] text-white">
-        <div className="absolute inset-0 opacity-70 [background:radial-gradient(circle_at_84%_10%,rgba(199,121,79,.26),transparent_30%),radial-gradient(circle_at_8%_100%,rgba(120,148,134,.18),transparent_33%)]" />
+      <header
+        className="relative overflow-hidden text-white"
+        style={{ background: `linear-gradient(rgba(7,18,31,.58), rgba(7,18,31,.72)), ${brandPrimaryColor}` }}
+      >
+        <div
+          className="absolute inset-0 opacity-70"
+          style={{ background: `radial-gradient(circle at 84% 10%, ${brandAccentColor}55, transparent 30%), radial-gradient(circle at 8% 100%, ${brandPrimaryColor}66, transparent 33%)` }}
+        />
         <div className="absolute inset-0 opacity-[0.06] [background-image:radial-gradient(#fff_0.7px,transparent_0.7px)] [background-size:7px_7px]" />
 
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <nav className="flex min-h-16 items-center justify-between border-b border-white/10 py-3" aria-label="Client dashboard">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f7f1e8] shadow-sm">
-                <img src="/favicon.svg" alt="" className="h-6 w-6" />
+              <span className={cn('flex h-10 items-center justify-center rounded-xl bg-white shadow-sm', brandLogoUrl ? 'w-16 px-2' : 'w-10')}>
+                {brandLogoUrl ? (
+                  <img
+                    src={brandLogoUrl}
+                    alt={`${brandName} logo`}
+                    className="max-h-7 max-w-full object-contain"
+                    onError={() => setBrandLogoUnavailable(true)}
+                  />
+                ) : (
+                  <span className="text-xs font-black" style={{ color: brandPrimaryColor }}>{onboardingWorkspaceInitials(brandName)}</span>
+                )}
               </span>
               <div>
-                <p className="font-editorial text-lg leading-none">Get On A Pod</p>
+                <p className="font-editorial text-lg leading-none">{brandName}</p>
                 <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-white/50">Private campaign</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {isAdminPreview ? (
-                <span className="hidden rounded-full border border-[#e8b18f]/30 bg-[#c7794f]/15 px-3 py-1.5 text-xs font-semibold text-[#f2c7ad] sm:inline-flex">
+                <span className="hidden rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 sm:inline-flex">
                   Share preview
                 </span>
               ) : null}
@@ -967,11 +1050,11 @@ function ClientApprovalViewContent() {
                   />
                 ) : (
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10 sm:h-20 sm:w-20">
-                    <Mic className="h-8 w-8 text-[#e8b18f]" />
+                    <Mic className="h-8 w-8 text-[var(--campaign-accent)]" />
                   </div>
                 )}
                 <div>
-                  <p className="section-kicker !text-[#e8b18f]">Prepared for {dashboard.name}</p>
+                  <p className="section-kicker !text-[var(--campaign-accent)]">Prepared for {dashboard.name}</p>
                   <p className="mt-1 text-sm text-white/55">Your private podcast campaign</p>
                 </div>
               </div>
@@ -980,7 +1063,7 @@ function ClientApprovalViewContent() {
                 The right rooms for your next big ideas.
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-7 text-white/68 sm:text-lg">
-                {personalizedTagline || "We matched your expertise with active podcasts whose listeners are likely to care about what you have to say."}
+                {personalizedTagline || `${brandName} matched your expertise with active podcasts whose listeners are likely to care about what you have to say.`}
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -988,11 +1071,11 @@ function ClientApprovalViewContent() {
                   type="button"
                   size="lg"
                   onClick={startFocusedReview}
-                  disabled={topMatches.length === 0}
-                  className="min-h-12 gap-2 rounded-full bg-[#d1845c] px-6 font-semibold text-white shadow-[0_12px_36px_rgba(199,121,79,.26)] hover:bg-[#bd704b]"
+                  disabled={sortedPodcasts.length === 0}
+                  className="min-h-12 gap-2 rounded-full bg-[var(--campaign-accent)] px-6 font-semibold text-[var(--campaign-accent-foreground)] shadow-[0_12px_36px_rgba(0,0,0,.2)] hover:brightness-95"
                 >
                   <Play className="h-4 w-4 fill-current" />
-                  Review top matches
+                  Start focused review
                 </Button>
                 <Button
                   type="button"
@@ -1031,7 +1114,7 @@ function ClientApprovalViewContent() {
                   <dt className="text-[10px] uppercase tracking-[0.14em] text-white/45 sm:text-xs">Avg. Apple rating</dt>
                   <dd className="mt-1 flex items-center gap-1.5 font-editorial text-2xl text-white sm:text-3xl">
                     {avgRating > 0 ? avgRating.toFixed(1) : '—'}
-                    {avgRating > 0 ? <Star className="h-4 w-4 fill-[#e8b18f] text-[#e8b18f]" /> : null}
+                    {avgRating > 0 ? <Star className="h-4 w-4 fill-[var(--campaign-accent)] text-[var(--campaign-accent)]" /> : null}
                   </dd>
                 </div>
                 <div className="px-3 sm:px-5">
@@ -1052,7 +1135,7 @@ function ClientApprovalViewContent() {
             <aside className="rounded-[28px] border border-white/10 bg-white/[0.075] p-5 shadow-2xl backdrop-blur-md sm:p-6" aria-label="First shortlist goal">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="section-kicker !text-[#e8b18f]">Your first batch</p>
+                  <p className="section-kicker !text-[var(--campaign-accent)]">Your first batch</p>
                   <h2 className="mt-2 font-editorial text-3xl text-white">Choose 10 shows</h2>
                 </div>
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#789486]/20 text-[#b8d0c4]">
@@ -1073,7 +1156,7 @@ function ClientApprovalViewContent() {
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#789486] to-[#e8b18f] transition-all duration-500"
+                  className="h-full rounded-full bg-gradient-to-r from-[#789486] to-[var(--campaign-accent)] transition-all duration-500"
                   style={{ width: shortlistProgress + '%' }}
                 />
               </div>
@@ -1087,12 +1170,12 @@ function ClientApprovalViewContent() {
           <div className="grid grid-cols-2 border-t border-white/10 sm:grid-cols-4">
             {[
               { icon: ThumbsUp, label: 'Choose shows', detail: 'You stay in control' },
-              { icon: Send, label: 'We pitch hosts', detail: 'Personalized outreach' },
+              { icon: Send, label: 'Your team pitches hosts', detail: 'Personalized outreach' },
               { icon: CalendarCheck, label: 'Approve dates', detail: 'No calendar chaos' },
               { icon: Radio, label: 'Episodes go live', detail: 'Track every result' },
             ].map((step, index) => (
               <div key={step.label} className={cn('flex gap-3 px-3 py-5 sm:px-5', index > 0 && 'border-l border-white/10')}>
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/8 text-[#e8b18f]">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/8 text-[var(--campaign-accent)]">
                   <step.icon className="h-4 w-4" />
                 </span>
                 <div>
@@ -1109,7 +1192,7 @@ function ClientApprovalViewContent() {
         <section aria-labelledby="shortlist-heading">
           <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div>
-              <p className="section-kicker text-[#a35938]">Curated for your voice</p>
+              <p className="section-kicker text-[var(--campaign-accent)]">Curated for your voice</p>
               <h2 id="shortlist-heading" className="mt-2 font-editorial text-3xl tracking-tight text-[#102033] sm:text-4xl">
                 {dashboardView === 'top' ? 'Start with your strongest matches' : dashboardView === 'picks' ? 'Shows you are interested in' : 'Explore every opportunity'}
               </h2>
@@ -1124,11 +1207,11 @@ function ClientApprovalViewContent() {
             <Button
               type="button"
               onClick={startFocusedReview}
-              disabled={topMatches.length === 0}
-              className="min-h-11 shrink-0 gap-2 rounded-full bg-[#102033] px-5 text-white hover:bg-[#1c3045]"
+              disabled={sortedPodcasts.length === 0}
+              className="min-h-11 shrink-0 gap-2 rounded-full bg-[var(--campaign-primary)] px-5 text-[var(--campaign-primary-foreground)] hover:brightness-95"
             >
               <Play className="h-4 w-4 fill-current" />
-              Focused review
+              Focused review · {focusedReviewViewLabel}
             </Button>
           </div>
 
@@ -1150,7 +1233,7 @@ function ClientApprovalViewContent() {
                 className={cn(
                   'flex min-h-11 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl px-1 text-[11px] font-semibold transition sm:gap-2 sm:px-5 sm:text-sm',
                   dashboardView === tab.value
-                    ? 'bg-[#102033] text-white shadow-sm'
+                    ? 'bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] shadow-sm'
                     : 'text-[#66727c] hover:bg-[#f5f0e9] hover:text-[#102033]',
                 )}
               >
@@ -1171,7 +1254,7 @@ function ClientApprovalViewContent() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search shows, hosts, or topics"
-                className="h-12 rounded-xl border-[#d9d0c4] bg-white pl-11 text-base shadow-sm focus-visible:ring-[#c7794f]"
+                className="h-12 rounded-xl border-[#d9d0c4] bg-white pl-11 text-base shadow-sm focus-visible:ring-[var(--campaign-accent)]"
               />
             </label>
             <label className="relative w-full sm:w-auto">
@@ -1179,7 +1262,7 @@ function ClientApprovalViewContent() {
               <select
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
-                className="h-12 w-full appearance-none rounded-xl border border-[#d9d0c4] bg-white py-2 pl-4 pr-10 text-sm font-medium text-[#344455] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#c7794f]/30 sm:min-w-[190px]"
+                className="h-12 w-full appearance-none rounded-xl border border-[#d9d0c4] bg-white py-2 pl-4 pr-10 text-sm font-medium text-[#344455] shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--campaign-accent)] sm:min-w-[190px]"
               >
                 <option value="default">Recommended order</option>
                 <option value="audience_desc">Largest audience</option>
@@ -1195,14 +1278,14 @@ function ClientApprovalViewContent() {
             >
               <SlidersHorizontal className="h-4 w-4" />
               Filters
-              {activeFilterCount > 0 ? <span className="rounded-full bg-[#102033] px-2 py-0.5 text-[11px] text-white">{activeFilterCount}</span> : null}
+              {activeFilterCount > 0 ? <span className="rounded-full bg-[var(--campaign-primary)] px-2 py-0.5 text-[11px] text-[var(--campaign-primary-foreground)]">{activeFilterCount}</span> : null}
             </Button>
           </div>
 
           {hasActiveFilters ? (
             <div className="mt-3 flex items-center justify-between gap-3 text-sm text-[#66727c]">
               <p>{sortedPodcasts.length} result{sortedPodcasts.length === 1 ? '' : 's'} in this view</p>
-              <button type="button" onClick={clearFilters} className="min-h-10 font-semibold text-[#a35938] hover:text-[#7f3f24]">
+              <button type="button" onClick={clearFilters} className="min-h-10 font-semibold text-[var(--campaign-accent)] hover:brightness-75">
                 Clear filters
               </button>
             </div>
@@ -1234,7 +1317,7 @@ function ClientApprovalViewContent() {
                     clearFilters()
                     setDashboardView('top')
                   }}
-                  className="mt-5 min-h-11 rounded-full bg-[#102033] px-5 text-white hover:bg-[#1c3045]"
+                  className="mt-5 min-h-11 rounded-full bg-[var(--campaign-primary)] px-5 text-[var(--campaign-primary-foreground)] hover:brightness-95"
                 >
                   Browse top matches
                 </Button>
@@ -1274,9 +1357,9 @@ function ClientApprovalViewContent() {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 {topMatchIndex >= 0 ? (
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#a35938]">Top match #{topMatchIndex + 1}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--campaign-accent)]">Top match #{topMatchIndex + 1}</p>
                                 ) : null}
-                                <h3 className="mt-1 line-clamp-2 font-editorial text-xl leading-tight text-[#102033] transition group-hover:text-[#a35938] sm:text-2xl">
+                                <h3 className="mt-1 line-clamp-2 font-editorial text-xl leading-tight text-[#102033] transition group-hover:text-[var(--campaign-accent)] sm:text-2xl">
                                   {podcast.podcast_name}
                                 </h3>
                               </div>
@@ -1303,7 +1386,7 @@ function ClientApprovalViewContent() {
 
                         <div className="border-t border-[#eee8e0] px-4 py-3 sm:px-5">
                           <div className="mb-3 flex items-start gap-2 text-xs leading-5 text-[#5e6c77]">
-                            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#c7794f]" />
+                            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--campaign-accent)]" />
                             <p className="line-clamp-2">{fitReason}</p>
                           </div>
                           <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
@@ -1383,25 +1466,32 @@ function ClientApprovalViewContent() {
           )}
         </section>
 
-        <section className="mt-16 overflow-hidden rounded-[32px] bg-[#102033] text-white shadow-[0_24px_70px_rgba(16,32,51,.14)]">
+        <section
+          className="mt-16 overflow-hidden rounded-[32px] text-white shadow-[0_24px_70px_rgba(16,32,51,.14)]"
+          style={{ background: `linear-gradient(rgba(7,18,31,.58), rgba(7,18,31,.72)), ${brandPrimaryColor}` }}
+        >
           <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
             <div className="relative overflow-hidden border-b border-white/10 p-7 sm:p-9 lg:border-b-0 lg:border-r">
-              <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#c7794f]/20 blur-3xl" />
-              <p className="section-kicker !text-[#e8b18f]">{isAdminPreview ? 'A campaign built around you' : 'What happens next'}</p>
+              <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[var(--campaign-accent)] opacity-20 blur-3xl" />
+              <p className="section-kicker !text-[var(--campaign-accent)]">{isAdminPreview ? 'A campaign built around you' : 'What happens next'}</p>
               <h2 className="relative mt-3 max-w-lg font-editorial text-3xl leading-tight sm:text-4xl">
                 Your picks become a campaign—not another spreadsheet.
               </h2>
               <p className="relative mt-4 max-w-lg text-sm leading-6 text-white/60 sm:text-base">
-                We research the host, write the angle, manage outreach, coordinate dates, and keep every opportunity visible from pitch to published episode.
+                {brandName} researches the host, writes the angle, manages outreach, coordinates dates, and keeps every opportunity visible from pitch to published episode.
               </p>
               {isAdminPreview ? (
-                <a
-                  href="/what-to-expect"
-                  className="relative mt-6 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#d1845c] px-6 text-sm font-bold text-white transition hover:bg-[#bd704b]"
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setTutorialStep(0)
+                    setShowTutorial(true)
+                  }}
+                  className="relative mt-6 min-h-12 gap-2 rounded-full bg-[var(--campaign-accent)] px-6 text-[var(--campaign-accent-foreground)] hover:brightness-95"
                 >
-                  See the full campaign experience
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
+                  Preview the client walkthrough
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
               ) : (
                 <Button
                   type="button"
@@ -1409,7 +1499,7 @@ function ClientApprovalViewContent() {
                     setDashboardView('picks')
                     document.getElementById('podcast-shortlist')?.scrollIntoView({ behavior: 'smooth' })
                   }}
-                  className="relative mt-6 min-h-12 gap-2 rounded-full bg-[#d1845c] px-6 text-white hover:bg-[#bd704b]"
+                  className="relative mt-6 min-h-12 gap-2 rounded-full bg-[var(--campaign-accent)] px-6 text-[var(--campaign-accent-foreground)] hover:brightness-95"
                 >
                   Review my picks
                   <ArrowRight className="h-4 w-4" />
@@ -1422,8 +1512,8 @@ function ClientApprovalViewContent() {
                 { icon: CalendarCheck, title: 'Booking visibility', text: 'See upcoming recordings, scheduled appearances, and what is going live next.' },
                 { icon: LineChart, title: 'Clips & analytics', text: 'Turn appearances into content and track campaign impact as optional add-ons.' },
               ].map((feature, index) => (
-                <div key={feature.title} className="bg-[#102033] p-6 sm:p-7">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/8 text-[#e8b18f]">
+                <div key={feature.title} className="bg-black/10 p-6 sm:p-7">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/8 text-[var(--campaign-accent)]">
                     <feature.icon className="h-5 w-5" />
                   </span>
                   <p className="mt-5 font-editorial text-xl">{feature.title}</p>
@@ -1439,8 +1529,14 @@ function ClientApprovalViewContent() {
       <footer className="border-t border-[#d9d0c4] bg-[#ede6dc]">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-6 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">
           <div className="flex items-center gap-2 text-sm font-semibold text-[#344455]">
-            <img src="/favicon.svg" alt="" className="h-6 w-6" />
-            Get On A Pod
+            {brandLogoUrl ? (
+              <img src={brandLogoUrl} alt="" className="h-7 w-10 object-contain" onError={() => setBrandLogoUnavailable(true)} />
+            ) : (
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-black text-white" style={{ backgroundColor: brandPrimaryColor }}>
+                {onboardingWorkspaceInitials(brandName)}
+              </span>
+            )}
+            {brandName}
           </div>
           <div className="flex items-center gap-4 text-xs text-[#6f7a83]">
             <button type="button" onClick={() => setShowReviewPanel(true)} className="min-h-10 hover:text-[#102033]">About the data</button>
@@ -1483,7 +1579,7 @@ function ClientApprovalViewContent() {
                     className={cn(
                       'flex min-h-12 items-center justify-between rounded-xl border px-3 text-left text-sm font-semibold transition',
                       feedbackFilter === option.value
-                        ? 'border-[#102033] bg-[#102033] text-white'
+                        ? 'border-[var(--campaign-primary)] bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)]'
                         : 'border-[#d9d0c4] bg-white text-[#52616d] hover:border-[#bcae9e]',
                     )}
                   >
@@ -1499,7 +1595,7 @@ function ClientApprovalViewContent() {
               <select
                 value={audienceFilter}
                 onChange={(event) => setAudienceFilter(event.target.value)}
-                className="mt-3 h-12 w-full rounded-xl border border-[#d9d0c4] bg-white px-3 text-sm text-[#344455] focus:outline-none focus:ring-2 focus:ring-[#c7794f]/30"
+                className="mt-3 h-12 w-full rounded-xl border border-[#d9d0c4] bg-white px-3 text-sm text-[#344455] focus:outline-none focus:ring-2 focus:ring-[var(--campaign-accent)]"
               >
                 <option value="any">Any audience estimate</option>
                 <option value="under1k">Under 1K</option>
@@ -1517,7 +1613,7 @@ function ClientApprovalViewContent() {
               <select
                 value={episodeFilter}
                 onChange={(event) => setEpisodeFilter(event.target.value)}
-                className="mt-3 h-12 w-full rounded-xl border border-[#d9d0c4] bg-white px-3 text-sm text-[#344455] focus:outline-none focus:ring-2 focus:ring-[#c7794f]/30"
+                className="mt-3 h-12 w-full rounded-xl border border-[#d9d0c4] bg-white px-3 text-sm text-[#344455] focus:outline-none focus:ring-2 focus:ring-[var(--campaign-accent)]"
               >
                 <option value="any">Any episode count</option>
                 <option value="under50">Under 50 episodes</option>
@@ -1546,7 +1642,7 @@ function ClientApprovalViewContent() {
                         className={cn(
                           'min-h-10 rounded-full border px-3 text-xs font-semibold transition',
                           selected
-                            ? 'border-[#a35938] bg-[#f0ddd1] text-[#813f24]'
+                            ? 'border-[var(--campaign-accent)] bg-white text-[var(--campaign-accent)]'
                             : 'border-[#d9d0c4] bg-white text-[#596772] hover:border-[#bcae9e]',
                         )}
                       >
@@ -1563,7 +1659,7 @@ function ClientApprovalViewContent() {
             <Button type="button" variant="outline" onClick={clearFilters} className="min-h-12 rounded-xl border-[#d9d0c4] bg-white">
               Reset
             </Button>
-            <Button type="button" onClick={() => setShowFilters(false)} className="min-h-12 rounded-xl bg-[#102033] text-white hover:bg-[#1c3045]">
+            <Button type="button" onClick={() => setShowFilters(false)} className="min-h-12 rounded-xl bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
               Show {sortedPodcasts.length} results
             </Button>
           </div>
@@ -1587,11 +1683,11 @@ function ClientApprovalViewContent() {
               <div className="flex items-center justify-between border-b border-[#e2d9ce] px-5 py-4 pr-14 sm:px-7">
                 <div>
                   <DialogTitle className="font-editorial text-2xl text-[#102033]">Focused review</DialogTitle>
-                  <DialogDescription className="sr-only">Review one recommended podcast at a time and mark whether you are interested.</DialogDescription>
-                  <p className="mt-0.5 text-xs text-[#74808a]">Match {reviewIndex + 1} of {topMatches.length} · {reviewedTopMatches} reviewed</p>
+                  <DialogDescription className="sr-only">Review one podcast at a time from {focusedReviewViewLabel} and mark whether you are interested.</DialogDescription>
+                  <p className="mt-0.5 text-xs text-[#74808a]">{focusedReviewViewLabel} · Match {reviewIndex + 1} of {focusedReviewPodcasts.length} · {focusedReviewedCount} reviewed</p>
                 </div>
                 <div className="hidden h-1.5 w-40 overflow-hidden rounded-full bg-[#e6ded4] sm:block">
-                  <div className="h-full rounded-full bg-[#789486]" style={{ width: ((reviewIndex + 1) / Math.max(topMatches.length, 1)) * 100 + '%' }} />
+                  <div className="h-full rounded-full bg-[var(--campaign-accent)]" style={{ width: ((reviewIndex + 1) / Math.max(focusedReviewPodcasts.length, 1)) * 100 + '%' }} />
                 </div>
               </div>
 
@@ -1615,7 +1711,7 @@ function ClientApprovalViewContent() {
                 </div>
 
                 <div className="flex flex-col p-5 sm:p-7">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#a35938]">Recommended for {dashboard.name}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--campaign-accent)]">Recommended for {dashboard.name}</p>
                   <h2 className="mt-2 font-editorial text-3xl leading-tight text-[#102033] sm:text-4xl">{focusedPodcast.podcast_name}</h2>
                   {focusedPodcast.publisher_name ? <p className="mt-1 text-sm text-[#74808a]">with {focusedPodcast.publisher_name}</p> : null}
 
@@ -1647,7 +1743,7 @@ function ClientApprovalViewContent() {
                       setShowFocusedReview(false)
                       setSelectedPodcast(focusedPodcast)
                     }}
-                    className="mt-3 hidden min-h-11 items-center gap-1 self-start text-sm font-bold text-[#a35938] hover:text-[#7f3f24] sm:inline-flex"
+                    className="mt-3 hidden min-h-11 items-center gap-1 self-start text-sm font-bold text-[var(--campaign-accent)] hover:brightness-75 sm:inline-flex"
                   >
                     Open full show profile
                     <ArrowUpRight className="h-4 w-4" />
@@ -1678,7 +1774,7 @@ function ClientApprovalViewContent() {
                           'min-h-14 gap-2 rounded-2xl text-sm font-bold',
                           feedbackMap.get(focusedPodcast.podcast_id)?.status === 'approved'
                             ? 'bg-[#668b78] text-white hover:bg-[#587765]'
-                            : 'bg-[#102033] text-white hover:bg-[#1c3045]',
+                            : 'bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95',
                         )}
                       >
                         {isSavingFeedback ? <Loader2 className="h-5 w-5 animate-spin" /> : <ThumbsUp className="h-5 w-5" />}
@@ -1710,8 +1806,8 @@ function ClientApprovalViewContent() {
                       <Button
                         type="button"
                         variant="ghost"
-                        disabled={reviewIndex >= topMatches.length - 1}
-                        onClick={() => setReviewIndex((index) => Math.min(topMatches.length - 1, index + 1))}
+                        disabled={reviewIndex >= focusedReviewPodcasts.length - 1}
+                        onClick={() => setReviewIndex((index) => Math.min(focusedReviewPodcasts.length - 1, index + 1))}
                         className="min-h-10 gap-1 text-[#6e7982]"
                       >
                         Next
@@ -1724,7 +1820,7 @@ function ClientApprovalViewContent() {
             </div>
           ) : (
             <div className="p-10 text-center">
-              <DialogTitle className="font-editorial text-2xl text-[#102033]">Top matches are on the way</DialogTitle>
+              <DialogTitle className="font-editorial text-2xl text-[#102033]">No podcasts match this view yet</DialogTitle>
             </div>
           )}
         </DialogContent>
@@ -1734,10 +1830,10 @@ function ClientApprovalViewContent() {
         <SheetContent side="right" className="!w-full overflow-hidden border-l-[#ded5ca] bg-[#fbf8f3] p-0 sm:!max-w-lg">
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="border-b border-[#ded5ca] bg-[#102033] p-6 text-white">
+            <div className="border-b border-[#ded5ca] bg-[var(--campaign-primary)] p-6 text-[var(--campaign-primary-foreground)]">
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2 font-editorial text-2xl text-white">
-                  <BarChart3 className="h-5 w-5 text-[#e8b18f]" />
+                  <BarChart3 className="h-5 w-5 text-[var(--campaign-accent)]" />
                   Understanding the estimates
                 </SheetTitle>
               </SheetHeader>
@@ -1780,7 +1876,7 @@ function ClientApprovalViewContent() {
                       { icon: CalendarCheck, label: 'Publishing frequency' },
                     ].map((item, i) => (
                       <div key={i} className="flex items-center gap-2 rounded-xl border border-[#e5ded5] bg-white p-2.5 text-sm">
-                        <item.icon className="h-4 w-4 shrink-0 text-[#a35938]" />
+                        <item.icon className="h-4 w-4 shrink-0 text-[var(--campaign-accent)]" />
                         <span>{item.label}</span>
                       </div>
                     ))}
@@ -1796,7 +1892,7 @@ function ClientApprovalViewContent() {
                   <div className="space-y-3">
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">1</div>
-                      <p className="text-sm text-muted-foreground">We combine public chart, review, social, and publishing signals from major podcast platforms.</p>
+                      <p className="text-sm text-muted-foreground">Audience estimates combine public chart, review, social, and publishing signals from major podcast platforms.</p>
                     </div>
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">2</div>
@@ -1842,7 +1938,7 @@ function ClientApprovalViewContent() {
             {/* Footer */}
             <div className="p-4 border-t bg-slate-50 dark:bg-slate-900">
               <Button
-                className="min-h-12 w-full rounded-xl bg-[#102033] text-white hover:bg-[#1c3045]"
+                className="min-h-12 w-full rounded-xl bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95"
                 onClick={() => setShowReviewPanel(false)}
               >
                 Done
@@ -2412,10 +2508,10 @@ function ClientApprovalViewContent() {
                     </h3>
                     <Textarea
                       aria-label="Note for your campaign team"
-                      placeholder="Questions, preferences, or context we should know..."
+                      placeholder="Questions, preferences, or context your team should know..."
                       value={currentNotes}
                       onChange={(event) => setCurrentNotes(event.target.value)}
-                      className="min-h-[92px] resize-none rounded-xl border-[#d9d0c4] bg-white text-sm focus-visible:ring-[#c7794f]"
+                      className="min-h-[92px] resize-none rounded-xl border-[#d9d0c4] bg-white text-sm focus-visible:ring-[var(--campaign-accent)]"
                     />
                     <div className="mt-2 flex items-center justify-between gap-3">
                       <p className="text-[11px] text-[#7b858d]">Private to you and your campaign team.</p>
@@ -2477,7 +2573,7 @@ function ClientApprovalViewContent() {
                       'min-h-12 gap-2 rounded-xl font-bold',
                       feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
                         ? 'bg-[#668b78] text-white hover:bg-[#587765]'
-                        : 'bg-[#102033] text-white hover:bg-[#1c3045]',
+                        : 'bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95',
                     )}
                   >
                     {isSavingFeedback ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
@@ -2504,12 +2600,12 @@ function ClientApprovalViewContent() {
             {/* Step 0: Welcome */}
             {tutorialStep === 0 && (
               <div className="p-5 sm:p-8 text-center">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#102033] sm:mb-4 sm:h-16 sm:w-16">
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] sm:mb-4 sm:h-16 sm:w-16">
                   <Sparkles className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
                 <h2 className="mb-2 font-editorial text-2xl text-[#102033] sm:text-3xl">Your podcast campaign</h2>
                 <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
-                  We curated these shows around your expertise, audience, and goals. You choose where you would feel excited to appear.
+                  {brandName} curated these shows around your expertise, audience, and goals. You choose where you would feel excited to appear.
                 </p>
                 <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground">
                   <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -2544,7 +2640,7 @@ function ClientApprovalViewContent() {
             {/* Step 2: View AI Insights */}
             {tutorialStep === 2 && (
               <div className="p-5 sm:p-8 text-center">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#c7794f] sm:mb-4 sm:h-16 sm:w-16">
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--campaign-accent)] text-[var(--campaign-accent-foreground)] sm:mb-4 sm:h-16 sm:w-16">
                   <MousePointerClick className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
                 <h2 className="mb-2 font-editorial text-2xl text-[#102033] sm:text-3xl">See why each show fits</h2>
@@ -2597,10 +2693,10 @@ function ClientApprovalViewContent() {
             {/* Step 4: What's Next */}
             {tutorialStep === 4 && (
               <div className="p-5 sm:p-8 text-center">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#102033] sm:mb-4 sm:h-16 sm:w-16">
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] sm:mb-4 sm:h-16 sm:w-16">
                   <Rocket className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h2 className="mb-2 font-editorial text-2xl text-[#102033] sm:text-3xl">We take it from here</h2>
+                <h2 className="mb-2 font-editorial text-2xl text-[#102033] sm:text-3xl">Your team takes it from here</h2>
                 <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
                   Your interested shows become the foundation for personalized outreach, booking coordination, and campaign tracking.
                 </p>
@@ -2641,12 +2737,12 @@ function ClientApprovalViewContent() {
               </Button>
 
               {tutorialStep < 4 ? (
-                <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="gap-1 bg-[#102033] text-white hover:bg-[#1c3045]">
+                <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="gap-1 bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
                   Next
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button onClick={closeTutorial} className="gap-1 bg-[#102033] text-white hover:bg-[#1c3045]">
+                <Button onClick={closeTutorial} className="gap-1 bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
                   Start reviewing
                   <ArrowRight className="h-4 w-4" />
                 </Button>
