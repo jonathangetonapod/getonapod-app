@@ -137,6 +137,18 @@ describe('WorkspaceSwitcher', () => {
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/app/onboarding'))
   })
 
+  it('preserves the outreach suite module when changing workspaces', async () => {
+    renderSwitcher({
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/master-inbox',
+    })
+
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Select a workspace' }))
+    fireEvent.click(await screen.findByText('Acme'))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/master-inbox',
+    ))
+  })
+
   it('moves client-bound podcast research to the target workspace client chooser', async () => {
     renderSwitcher({
       initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/clients/33333333-3333-4333-8333-333333333333/podcast-finder',

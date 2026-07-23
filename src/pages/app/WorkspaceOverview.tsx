@@ -2,7 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BookOpen,
   ClipboardList,
+  Inbox,
   Loader2,
+  Mailbox,
+  Megaphone,
   Search,
   Settings,
   Users,
@@ -50,6 +53,24 @@ const moduleCards: Array<{
     name: 'Clients',
     description: 'Manage the clients and research profiles owned by this workspace.',
     icon: Users,
+  },
+  {
+    module: 'client-campaigns',
+    name: 'Client Campaigns',
+    description: 'Organize client outreach campaigns and monitor delivery and reply performance.',
+    icon: Megaphone,
+  },
+  {
+    module: 'master-inbox',
+    name: 'Master Inbox',
+    description: 'Review and respond to replies across every campaign without losing client context.',
+    icon: Inbox,
+  },
+  {
+    module: 'mailboxes',
+    name: 'Mailboxes',
+    description: 'See sending accounts, capacity, warmup, health, and client assignments in one place.',
+    icon: Mailbox,
   },
   {
     module: 'guest-resources',

@@ -19,6 +19,14 @@ describe('workspace routes', () => {
     )).toBe('podcast-finder')
   })
 
+  it.each(['client-campaigns', 'master-inbox', 'mailboxes'] as const)(
+    'preserves the %s module while switching workspaces',
+    (module) => {
+      expect(workspaceModuleFromPath(`/app/workspaces/11111111-1111-4111-8111-111111111111/${module}`)).toBe(module)
+      expect(workspaceModuleHref('/app', module)).toBe(`/app/${module}`)
+    },
+  )
+
   it('falls back to overview outside a workspace module', () => {
     expect(workspaceModuleFromPath('/app/manage-workspaces')).toBe('overview')
     expect(workspaceModuleFromPath('/admin/dashboard')).toBe('overview')

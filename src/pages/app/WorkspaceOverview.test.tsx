@@ -71,6 +71,9 @@ describe('WorkspaceOverview', () => {
 
     expect(screen.getByRole('heading', { name: 'My Workspace' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
+    expect(screen.getByRole('link', { name: 'Open Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
+    expect(screen.getByRole('link', { name: 'Open Master Inbox' })).toHaveAttribute('href', '/app/master-inbox')
+    expect(screen.getByRole('link', { name: 'Open Mailboxes' })).toHaveAttribute('href', '/app/mailboxes')
     expect(screen.getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '/app/settings')
     expect(mockedView).not.toHaveBeenCalled()
   })
@@ -82,6 +85,9 @@ describe('WorkspaceOverview', () => {
     const baseHref = `/app/workspaces/${selectedWorkspaceId}`
     expect(screen.getByTestId('workspace-layout')).toHaveAttribute('data-base-href', baseHref)
     expect(screen.getByRole('link', { name: 'Open Podcast Finder' })).toHaveAttribute('href', `${baseHref}/podcast-finder`)
+    expect(screen.getByRole('link', { name: 'Open Client Campaigns' })).toHaveAttribute('href', `${baseHref}/client-campaigns`)
+    expect(screen.getByRole('link', { name: 'Open Master Inbox' })).toHaveAttribute('href', `${baseHref}/master-inbox`)
+    expect(screen.getByRole('link', { name: 'Open Mailboxes' })).toHaveAttribute('href', `${baseHref}/mailboxes`)
     expect(screen.getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', `${baseHref}/settings`)
     expect(mockedView).toHaveBeenCalledWith(selectedWorkspaceId, expect.any(AbortSignal))
   })

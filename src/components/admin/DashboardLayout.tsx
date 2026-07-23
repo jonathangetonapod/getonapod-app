@@ -18,7 +18,9 @@ import {
   Database,
   Share2,
   ClipboardList,
-  Mail
+  Inbox,
+  Mailbox,
+  Megaphone,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -61,9 +63,10 @@ const defaultNavItems: NavItem[] = [
   { id: 'podcast-database', name: 'Podcast Database', href: '/admin/podcast-database', icon: Database },
   { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
   { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
-  { id: 'outreach-platform', name: 'Outreach Platform', href: '/admin/outreach-platform', icon: Mail },
+  { id: 'outreach-platform', name: 'Client Campaigns', href: '/app/client-campaigns', icon: Megaphone },
+  { id: 'leads', name: 'Master Inbox', href: '/app/master-inbox', icon: Inbox },
+  { id: 'mailboxes', name: 'Mailboxes', href: '/app/mailboxes', icon: Mailbox },
   { id: 'guest-resources', name: 'Guest Resources', href: '/admin/guest-resources', icon: BookOpen },
-  { id: 'leads', name: 'Unibox', href: '/admin/leads', icon: Users },
 ]
 
 const STORAGE_KEY = 'admin-nav-order'

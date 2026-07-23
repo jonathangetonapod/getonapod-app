@@ -24,9 +24,7 @@ import UpcomingRecordings from "./pages/admin/UpcomingRecordings";
 import UpcomingGoingLive from "./pages/admin/UpcomingGoingLive";
 import ClientsManagement from "./pages/admin/ClientsManagement";
 import ClientDetail from "./pages/admin/ClientDetail";
-import OutreachPlatform from "./pages/admin/OutreachPlatform";
 import GuestResourcesManagement from "./pages/admin/GuestResourcesManagement";
-import LeadsManagement from "./pages/admin/LeadsManagement";
 import PortalLogin from "./pages/portal/Login";
 import PortalDashboard from "./pages/portal/DashboardMvp";
 import PortalResources from "./pages/portal/Resources";
@@ -39,9 +37,11 @@ import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
 import MyWorkspaceSettings from "./pages/app/MyWorkspaceSettings";
 import WorkspaceOverview from "./pages/app/WorkspaceOverview";
+import WorkspaceOutreachSuite from "./pages/app/WorkspaceOutreachSuite";
 import WorkspacePodcastFinderHome from "./pages/app/WorkspacePodcastFinderHome";
 import WorkspacePodcastFinder from "./pages/app/WorkspacePodcastFinder";
 import AdminWorkspaceOverview from "./pages/admin/AdminWorkspaceOverview";
+import AdminWorkspaceOutreachSuite from "./pages/admin/AdminWorkspaceOutreachSuite";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
 import AdminWorkspaceClientDetail from "./pages/admin/AdminWorkspaceClientDetail";
 import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
@@ -169,6 +169,32 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/app/client-campaigns"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceOutreachSuite module="client-campaigns" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/master-inbox"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceOutreachSuite module="master-inbox" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/mailboxes"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceOutreachSuite module="mailboxes" />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/app/outreach-platform" element={<Navigate to="/app/client-campaigns" replace />} />
+            <Route path="/app/unibox" element={<Navigate to="/app/master-inbox" replace />} />
 
             {/* The platform owner uses the same workspace shell and tools for selected workspaces. */}
             <Route
@@ -242,6 +268,38 @@ const App = () => (
                   <AdminWorkspaceGuestResources />
                 </PlatformAdminRoute>
               }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/client-campaigns"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceOutreachSuite module="client-campaigns" />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/master-inbox"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceOutreachSuite module="master-inbox" />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/mailboxes"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceOutreachSuite module="mailboxes" />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/outreach-platform"
+              element={<LegacyAdminWorkspaceRedirect module="client-campaigns" />}
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/unibox"
+              element={<LegacyAdminWorkspaceRedirect module="master-inbox" />}
             />
 
             {/* Billing is intentionally out of scope for the invite-only MVP. */}
@@ -383,22 +441,9 @@ const App = () => (
               path="/admin/workspaces/:workspaceId/guest-resources"
               element={<LegacyAdminWorkspaceRedirect module="guest-resources" />}
             />
-            <Route
-              path="/admin/outreach-platform"
-              element={
-                <PlatformAdminRoute>
-                  <OutreachPlatform />
-                </PlatformAdminRoute>
-              }
-            />
-            <Route
-              path="/admin/leads"
-              element={
-                <PlatformAdminRoute>
-                  <LeadsManagement />
-                </PlatformAdminRoute>
-              }
-            />
+            <Route path="/admin/outreach-platform" element={<Navigate to="/app/client-campaigns" replace />} />
+            <Route path="/admin/leads" element={<Navigate to="/app/master-inbox" replace />} />
+            <Route path="/admin/mailboxes" element={<Navigate to="/app/mailboxes" replace />} />
             <Route
               path="/admin/guest-resources"
               element={

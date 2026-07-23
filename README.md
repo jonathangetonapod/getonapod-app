@@ -1,211 +1,256 @@
-# Get On A Pod — invite-only workspace MVP
+# Get On A Pod
 
-This application is an administrator-provisioned, multi-tenant MVP without
-billing or public registration. A platform administrator creates an agency
-workspace by inviting its owner or by generating a one-time temporary password.
-That owner can add agency admins and members; the agency team signs in to one
-private workspace, manages its own clients, and gives each client a separate
-client portal.
+Get On A Pod is a multi-workspace podcast placement platform for agencies, consultants, and their clients. It combines client onboarding, recurring podcast discovery, shortlist approvals, outreach operations, client portals, and white-label presentation in one application.
 
-## Current rollout status
+This README is the engineering and product entry point. Detailed security contracts and runbooks live in [`docs/`](docs/).
 
-The invite-only account lifecycle, manual account provisioning, tenant Clients
-module, and administrator workspace view are deployed. The
-workspace-customizable Guest Resources backend was added on 2026-07-22:
-migration `20260721000200_workspace_guest_resources.sql` is the eighth
-production migration, and the exact `workspace-guest-resources` v1 and
-`get-guest-resources` v14 Edge revisions are active. The reviewed frontend at
-commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` is on `main`, and Railway
-deployment `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. The workspace
-experience uses the same responsive left-sidebar structure and product-module
-order as the platform dashboard. Clients and Guest Resources are the enabled
-tenant links; modules that do not yet satisfy the workspace-isolation contract
-are visibly unavailable rather than linked to legacy global admin pages.
+## Product at a glance
 
-The Sub-agency Workspace Foundation and forward platform-owner management
-migrations are production-active through migration 10. The current Settings
-increment moves workspace-user management under `/app/settings` and lets
-workspace owners/admins send an email invitation or generate a one-time
-password for an authorized staff role. Migration 12 adds a server-write-only
-workspace-logo bucket and audited branding updates; the same Settings page lets
-owners/admins upload, replace, or remove a PNG, JPEG, or WebP logo up to 2 MB.
-Migrations 11–12, the changed Edge Functions, and this frontend increment are
-not production-active until their coordinated cutover checks pass. Client
-Podcast System is the next tenant module after that foundation is stable.
+The product has three distinct audiences:
 
-The privileged-browser-key containment gate is complete. Railway now supplies
-the project publishable key. After the frontend deployment, a second
-Cloudflare purge was completed and the hardened recursive live browser verifier
-passed. All six retired asset paths now fail closed with 404, `no-store`,
-`text/plain`, and `noindex`. The exposed legacy service-role key remains
-compromised: inventorying its non-browser consumers, reviewing the exposure
-window, and safely rotating it are separate incident work. Do not disable it
-before retained Edge and external consumers are migrated.
+| Audience | Experience | Primary routes |
+| --- | --- | --- |
+| Platform owner | Operates My Workspace and can open any active agency workspace without impersonating its owner | `/app/*`, `/app/workspaces/:workspaceId/*` |
+| Workspace team | Runs one agency or consultancy and manages its clients | `/app/*` |
+| Agency client | Reviews podcast opportunities and uses a client-specific portal | `/client/:slug`, `/portal/*` |
 
-Credentials previously exposed through chat also still require provider-side
-rotation.
+The current product is invite-only:
 
-The sanitized cutover evidence and remaining gates are recorded in
-[`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md).
+- Public workspace registration is disabled.
+- A private workspace has one owner plus optional admins and members.
+- Workspace users and client portal users are separate identities.
+- Billing and self-serve checkout are not part of the workspace release.
+- The platform owner stays signed in as the platform owner while managing a selected workspace; there is no owner impersonation.
 
-## MVP roles
+## Core workflows
 
-| Role | Supported access |
+### 1. Onboard a client
+
+An owner or admin creates a workspace client, starts an onboarding invitation, and shares an expiring capability link. The client can save progress and submit without creating a portal account. The agency reviews the answers, requests revisions, and explicitly approves the generated pitch profile.
+
+### 2. Run weekly podcast discovery
+
+Podcast Finder is a workspace-level tool with a selectable active client. It combines the client's research profile with Podscan discovery, excludes podcasts already associated with that client, and keeps weekly discovery focused on new opportunities. Results can be sorted and reviewed before they enter the client's shortlist.
+
+### 3. Manage the client shortlist
+
+Each client command center includes an approval-dashboard editor. The agency can curate, feature, reorder, and remove opportunities without returning to Podcast Finder. A dashboard can remain private or be made live through its shareable client URL.
+
+### 4. Run outreach
+
+The workspace outreach suite is organized into Client Campaigns, Master Inbox, and Mailboxes. Instantly.ai is the target provider. The workspace-native page foundations and routes are present; provider authentication, synchronization, webhooks, and write actions still require a tenant-safe server implementation.
+
+### 5. Deliver a white-label client experience
+
+Workspace branding controls the agency name, logo, primary color, and accent color shown on shared client experiences. Client-specific display names and presentation settings can further tailor an approval dashboard without exposing internal workspace details or infrastructure.
+
+## Workspace modules
+
+“Available” means a module has a workspace route and a workspace-aware product surface. It does not imply that every planned provider integration is connected.
+
+| Module | Repository status | Purpose |
+| --- | --- | --- |
+| Overview | Available | Workspace launchpad and module map |
+| Onboarding | Available | Forms, invitations, autosave, review, revisions, files, and pitch approval |
+| Podcast Finder | Available | Client-selectable recurring discovery with history deduplication |
+| Clients | Available | Client records and command centers |
+| Client Campaigns | Integration foundation | Instantly campaign roster, client assignment, and performance surface |
+| Master Inbox | Integration foundation | Cross-campaign reply queue with client and thread context |
+| Mailboxes | Integration foundation | Sending-account health, warmup, capacity, and assignment surface |
+| Guest Resources | Available | Workspace-authored resources for all clients or selected clients |
+| Settings | Available to owners/admins | Team access, credentials, branding, agency name, and sidebar order |
+| Prospect Dashboards | Planned workspace migration | Prospect lead-magnet dashboards |
+| Podcast Database | Planned workspace migration | Read-only shared-catalog browsing before any tenant write support |
+| Client Podcast System | Planned workspace migration | Recording, scheduled, and going-live operations |
+
+Planned modules remain disabled in the workspace navigation until their complete tenant boundary is implemented. A visible legacy admin page is not automatically safe for workspace users.
+
+## Instantly outreach suite
+
+The outreach experience is intentionally split by job-to-be-done:
+
+### Client Campaigns
+
+The campaign control plane should show:
+
+- the GOAP client assigned to each Instantly campaign;
+- draft, active, paused, completed, and error states;
+- lead counts, sends, replies, positive replies, and last synchronization time;
+- sequence visibility and the next operational action; and
+- a direct path from a campaign reply to its Master Inbox conversation.
+
+### Master Inbox
+
+The inbox should unify replies without flattening their context. Each conversation should retain:
+
+- workspace, client, Instantly campaign, and lead identity;
+- the original outbound message and complete thread;
+- unread, interested, needs-response, snoozed, and closed workflow states;
+- provider event identifiers for idempotency; and
+- an auditable record of drafts and sends.
+
+### Mailboxes
+
+The infrastructure view should expose:
+
+- sending address and provider status;
+- warmup status and health signals;
+- daily limit, current use, and remaining capacity;
+- campaign and client assignments; and
+- last successful provider synchronization.
+
+### Required backend boundary
+
+Instantly credentials must never be shipped in the browser. The integration should be implemented behind authenticated Supabase Edge Functions with a service-only database transaction layer.
+
+The minimum safe design is:
+
+1. Store a workspace-scoped integration record with encrypted or platform-secret-backed provider credentials.
+2. Map every remote campaign and mailbox to an exact `workspace_id`; campaigns also map to an exact same-workspace `client_id`.
+3. Ingest provider webhooks into an append-only event ledger keyed by provider event ID.
+4. Quarantine unknown or ambiguous campaign events instead of guessing ownership.
+5. Use per-workspace synchronization cursors and idempotent upserts.
+6. Recheck actor, role, selected workspace, and object ownership inside SQL for every mutation.
+7. Put outbound provider writes through an idempotent outbox and record the real actor in the audit log.
+8. Redact credentials, reply bodies, and personal data from operational logs.
+
+Until that boundary ships, the three pages show an honest disconnected state and perform no Instantly reads or writes.
+
+Legacy Bison/Clay outreach code remains in the repository for operator history. It is global-provider code and must not be wired into workspace routes without the same ownership, event-ledger, and isolation guarantees.
+
+## Identity and authorization
+
+| Actor | Workspace scope | Staff controls | Client operations | Workspace selector |
+| --- | --- | --- | --- | --- |
+| Platform owner | My Workspace plus one explicitly selected agency workspace | Owner-equivalent in selected workspace | Full supported-module access | Yes, top-right |
+| Workspace owner | One workspace | Admins, members, credentials, ownership transfer | Full | No |
+| Workspace admin | One workspace | Members | Manage supported operations | No |
+| Workspace member | One workspace | None | Module-specific restricted/read-only access | No |
+| Client portal user | One client | None | Published client experience only | No |
+
+Important boundaries:
+
+- Browser-provided workspace, membership, client, and record IDs are untrusted selectors.
+- Tenant mutations are authorized again inside versioned `SECURITY DEFINER` database functions.
+- Tenant records carry or derive an exact `workspace_id`.
+- Cross-workspace child relationships use same-workspace constraints.
+- Direct browser writes to protected operational tables remain closed.
+- The platform owner's selected-workspace actions preserve the platform actor ID for auditing.
+- Client portal sessions cannot authorize workspace routes.
+- Suspended or stale identities fail closed.
+
+See [`docs/subagency-saas-architecture.md`](docs/subagency-saas-architecture.md) for the full tenancy model.
+
+## Route map
+
+### Workspace users
+
+| Route | Surface |
 | --- | --- |
-| Platform administrator | Existing internal `/admin/*` application, agency-owner provisioning/workspace lifecycle, and owner-level management of a selected private workspace's branding, users, Clients, and Guest Resources modules |
-| Workspace owner | One agency workspace; manages its logo, adds admins or members by email invite or generated password, manages non-owner staff, transfers ownership, and manages tenant-enabled modules |
-| Workspace admin | One agency workspace; manages its logo, adds and manages members by email invite or generated password, and manages tenant-enabled modules, but cannot manage the owner or another admin |
-| Workspace member | One agency workspace; no staff administration and read-only access to the currently enabled Clients and Guest Resources modules |
-| Client portal user | Separate `/portal/*` login and client-specific bookings/resources view; this is not a SaaS workspace account |
-| Anonymous visitor | Marketing pages plus enabled high-entropy client/prospect capability links only |
+| `/login` | Workspace sign-in |
+| `/accept-invite` | Workspace invitation completion |
+| `/change-password` | Required initial-password replacement |
+| `/app/overview` | My Workspace overview |
+| `/app/onboarding` | Onboarding management |
+| `/app/podcast-finder` | Client-selectable podcast discovery |
+| `/app/clients` | Clients |
+| `/app/clients/:clientId` | Client command center |
+| `/app/client-campaigns` | Instantly campaign foundation |
+| `/app/master-inbox` | Instantly inbox foundation |
+| `/app/mailboxes` | Instantly mailbox foundation |
+| `/app/guest-resources` | Workspace guest resources |
+| `/app/settings` | Workspace settings, team, branding, and navigation order |
 
-Each private workspace has one live, transferable owner plus optional admins
-and members. A live email/Auth identity belongs to at most one private
-workspace during the MVP, so tenant users do not receive a workspace selector.
-Public signup, self-service billing, and cross-workspace access remain out of
-scope. Tenant feature parity is being released one module at a time behind the
-shared isolation contract.
+### Platform owner selected-workspace routes
 
-## Routes
+The same modules are reused under:
 
-| Route | Access |
+```text
+/app/workspaces/:workspaceId/overview
+/app/workspaces/:workspaceId/onboarding
+/app/workspaces/:workspaceId/podcast-finder
+/app/workspaces/:workspaceId/clients
+/app/workspaces/:workspaceId/clients/:clientId
+/app/workspaces/:workspaceId/client-campaigns
+/app/workspaces/:workspaceId/master-inbox
+/app/workspaces/:workspaceId/mailboxes
+/app/workspaces/:workspaceId/guest-resources
+/app/workspaces/:workspaceId/settings
+```
+
+The workspace switcher preserves the current module when possible. Client-bound detail routes return to the target workspace's module-level chooser rather than carrying a client ID across workspaces.
+
+Legacy `/app/outreach-platform`, `/app/unibox`, `/admin/outreach-platform`, and `/admin/leads` entry points redirect to the canonical outreach-suite routes.
+
+### Public and client routes
+
+| Route | Surface |
 | --- | --- |
-| `/login` | Workspace/platform account login |
-| `/accept-invite` | Supabase email-invite completion |
-| `/change-password` | Mandatory first-sign-in password replacement for manually created accounts |
-| `/app/settings` | Workspace settings, including logo branding, owner/admin roster, invitations, roles, employee lifecycle, and ownership transfer |
-| `/app/clients` | Authenticated workspace client CRUD |
-| `/app/guest-resources` | Authenticated workspace resource customization, lifecycle, ordering, and client audience management |
-| `/admin/users` | Platform administrator invitation/lifecycle console |
-| `/admin/workspaces/:workspaceId/settings` | Platform-owner management of the selected workspace's settings and staff roster |
-| `/admin/workspaces/:workspaceId/clients` | Platform-owner management of the selected workspace's Clients experience |
-| `/admin/workspaces/:workspaceId/guest-resources` | Platform-owner management of that workspace's resource catalog and audience assignments |
-| `/admin/*` | Platform administrator only, except `/admin/login` and the Auth callback `/admin/callback` |
-| `/portal/login` | Separate client portal login |
-| `/portal/dashboard`, `/portal/resources` | Authenticated client portal |
-| `/prospect/:slug`, `/client/:slug` | Enabled capability dashboards; `noindex, nofollow` |
+| `/onboarding/:token` | Capability-protected client intake |
+| `/client/:slug` | Shareable podcast approval dashboard |
+| `/prospect/:slug` | Prospect lead-magnet dashboard |
+| `/portal/login` | Client portal sign-in |
+| `/portal/dashboard` | Protected client portal overview |
+| `/portal/resources` | Protected client resources |
 
-The following surfaces are retired for this MVP and redirect to a supported
-landing page: billing/checkout, premium placements, customers/orders/analytics,
-AI Sales Director, admin videos, admin blog, admin settings, and the old API
-docs route. Their charge/order/video mutation endpoints return HTTP 410.
+## System architecture
 
-## Security boundaries
+```mermaid
+flowchart LR
+    Browser[React workspace and client apps]
+    Edge[Supabase Edge Functions]
+    Auth[Supabase Auth]
+    DB[(Postgres + RLS + transactional RPCs)]
+    Storage[Private/public Storage]
+    Providers[Podscan · Resend · AI providers]
+    Instantly[Instantly.ai\nplanned workspace integration]
 
-- The checked-in Supabase configuration disables public email signup and
-  anonymous Auth, and the product exposes no signup UI. The foundation password
-  contract is 12 or more characters, no more than 72 UTF-8 bytes, with
-  uppercase, lowercase, digit, and symbol classes; permanent passwords cannot
-  reuse the `Tmp-` prefix. Hosted Auth must be verified separately because
-  checking in `config.toml` does not change production GoTrue settings.
-- The server derives platform-admin status from the immutable Auth user ID, its
-  current email, the `admin_users` allowlist, and an active default-workspace
-  membership. Browser metadata or an email change alone is not an authority.
-- Tenant authorization requires both the accepted Auth user ID and its bound
-  membership email. A direct Auth email change fails closed. Suspension still
-  uses the immutable user ID; reactivation requires administrator identity
-  review.
-- Invitations use a database-first two-phase flow. The service creates an
-  active private workspace with a `provisioning` owner membership, attempts
-  Supabase Auth delivery under a durable database claim, writes a service-owned
-  Auth metadata marker, and only then advances the membership to `invited`. A
-  known matching identity is invalidated before delivery becomes retryable;
-  unresolved provider or identity ambiguity retains the claim and requires
-  operator review. Invite acceptance also requires a password.
-- Manual accounts use a separate database-first flow. The server—not the
-  browser—generates a 28-character temporary password, creates an exact marked
-  Supabase Auth identity without sending email, and returns the credential only
-  in the successful `no-store` response. Plaintext credentials never enter the
-  application database, audit log, Auth metadata, browser storage, or query
-  cache. A lost credential is replaced, never retrieved.
-- The same exact-marker temporary-password flow is available under Workspace
-  Settings for non-owner staff. The server enforces the owner/admin hierarchy,
-  the account remains blocked until first-sign-in password replacement, and a
-  failed provider attempt exposes only its matching retry action.
-- Workspace logos use a dedicated public-read Storage bucket because they are
-  presentation assets. Browser writes remain closed: the authenticated
-  workspace-management function accepts only PNG/JPEG/WebP signatures up to
-  2 MB, writes a unique object path, commits it through a service-only
-  owner/admin/platform-authorized RPC with stale-state protection, and audits
-  every replace/remove without logging image data.
-- A manually created membership remains non-active until the user replaces the
-  temporary password. Password rotation and first-password replacement use
-  durable claims and exact attempt/execution markers. The provider password
-  update revokes existing sessions before activation, and a membership token
-  epoch plus current Auth metadata rejects stale access JWTs.
-- Manual owner-account revocation is database-first: it immediately revokes the
-  owner membership, archives the private workspace, clears portal capabilities,
-  and then deletes only the exact marked Auth identity. Revoked rows are hidden
-  from normal account and staff UX even when provider cleanup requires operator
-  reconciliation; the durable claim and audit history remain available to the
-  controlled recovery path.
-- Credential reconciliation renews one exclusive execution lease only after a
-  15-minute review window. That window deliberately exceeds Supabase's hosted
-  Edge hard lifetime; revisit the invariant before self-hosting or increasing
-  worker limits.
-- The platform-owner workspace selector is an explicit URL-scoped management
-  context that reuses the tenant Settings, Clients, and Guest Resources
-  layout/pages. It includes active owners and newly created manual-password
-  accounts that are pending first sign-in, but excludes ordinary unaccepted
-  email invitations, revoked memberships, and inactive workspaces. Only the
-  platform owner receives the selector. Selecting a workspace does not create
-  a tenant membership or mutate the platform owner's Auth context; supported
-  writes are authorized server-side and audited under the platform owner's
-  real Auth user ID.
-- Platform workspace suspend/reactivate uses a separate durable service-only
-  lifecycle claim. The database transition commits first and remains
-  authoritative while Auth is
-  reconciled. A different request token can never steal a claim automatically;
-  `review_after` is only a 15-minute operator-review marker. Status-preserving
-  service-only `reconcile_active` and `reconcile_suspended` actions verify Auth
-  without reversing a newer database state, and successful reconciliation is
-  audited before the exact claim is removed. Those recovery actions are not
-  exposed as routine “Verify Auth” buttons in the administrator UX.
-- Staff lifecycle is independent from workspace lifecycle. Suspending or
-  removing a non-owner immediately blocks only that employee and never suspends
-  the agency, archives client data, or revokes client portal sessions. The
-  current owner can change only through atomic ownership transfer. A private
-  workspace cannot be archived while live non-owner staff remain.
-- Workspace users never query the full `clients` row. `workspace-clients`
-  calls a service-only transactional RPC that returns a narrow projection and
-  rechecks active membership and workspace state.
-- Direct base-table access to `clients` and `bookings` is platform-admin-only.
-  RLS and server checks both enforce the workspace boundary.
-- Private workspace resources live in `workspace_guest_resources` with a
-  required `workspace_id`; selected-client assignments use same-workspace
-  composite foreign keys. Workspace mutations run through one service-only,
-  audited transaction. The global `guest_resources` catalog is only the GOAP
-  public/default catalog and seed source; existing workspace snapshots are not
-  overwritten by later template edits.
-- The portal never accepts a workspace ID. It revalidates the exact hashed
-  client session, derives the client's active workspace, and returns a narrow
-  DTO containing only published all-client or explicitly assigned resources.
-  Published articles require visible text; video/link/download resources
-  require a safe action target.
-- Resource bodies use canonical editor HTML capped at 100,000 characters and
-  are rendered through a restrictive sanitizer. Scripts, styles, forms,
-  images, embeds, event handlers, and unsafe URLs are removed at the client
-  display boundary.
-- Client portal password verifiers are PBKDF2-HMAC-SHA256 values with a
-  600,000-iteration work factor in the
-  service-role-only `client_portal_credentials` table. The retired
-  `clients.portal_password` column is constrained to `NULL`.
-- Portal bearer tokens are opaque UUIDs. Only SHA-256 verifiers are stored;
-  stored verifiers are never accepted as bearer tokens. Login attempt
-  reservation is atomic and password/session changes revoke prior access.
-- Changing a client's portal email is an identity reassignment: it disables
-  portal access, deletes the old verifier and sessions, and requires a platform
-  administrator to set a fresh password before the new identity can sign in.
-- Client and prospect approval URLs are bearer capabilities with 96 bits of
-  random suffix entropy. They are server-validated, excluded from the sitemap,
-  marked `noindex, nofollow`, and use a no-referrer policy.
-- Podscan and other paid/service credentials stay in server-side secret storage.
-  No third-party secret may use a `VITE_` name.
+    Browser --> Auth
+    Browser --> Edge
+    Edge --> Auth
+    Edge --> DB
+    Edge --> Storage
+    Edge --> Providers
+    Edge -. server-side only .-> Instantly
+```
+
+The React application is a Vite SPA. Supabase provides authentication, PostgreSQL, Storage, and Edge Functions. The production container builds static assets and serves them through [`scripts/serve-production.mjs`](scripts/serve-production.mjs), including SPA fallback and security checks.
+
+## Repository layout
+
+```text
+src/
+  components/             Shared UI and workspace shell
+  contexts/               Workspace and client auth contexts
+  lib/                    Routing, validation, sanitization, and utilities
+  pages/app/              Native workspace pages
+  pages/admin/            Platform wrappers and legacy operator pages
+  pages/client/           Shareable client approval experience
+  pages/onboarding/       Public capability-based intake
+  pages/portal/           Protected downstream client portal
+  services/               Narrow browser-to-Supabase service layer
+supabase/
+  migrations/             Ordered schema and authorization changes
+  functions/              Edge Functions and shared server code
+  tests/                  PostgreSQL behavior/isolation suites
+scripts/                  Release, security, staging, and diagnostic tooling
+docs/                     Architecture, API references, and operator runbooks
+mcp-prospect-dashboard/   MCP server for prospect-dashboard workflows
+```
 
 ## Local development
 
-Requirements: Node.js 22.22.2, npm 10.9.7, and Deno 2.5.2. Node and npm match
-`package.json`; all three exact versions match pull-request CI.
+### Requirements
+
+- Node.js `22.22.2`
+- npm `10.9.7`
+- Deno `2.5.2` for Edge Function validation
+- A Supabase project or local Supabase stack
+- Supabase CLI and PostgreSQL tooling for migration/behavior work
+
+The Node and npm versions are intentionally pinned in [`package.json`](package.json) and the production [`Dockerfile`](Dockerfile).
+
+### Install and run
 
 ```bash
 npm ci
@@ -213,577 +258,158 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The development server runs at `http://localhost:8080`.
+The development server binds to `127.0.0.1:8080` by default. Set `DEV_SERVER_HOST` only when an explicitly trusted container or LAN environment requires another bind address.
 
-Only browser-safe values belong in `.env.local`:
+### Browser-safe environment variables
 
 ```dotenv
-VITE_SUPABASE_URL=https://your-staging-project.supabase.co
-VITE_SUPABASE_ANON_KEY=<publishable-key-or-legacy-JWT-with-role-anon>
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-publishable-or-anon-browser-key
 VITE_APP_URL=http://localhost:8080
+VITE_SENTRY_DSN=
+VITE_APP_VERSION=
 ```
 
-Never place a service-role key, database password, OpenAI key, Podscan key,
-Google service-account JSON, webhook secret, or other private credential in a
-browser variable or tracked file. `credentials.json`, `.env*`, and service
-account files are ignored.
+Every `VITE_*` value is embedded into the public browser bundle. Only browser-safe configuration belongs there. The current client reads the Supabase public key through `VITE_SUPABASE_ANON_KEY`, including when the project uses a newer publishable-key value.
 
-Relevant server-side secrets are configured in Supabase, as required by the
-functions being deployed:
+### Server-only secrets
 
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- `APP_URL`/`WEB_URL`, `ALLOWED_ORIGIN`/`ALLOWED_ORIGINS` for any optional
-  HTTPS origins (including legacy domains, when still required)
-- `PODSCAN_API_KEY` or `PODSCAN_TOKEN`
-- `RESEND_WEBHOOK_SECRET`
-- provider keys such as OpenAI, Resend, and Google credentials
+Provider credentials belong in Supabase secret storage or the authorized operator environment. Examples include:
 
-The excluded legacy Clay/Bison handlers require `CLAY_WEBHOOK_SECRET` and
-`CAMPAIGN_WEBHOOK_SECRET` only in their separate operator environment; do not
-configure them in the tenant MVP environment.
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_DB_PASSWORD`
+- `PODSCAN_API_KEY`
+- `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+- `RESEND_API_KEY`
+- `ONBOARDING_CAPABILITY_SECRET`
+- Google service-account credentials
+- the future Instantly API credential
 
-Shared Edge CORS always permits `https://getonapod.com` and its `www` origin.
-Localhost and `127.0.0.1` are permitted only when the Edge environment sets
-`ENVIRONMENT=development` explicitly; an unset or non-development value fails
-closed for local origins. Legacy production domains have no built-in access and
-must be added through the origin settings above.
+Never prefix a private credential with `VITE_`, commit it to a dotenv file, paste it into a migration, or expose it in a client error message. Run `npm run check:secrets` before release.
 
-`npm run build` always uses the deterministic static sitemap and an isolated
-Vite environment that does not load the repository's ignored dotenv files. It
-does not contact Supabase. Generate a sitemap containing published blog URLs
-only as a separate, explicit operation with `npm run sitemap:database` and
-review the resulting file before committing or deploying it.
+## Common commands
 
-Railway is configured to build the root `Dockerfile`, not the obsolete
-Nixpacks plan. Both build and runtime stages pin Node 22.22.2 and npm 10.9.7,
-install from the reviewed lockfile with lifecycle scripts disabled, and run the
-application as the unprivileged `node` user. The Docker build refuses to run
-without `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_APP_URL` build
-arguments. Supply only reviewed browser-safe values; Docker build arguments are
-not a place for service-role or provider credentials.
-
-The Docker build validates that the Supabase browser key is either an
-`sb_publishable_...` key or a legacy JWT whose role is exactly `anon`, then
-scans the completed `dist` bundle. `npm start` repeats the bundle scan before
-opening a listening socket. To inspect the already deployed site without
-printing any discovered value, run:
-
-```bash
-npm run verify:production-browser
-```
-
-That read-only network check recursively scans referenced JavaScript assets and
-validates the public Supabase configuration. It passed after the 2026-07-22
-publishable-key rebuild and Cloudflare purge and remains a required regression
-gate for every frontend deployment.
-
-## Database rollout
-
-The original six-version production cutover and the seventh manual-account
-forward migration were completed on 2026-07-21. The workspace Guest Resources
-migration was applied as the eighth production migration on 2026-07-22. The
-historical procedure below is retained for recovery and fresh environments.
-The operator explicitly accepted proceeding without a dedicated staging
-backend or restore rehearsal for the earlier release; do not generalize that
-exception to future releases.
-
-For future acceptance, use a dedicated staging project. Do not point synthetic
-acceptance tests at production and do not replay the repository's entire
-historical migration directory blindly. It contains many historical or
-noncanonical files; the six coordinated 20260720 versions and
-`20260721000100_manual_workspace_accounts.sql` are the historical 2026-07-21
-production unit. The 2026-07-22 increment adds
-`20260721000200_workspace_guest_resources.sql`. The legacy
-`scripts/deploy-edge-functions.sh` and `scripts/run-migration.cjs` helpers are
-intentionally retired and fail closed; they do not implement this release's
-target, commit, backup, manifest, or evidence controls.
-
-Use a coordinated maintenance window; do not run the SQL while historical
-portal functions can still mint credentials or sessions:
-
-1. Back up the target, record the remote Edge Function/webhook/schedule
-   inventory, and quiesce client-portal traffic and automated callers.
-2. Deploy all 17 HTTP 410 handlers in phase 1 of the checked-in Edge manifest.
-   The five names in `unauthenticated_tombstone_probes` (the four legacy public
-   functions plus `stripe-webhook`) must return 410 without a user JWT or side
-   effect. Probe the other tombstones with an administrator JWT and require no
-   provider/database side effect.
-3. While traffic remains closed, deploy this branch's
-   `login-with-password`, `validate-portal-session`,
-   `logout-portal-session`, `get-client-bookings`, and `resend-webhook`.
-   Before their new RPCs exist these handlers fail closed (Resend receives a
-   retryable failure), preventing an old handler from crossing the cutover.
-4. Apply this release unit in order:
-
-   1. `supabase/migrations/20260720000100_invite_only_workspace_core.sql`
-   2. `supabase/migrations/20260720000200_invite_only_workspace_rls.sql`
-   3. `supabase/migrations/20260720000300_client_portal_security.sql`
-   4. `supabase/migrations/20260720000400_resend_webhook_idempotency.sql`
-   5. `supabase/migrations/20260720000500_client_prospect_link_normalization.sql`
-   6. `supabase/migrations/20260720000600_trigger_function_privileges.sql`
-   7. `supabase/migrations/20260721000100_manual_workspace_accounts.sql`
-   8. `supabase/tests/20260720_invite_only_workspace_verification.sql`
-
-5. Recheck the post-migration zero-token/hash-only invariants, inspect
-   workspace/client ownership, deploy the remaining reviewed function manifest
-   and frontend, then run the complete acceptance matrix before reopening
-   traffic.
-
-Migration 1 creates workspaces/memberships, assigns existing clients to the
-default Get On A Pod workspace, and preserves the legacy administrator model.
-Migration 2 installs tenant RLS, public-data containment, and the narrow client
-operation RPC. Migration 3 hardens portal credentials/sessions and capability
-links. Migration 4 makes signed Resend delivery events transactional,
-deduplicated by `svix-id`, and monotonic under out-of-order delivery. Migration
-5 canonicalizes an unlinked client-to-prospect reference to `NULL` and enforces
-strong, non-orphaned capability references. Migration 6 removes residual
-browser-role execution grants from trigger-only functions. Migration 7 adds
-manual workspace-account credential state, durable claims, first-password
-replacement, revocation cleanup, and the supporting service-only routines.
-Migration 8 adds independent private-workspace resource catalogs, same-workspace
-client assignments, service-only audited operations, portal visibility rules,
-catalog quotas, canonical content/URL constraints, and snapshot seeding.
-
-The incremental Guest Resources backend order was completed separately from
-the historical cutover above:
-
-1. The browser `service_role` exposure was contained with the project
-   publishable key; Cloudflare was purged and the recursive live-asset verifier
-   passed.
-2. A checksummed private backup and target inventory were captured outside the
-   repository before mutation.
-3. Only `20260721000200_workspace_guest_resources.sql` was applied as migration
-   8.
-4. The committed catalog verifier passed against production over
-   `verify-full` TLS using the Supabase Root 2021 CA, inside a serializable,
-   read-only transaction. Its SHA-256 is
-   `53f59f3593eb3753729d37422fc3e6965ef3a1e38abdce73cba51bc509704137`.
-5. `get-guest-resources` v14 is active with gateway JWT verification disabled
-   for its opaque portal-session contract; `workspace-guest-resources` v1 is
-   active with gateway JWT verification enabled. The exact production
-   inventory is 90 active functions: 75 JWT-verified and 15 reviewed
-   public/custom-auth functions. CORS, fail-closed, and default-client narrow
-   portal projection probes passed.
-6. Frontend commit `bc418e72e0b95e2b64d6632e58d880e65065b2b6` was pushed
-   directly to `main`, and Railway deployment
-   `ede90c81-111d-4e65-ac0f-9c46830b494a` succeeded. After a second,
-   post-deployment Cloudflare purge, the hardened recursive live verifier
-   passed and all six retired asset paths returned 404 with `no-store`,
-   `text/plain`, and `noindex`. That historical increment did not record a
-   controlled signed-in tenant, platform-owner workspace management, or
-   private-client audience acceptance run; current production state must be
-   inventoried and tested again.
-
-`scripts/run-workspace-guest-resources-behavior.sh` is for an explicitly
-confirmed non-production local/staging database only. Its SQL opens one
-transaction and ends with `ROLLBACK`; `check:static` grammar-parses it but does
-not execute it. The synthetic PostgreSQL 18 behavior smoke passed against a
-partial local Supabase-shaped schema. It is supporting evidence only and does
-not substitute for production catalog or signed-in acceptance evidence.
-
-Important cutover effects:
-
-- Every pre-cutover client and prospect dashboard capability slug is rotated,
-  regardless of its former format. Previously shared links stop working;
-  inventory and distribute replacement URLs after controlled end-to-end
-  acceptance.
-- Raw legacy portal sessions are invalidated. Legacy plaintext portal
-  credentials are deleted and affected portals are disabled; an operator must
-  set a new password and securely reissue access before those clients sign in.
-- Legacy client-portal magic-link tokens are deleted and cannot be redeemed.
-- Existing client rows are assigned to the default workspace; other legacy data
-  remains administrator-only. The production catalog verifier confirmed the
-  ownership invariants.
-
-Deploy the new account/client functions and every changed guarded function from
-this branch as one reviewed, explicit allowlist. Do not bulk-deploy the entire
-`supabase/functions` directory: the repository retains legacy operator code,
-and `create-outreach-message` plus `campaign-reply-webhook` are intentionally
-excluded from the tenant environment. The checked-in phased allowlist is
-[`docs/invite-only-edge-manifest.json`](docs/invite-only-edge-manifest.json);
-regenerate and review it if `main` moves. Delete any old remote copies of the
-two excluded handlers from the tenant Supabase project before opening traffic;
-omitting them from a deploy is not deletion. At minimum the MVP uses
-`account-context`, `manage-workspace-users`, `manage-workspace-staff`,
-`provision-workspace-account`, `accept-workspace-invite`, `workspace-clients`,
-`workspace-guest-resources`, `manage-client-portal-password`, `podscan-proxy`,
-`login-with-password`, `validate-portal-session`, `logout-portal-session`,
-`get-client-bookings`, and `public-client-dashboard`.
-
-Production currently contains the 17 reviewed 410 tombstones; omitting those
-names from a future deploy does not remove a remote function. Keep the
-tombstones in place through acceptance and external caller cleanup.
-`get-client-portfolio` is replaced by the narrower
-`public-client-dashboard` capability endpoint. After every caller, schedule,
-and provider workflow is removed, delete the remote functions and list the
-inventory again. The six separate shutdown targets are already absent.
-Migration 3 deleted all outstanding magic-link tokens, so none may be restored.
-
-Configure the Resend endpoint for only `email.sent`, `email.delivered`,
-`email.delivery_delayed`, `email.failed`, `email.bounced`,
-`email.complained`, `email.suppressed`, `email.opened`, and `email.clicked`.
-Use a dedicated Resend account/team for this tracked application mail; an API
-key or sending domain alone does not isolate webhook delivery. Do not attach
-this handler to an account that also emits untracked Supabase Auth or other
-mail. A temporarily missing log returns a retryable 500 so a send/log commit
-race can recover; alert and reconcile any identifier that remains unmatched
-before Resend exhausts retries.
-
-Production hosted Auth disables email/anonymous signup, uses a 24-hour invite
-expiry, and allows only the exact production `/accept-invite` and
-`/admin/callback` redirects. Custom SMTP is still unconfigured, so invitation sending remains on
-hold. A Supabase invite email is a bearer credential: anyone with the full link
-can establish the invited Auth session, so it must not be forwarded or logged.
-
-The foundation cutover must also reconcile the hosted password policy to the
-checked-in 12-character/strongest-class contract. Run the read-only verifier
-from an interactive terminal, then use the narrowly confirmed updater only if
-it reports drift:
-
-```bash
-npm run verify:hosted-auth -- --project-ref ysjwveqnwjysldpfqzov
-npm run verify:hosted-auth -- --project-ref ysjwveqnwjysldpfqzov --apply
-```
-
-The updater GETs the current Auth configuration, PATCHes exactly
-`password_min_length` and `password_required_characters`, GETs again, and
-fails if any unrelated setting changed. Do not use broad `supabase config push`
-for this cutover; it can overwrite unrelated hosted Auth settings.
-
-The production migration ledger records ten coordinated versions, including
-`20260722000100_subagency_workspace_foundation.sql` and
-`20260722000200_platform_owner_workspace_management.sql`. Migration
-`20260722000300_workspace_staff_temporary_passwords.sql` becomes the eleventh
-and `20260722000400_workspace_branding.sql` the twelfth only after the Settings
-cutover is deployed and verified. The tenth through twelfth migrations are the
-forward upgrades for any controlled
-environment that applied the foundation while selected-workspace platform
-access was still read-only. Apply the complete current files to a fresh
-dedicated staging baseline, or apply the tenth through twelfth migrations after
-the recorded ninth version; never assume edits to an already-applied migration
-were replayed.
-
-## Verification
-
-Static checks:
-
-```bash
-npm run check:static
-npm audit --audit-level=high
-npm audit --omit=dev --audit-level=high
-git diff --check
-git diff --check origin/main...HEAD
-```
-
-`check:static` runs the release-shape verifier, parses all twelve release
-migrations, the catalog verifier, and both rollback behavior suites with a
-PostgreSQL grammar parser, runs both
-TypeScript checks, the zero-warning
-MVP lint scope, and focused workspace UI tests, exercises the URL, telemetry,
-session-storage, retired-helper, and evidence-path tests, checks all 93 Edge
-entrypoints and 106 Edge TypeScript files plus shared Edge unit tests against the frozen Deno lock,
-validates the database-runner shell, performs a clean install/build and both
-audits for the nested MCP server,
-tests the Guest Resources Edge contract, the dependency-free retired video-service tombstone with malformed and
-oversized bodies, checks the exact Docker/Railway runtime contract and secret-
-excluding build context, performs an isolated static build, launches the real
-`npm start` server to test routes/assets/security headers, and scans the full
-current worktree and built output for secrets. The secret scanner also runs
-positive and negative self-tests and suppresses values in its output.
-
-The pull-request workflow pins Node 22.22.2, npm 10.9.7, Deno 2.5.2, and the
-GitHub Actions by immutable commit. It runs for pull requests and merge queues
-without application secrets. If Deno is not on the local `PATH`, set `DENO_BIN`
-to the 2.5.2 executable.
-
-### Executable staging evidence
-
-Run staging evidence only from a reviewed, clean commit. Both runners refuse a
-dirty/untracked worktree, an unsafe branch name, an uncommitted release input,
-a reused evidence path, or
-an explicitly identified production target. Evidence paths must be absolute,
-must have an existing current-user-owned parent that is not group/world
-writable, and must be outside every linked worktree, the Git directory, and the
-shared Git metadata directory.
-
-The HTTP runner reads only dedicated `ACCEPTANCE_*` process variables. It does
-not load `.env.local`, accept a service-role key, or write raw responses. Supply
-one platform administrator and two already active, disposable private-workspace
-staging accounts. Alice's and Bob's workspaces must each contain zero clients;
-the harness refuses to mutate a workspace with existing client data:
-
-```bash
-export ACCEPTANCE_EXPECTED_PROJECT_REF='<staging-project-ref>'
-export ACCEPTANCE_PRODUCTION_PROJECT_REFS='<production-project-ref[,another-ref]>'
-export ACCEPTANCE_CONFIRM='RUN_SYNTHETIC_TESTS_ON_<staging-project-ref>'
-export ACCEPTANCE_SUPABASE_URL='https://<staging-project-ref>.supabase.co'
-export ACCEPTANCE_SUPABASE_ANON_KEY='<browser-safe-anon-or-publishable-key>'
-export ACCEPTANCE_RUN_ID='goap-acceptance-001'
-export ACCEPTANCE_ADMIN_EMAIL='<staging-platform-admin-email>'
-export ACCEPTANCE_ALICE_EMAIL='<active-staging-tenant-a-email>'
-export ACCEPTANCE_BOB_EMAIL='<active-staging-tenant-b-email>'
-export ACCEPTANCE_EVIDENCE_PATH='/absolute/private/path/http-acceptance.ndjson'
-read -r -s -p 'Staging admin password: ' ACCEPTANCE_ADMIN_PASSWORD; printf '\n'
-read -r -s -p 'Staging Alice password: ' ACCEPTANCE_ALICE_PASSWORD; printf '\n'
-read -r -s -p 'Staging Bob password: ' ACCEPTANCE_BOB_PASSWORD; printf '\n'
-export ACCEPTANCE_ADMIN_PASSWORD ACCEPTANCE_ALICE_PASSWORD ACCEPTANCE_BOB_PASSWORD
-npm run typecheck:staging
-npm run test:staging
-```
-
-The runner creates tagged synthetic clients plus a selected-client resource,
-attacks the Clients and Guest Resources boundaries over Edge Functions/REST,
-checks platform-owner client/resource management and exact portal-session visibility,
-checks exact tombstone/exclusion behavior, probes the
-Resend signature/body limits, exercises suspend/reactivate plus portal-session
-revocation, and removes its fixtures in `finally`. Its NDJSON contains only
-fixed test labels, statuses, HTTP status codes, and source fingerprints—never
-emails, UUIDs, tokens, URLs, request bodies, or response bodies. Exit `1` means
-refused/failed; exit `2` means the runner's automated HTTP checks passed while
-the separately reviewed external release gates recorded in the NDJSON remain
-incomplete. Those records cover the database verifier, commit-bound deployment
-inventory, hosted Auth, invite delivery fault injection and the backend
-password gate, durable-claim recovery, manual-account creation, pre-change
-denial, rotation, first-password replacement, stale-token denial, fault
-reconciliation and revocation, administrator workspace-view isolation and
-navigation, UI/legacy-admin checks, audit and portal races, the live Storage API
-boundary, capability links, provider side
-effects/decommissioning, credential rotation, historical telemetry review, and
-signed Resend behavior. The runner
-never turns those external gates into an automatic pass. Administrator
-credentials are mandatory; omitting them is a configuration refusal, and any
-incomplete record outside the exact checked-in allowlist converts the run to a
-failure.
-
-For a fresh environment, run the database verifier only after the historical
-six migrations, `20260721000100_manual_workspace_accounts.sql`, and
-`20260721000200_workspace_guest_resources.sql` have been applied to the same
-release. Use `PG*` environment variables and prefer a
-project-specific direct database hostname rather than a hostname shared by
-production and staging. Hostnames with a trailing dot are refused. Never put
-the connection URL or password on the command line or type a password into
-shell history:
-
-```bash
-export PGHOST='<staging-database-host>'
-export PGPORT='5432'
-export PGDATABASE='postgres'
-export PGUSER='<staging-database-user>'
-export PGSSLMODE='verify-full'
-export STAGING_DB_EXPECTED_PGHOST='<staging-database-host>'
-export STAGING_DB_PRODUCTION_PGHOSTS='<production-database-host[,another-host]>'
-export STAGING_DB_EVIDENCE_PATH='/absolute/private/path/database-verifier.ndjson'
-read -r -s -p 'Staging database password: ' PGPASSWORD; printf '\n'
-export PGPASSWORD
-staging_release_commit="$(git rev-parse --verify HEAD)"
-export STAGING_DB_CONFIRM="RUN_SQL_VERIFIER_ON_${STAGING_DB_EXPECTED_PGHOST,,}:${PGPORT}/${PGDATABASE}?user=${PGUSER}@${staging_release_commit}"
-unset staging_release_commit
-./scripts/staging-database-verifier.sh
-```
-
-This wrapper executes only the committed SQL verifier, in one serializable,
-read-only transaction with `ON_ERROR_STOP`, a bounded runtime, no psql startup
-files, and an exact committed snapshot of the SQL. Raw stdout/stderr live only
-in a mode-700 temporary directory and are deleted on exit. The private evidence
-directory must be owned by the current user and not group/world-writable. The
-retained mode-600 NDJSON and `.sha256` files contain only the release
-commit/input digest, a domain-separated SHA-256 fingerprint of the canonical
-host/port/database/user target, and pass/fail/exit metadata.
-
-These are local/static checks. They do not execute either database runner and
-do not run `npm run verify:production-browser`; the latter is a separate
-read-only live-network incident gate. The app and staging TypeScript checks are green. The repository still contains
-legacy full-repository ESLint debt outside the zero-warning MVP scope; compare
-that non-gating baseline with `main` if it is changed. The production build,
-production-dependency audit, release secret scan, and all-entrypoint Deno check
-must pass. A local PostgreSQL parser catches SQL grammar errors, but only the
-catalog verifier against the actual staging schema can validate definitions,
-ACLs, RLS, and data invariants.
-
-Historical prior-release evidence (2026-07-21; production backend at clean deployment
-source head `bc763431a298be26a93b2aa16de846991f8aebb1`):
-
-| Check | Result |
+| Command | Purpose |
 | --- | --- |
-| No-secret PR workflow definition | Pass; pinned Node/Deno, locked dependencies, no deploy/database step |
-| Clean locked install | Pass; Node 22.22.2 and npm 10.9.7 with lifecycle scripts disabled |
-| Production build/static sitemap | Pass; Vite 7.3.6, 3,139 modules, and five public sitemap URLs |
-| Full and production dependency audits | Pass; zero vulnerabilities at `audit-level=low` |
-| Nested MCP clean install/build/audits | Pass; MCP SDK 1.29.0 and zero full/production vulnerabilities |
-| Docker/Railway deployment contract | Pass; exact two-stage Node/npm toolchain, required browser build arguments, non-root runtime, and secret-excluding context |
-| Release/Edge manifest shape | Pass; 91 changed functions = 89 deployed, including 17 tombstones, plus 2 tenant-environment exclusions; 102 Edge TypeScript files |
-| Production migration unit | Pass; all seven versions applied and reconciled into the migration ledger with names and statement arrays |
-| Production database catalog verifier | Pass; exact committed verifier ran serializable/read-only and ended with `ROLLBACK` |
-| Production Edge inventory | Pass; 89 expected/active, zero missing/unexpected, 75 JWT-verified and the exact 14 reviewed non-JWT handlers |
-| Hosted Auth and CORS | Pass; signup/anonymous disabled, 24-hour invite expiry, allowlist reduced to the exact two production callbacks, and `account-context` preflight 204 |
-| Fail-closed HTTP containment | Pass; protected unauthenticated requests denied, public handlers reject empty input, and five public tombstones return 410 |
-| Billing/video containment | Pass; Stripe endpoint tombstoned and Edge secrets removed; Railway video API tombstoned and service credentials removed |
-| Edge semantic type check | Pass; all 91 entrypoints on Deno 2.5.2 with frozen `deno.lock` |
-| Edge TypeScript inventory/syntax check | Pass; 102 function/shared TypeScript files |
-| App TypeScript | Pass; zero diagnostics |
-| Staging HTTP runner type check | Pass |
-| Focused MVP ESLint | Pass; zero warnings |
-| Sensitive URL/telemetry tests | Pass |
-| Release secret scan | Pass; 589 full-current-tree files including ignored dotenv/build files, built output, 23 positive and 3 negative scanner self-tests; values suppressed |
-| Staging runners with missing environment | Pass; refuse before network/artifact creation |
-| Database verifier shell syntax | Pass |
-| Local SQL grammar parse | Pass; seven migrations plus verifier |
-| Patch whitespace check | Pass |
+| `npm run dev` | Start Vite locally |
+| `npm run build` | Generate the static sitemap and production SPA |
+| `npm run typecheck:app` | Type-check the application |
+| `npm run lint:mvp` | Lint the supported workspace release surface |
+| `npm run test:workspace-mvp` | Run workspace, portal, service, and route tests |
+| `npm run test:podcast-research` | Run Podcast Finder and research tests |
+| `npm run check:edge` | Cache, type-check, and test all Edge Functions with pinned Deno |
+| `npm run check:secrets` | Scan tracked source and release output for credential hazards |
+| `npm run check:static` | Run the complete static release gate |
+| `npm run test:staging` | Run authorized staging acceptance checks |
+| `npm run verify:production-browser` | Verify the deployed public browser bundle |
 
-The static, catalog, inventory, hosted-configuration, and unauthenticated HTTP
-gates above are complete. They do not replace signed-in browser acceptance,
-SMTP/invitation delivery, two-account isolation, provider-side webhook/caller
-removal, credential rotation, or concurrency/fault testing.
+For a normal workspace UI change, the minimum useful local gate is:
 
-Remaining end-to-end acceptance requires one platform administrator and two
-disposable invited test accounts:
+```bash
+npm run typecheck:app
+npm run lint:mvp
+npm run test:workspace-mvp
+npm run build
+npm run check:secrets
+```
 
-- each account sees only its own client list;
-- guessed/direct client UUID reads and every cross-account write fail;
-- hidden/internal client fields cannot be changed through tenant APIs;
-- live Storage API tests prove Alice, Bob, and anonymous users cannot insert,
-  update, or delete objects; any existing administrator write path remains
-  administrator-only; and intended public reads are neither widened nor broken;
-- suspend denies workspace APIs immediately and transactionally revokes that
-  workspace's client portal sessions/tokens; successful reconciliation also
-  bans the Auth identity, while an uncertain provider result retains the claim;
-  reactivate restores only workspace access after reconciliation;
-- provider success/error/timeout fault injection leaves no usable orphan invite;
-  `provisioning` can be retried/revoked, and activation is denied before
-  backend-observed password setup;
-- the originating same-token Auth reconciliation retry is idempotent; once that
-  token is lost, the pending UI remains locked until an operator reconciles the
-  provider/database state and removes only the reviewed exact claim through the
-  service-only recovery path;
-- expired/revoked invitations cannot be accepted;
-- a stored portal session verifier cannot be used as a bearer token;
-- changing a portal email disables access and the old password cannot
-  authenticate the replacement identity;
-- enabled replacement capability links work, old links fail, and disabled
-  dashboards fail closed;
-- all retired billing/order/video endpoints return 410 and no provider can
-  create a charge or paid video job;
-- duplicate/out-of-order Resend events do not double-count engagement, regress
-  delivery status, or skip hard-bounce/complaint/provider suppression; a
-  provider-suppressed event must not increment bounce counts or alter bounce
-  timestamps;
-- historical Sentry/hosting logs are reviewed for leaked invite, recovery, or
-  capability URLs; affected sessions/links are revoked and retained telemetry
-  is purged under the incident process.
+`npm run check:static` is the authoritative full gate and has additional toolchain and network requirements.
 
-The detailed rollout and acceptance matrix is in
-[`docs/invite-only-mvp.md`](docs/invite-only-mvp.md).
+## Database and Edge Function changes
 
-## Known MVP limitations
+Frontend deployment does not apply database migrations or deploy Edge Functions.
 
-- The workspace sidebar shows the intended full product map, but only Clients
-  and Guest Resources are enabled today. Podcast operations, outreach,
-  reporting, and every other legacy module remain platform-admin-only until
-  they receive an explicit `workspace_id` model and isolation tests.
-- The platform owner's selected-workspace context reuses the real tenant
-  Settings, Clients, and Guest Resources experiences with native write
-  controls. It is not an impersonation mode, preserves the platform session,
-  and does not make legacy modules tenant-aware.
-- Workspace owners can invite or generate passwords for admins or members;
-  workspace admins can do the same for members. Tenant identities still cannot
-  own or join multiple private workspaces in this MVP.
-- Workspace password recovery has no product UI yet; support must perform a
-  controlled Supabase Auth recovery/reset.
-- Temporary passwords for manually created owner or staff accounts are displayed once. They
-  must be transferred out of band through an approved secure channel; if the
-  password is lost, the administrator issues a new temporary password.
-- The production invitation UI warns about email readiness but has no automatic
-  SMTP-health switch. Until SMTP and a real invite are verified, administrator
-  discipline is the release gate and the Invite user action must not be used.
-- The client portal is intentionally minimal and separate from workspace Auth.
-- Clearing a client portal password deletes the verifier, sessions, and tokens,
-  so authentication fails closed, but it does not automatically clear the
-  historical `portal_access_enabled` display flag. Disable portal access
-  explicitly when retiring a portal until that state is normalized.
-- The frontend build still emits a large single-chunk warning; route-level code
-  splitting is post-MVP performance work.
-- Both the full and production dependency audits are currently clean. Keep the
-  exact lockfile and rerun both audits on the reviewed merge commit.
-- `create-outreach-message` and `campaign-reply-webhook` are excluded from the
-  tenant MVP deploy. Their shared webhook secrets, caller-supplied client IDs,
-  and non-atomic duplicate checks are not a tenant boundary. Keep them disabled
-  for tenant traffic until they have explicit workspace/client mapping, unique
-  provider-event keys, and one transactional ingestion RPC. If the legacy
-  administrator still needs them, run them only in an isolated operator
-  environment with separate secrets and acceptance evidence.
-- `mcp-prospect-dashboard` remains trusted, local, stdio-only operator tooling.
-  It holds a service-role credential and is not a tenant API; never expose it
-  over HTTP or include it in the tenant deployment.
-- The Resend receipt ledger has no automatic retention job yet. Monitor its
-  growth and add a service-only purge whose retention window exceeds the
-  provider retry/replay horizon before production volume grows.
-- The checked-in production server sets no-referrer, nosniff, frame denial, and
-  a restricted permissions policy on every response, plus no-store/noindex for
-  private application routes. Production hosting must preserve and verify those
-  headers and add environment-specific CSP and HSTS at the hosting/CDN boundary.
+For any backend increment:
 
-## Credential incident and repository controls
+1. Add a forward-only migration under [`supabase/migrations/`](supabase/migrations/).
+2. Make the migration idempotent where retry safety requires it, without hiding a partial failure.
+3. Keep privileged operations in narrow, versioned SQL functions with explicit grants and a safe `search_path`.
+4. Add two-workspace, cross-client, role, stale-token, malformed-ID, and direct-RLS denial coverage.
+5. Update or add the matching Edge Function contract test.
+6. Run SQL grammar, application typecheck, focused tests, Edge checks, and secret scanning.
+7. Apply migrations to an authorized staging environment in filename order.
+8. Deploy only the Edge Functions in the release and confirm their `verify_jwt` settings against [`supabase/config.toml`](supabase/config.toml).
+9. Run signed-in staging acceptance before production.
 
-The browser-key containment step completed on 2026-07-22: Railway now uses the
-project publishable key, a clean rebuild was deployed, and the original
-Cloudflare purge removed the credential-bearing cache entries. After the final
-frontend deployment, a second Cloudflare purge was completed and the hardened
-`npm run verify:production-browser` passed across the live referenced asset
-graph. The six retired asset paths now return 404 with `no-store`,
-`text/plain`, and `noindex`. Do not reproduce or use the formerly exposed
-privileged value; it remains compromised even though it is no longer shipped
-to browsers.
+Behavior scripts intentionally require explicit targets and confirmation. Do not point them at production casually. Some suites run inside a transaction and end with `ROLLBACK`; read the relevant runbook before execution.
 
-Long-term incident work remains open. Audit Supabase/API/hosting logs for the
-exposure window and inventory every Edge, server, webhook, database, and
-external consumer of the legacy service-role key. Disable/rotate that key only
-after retained consumers are migrated; revoking it earlier can break
-production services.
+## Deployment
 
-The current-tree secret scan is green, but that also does not make previously
-exposed provider credentials safe. Review found non-placeholder Podscan and
-BridgeKit credentials in repository history. OpenAI, Podscan, Jotform, and Clay
-webhook credentials were also shared through chat. Treat every affected value
-as compromised: revoke/rotate it, review provider, Supabase, CI, hosting, Sentry,
-and support logs, and replace it only in server-side secret storage. Keep exact
-incident locations in the private response record rather than public docs.
+The repository includes a multi-stage production [`Dockerfile`](Dockerfile) and [`railway.toml`](railway.toml).
 
-No history rewrite has been performed. If the repository owner chooses to
-remove the historical blobs, coordinate `git filter-repo`, force-push timing,
-open pull requests, forks/clones, GitHub caches, CI artifacts, and third-party
-logs as one incident operation. Rewriting Git history does not replace
-credential rotation.
+The container build:
 
-As checked on 2026-07-21, `main` has no GitHub branch protection. The repository
-defines the **No-secret static validation** workflow for pull requests and
-merge queues, but the repository owner explicitly selected a reviewed
-direct-`main` workflow for this production increment. That accepted repository-
-control risk does not waive the local static suite, exact-diff review, or live
-post-deployment checks. Branch protection remains a future hardening option,
-not a prerequisite for this operator-approved cutover.
+1. installs the pinned Node/npm dependency graph with `npm ci`;
+2. validates required browser-safe Supabase configuration;
+3. builds the static application;
+4. scans the browser bundle for prohibited credentials; and
+5. creates a non-root runtime image containing only production dependencies, built assets, and the production server.
 
-The root Dockerfile provides an executable frontend container path, but there
-is intentionally no automated Supabase Edge/database rollout executor in this
-repository: the legacy deploy/migration helpers refuse to run. A staging backend
-rollout still needs a reviewed executor or operator procedure bound to the exact
-commit, project, backup, phased manifest, and private evidence directory.
+The recommended release order is:
 
-## Remaining release gates
+1. Confirm the intended Git diff and migration/function manifest.
+2. Back up and inventory the target Supabase environment.
+3. Apply and verify migrations.
+4. Set or rotate server-only secrets.
+5. Deploy changed Edge Functions with the reviewed JWT/CORS configuration.
+6. Deploy the frontend container.
+7. Run authenticated workspace, selected-workspace, client-dashboard, and portal acceptance.
+8. Run browser-bundle and retired-asset verification.
+9. Record evidence in the appropriate runbook without committing secret values, session tokens, or bearer links.
 
-The account/Clients and Guest Resources backend/frontend production rollouts
-are complete. The current production workspace inventory must be captured
-again, then controlled accounts must complete signed-in tenant customization,
-platform-owner workspace management, selected-client private-portal visibility,
-draft/archive denial, malformed/stale access, and two-workspace isolation.
-Historical evidence did not complete those checks, so they cannot yet be
-claimed for the foundation release.
+Historical deployment IDs and commit hashes do not belong in this README because they become stale. Release-specific evidence belongs in a dated document such as [`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md).
 
-Separate incident and operations work remains: inventory and rotate the legacy
-service-role key safely, rotate the other exposed provider credentials and
-review logs, complete two-workspace isolation with disposable accounts, and
-decide when to delete the credential-free Railway video tombstone project and
-17 Edge tombstones after caller quietness is proved.
+## Troubleshooting
 
-Credentials previously committed in repository history or shared through chat
-remain compromised after source cleanup. Rotate them; deleting the visible
-string is not sufficient.
+### A Supabase Function returns `400`
+
+Inspect the response body in the browser Network panel. A `400` usually means the deployed function and frontend disagree about request fields, an identifier failed validation, or a prerequisite migration is missing. Confirm the deployed function version before changing the UI around the error.
+
+### A Supabase Function returns `500`
+
+Check the function logs using a sanitized request. Common causes are a missing server secret, unapplied SQL function/migration, provider failure, or an authorization invariant failing inside the transaction. Do not replace a specific server failure with a success-looking client state.
+
+### The browser reports a CORS preflight failure
+
+The `OPTIONS` request must return a successful status with the shared allowed-origin headers before authentication or request-body validation. Confirm the function is deployed, its route name is correct, and the production origin is allowed. A missing function can look like CORS because the platform rejects the preflight before the handler runs.
+
+### A workspace page says “unavailable”
+
+Check that the route contains a canonical UUID, the workspace is active, and it has exactly one available owner. Selected-workspace pages intentionally fail closed if the returned workspace, owner, clients, or route ID do not agree.
+
+### A client dashboard is hidden
+
+Hidden means the dashboard exists but is not shared. Open the client command center, use the Approval dashboard section, and make the dashboard live. The public route remains inaccessible while `dashboard_enabled` is false.
+
+### The production page still shows an older bundle
+
+Confirm the deployment commit, inspect the HTML asset references, purge only the intended CDN cache, and run `npm run verify:production-browser`. Do not assume a successful Git push proves that migrations, functions, the container, and the CDN all changed together.
+
+## Documentation map
+
+- [`docs/subagency-saas-architecture.md`](docs/subagency-saas-architecture.md) — tenancy and authorization model
+- [`docs/tenant-feature-parity-mvp.md`](docs/tenant-feature-parity-mvp.md) — tenant module contract and rollout rationale
+- [`docs/workspace-onboarding.md`](docs/workspace-onboarding.md) — onboarding lifecycle, capabilities, files, and deployment
+- [`docs/manual-workspace-accounts.md`](docs/manual-workspace-accounts.md) — workspace account operations
+- [`docs/architecture/CLIENT-DASHBOARD.md`](docs/architecture/CLIENT-DASHBOARD.md) — client dashboard concepts
+- [`docs/architecture/PODCAST-FINDER.md`](docs/architecture/PODCAST-FINDER.md) — podcast discovery architecture
+- [`docs/api/README.md`](docs/api/README.md) — API documentation index
+- [`docs/production-cutover-2026-07-21.md`](docs/production-cutover-2026-07-21.md) — historical sanitized release evidence
+
+Some historical documents describe legacy global admin tools. The current source, migrations, tests, and tenant contracts take precedence when those documents conflict.
+
+## Definition of done
+
+A workspace feature is not complete merely because a page renders. It is complete when:
+
+- the same component works in My Workspace and an explicitly selected workspace;
+- tenant data is bound to the exact workspace and client where applicable;
+- owner, admin, member, platform-owner, suspended, and stale-session behavior is defined;
+- mutations are transactional, idempotent where needed, and audited;
+- direct table access and cross-workspace IDs fail closed;
+- responsive layout and horizontal overflow are checked on desktop and mobile;
+- focused tests, typecheck, lint, production build, and secret scanning pass;
+- backend deployment order and acceptance evidence are documented; and
+- the UI distinguishes real data from disconnected, loading, empty, and error states.
+
+That standard is especially important for Instantly: provider connectivity is useful only when workspace ownership, reply ingestion, sending safety, and auditability ship with it.

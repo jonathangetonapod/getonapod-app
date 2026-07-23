@@ -24,9 +24,10 @@ const expectedNavigation = [
   'Podcast Database',
   'Client Podcast System',
   'Clients',
-  'Outreach Platform',
+  'Client Campaigns',
+  'Master Inbox',
+  'Mailboxes',
   'Guest Resources',
-  'Unibox',
   'Settings',
 ]
 
@@ -67,7 +68,7 @@ describe('WorkspaceLayout', () => {
     expect(labels).toEqual(expectedNavigation)
 
     const links = within(navigation).getAllByRole('link')
-    expect(links).toHaveLength(6)
+    expect(links).toHaveLength(9)
     expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/app/settings',
@@ -76,10 +77,13 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute('href', '/app/onboarding')
     expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/app/overview')
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
+    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
+    expect(within(navigation).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('href', '/app/master-inbox')
+    expect(within(navigation).getByRole('link', { name: 'Mailboxes' })).toHaveAttribute('href', '/app/mailboxes')
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
 
     const disabledModules = within(navigation).getAllByRole('button').filter((button) => button.hasAttribute('disabled'))
-    expect(disabledModules).toHaveLength(5)
+    expect(disabledModules).toHaveLength(3)
     disabledModules.forEach((module) => expect(module).toBeDisabled())
     expect(screen.getAllByText('Acme Workspace')).toHaveLength(3)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
@@ -185,6 +189,18 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute(
       'href',
       `/app/workspaces/${workspaceId}/guest-resources`,
+    )
+    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute(
+      'href',
+      `/app/workspaces/${workspaceId}/client-campaigns`,
+    )
+    expect(within(navigation).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute(
+      'href',
+      `/app/workspaces/${workspaceId}/master-inbox`,
+    )
+    expect(within(navigation).getByRole('link', { name: 'Mailboxes' })).toHaveAttribute(
+      'href',
+      `/app/workspaces/${workspaceId}/mailboxes`,
     )
     expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()

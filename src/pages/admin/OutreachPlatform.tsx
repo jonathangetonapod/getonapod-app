@@ -187,11 +187,11 @@ export default function OutreachPlatform() {
       setTimeout(() => {
         setViewingMessage(null)
       }, 1500)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in approve and send:', error)
 
       // Show user-friendly error message
-      const errorMessage = error.message || 'Unknown error occurred'
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       toast.error(`Failed to approve and send: ${errorMessage}`)
     } finally {
       setSendingMessageIds(prev => {
@@ -311,7 +311,7 @@ export default function OutreachPlatform() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Mail className="h-8 w-8" />
-            Outreach Dashboard
+            Client Campaigns
           </h1>
           <p className="text-muted-foreground mt-1">
             {statusFilter === 'pending_review'
