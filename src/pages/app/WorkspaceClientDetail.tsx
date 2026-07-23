@@ -18,12 +18,12 @@ import {
   Linkedin,
   Loader2,
   Mail,
-  MessageSquareText,
   Mic2,
   Radio,
   RefreshCw,
   Search,
-  Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   UserRound,
   Video,
 } from 'lucide-react'
@@ -37,7 +37,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
@@ -342,12 +341,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const onboardingHref = `${baseHref}/onboarding?client=${encodeURIComponent(client.id)}${onboarding ? `&instance=${encodeURIComponent(onboarding.id)}` : ''}`
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const clientInitials = client.name.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'C'
-  const reviewCompletion = dashboard.podcast_count > 0
-    ? Math.round((dashboard.reviewed_count / dashboard.podcast_count) * 100)
-    : 0
-  const analysisCompletion = dashboard.podcast_count > 0
-    ? Math.round((dashboard.analyzed_count / dashboard.podcast_count) * 100)
-    : 0
   const dashboardStatus = dashboard.enabled && dashboard.configured
     ? 'Live'
     : dashboard.configured
@@ -612,52 +605,30 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard icon={Mic2} label="Shortlisted" value={dashboard.podcast_count} iconClassName="bg-slate-100 text-slate-700" />
-                <MetricCard icon={CheckCircle2} label="Approved" value={dashboard.approved_count} iconClassName="bg-emerald-50 text-emerald-600" />
-                <MetricCard icon={MessageSquareText} label="Passed" value={dashboard.rejected_count} iconClassName="bg-rose-50 text-rose-600" />
+                <MetricCard icon={ThumbsUp} label="Positive" value={dashboard.approved_count} iconClassName="bg-emerald-50 text-emerald-600" />
+                <MetricCard icon={ThumbsDown} label="Negative" value={dashboard.rejected_count} iconClassName="bg-rose-50 text-rose-600" />
                 <MetricCard icon={Clock3} label="To review" value={dashboard.to_review_count} iconClassName="bg-amber-50 text-amber-600" />
               </div>
             </section>
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,.8fr)]">
+            <div className="grid gap-6 lg:grid-cols-2">
               <Card>
-                <CardHeader><CardTitle>Review completion</CardTitle><CardDescription>How far the client has moved through the current shortlist.</CardDescription></CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3 text-sm"><span className="font-medium">Decisions completed</span><span className="text-muted-foreground">{dashboard.reviewed_count}/{dashboard.podcast_count} · {reviewCompletion}%</span></div>
-                    <Progress value={reviewCompletion} className="h-2.5" aria-label="Podcast review completion" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3 text-sm"><span className="inline-flex items-center gap-2 font-medium"><Sparkles className="h-4 w-4 text-violet-600" />AI fit insights ready</span><span className="text-muted-foreground">{dashboard.analyzed_count}/{dashboard.podcast_count} · {analysisCompletion}%</span></div>
-                    <Progress value={analysisCompletion} className="h-2.5 [&>div]:bg-violet-600" aria-label="AI fit analysis completion" />
-                  </div>
-                  {dashboard.podcast_count === 0 && (
-                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No podcasts are on this client’s approval list yet. Add one below or run a fresh weekly discovery.</div>
-                  )}
-                  <div className="flex flex-wrap gap-2 border-t pt-5">
-                    <Button asChild variant="outline"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Run fresh discovery</Link></Button>
-                  </div>
+                <CardHeader><CardTitle>Client engagement</CardTitle><CardDescription>How the approval dashboard is being used.</CardDescription></CardHeader>
+                <CardContent>
+                  <DetailRow label="Dashboard views" value={dashboard.view_count.toLocaleString()} />
+                  <DetailRow label="Last viewed" value={formatDateTime(dashboard.last_viewed_at)} />
+                  <DetailRow label="Last decision" value={formatDateTime(dashboard.last_feedback_at)} />
+                  <DetailRow label="List updated" value={formatDateTime(dashboard.last_synced_at)} />
                 </CardContent>
               </Card>
-
-              <div className="grid gap-6">
-                <Card>
-                  <CardHeader><CardTitle>Client engagement</CardTitle><CardDescription>How the approval dashboard is being used.</CardDescription></CardHeader>
-                  <CardContent>
-                    <DetailRow label="Dashboard views" value={dashboard.view_count.toLocaleString()} />
-                    <DetailRow label="Last viewed" value={formatDateTime(dashboard.last_viewed_at)} />
-                    <DetailRow label="Last decision" value={formatDateTime(dashboard.last_feedback_at)} />
-                    <DetailRow label="List updated" value={formatDateTime(dashboard.last_synced_at)} />
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader><CardTitle>Dashboard setup</CardTitle><CardDescription>Visibility, address, and client-facing copy.</CardDescription></CardHeader>
-                  <CardContent>
-                    <DetailRow label="Visibility" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
-                    <DetailRow label="Address" value={dashboardPreviewHref || 'Not generated'} />
-                    <DetailRow label="Personalized tagline" value={dashboard.tagline || 'Using the standard client introduction'} />
-                  </CardContent>
-                </Card>
-              </div>
+              <Card>
+                <CardHeader><CardTitle>Dashboard setup</CardTitle><CardDescription>Visibility, address, and client-facing copy.</CardDescription></CardHeader>
+                <CardContent>
+                  <DetailRow label="Visibility" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
+                  <DetailRow label="Address" value={dashboardPreviewHref || 'Not generated'} />
+                  <DetailRow label="Personalized tagline" value={dashboard.tagline || 'Using the standard client introduction'} />
+                </CardContent>
+              </Card>
             </div>
 
             {canManage && (

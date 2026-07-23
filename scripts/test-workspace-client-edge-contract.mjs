@@ -24,6 +24,10 @@ const ownerPasswordMigration = readFileSync(
   'supabase/migrations/20260723000500_workspace_owner_password_management.sql',
   'utf8',
 )
+const portalPasswordRepairMigration = readFileSync(
+  'supabase/migrations/20260723000600_fix_client_portal_password_management.sql',
+  'utf8',
+)
 
 assert.match(edge, /if \(req\.method === 'OPTIONS'\) return optionsResponse\(req, METHODS\)/u)
 assert.match(edge, /return errorResponse\(req, METHODS, error\)/u)
@@ -75,6 +79,16 @@ assert.match(ownerPasswordMigration, /client\.workspace_id = p_workspace_id/u)
 assert.match(ownerPasswordMigration, /password_verifier = EXCLUDED\.password_verifier/u)
 assert.match(ownerPasswordMigration, /portal_password = NULL/u)
 assert.doesNotMatch(ownerPasswordMigration, /portal_password\s*=\s*p_/u)
+assert.match(portalPasswordRepairMigration, /IF workspace_is_default THEN/u)
+assert.match(portalPasswordRepairMigration, /membership\.role = 'owner'/u)
+assert.match(portalPasswordRepairMigration, /workspace_staff_actor_role_v1\([\s\S]*?p_workspace_id,[\s\S]*?p_actor_user_id,[\s\S]*?p_token_issued_at,[\s\S]*?true/u)
+assert.ok(
+  portalPasswordRepairMigration.includes(
+    '[A-Za-z0-9+/]{22}==\\$[A-Za-z0-9+/]{43}=',
+  ),
+)
+assert.doesNotMatch(portalPasswordRepairMigration, /\{(?:32|[0-9]+),256\}/u)
+assert.match(portalPasswordRepairMigration, /NOTIFY pgrst, 'reload schema'/u)
 
 assert.match(shortlistMigration, /ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'visible'/u)
 assert.match(shortlistMigration, /CHECK \(visibility IN \('visible', 'hidden', 'archived'\)\)/u)

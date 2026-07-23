@@ -46,16 +46,59 @@ function actorLabel(user: {
 }
 
 function passwordMutationError(
-  error: { message?: string } | null,
+  error: { code?: string; details?: string; hint?: string; message?: string } | null,
   action: 'set' | 'clear',
 ): never {
-  const message = error?.message?.toLowerCase() ?? ''
-  if (message.includes('not found')) {
+  const code = error?.code?.toUpperCase() ?? ''
+  const context = [error?.message, error?.details, error?.hint]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+
+  if (code === 'P0002' || context.includes('not found')) {
     throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Workspace client not found')
   }
-  if (message.includes('owner access') || message.includes('actor role hierarchy')) {
+  if (
+    code === '42501'
+    || context.includes('owner access')
+    || context.includes('actor role hierarchy')
+  ) {
     throw new HttpError(403, 'WORKSPACE_OWNER_REQUIRED', 'Workspace owner access is required')
   }
+  if (
+    code === '23505'
+    && context.includes('clients_one_enabled_portal_email_idx')
+  ) {
+    throw new HttpError(
+      409,
+      'PORTAL_EMAIL_IN_USE',
+      'Another enabled client portal already uses this email',
+    )
+  }
+  if (
+    code === '23514'
+    && context.includes('clients_portal_access_email_check')
+  ) {
+    throw new HttpError(
+      409,
+      'CLIENT_EMAIL_REQUIRED',
+      'Add a client email before enabling portal access',
+    )
+  }
+  if (code.startsWith('PGRST')) {
+    throw new HttpError(
+      503,
+      'PASSWORD_BACKEND_UNAVAILABLE',
+      'Portal password service is updating. Try again in a moment',
+    )
+  }
+
+  // Keep database details private while leaving a safe operational signal in
+  // function logs for future diagnosis.
+  console.error('Client portal password mutation failed', {
+    action,
+    database_code: code || 'unknown',
+  })
   throw new HttpError(
     500,
     action === 'set' ? 'PASSWORD_SET_FAILED' : 'PASSWORD_CLEAR_FAILED',

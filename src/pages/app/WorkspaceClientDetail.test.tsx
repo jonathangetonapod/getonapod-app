@@ -195,9 +195,11 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('link', { name: /view & edit podcasts/i })).toHaveAttribute('href', '#client-podcast-list')
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
-    expect(screen.getByText('Approved').nextElementSibling).toHaveTextContent('5')
+    expect(screen.getByText('Positive').nextElementSibling).toHaveTextContent('5')
+    expect(screen.getByText('Negative').nextElementSibling).toHaveTextContent('3')
     expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')
-    expect(screen.getByText('8/12 · 67%')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Review completion' })).not.toBeInTheDocument()
+    expect(screen.queryByText('AI fit insights ready')).not.toBeInTheDocument()
     expect(screen.getByText('14')).toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
@@ -244,8 +246,9 @@ describe('WorkspaceClientDetail', () => {
 
     expect(screen.getAllByText('Hidden').length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: /preview as client/i })).not.toBeInTheDocument()
-    expect(screen.getByText(/No podcasts are on this client’s approval list yet/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /run fresh discovery/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+    expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Review completion' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /run fresh discovery/i })).not.toBeInTheDocument()
   })
 
   it('lets the workspace owner set and reveal a client portal password once', async () => {
