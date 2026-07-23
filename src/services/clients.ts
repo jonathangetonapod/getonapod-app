@@ -67,6 +67,22 @@ export interface WorkspaceClientProfile extends WorkspaceClient {
   password_set_at: string | null
 }
 
+export interface WorkspaceClientDashboardSummary {
+  configured: boolean
+  enabled: boolean
+  tagline: string | null
+  view_count: number
+  last_viewed_at: string | null
+  podcast_count: number
+  reviewed_count: number
+  approved_count: number
+  rejected_count: number
+  to_review_count: number
+  analyzed_count: number
+  last_synced_at: string | null
+  last_feedback_at: string | null
+}
+
 export interface WorkspaceClientBooking {
   id: string
   client_id: string
@@ -105,6 +121,7 @@ export interface WorkspaceClientDetail {
   viewer_role: 'owner' | 'admin' | 'member' | 'platform_admin'
   can_manage: boolean
   client: WorkspaceClientProfile
+  dashboard: WorkspaceClientDashboardSummary
   bookings: WorkspaceClientBooking[]
   onboarding: WorkspaceClientOnboardingSummary | null
 }
@@ -242,6 +259,27 @@ export async function getWorkspaceClientDetail(
     || !Array.isArray(detail.bookings)
     || detail.bookings.length > 500
     || detail.bookings.some((booking) => booking.client_id !== canonicalClientId)
+    || !detail.dashboard
+    || typeof detail.dashboard.configured !== 'boolean'
+    || typeof detail.dashboard.enabled !== 'boolean'
+    || detail.dashboard.configured !== Boolean(detail.client.dashboard_slug)
+    || detail.dashboard.enabled !== Boolean(detail.client.dashboard_enabled && detail.client.dashboard_slug)
+    || (detail.dashboard.tagline !== null && typeof detail.dashboard.tagline !== 'string')
+    || (detail.dashboard.last_viewed_at !== null && typeof detail.dashboard.last_viewed_at !== 'string')
+    || (detail.dashboard.last_synced_at !== null && typeof detail.dashboard.last_synced_at !== 'string')
+    || (detail.dashboard.last_feedback_at !== null && typeof detail.dashboard.last_feedback_at !== 'string')
+    || [
+      detail.dashboard.view_count,
+      detail.dashboard.podcast_count,
+      detail.dashboard.reviewed_count,
+      detail.dashboard.approved_count,
+      detail.dashboard.rejected_count,
+      detail.dashboard.to_review_count,
+      detail.dashboard.analyzed_count,
+    ].some((value) => !Number.isInteger(value) || value < 0)
+    || detail.dashboard.reviewed_count !== detail.dashboard.approved_count + detail.dashboard.rejected_count
+    || detail.dashboard.reviewed_count + detail.dashboard.to_review_count !== detail.dashboard.podcast_count
+    || detail.dashboard.analyzed_count > detail.dashboard.podcast_count
     || (detail.onboarding !== null && (
       detail.onboarding.workspace_id !== canonicalWorkspaceId
       || detail.onboarding.client_id !== canonicalClientId

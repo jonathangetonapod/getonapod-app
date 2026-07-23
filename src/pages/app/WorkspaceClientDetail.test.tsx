@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceClientDetail from '@/pages/app/WorkspaceClientDetail'
@@ -51,6 +51,21 @@ const detail: WorkspaceClientDetailData = {
     password_set_at: '2026-07-20T00:00:00.000Z',
     created_at: '2026-07-01T00:00:00.000Z',
     updated_at: '2026-07-23T00:00:00.000Z',
+  },
+  dashboard: {
+    configured: true,
+    enabled: true,
+    tagline: 'Podcasts selected for Taylor’s operating expertise.',
+    view_count: 14,
+    last_viewed_at: '2026-07-22T12:00:00.000Z',
+    podcast_count: 12,
+    reviewed_count: 8,
+    approved_count: 5,
+    rejected_count: 3,
+    to_review_count: 4,
+    analyzed_count: 10,
+    last_synced_at: '2026-07-23T08:00:00.000Z',
+    last_feedback_at: '2026-07-22T12:00:00.000Z',
   },
   bookings: [
     {
@@ -140,19 +155,64 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getAllByRole('link', { name: 'Onboarding' }).find((link) => (
       link.getAttribute('href')?.includes(`client=${clientId}`)
     ))).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
-    expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
-    expect(screen.getByRole('link', { name: /open google sheet/i })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/example')
-    expect(screen.getByRole('link', { name: /open client dashboard/i })).toHaveAttribute('href', '/client/taylor-client-123')
-    expect(screen.getByRole('link', { name: /open portal login/i })).toHaveAttribute('href', '/portal/login')
-
-    const progress = screen.getByRole('heading', { name: 'Podcast progress' }).closest('section')
+    const progress = screen.getByRole('heading', { name: 'Campaign snapshot' }).closest('section')
     expect(progress).not.toBeNull()
     expect(within(progress as HTMLElement).getByText('Booked').nextElementSibling).toHaveTextContent('1')
     expect(within(progress as HTMLElement).getByText('Recorded').nextElementSibling).toHaveTextContent('1')
-    expect(screen.getAllByText('Founder Stories').length).toBeGreaterThan(0)
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
+    expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
+    expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: /open as client/i })).toHaveAttribute('href', '/client/taylor-client-123')
+    expect(screen.getByText('Approved').nextElementSibling).toHaveTextContent('5')
+    expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')
+    expect(screen.getByText('8/12 · 67%')).toBeInTheDocument()
+    expect(screen.getByText('14')).toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
+    expect(screen.getByRole('heading', { name: 'Client portal' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open portal login/i })).toHaveAttribute('href', '/portal/login')
+    expect(screen.getAllByText('taylor@example.com').length).toBeGreaterThan(0)
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Podcast activity' }), { button: 0 })
+    expect(screen.getByRole('heading', { name: 'Podcast activity' })).toBeInTheDocument()
+    expect(screen.getByText('Founder Stories')).toBeInTheDocument()
     expect(screen.getByText('Operator Weekly')).toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
+    expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
+    expect(screen.getByRole('link', { name: /open google sheet/i })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/example')
+    expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Organize' })).toBeInTheDocument()
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
+  })
+
+  it('shows a safe empty state for a hidden dashboard without a shortlist', async () => {
+    mockedDetail.mockResolvedValue({
+      ...detail,
+      client: { ...detail.client, dashboard_enabled: false },
+      dashboard: {
+        ...detail.dashboard,
+        enabled: false,
+        podcast_count: 0,
+        reviewed_count: 0,
+        approved_count: 0,
+        rejected_count: 0,
+        to_review_count: 0,
+        analyzed_count: 0,
+        last_synced_at: null,
+        last_feedback_at: null,
+      },
+    })
+
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
+
+    expect(screen.getAllByText('Hidden').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('link', { name: /open as client/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/No podcasts are on this client’s approval shortlist yet/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /find podcasts/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
   })
 
   it('fails closed before requesting a malformed client address', async () => {

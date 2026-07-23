@@ -183,6 +183,23 @@ describe('getWorkspaceClientDetail', () => {
         workspace_id: workspaceId,
         name: 'Client',
         bookings: undefined,
+        dashboard_slug: 'client-dashboard',
+        dashboard_enabled: true,
+      },
+      dashboard: {
+        configured: true,
+        enabled: true,
+        tagline: null,
+        view_count: 3,
+        last_viewed_at: null,
+        podcast_count: 10,
+        reviewed_count: 6,
+        approved_count: 4,
+        rejected_count: 2,
+        to_review_count: 4,
+        analyzed_count: 8,
+        last_synced_at: null,
+        last_feedback_at: null,
       },
       bookings: [{ id: 'booking-1', client_id: clientId }],
       onboarding: { id: 'onboarding-1', workspace_id: workspaceId, client_id: clientId },
@@ -205,8 +222,56 @@ describe('getWorkspaceClientDetail', () => {
     invoke.mockResolvedValue({
       data: {
         workspace: { id: workspaceId },
-        client: { id: clientId, workspace_id: workspaceId },
+        client: { id: clientId, workspace_id: workspaceId, dashboard_slug: null, dashboard_enabled: false },
+        dashboard: {
+          configured: false,
+          enabled: false,
+          tagline: null,
+          view_count: 0,
+          last_viewed_at: null,
+          podcast_count: 0,
+          reviewed_count: 0,
+          approved_count: 0,
+          rejected_count: 0,
+          to_review_count: 0,
+          analyzed_count: 0,
+          last_synced_at: null,
+          last_feedback_at: null,
+        },
         bookings: [{ id: 'booking-1', client_id: '33333333-3333-4333-8333-333333333333' }],
+        onboarding: null,
+      },
+      error: null,
+    })
+
+    await expect(getWorkspaceClientDetail(workspaceId, clientId)).rejects.toThrow(
+      'The client detail response did not match the workspace client address.',
+    )
+  })
+
+  it('rejects an internally inconsistent dashboard summary', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValue({
+      data: {
+        workspace: { id: workspaceId },
+        client: { id: clientId, workspace_id: workspaceId, dashboard_slug: 'client-dashboard', dashboard_enabled: true },
+        dashboard: {
+          configured: true,
+          enabled: true,
+          tagline: null,
+          view_count: 1,
+          last_viewed_at: null,
+          podcast_count: 4,
+          reviewed_count: 3,
+          approved_count: 2,
+          rejected_count: 0,
+          to_review_count: 1,
+          analyzed_count: 2,
+          last_synced_at: null,
+          last_feedback_at: null,
+        },
+        bookings: [],
         onboarding: null,
       },
       error: null,

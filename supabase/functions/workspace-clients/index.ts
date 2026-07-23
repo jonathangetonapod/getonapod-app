@@ -127,7 +127,7 @@ serve(async (req) => {
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
       const { data: client, error: clientError } = await admin
         .from('clients')
-        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,google_sheet_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_enabled,portal_access_enabled,portal_last_login_at,password_set_at,created_at,updated_at')
+        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,google_sheet_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_tagline,dashboard_enabled,dashboard_view_count,dashboard_last_viewed_at,portal_access_enabled,portal_last_login_at,password_set_at,created_at,updated_at')
         .eq('id', clientId!)
         .eq('workspace_id', workspaceId)
         .maybeSingle()
@@ -139,7 +139,7 @@ serve(async (req) => {
         throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Workspace client not found')
       }
 
-      const [bookingsResult, onboardingResult] = await Promise.all([
+      const [bookingsResult, onboardingResult, dashboardPodcastsResult, dashboardFeedbackResult] = await Promise.all([
         admin
           .from('bookings')
           .select('id,client_id,podcast_id,podcast_name,podcast_url,host_name,scheduled_date,recording_date,publish_date,status,episode_url,prep_sent,notes,created_at,updated_at')
@@ -155,6 +155,18 @@ serve(async (req) => {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        admin
+          .from('client_dashboard_podcasts')
+          .select('client_id,podcast_id,ai_analyzed_at,updated_at')
+          .eq('client_id', clientId!)
+          .order('updated_at', { ascending: false })
+          .limit(500),
+        admin
+          .from('client_podcast_feedback')
+          .select('client_id,podcast_id,status,updated_at')
+          .eq('client_id', clientId!)
+          .order('updated_at', { ascending: false })
+          .limit(500),
       ])
 
       if (bookingsResult.error) {
@@ -162,6 +174,9 @@ serve(async (req) => {
       }
       if (onboardingResult.error) {
         throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client onboarding status could not be loaded')
+      }
+      if (dashboardPodcastsResult.error || dashboardFeedbackResult.error) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client dashboard summary could not be loaded')
       }
       if ((bookingsResult.data || []).some((booking) => booking.client_id !== clientId)) {
         throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client podcast activity could not be loaded')
@@ -172,6 +187,31 @@ serve(async (req) => {
       )) {
         throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client onboarding status could not be loaded')
       }
+      if (
+        (dashboardPodcastsResult.data || []).some((podcast) => podcast.client_id !== clientId)
+        || (dashboardFeedbackResult.data || []).some((feedback) => feedback.client_id !== clientId)
+      ) {
+        throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client dashboard summary could not be loaded')
+      }
+
+      const dashboardPodcasts = dashboardPodcastsResult.data || []
+      const dashboardPodcastIds = new Set(dashboardPodcasts.map((podcast) => podcast.podcast_id))
+      const dashboardFeedbackByPodcast = new Map<string, { status: string | null; updated_at: string | null }>()
+      for (const feedback of dashboardFeedbackResult.data || []) {
+        if (
+          dashboardPodcastIds.has(feedback.podcast_id)
+          && !dashboardFeedbackByPodcast.has(feedback.podcast_id)
+        ) {
+          dashboardFeedbackByPodcast.set(feedback.podcast_id, feedback)
+        }
+      }
+      const dashboardFeedback = Array.from(dashboardFeedbackByPodcast.values())
+      const approvedCount = dashboardFeedback.filter((feedback) => feedback.status === 'approved').length
+      const rejectedCount = dashboardFeedback.filter((feedback) => feedback.status === 'rejected').length
+      const reviewedCount = approvedCount + rejectedCount
+      const latestTimestamp = (values: Array<string | null | undefined>): string | null => (
+        values.filter((value): value is string => Boolean(value)).sort().at(-1) || null
+      )
 
       return jsonResponse(req, METHODS, 200, {
         workspace: {
@@ -186,6 +226,21 @@ serve(async (req) => {
         viewer_role: access.role,
         can_manage: ['owner', 'admin', 'platform_admin'].includes(access.role),
         client,
+        dashboard: {
+          configured: Boolean(client.dashboard_slug),
+          enabled: Boolean(client.dashboard_enabled && client.dashboard_slug),
+          tagline: client.dashboard_tagline || null,
+          view_count: Math.max(0, client.dashboard_view_count || 0),
+          last_viewed_at: client.dashboard_last_viewed_at || null,
+          podcast_count: dashboardPodcasts.length,
+          reviewed_count: reviewedCount,
+          approved_count: approvedCount,
+          rejected_count: rejectedCount,
+          to_review_count: Math.max(0, dashboardPodcasts.length - reviewedCount),
+          analyzed_count: dashboardPodcasts.filter((podcast) => Boolean(podcast.ai_analyzed_at)).length,
+          last_synced_at: latestTimestamp(dashboardPodcasts.map((podcast) => podcast.updated_at)),
+          last_feedback_at: latestTimestamp(dashboardFeedback.map((feedback) => feedback.updated_at)),
+        },
         bookings: bookingsResult.data || [],
         onboarding: access.role === 'member' ? null : onboardingResult.data || null,
       })
