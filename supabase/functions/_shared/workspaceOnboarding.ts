@@ -162,17 +162,18 @@ export function validateOnboardingDefinition(value: unknown): OnboardingDefiniti
     throw new HttpError(400, 'INVALID_FIELD', 'definition must include between 1 and 12 sections')
   }
 
-  const usedIds = new Set<string>()
+  const sectionIds = new Set<string>()
+  const questionIds = new Set<string>()
   const usedMappings = new Set<string>()
   let questionCount = 0
   const sections = source.sections.map((rawSection, sectionIndex): OnboardingSection => {
     const section = record(rawSection, `sections[${sectionIndex}]`)
     onlyKeys(section, ['id', 'title', 'description', 'questions'], `sections[${sectionIndex}]`)
     const sectionId = idValue(section.id, `sections[${sectionIndex}].id`)
-    if (usedIds.has(sectionId)) {
-      throw new HttpError(400, 'INVALID_FIELD', 'section and question ids must be unique')
+    if (sectionIds.has(sectionId)) {
+      throw new HttpError(400, 'INVALID_FIELD', 'section ids must be unique')
     }
-    usedIds.add(sectionId)
+    sectionIds.add(sectionId)
     if (!Array.isArray(section.questions) || section.questions.length < 1) {
       throw new HttpError(400, 'INVALID_FIELD', 'each section must contain at least one question')
     }
@@ -195,10 +196,10 @@ export function validateOnboardingDefinition(value: unknown): OnboardingDefiniti
         'options',
       ], field)
       const questionId = idValue(question.id, `${field}.id`)
-      if (usedIds.has(questionId)) {
-        throw new HttpError(400, 'INVALID_FIELD', 'section and question ids must be unique')
+      if (questionIds.has(questionId)) {
+        throw new HttpError(400, 'INVALID_FIELD', 'question ids must be unique')
       }
-      usedIds.add(questionId)
+      questionIds.add(questionId)
       if (
         typeof question.type !== 'string'
         || !ONBOARDING_QUESTION_TYPES.includes(question.type as OnboardingQuestionType)

@@ -298,6 +298,11 @@ serve(async (req) => {
       if (!['expired', 'revoked', 'approved', 'submitted'].includes(String(initialView.status))) {
         validateOnboardingDefinition(initialView.definition)
       }
+      const viewed = await admin.rpc('mark_workspace_onboarding_viewed_v1', {
+        p_instance_id: capability.instanceId,
+        p_capability_hash: capability.verifierHash,
+      })
+      if (viewed.error) clientRpcError(viewed.error)
       return jsonResponse(req, METHODS, 200, { onboarding: initialView })
     }
 

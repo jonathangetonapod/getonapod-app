@@ -114,6 +114,7 @@ export interface OnboardingInstanceSummary {
   created_at: string
   updated_at: string
   invited_at: string
+  viewed_at: string | null
   started_at: string | null
   submitted_at: string | null
   changes_requested_at: string | null

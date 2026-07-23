@@ -62,6 +62,7 @@ BEGIN
     'public.workspace_onboarding_instance_operation_v1(text,uuid,uuid,jsonb,uuid,bigint)',
     'public.workspace_onboarding_approve_v1(uuid,uuid,jsonb,uuid,bigint)',
     'public.workspace_onboarding_client_operation_v1(text,uuid,text,jsonb)',
+    'public.mark_workspace_onboarding_viewed_v1(uuid,text)',
     'public.set_workspace_onboarding_ai_profile_v1(uuid,integer,text,jsonb,text)',
     'public.record_workspace_onboarding_invitation_v1(uuid,text,text,text)',
     'public.record_workspace_onboarding_change_request_v1(uuid,text,text,text)'
@@ -395,6 +396,18 @@ BEGIN
     RAISE EXCEPTION 'per-client white-label experience was not snapshotted';
   END IF;
 
+  PERFORM public.mark_workspace_onboarding_viewed_v1(
+    instance_id, repeat('a', 64)
+  );
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.workspace_onboarding_instances AS instance
+    WHERE instance.id = workflow.instance_id
+      AND instance.viewed_at IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'first client onboarding view was not recorded';
+  END IF;
+
   response := public.workspace_onboarding_staff_list_v1(
     workspace_a_id, member_a_id, token_epoch
   );
@@ -403,6 +416,7 @@ BEGIN
     OR jsonb_array_length(response -> 'templates') <> 0
     OR jsonb_array_length(response -> 'clients') <> 0
     OR jsonb_array_length(response -> 'instances') <> 1
+    OR response -> 'instances' -> 0 ->> 'viewed_at' IS NULL
   THEN
     RAISE EXCEPTION 'assigned member read-only list was incorrect';
   END IF;

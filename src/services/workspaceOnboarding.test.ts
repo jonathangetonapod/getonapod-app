@@ -56,6 +56,7 @@ const summary = {
   created_at: '2026-07-22T00:00:00.000Z',
   updated_at: '2026-07-22T00:00:00.000Z',
   invited_at: '2026-07-22T00:00:00.000Z',
+  viewed_at: null,
   started_at: null,
   submitted_at: null,
   changes_requested_at: null,

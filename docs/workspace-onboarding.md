@@ -25,6 +25,9 @@ An invitation is pinned to an immutable published template version. Its public
 state moves through `invited`, `in_progress`, `submitted`,
 `changes_requested`, and `approved`; expired and revoked links are terminal.
 The default expiry is 14 days and the hard maximum is 90 days.
+The activity table records the first successful client form view separately
+from the first saved edit and submission. Metadata-only link unfurls do not
+count as client views.
 
 Drafts autosave to the server with an optimistic lock version. No onboarding
 answers or capability tokens are stored in browser storage. A submitted answer
@@ -97,7 +100,8 @@ Set these as server-only Supabase Edge Function secrets:
 1. Capture the normal database backup and current production inventory.
 2. Apply `20260722000400_workspace_branding.sql` if it is not already present,
    then apply `20260722000500_workspace_onboarding.sql` and
-   `20260722000600_workspace_onboarding_white_label.sql` in order.
+   `20260722000600_workspace_onboarding_white_label.sql`, followed by
+   `20260723000100_workspace_onboarding_activity.sql`, in order.
 3. Run the database verifier and the rollback-only onboarding behavior suite
    in an authorized local or staging environment.
 4. Configure the server secrets above.

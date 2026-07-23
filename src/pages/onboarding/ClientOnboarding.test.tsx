@@ -81,4 +81,23 @@ describe('ClientOnboarding white-label experience', () => {
     expect(screen.queryByText(/your agency|Get On A Pod/iu)).not.toBeInTheDocument()
     await waitFor(() => expect(document.title).toBe('Iveth Gonzalez · Client onboarding'))
   })
+
+  it('leaves the loading state and shows a retryable error when the form request is rejected', async () => {
+    getClientOnboarding.mockRejectedValueOnce(new Error('This onboarding could not be loaded.'))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <HelmetProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[`/onboarding/${token}`]}>
+            <Routes><Route path="/onboarding/:token" element={<ClientOnboardingPage />} /></Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </HelmetProvider>,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'Onboarding link unavailable' })).toBeInTheDocument()
+    expect(screen.getByText('This onboarding could not be loaded.')).toBeInTheDocument()
+    expect(screen.queryByText('Opening your secure onboarding…')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
 })

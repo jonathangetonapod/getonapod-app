@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { DEFAULT_ONBOARDING_ACCENT, renderOnboardingBrandText } from '@/lib/onboardingBrand'
+import { onboardingActivityStage, type OnboardingActivityStage } from '@/lib/onboardingActivity'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
   approveOnboarding,
@@ -127,6 +128,52 @@ const statusStyles: Record<OnboardingInstanceSummary['status'], string> = {
   revoked: 'bg-red-50 text-red-700 border-red-200',
 }
 
+const activityLabels: Record<OnboardingActivityStage, string> = {
+  not_viewed: 'Not viewed',
+  viewed: 'Viewed',
+  started: 'Started',
+  completed: 'Completed',
+}
+
+const activityStyles: Record<OnboardingActivityStage, string> = {
+  not_viewed: 'bg-slate-50 text-slate-600 border-slate-200',
+  viewed: 'bg-blue-50 text-blue-700 border-blue-200',
+  started: 'bg-violet-50 text-violet-700 border-violet-200',
+  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+}
+
+function activityDate(value: string): string {
+  return new Date(value).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function OnboardingActivity({ instance }: { instance: OnboardingInstanceSummary }) {
+  const stage = onboardingActivityStage(instance)
+  const events = [
+    ['Viewed', instance.viewed_at],
+    ['Started', instance.started_at],
+    ['Completed', instance.submitted_at],
+  ] as const
+  const recordedEvents = events.flatMap(([label, value]) => value ? [{ label, value }] : [])
+
+  return (
+    <div className="min-w-40 space-y-1.5">
+      <Badge variant="outline" className={activityStyles[stage]}>{activityLabels[stage]}</Badge>
+      <div className="space-y-0.5 text-xs text-muted-foreground">
+        {recordedEvents.length > 0 ? recordedEvents.map(({ label, value }) => (
+          <p key={label}><span className="font-medium text-foreground/75">{label}</span>{' '}<time dateTime={value}>{activityDate(value)}</time></p>
+        )) : (
+          <p>Sent <time dateTime={instance.invited_at}>{activityDate(instance.invited_at)}</time></p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function nextCopyName(template: OnboardingTemplate, templates: OnboardingTemplate[]): string {
   const names = new Set(templates.map((candidate) => candidate.name.toLowerCase()))
   let index = 1
@@ -157,6 +204,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     enabled: validWorkspaceId,
     retry: false,
     gcTime: isPlatformWorkspace ? 0 : undefined,
+    refetchInterval: startOpen || builderOpen || selectedInstanceId ? false : 30_000,
   })
   const data = onboardingQuery.data
   const canManage = data?.can_manage === true
@@ -477,20 +525,20 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               <TabsList><TabsTrigger value="instances">Client onboarding</TabsTrigger>{canManage && <TabsTrigger value="templates">Form templates</TabsTrigger>}</TabsList>
               <TabsContent value="instances">
                 <Card>
-                  <CardHeader><CardTitle>Onboarding activity</CardTitle><CardDescription>Each invitation stays pinned to the exact form version the client received.</CardDescription></CardHeader>
+                  <CardHeader><CardTitle>Onboarding activity</CardTitle><CardDescription>See when the private link was first viewed, when the client first saved progress, and when they completed the form.</CardDescription></CardHeader>
                   <CardContent>
                     {data.instances.length === 0 ? (
                       <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No onboarding invitations yet</p><p className="text-sm text-muted-foreground">Start with an existing client or create a minimal client while inviting them.</p></div>{canManage && <Button variant="outline" onClick={() => setStartOpen(true)}><Plus className="mr-2 h-4 w-4" />Start onboarding</Button>}</div>
                     ) : (
                       <div className="overflow-x-auto">
                         <Table>
-                          <TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Template</TableHead><TableHead>Status</TableHead><TableHead>Updated</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                          <TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Template</TableHead><TableHead>Activity</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                           <TableBody>{data.instances.map((instance) => (
                             <TableRow key={instance.id} className={instance.archived_at ? 'opacity-60' : undefined}>
                               <TableCell><p className="font-medium">{instance.client_name}</p><p className="text-xs text-muted-foreground">{instance.recipient_email}</p>{instance.archived_at && <Badge variant="outline" className="mt-1">Archived</Badge>}</TableCell>
                               <TableCell><p>{instance.template_name}</p><p className="text-xs text-muted-foreground">Version {instance.template_version}</p></TableCell>
+                              <TableCell><OnboardingActivity instance={instance} /></TableCell>
                               <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{statusLabels[instance.status]}</Badge>{instance.open_comment_count > 0 && <p className="mt-1 text-xs text-muted-foreground">{instance.open_comment_count} open notes</p>}</TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{new Date(instance.updated_at).toLocaleDateString()}</TableCell>
                               <TableCell className="text-right"><div className="inline-flex items-center gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedInstanceId(instance.id)}>View</Button>{canManage && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                                 {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
                                 {!['submitted', 'approved', 'revoked'].includes(instance.status) && <DropdownMenuItem onClick={() => linkMutation.mutate({ action: 'extend', instance })}>Extend 14 days</DropdownMenuItem>}

@@ -393,7 +393,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[92vh] w-[96vw] max-w-[1440px] gap-0 overflow-hidden p-0 sm:max-w-[1440px]">
+      <DialogContent className="h-[min(92dvh,48rem)] w-[calc(100vw-1rem)] max-w-[1440px] gap-0 overflow-hidden p-0 sm:w-[96vw] sm:max-w-[1440px]">
         <div className="flex min-h-0 flex-1 flex-col">
           <header className="border-b bg-background px-5 pb-4 pt-5 pr-14 sm:px-7 sm:pr-14">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
