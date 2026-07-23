@@ -112,8 +112,15 @@ export async function searchPodcasts(options: SearchOptions = {}): Promise<Podca
   return await invokePodscan<PodcastSearchResponse>({ action: 'search', options })
 }
 
-export async function searchPodcastsWithMeta(options: SearchOptions = {}): Promise<PodscanEnvelope<PodcastSearchResponse>> {
-  return await invokePodscanEnvelope<PodcastSearchResponse>({ action: 'search', options })
+export async function searchPodcastsWithMeta(
+  options: SearchOptions = {},
+  workspaceId?: string,
+): Promise<PodscanEnvelope<PodcastSearchResponse>> {
+  return await invokePodscanEnvelope<PodcastSearchResponse>({
+    action: 'search',
+    options,
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
+  })
 }
 
 /**
@@ -233,10 +240,11 @@ export async function searchPodcastsByCategory(
 /**
  * Get a single podcast by ID
  */
-export async function getPodcastById(podcastId: string): Promise<PodcastData> {
+export async function getPodcastById(podcastId: string, workspaceId?: string): Promise<PodcastData> {
   const data = await invokePodscan<{ podcast?: PodcastData } & PodcastData>({
     action: 'podcast',
     podcast_id: podcastId,
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
   })
 
   // API returns { podcast: { ... } }, extract the podcast object
@@ -513,9 +521,10 @@ interface ChartPodcastPayload extends Partial<PodcastData> {
 /**
  * Get all supported countries for chart rankings
  */
-export async function getChartCountries(): Promise<ChartCountry[]> {
+export async function getChartCountries(workspaceId?: string): Promise<ChartCountry[]> {
   const data = await invokePodscan<Record<string, unknown> | ChartCountry[]>({
     action: 'chart_countries',
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
   })
 
   // Extract array from response - check various possible structures
@@ -538,12 +547,14 @@ export async function getChartCountries(): Promise<ChartCountry[]> {
  */
 export async function getChartCategories(
   platform: 'apple' | 'spotify',
-  countryCode: string
+  countryCode: string,
+  workspaceId?: string,
 ): Promise<ChartCategory[]> {
   const data = await invokePodscan<Record<string, unknown> | ChartCategory[]>({
     action: 'chart_categories',
     platform,
     country: countryCode,
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
   })
 
   // Extract array from response - check various possible structures
@@ -564,7 +575,8 @@ export async function getTopChartPodcasts(
   platform: 'apple' | 'spotify',
   countryCode: string,
   category: string,
-  limit: number = 10
+  limit: number = 10,
+  workspaceId?: string,
 ): Promise<ChartPodcast[]> {
   const data = await invokePodscan<Record<string, unknown> | ChartPodcast[]>({
     action: 'chart_top',
@@ -572,6 +584,7 @@ export async function getTopChartPodcasts(
     country: countryCode,
     category,
     limit,
+    ...(workspaceId ? { workspace_id: workspaceId } : {}),
   })
 
   // Extract array from response - check various possible structures

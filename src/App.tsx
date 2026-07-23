@@ -17,7 +17,6 @@ import WhatToExpect from "./pages/WhatToExpect";
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/admin/Login";
 import AdminDashboard from "./pages/admin/Dashboard";
-import PodcastFinder from "./pages/admin/PodcastFinder";
 import ProspectDashboards from "./pages/admin/ProspectDashboards";
 import PodcastDatabase from "./pages/admin/PodcastDatabase";
 import AuthCallback from "./pages/admin/Callback";
@@ -40,10 +39,12 @@ import WorkspaceClients from "./pages/app/WorkspaceClients";
 import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
 import WorkspaceStaff from "./pages/app/WorkspaceStaff";
+import WorkspacePodcastFinder from "./pages/app/WorkspacePodcastFinder";
 import AdminWorkspaceClients from "./pages/admin/AdminWorkspaceClients";
 import AdminWorkspaceGuestResources from "./pages/admin/AdminWorkspaceGuestResources";
 import AdminWorkspaceOnboarding from "./pages/admin/AdminWorkspaceOnboarding";
 import AdminWorkspaceStaff from "./pages/admin/AdminWorkspaceStaff";
+import AdminWorkspacePodcastFinder from "./pages/admin/AdminWorkspacePodcastFinder";
 import ChangeInitialPassword from "./pages/account/ChangeInitialPassword";
 import ClientOnboarding from "./pages/onboarding/ClientOnboarding";
 
@@ -109,6 +110,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <WorkspaceClients />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/clients/:clientId/podcast-finder"
+              element={
+                <ProtectedRoute>
+                  <WorkspacePodcastFinder />
                 </ProtectedRoute>
               }
             />
@@ -186,11 +195,7 @@ const App = () => (
             <Route path="/admin/onboarding" element={<Navigate to="/admin/users" replace />} />
             <Route
               path="/admin/podcast-finder"
-              element={
-                <PlatformAdminRoute>
-                  <PodcastFinder />
-                </PlatformAdminRoute>
-              }
+              element={<Navigate to="/app/clients" replace />}
             />
             <Route
               path="/admin/prospect-dashboards"
@@ -261,6 +266,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceClients />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/workspaces/:workspaceId/clients/:clientId/podcast-finder"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspacePodcastFinder />
                 </PlatformAdminRoute>
               }
             />

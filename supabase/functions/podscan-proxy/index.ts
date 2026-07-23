@@ -6,9 +6,12 @@ import {
   jsonResponse,
   optionsResponse,
   parseJsonObject,
+  requireAuthenticatedUser,
   requireOnlyKeys,
   requirePlatformAdmin,
   requireString,
+  requireUuid,
+  requireWorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 
 const METHODS = ['POST'] as const
@@ -174,32 +177,40 @@ serve(async (req) => {
     }
     const body = await parseJsonObject(req)
     const action = typeof body.action === 'string' ? body.action : ''
-    await requirePlatformAdmin(req)
+    const workspaceId = body.workspace_id === undefined
+      ? null
+      : requireUuid(body.workspace_id, 'workspace_id')
+    if (workspaceId) {
+      const context = await requireAuthenticatedUser(req)
+      await requireWorkspaceFeatureAccess(context, workspaceId)
+    } else {
+      await requirePlatformAdmin(req)
+    }
     let result: PodscanFetchResult
 
     if (action === 'search') {
-      requireOnlyKeys(body, ['action', 'options'])
+      requireOnlyKeys(body, ['action', 'options', 'workspace_id'])
       result = await fetchPodscan('/podcasts/search', searchParams(body.options))
     } else if (action === 'podcast') {
-      requireOnlyKeys(body, ['action', 'podcast_id'])
+      requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
       result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}`)
     } else if (action === 'related') {
-      requireOnlyKeys(body, ['action', 'podcast_id'])
+      requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
       result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`)
     } else if (action === 'demographics') {
-      requireOnlyKeys(body, ['action', 'podcast_id'])
+      requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
       result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics`)
     } else if (action === 'chart_countries') {
-      requireOnlyKeys(body, ['action'])
+      requireOnlyKeys(body, ['action', 'workspace_id'])
       result = await fetchPodscan('/charts/countries/available')
     } else if (action === 'chart_categories') {
-      requireOnlyKeys(body, ['action', 'platform', 'country'])
+      requireOnlyKeys(body, ['action', 'platform', 'country', 'workspace_id'])
       const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
       const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
       if (!/^[a-z]{2,8}$/.test(country)) throw new HttpError(400, 'INVALID_FIELD', 'country is invalid')
       result = await fetchPodscan(`/charts/${platform}/${country}/categories`)
     } else if (action === 'chart_top') {
-      requireOnlyKeys(body, ['action', 'platform', 'country', 'category', 'limit'])
+      requireOnlyKeys(body, ['action', 'platform', 'country', 'category', 'limit', 'workspace_id'])
       const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
       const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
       const category = requireString(body.category, 'category', { max: 100 })

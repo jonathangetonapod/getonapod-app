@@ -63,6 +63,30 @@ export interface WorkspaceClientInput {
   notes?: string
 }
 
+export interface WorkspaceResearchContext {
+  workspace: {
+    id: string
+    name: string
+    slug: string | null
+    status: string
+    is_default: boolean
+    logo_path: string | null
+    logo_updated_at: string | null
+  }
+  client: {
+    id: string
+    workspace_id: string
+    name: string
+    email: string | null
+    website: string | null
+    status: 'active'
+    bio: string | null
+    photo_url: string | null
+    google_sheet_configured: boolean
+    updated_at: string
+  }
+}
+
 const cleanWorkspaceClientInput = (input: WorkspaceClientInput) => ({
   name: input.name.trim(),
   email: input.email?.trim() || null,
@@ -80,6 +104,35 @@ export async function getWorkspaceClients(workspaceId: string): Promise<Workspac
 
   if (error) throw await toFunctionError(error, 'Failed to fetch clients.')
   return (data?.clients || []) as WorkspaceClient[]
+}
+
+export async function getWorkspaceResearchContext(
+  workspaceId: string,
+  clientId: string,
+): Promise<WorkspaceResearchContext> {
+  const canonicalWorkspaceId = workspaceId.toLowerCase()
+  const canonicalClientId = clientId.toLowerCase()
+  const { data, error } = await supabase.functions.invoke('workspace-clients', {
+    body: {
+      action: 'research-get',
+      workspace_id: canonicalWorkspaceId,
+      client_id: canonicalClientId,
+    },
+  })
+
+  if (error) throw await toFunctionError(error, 'Failed to load podcast research context.')
+  const context = data as WorkspaceResearchContext | null
+  if (
+    !context?.workspace
+    || !context.client
+    || context.workspace.id !== canonicalWorkspaceId
+    || context.client.workspace_id !== canonicalWorkspaceId
+    || context.client.id !== canonicalClientId
+    || context.client.status !== 'active'
+  ) {
+    throw new Error('The podcast research context did not match the workspace client address.')
+  }
+  return context
 }
 
 export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {

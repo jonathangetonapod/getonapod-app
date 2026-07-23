@@ -10,7 +10,6 @@ import {
   LogOut,
   Mail,
   Menu,
-  Search,
   Settings,
   Share2,
   User,
@@ -38,7 +37,6 @@ interface WorkspaceNavItem {
 const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'overview', name: 'Overview', segment: 'overview', icon: LayoutDashboard, enabled: false },
   { id: 'onboarding', name: 'Onboarding', segment: 'onboarding', icon: ClipboardList, enabled: true },
-  { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: false },
   { id: 'prospect-dashboards', name: 'Prospect Dashboards', segment: 'prospect-dashboards', icon: Share2, enabled: false },
   { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: false },
   { id: 'client-podcast-system', name: 'Client Podcast System', segment: 'client-podcast-system', icon: Calendar, enabled: false },

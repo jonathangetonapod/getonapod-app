@@ -1,6 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
-import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
+import {
+  HttpError,
+  requireAuthenticatedUser,
+  requirePlatformAdminOrService,
+  requireUuid,
+  requireWorkspaceFeatureAccess,
+} from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -13,9 +19,41 @@ serve(async (req) => {
   }
 
   try {
-    await requirePlatformAdminOrService(req)
+    const body = await req.json()
+    let { clientName, clientBio, clientEmail, prospectName, prospectBio } = body
+    const { oldQuery } = body
+    const scopedRequest = body.workspaceId !== undefined || body.clientId !== undefined
 
-    const { clientName, clientBio, clientEmail, oldQuery, prospectName, prospectBio } = await req.json()
+    if (scopedRequest) {
+      const workspaceId = requireUuid(body.workspaceId, 'workspaceId')
+      const clientId = requireUuid(body.clientId, 'clientId')
+      const context = await requireAuthenticatedUser(req)
+      await requireWorkspaceFeatureAccess(context, workspaceId)
+      const { data: scopedClient, error: scopedClientError } = await context.admin
+        .from('clients')
+        .select('id,workspace_id,name,email,bio,status')
+        .eq('id', clientId)
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (scopedClientError) {
+        throw new HttpError(500, 'CLIENT_CONTEXT_UNAVAILABLE', 'The client profile could not be loaded')
+      }
+      if (!scopedClient || scopedClient.workspace_id !== workspaceId) {
+        throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Active workspace client not found')
+      }
+
+      // The server-owned client profile is authoritative for workspace users.
+      // Request input can never substitute another client or prospect profile.
+      clientName = scopedClient.name
+      clientBio = scopedClient.bio
+      clientEmail = scopedClient.email
+      prospectName = undefined
+      prospectBio = undefined
+    } else {
+      await requirePlatformAdminOrService(req)
+    }
 
     // Type validation
     if (clientName !== undefined && typeof clientName !== 'string') {
@@ -301,8 +339,11 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
   } catch (error) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+        ...(error instanceof HttpError ? { code: error.code } : {}),
+      }),
+      { status: error instanceof HttpError ? error.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

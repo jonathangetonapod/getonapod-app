@@ -12,6 +12,7 @@ import {
   requireString,
   requireUuid,
   requireAuthenticatedUser,
+  requireWorkspaceFeatureAccess,
   workspaceCredentialIsFresh,
 } from '../_shared/workspaceAuth.ts'
 
@@ -103,7 +104,10 @@ serve(async (req) => {
     let clientId: string | null = null
     let payload: Record<string, string | null> = {}
 
-    if (action === 'list') {
+    if (action === 'research-get') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
+      clientId = requireUuid(body.client_id, 'client_id')
+    } else if (action === 'list') {
       requireOnlyKeys(body, ['action', 'workspace_id'])
     } else if (action === 'create') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client'])
@@ -119,6 +123,66 @@ serve(async (req) => {
       throw new HttpError(400, 'INVALID_ACTION', 'Unknown workspace client action')
     }
 
+    if (action === 'research-get') {
+      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      const { data: client, error: clientError } = await admin
+        .from('clients')
+        .select('id,workspace_id,name,email,website,status,bio,photo_url,google_sheet_url,updated_at')
+        .eq('id', clientId!)
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (clientError) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The workspace client could not be loaded')
+      }
+      if (!client || client.workspace_id !== workspaceId) {
+        throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Active workspace client not found')
+      }
+
+      return jsonResponse(req, METHODS, 200, {
+        workspace: {
+          id: access.workspace.id,
+          name: access.workspace.name,
+          slug: access.workspace.slug,
+          status: access.workspace.status,
+          is_default: access.workspace.is_default,
+          logo_path: access.workspace.logo_path,
+          logo_updated_at: access.workspace.logo_updated_at,
+        },
+        client: {
+          id: client.id,
+          workspace_id: client.workspace_id,
+          name: client.name,
+          email: client.email,
+          website: client.website,
+          status: client.status,
+          bio: client.bio,
+          photo_url: client.photo_url,
+          google_sheet_configured: Boolean(client.google_sheet_url),
+          updated_at: client.updated_at,
+        },
+      })
+    }
+
+    if (action === 'list') {
+      await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      const { data: clients, error: clientsError } = await admin
+        .from('clients')
+        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,created_at,updated_at')
+        .eq('workspace_id', workspaceId)
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+
+      if (clientsError) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The workspace clients could not be loaded')
+      }
+      if ((clients || []).some((client) => client.workspace_id !== workspaceId)) {
+        throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The workspace clients could not be loaded')
+      }
+      return jsonResponse(req, METHODS, 200, { clients: clients || [] })
+    }
+
     const { data, error } = await admin.rpc('workspace_client_operation_v2', {
       p_action: action,
       p_workspace_id: workspaceId,
@@ -129,9 +193,6 @@ serve(async (req) => {
     })
 
     if (error) rpcError(error)
-    if (action === 'list') {
-      return jsonResponse(req, METHODS, 200, { clients: Array.isArray(data) ? data : [] })
-    }
     return jsonResponse(req, METHODS, action === 'create' ? 201 : 200, {
       success: true,
       client: data,

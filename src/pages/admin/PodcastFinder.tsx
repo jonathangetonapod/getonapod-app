@@ -34,6 +34,7 @@ import {
   X,
 } from 'lucide-react'
 import { DashboardLayout } from '@/components/admin/DashboardLayout'
+import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,8 +72,9 @@ import {
   type ResearchTier,
 } from '@/lib/podcastResearch'
 import { cn } from '@/lib/utils'
+import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
-import { getClients } from '@/services/clients'
+import { getClients, getWorkspaceResearchContext } from '@/services/clients'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { exportPodcastsToGoogleSheets, type PodcastExportData } from '@/services/googleSheets'
 import {
@@ -182,11 +184,19 @@ function toExportData(result: ResearchResult): PodcastExportData {
   }
 }
 
-export default function PodcastFinder() {
-  const { user } = useAuth()
+interface PodcastFinderProps {
+  fixedClientId?: string
+  platformWorkspaceId?: string
+}
+
+export default function PodcastFinder({ fixedClientId, platformWorkspaceId }: PodcastFinderProps = {}) {
+  const { user, workspace } = useAuth()
   const storedScope = useMemo(readStoredScope, [])
-  const [workspaceId, setWorkspaceId] = useState(storedScope.workspaceId || '')
-  const [clientId, setClientId] = useState(storedScope.clientId || '')
+  const isClientBound = fixedClientId !== undefined
+  const fixedWorkspaceId = (platformWorkspaceId || workspace?.id || '').toLowerCase()
+  const canonicalFixedClientId = (fixedClientId || '').toLowerCase()
+  const [workspaceId, setWorkspaceId] = useState(isClientBound ? fixedWorkspaceId : storedScope.workspaceId || '')
+  const [clientId, setClientId] = useState(isClientBound ? canonicalFixedClientId : storedScope.clientId || '')
   const [strategy, setStrategy] = useState<DiscoveryStrategy>(storedScope.strategy || 'balanced')
   const [language, setLanguage] = useState('en')
   const [region, setRegion] = useState('US')
@@ -231,42 +241,66 @@ export default function PodcastFinder() {
   const workspacesQuery = useQuery({
     queryKey: ['podcast-research', user?.id || 'unknown', 'workspaces'],
     queryFn: listPodcastResearchWorkspaces,
+    enabled: !isClientBound,
     staleTime: 30_000,
   })
 
   const clientsQuery = useQuery({
     queryKey: ['podcast-research', user?.id || 'unknown', 'workspace', workspaceId, 'clients'],
     queryFn: () => getClients({ workspaceId, status: 'active' }),
-    enabled: Boolean(workspaceId),
+    enabled: !isClientBound && Boolean(workspaceId),
     staleTime: 30_000,
   })
 
-  const workspaces = useMemo(() => workspacesQuery.data || [], [workspacesQuery.data])
-  const clients = useMemo(() => clientsQuery.data?.clients || [], [clientsQuery.data?.clients])
+  const researchContextQuery = useQuery({
+    queryKey: ['podcast-research', user?.id || 'unknown', 'workspace', fixedWorkspaceId, 'client', canonicalFixedClientId],
+    queryFn: () => getWorkspaceResearchContext(fixedWorkspaceId, canonicalFixedClientId),
+    enabled: isClientBound && Boolean(fixedWorkspaceId && canonicalFixedClientId),
+    staleTime: 30_000,
+    retry: false,
+  })
+
+  const workspaces = useMemo(() => isClientBound
+    ? researchContextQuery.data?.workspace ? [researchContextQuery.data.workspace] : []
+    : workspacesQuery.data || [], [isClientBound, researchContextQuery.data?.workspace, workspacesQuery.data])
+  const clients = useMemo(() => isClientBound
+    ? researchContextQuery.data?.client ? [researchContextQuery.data.client] : []
+    : clientsQuery.data?.clients || [], [clientsQuery.data?.clients, isClientBound, researchContextQuery.data?.client])
   const selectedWorkspace = workspaces.find((workspace) => workspace.id === workspaceId)
   const selectedClient = clients.find((client) => client.id === clientId)
   const scopeLocked = Boolean(runScope || results.length > 0 || isDiscovering)
 
   useEffect(() => {
+    if (isClientBound) return
     if (workspaces.length === 0) return
     if (!workspaces.some((workspace) => workspace.id === workspaceId)) {
       setWorkspaceId((workspaces.find((workspace) => workspace.is_default) || workspaces[0]).id)
       setClientId('')
     }
-  }, [workspaceId, workspaces])
+  }, [isClientBound, workspaceId, workspaces])
 
   useEffect(() => {
+    if (isClientBound) return
     if (!clientId || clientsQuery.isLoading) return
     if (!clients.some((client) => client.id === clientId)) setClientId('')
-  }, [clientId, clients, clientsQuery.isLoading])
+  }, [clientId, clients, clientsQuery.isLoading, isClientBound])
 
   useEffect(() => {
+    if (!isClientBound) return
+    if (workspaceId === fixedWorkspaceId && clientId === canonicalFixedClientId) return
+    resetResearch()
+    setWorkspaceId(fixedWorkspaceId)
+    setClientId(canonicalFixedClientId)
+  }, [canonicalFixedClientId, clientId, fixedWorkspaceId, isClientBound, workspaceId])
+
+  useEffect(() => {
+    if (isClientBound) return
     try {
       window.sessionStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify({ workspaceId, clientId, strategy }))
     } catch {
       // The selected scope remains usable in memory when browser storage is unavailable.
     }
-  }, [workspaceId, clientId, strategy])
+  }, [workspaceId, clientId, isClientBound, strategy])
 
   useEffect(() => {
     setResultPage(1)
@@ -276,7 +310,7 @@ export default function PodcastFinder() {
     if (!showChartDiscovery || chartCountries.length > 0) return
     let active = true
     setIsLoadingChartOptions(true)
-    void getChartCountries()
+    void getChartCountries(workspaceId)
       .then((countries) => {
         if (!active) return
         setChartCountries(countries)
@@ -287,14 +321,14 @@ export default function PodcastFinder() {
       .catch(() => toast.error('Available chart countries could not be loaded.'))
       .finally(() => active && setIsLoadingChartOptions(false))
     return () => { active = false }
-  }, [chartCountries.length, chartCountry, showChartDiscovery])
+  }, [chartCountries.length, chartCountry, showChartDiscovery, workspaceId])
 
   useEffect(() => {
     if (!showChartDiscovery || !chartCountry) return
     let active = true
     setIsLoadingChartOptions(true)
     setChartCategory('')
-    void getChartCategories(chartPlatform, chartCountry)
+    void getChartCategories(chartPlatform, chartCountry, workspaceId)
       .then((categories) => {
         if (!active) return
         setChartCategories(categories)
@@ -303,7 +337,7 @@ export default function PodcastFinder() {
       .catch(() => toast.error('Chart categories could not be loaded.'))
       .finally(() => active && setIsLoadingChartOptions(false))
     return () => { active = false }
-  }, [chartCountry, chartPlatform, showChartDiscovery])
+  }, [chartCountry, chartPlatform, showChartDiscovery, workspaceId])
 
   const rows = useMemo(() => results.map((result) => {
     const outreach = calculateOutreachPriority(result.podcast)
@@ -356,7 +390,7 @@ export default function PodcastFinder() {
   const selectedContactableCount = selectedResults.filter((result) => Boolean(result.podcast.reach?.email)).length
   const unscoredCount = results.filter((result) => result.relevanceScore === null && !excludedIds.has(result.podcast.podcast_id)).length
 
-  const resetResearch = () => {
+  function resetResearch() {
     setQueries([])
     setResults([])
     setRunScope(null)
@@ -382,7 +416,7 @@ export default function PodcastFinder() {
   }
 
   const handleGenerateQueries = async (): Promise<string[]> => {
-    if (!selectedClient?.bio) {
+    if (!selectedWorkspace || !selectedClient?.bio) {
       toast.error('Add an approved client bio before generating a search strategy.')
       return []
     }
@@ -390,6 +424,8 @@ export default function PodcastFinder() {
     setIsGenerating(true)
     try {
       const generated = await generatePodcastQueries({
+        workspaceId: selectedWorkspace.id,
+        clientId: selectedClient.id,
         clientName: selectedClient.name,
         clientBio: selectedClient.bio,
         clientEmail: selectedClient.email || undefined,
@@ -497,7 +533,7 @@ export default function PodcastFinder() {
             let response: Awaited<ReturnType<typeof searchPodcastsWithMeta>> | null = null
             for (let attempt = 0; attempt < 2; attempt += 1) {
               try {
-                response = await searchPodcastsWithMeta(buildSearchOptions(query, page))
+                response = await searchPodcastsWithMeta(buildSearchOptions(query, page), selectedWorkspace.id)
                 break
               } catch (error) {
                 const requestError = error as Error & { status?: number; retryAfterSeconds?: number }
@@ -559,7 +595,7 @@ export default function PodcastFinder() {
   }
 
   const handleScoreResults = async () => {
-    if (!selectedClient?.bio || !runScope) {
+    if (!selectedWorkspace || !selectedClient?.bio || !runScope) {
       toast.error('A client-bound discovery run is required before scoring.')
       return
     }
@@ -598,6 +634,7 @@ export default function PodcastFinder() {
           message: `Scored ${completed} of ${total} podcasts`,
         }),
         false,
+        { workspaceId: selectedWorkspace.id, clientId: selectedClient.id },
       )
 
       const byId = new Map(scores.map((score) => [score.podcast_id, score]))
@@ -628,7 +665,7 @@ export default function PodcastFinder() {
     setIsAddingChartResults(true)
     try {
       const limit = chartPlatform === 'apple' ? 100 : 50
-      const podcasts = await getTopChartPodcasts(chartPlatform, chartCountry, chartCategory, limit)
+      const podcasts = await getTopChartPodcasts(chartPlatform, chartCountry, chartCategory, limit, selectedWorkspace.id)
       const source = `${chartPlatform === 'apple' ? 'Apple' : 'Spotify'} charts`
       setResults((current) => mergeResearchResults(current, podcasts, source))
       setRunScope((current) => current
@@ -707,7 +744,7 @@ export default function PodcastFinder() {
     if (!detailId) return
     setIsEnriching(true)
     try {
-      const podcast = await getPodcastById(detailId)
+      const podcast = await getPodcastById(detailId, selectedWorkspace?.id)
       setResults((current) => mergeResearchResults(current, [podcast], 'Podscan profile'))
       toast.success('Full Podscan profile loaded.')
     } catch (error) {
@@ -726,7 +763,11 @@ export default function PodcastFinder() {
 
     setIsExporting(true)
     try {
-      const response = await exportPodcastsToGoogleSheets(selectedClient.id, selectedResults.map(toExportData))
+      const response = await exportPodcastsToGoogleSheets(
+        selectedClient.id,
+        selectedResults.map(toExportData),
+        selectedWorkspace.id,
+      )
       toast.success(`Exported ${response.rowsAdded} podcasts for ${selectedClient.name}.`)
       setSelectedIds(new Set())
       setExportDialogOpen(false)
@@ -744,8 +785,65 @@ export default function PodcastFinder() {
     ? Math.round((scoringProgress.completed / scoringProgress.total) * 100)
     : 0
 
-  return (
-    <DashboardLayout>
+  const clientBaseHref = platformWorkspaceId
+    ? `/admin/workspaces/${fixedWorkspaceId}`
+    : '/app'
+  const clientsHref = `${clientBaseHref}/clients`
+  const onboardingHref = `${clientBaseHref}/onboarding`
+  const platformWorkspaceConfig: PlatformWorkspaceConfig | undefined = platformWorkspaceId
+    ? {
+        workspaceName: researchContextQuery.data?.workspace.name || 'Client workspace',
+        logoUrl: workspaceLogoUrl(
+          researchContextQuery.data?.workspace.id,
+          researchContextQuery.data?.workspace.logo_path,
+          researchContextQuery.data?.workspace.logo_updated_at,
+        ),
+        baseHref: clientBaseHref,
+        exitHref: '/admin/users',
+      }
+    : undefined
+
+  if (isClientBound && researchContextQuery.isLoading && Boolean(fixedWorkspaceId && canonicalFixedClientId)) {
+    return (
+      <WorkspaceLayout platformWorkspace={platformWorkspaceConfig}>
+        <Card>
+          <CardContent className="flex min-h-56 items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="mx-auto h-7 w-7 animate-spin text-primary" />
+              <p className="mt-3 text-sm text-muted-foreground">Loading client podcast research…</p>
+            </div>
+          </CardContent>
+        </Card>
+      </WorkspaceLayout>
+    )
+  }
+
+  if (isClientBound && (
+    !fixedWorkspaceId
+    || !canonicalFixedClientId
+    || researchContextQuery.error
+    || !selectedWorkspace
+    || !selectedClient
+  )) {
+    return (
+      <WorkspaceLayout platformWorkspace={platformWorkspaceConfig}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Podcast research unavailable</CardTitle>
+            <CardDescription>
+              {researchContextQuery.error instanceof Error
+                ? researchContextQuery.error.message
+                : 'This active client does not belong to the selected workspace.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent><Button asChild variant="outline"><Link to={clientsHref}>Back to clients</Link></Button></CardContent>
+        </Card>
+      </WorkspaceLayout>
+    )
+  }
+
+  const pageContent = (
+    <>
       <div className="mx-auto w-full max-w-[1560px] space-y-5 pb-24">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -753,24 +851,31 @@ export default function PodcastFinder() {
               <Badge variant="secondary" className="gap-1">
                 <ShieldCheck className="h-3.5 w-3.5" /> Client only
               </Badge>
-              {runScope && selectedWorkspace && selectedClient && (
+              {(isClientBound || runScope) && selectedWorkspace && selectedClient && (
                 <Badge variant="outline" className="gap-1">
                   <LockKeyhole className="h-3.5 w-3.5" /> {selectedWorkspace.name} · {selectedClient.name}
                 </Badge>
               )}
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Podcast Research</h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              {isClientBound && selectedClient ? `${selectedClient.name} Podcast Research` : 'Podcast Research'}
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-              Build high-volume, relevant outreach lists for approved clients in each workspace.
+              {isClientBound
+                ? 'Build a high-volume, relevant outreach list for this client.'
+                : 'Build high-volume, relevant outreach lists for approved clients in each workspace.'}
             </p>
           </div>
-          <div className="rounded-lg border bg-card px-3 py-2 text-left lg:text-right">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podscan quota</p>
-            <p className="text-sm font-semibold">
-              {rateLimit?.remaining !== undefined
-                ? `${rateLimit.remaining.toLocaleString()}${rateLimit.limit !== undefined ? ` of ${rateLimit.limit.toLocaleString()}` : ''} remaining`
-                : 'Shown after the first request'}
-            </p>
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+            {isClientBound && <Button asChild variant="outline"><Link to={clientsHref}>Back to clients</Link></Button>}
+            <div className="rounded-lg border bg-card px-3 py-2 text-left lg:text-right">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Podscan quota</p>
+              <p className="text-sm font-semibold">
+                {rateLimit?.remaining !== undefined
+                  ? `${rateLimit.remaining.toLocaleString()}${rateLimit.limit !== undefined ? ` of ${rateLimit.limit.toLocaleString()}` : ''} remaining`
+                  : 'Shown after the first request'}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -778,18 +883,24 @@ export default function PodcastFinder() {
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">1. Choose the client workspace</CardTitle>
-                <CardDescription>Workspace first, then an active client. Prospects stay in Prospect Dashboards.</CardDescription>
+                <CardTitle className="text-lg">
+                  {isClientBound ? '1. Confirm the client profile' : '1. Choose the client workspace'}
+                </CardTitle>
+                <CardDescription>
+                  {isClientBound
+                    ? 'This research is permanently bound to the workspace and client shown above.'
+                    : 'Workspace first, then an active client. Prospects stay in Prospect Dashboards.'}
+                </CardDescription>
               </div>
               {scopeLocked && (
                 <Button variant="outline" size="sm" onClick={() => setScopeResetOpen(true)}>
-                  <RefreshCw className="mr-2 h-4 w-4" /> Start another client
+                  <RefreshCw className="mr-2 h-4 w-4" /> {isClientBound ? 'Start new search' : 'Start another client'}
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
+            {!isClientBound && <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="workspace-select">Workspace</Label>
                 <Select value={workspaceId} onValueChange={handleWorkspaceChange} disabled={scopeLocked || workspacesQuery.isLoading}>
@@ -821,9 +932,9 @@ export default function PodcastFinder() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
+            </div>}
 
-            {workspacesQuery.error && (
+            {!isClientBound && workspacesQuery.error && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                 Workspaces could not be loaded. <button className="underline" onClick={() => void workspacesQuery.refetch()}>Try again</button>
               </div>
@@ -845,8 +956,10 @@ export default function PodcastFinder() {
                 </div>
                 {!selectedClient.bio && (
                   <Button asChild variant="outline" size="sm" className="shrink-0">
-                    <Link to={selectedWorkspace?.is_default ? '/admin/clients' : `/admin/workspaces/${workspaceId}/clients`}>
-                      Open clients
+                    <Link to={isClientBound
+                      ? onboardingHref
+                      : selectedWorkspace?.is_default ? '/admin/clients' : `/admin/workspaces/${workspaceId}/clients`}>
+                      {isClientBound ? 'Open onboarding' : 'Open clients'}
                     </Link>
                   </Button>
                 )}
@@ -1334,8 +1447,20 @@ export default function PodcastFinder() {
 
       <AlertDialog open={scopeResetOpen} onOpenChange={setScopeResetOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Start research for another client?</AlertDialogTitle><AlertDialogDescription>This clears the current tab’s queries, results, scores, tiers, and selection. The workspace and client will become editable again.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Keep this run</AlertDialogCancel><AlertDialogAction onClick={() => { resetResearch(); setScopeResetOpen(false) }}>Clear and switch</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{isClientBound ? 'Start a new search?' : 'Start research for another client?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {isClientBound
+                ? `This clears the current tab’s queries, results, scores, tiers, and selection for ${selectedClient?.name}. The workspace and client stay fixed.`
+                : 'This clears the current tab’s queries, results, scores, tiers, and selection. The workspace and client will become editable again.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep this run</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { resetResearch(); setScopeResetOpen(false) }}>
+              {isClientBound ? 'Clear and restart' : 'Clear and switch'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
@@ -1351,6 +1476,10 @@ export default function PodcastFinder() {
           <AlertDialogFooter><AlertDialogCancel disabled={isExporting}>Cancel</AlertDialogCancel><AlertDialogAction onClick={(event) => { event.preventDefault(); void handleExport() }} disabled={isExporting}>{isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />} Export podcasts</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </DashboardLayout>
+    </>
   )
+
+  return isClientBound
+    ? <WorkspaceLayout platformWorkspace={platformWorkspaceConfig}>{pageContent}</WorkspaceLayout>
+    : <DashboardLayout>{pageContent}</DashboardLayout>
 }

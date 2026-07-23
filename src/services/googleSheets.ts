@@ -27,7 +27,7 @@ export interface PodcastExportData {
   rss_feed?: string | null
   language?: string | null
   region?: string | null
-  podcast_categories?: any
+  podcast_categories?: PodcastCategory[] | null
   compatibility_score?: number | null
   compatibility_reasoning?: string | null
 }
@@ -116,7 +116,8 @@ export async function createClientGoogleSheet(
  */
 export async function exportPodcastsToGoogleSheets(
   clientId: string,
-  podcasts: PodcastExportData[]
+  podcasts: PodcastExportData[],
+  workspaceId?: string,
 ): Promise<ExportToSheetsResult> {
   if (!clientId) {
     throw new Error('Client ID is required')
@@ -142,6 +143,7 @@ export async function exportPodcastsToGoogleSheets(
       body: JSON.stringify({
         clientId,
         podcasts,
+        ...(workspaceId ? { workspaceId } : {}),
       }),
     })
 

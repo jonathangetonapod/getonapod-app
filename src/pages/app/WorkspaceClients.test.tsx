@@ -98,9 +98,39 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.getByRole('button', { name: /add client/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Edit Tenant Client' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Remove Tenant Client' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
+      'href',
+      `/app/clients/${client.id}/podcast-finder`,
+    )
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.queryByText('Admin preview · Read only')).not.toBeInTheDocument()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('gives a workspace member the same client-bound research entry without management controls', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'member@example.com' },
+      workspace: {
+        id: workspaceId,
+        name: 'Tenant Workspace',
+        slug: 'tenant-workspace',
+        status: 'active',
+        is_default: false,
+      },
+      membership: { role: 'member' },
+      canWriteClients: false,
+      signOut: vi.fn(),
+    } as never)
+
+    renderPage()
+
+    expect(await screen.findByRole('link', { name: 'Research podcasts for Tenant Client' })).toHaveAttribute(
+      'href',
+      `/app/clients/${client.id}/podcast-finder`,
+    )
+    expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove Tenant Client' })).not.toBeInTheDocument()
   })
 
   it('creates a client through the tenant service with the authenticated workspace ID', async () => {

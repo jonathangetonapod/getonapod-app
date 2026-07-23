@@ -54,6 +54,33 @@ export interface AuthContext {
   tokenAppMetadata: Record<string, unknown>
 }
 
+export interface WorkspaceFeatureWorkspace {
+  id: string
+  name: string
+  slug: string | null
+  status: string
+  is_default: boolean
+  logo_path: string | null
+  logo_updated_at: string | null
+  access_not_before_epoch: number | string
+}
+
+export interface WorkspaceFeatureAccess {
+  workspace: WorkspaceFeatureWorkspace
+  role: 'owner' | 'admin' | 'member' | 'platform_admin'
+}
+
+interface WorkspaceFeatureMembership {
+  id: string
+  workspace_id: string
+  email_normalized: string
+  role: 'owner' | 'admin' | 'member'
+  status: string
+  provisioning_method: string
+  password_change_required: boolean
+  workspace_access_not_before_epoch: number | string
+}
+
 export interface AuditEvent {
   workspaceId?: string | null
   actorUserId: string
@@ -174,6 +201,133 @@ export function workspaceCredentialIsFresh(context: AuthContext): boolean {
     && token.workspace_password_change_required === current.workspace_password_change_required
     && token.workspace_id === current.workspace_id
     && token.workspace_membership_id === current.workspace_membership_id
+}
+
+function validAccessEpoch(value: number | string): number | null {
+  const epoch = typeof value === 'string' ? Number(value) : value
+  return Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : null
+}
+
+function membershipCredentialMatches(
+  context: AuthContext,
+  membership: WorkspaceFeatureMembership,
+): boolean {
+  if (membership.provisioning_method !== 'admin_temporary_password') return true
+  const metadata = context.user.app_metadata ?? {}
+  return membership.password_change_required === false
+    && metadata.workspace_id === membership.workspace_id
+    && metadata.workspace_membership_id === membership.id
+    && metadata.workspace_provisioning_method === 'admin_temporary_password'
+    && metadata.workspace_password_change_required === false
+}
+
+/**
+ * Authorize a client-bound workspace feature without changing the user's role.
+ * A platform administrator can enter another active workspace, but receives no
+ * feature-level capability beyond that explicit workspace access.
+ */
+export async function requireWorkspaceFeatureAccess(
+  context: AuthContext,
+  workspaceId: string,
+): Promise<WorkspaceFeatureAccess> {
+  if (!workspaceCredentialIsFresh(context)) {
+    throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+  }
+
+  const { data: workspaceData, error: workspaceError } = await context.admin
+    .from('workspaces')
+    .select('id,name,slug,status,is_default,logo_path,logo_updated_at,access_not_before_epoch')
+    .eq('id', workspaceId)
+    .maybeSingle()
+
+  if (workspaceError) {
+    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Workspace access could not be verified')
+  }
+  if (!workspaceData || workspaceData.status !== 'active') {
+    throw new HttpError(404, 'WORKSPACE_NOT_FOUND', 'The selected workspace is unavailable')
+  }
+
+  const workspace = workspaceData as WorkspaceFeatureWorkspace
+  const workspaceEpoch = validAccessEpoch(workspace.access_not_before_epoch)
+  if (workspaceEpoch === null || context.tokenIssuedAt < workspaceEpoch) {
+    throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again to access this workspace')
+  }
+
+  const { data: targetMembershipData, error: targetMembershipError } = await context.admin
+    .from('workspace_memberships')
+    .select('id,workspace_id,email_normalized,role,status,provisioning_method,password_change_required,workspace_access_not_before_epoch')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', context.user.id)
+    .maybeSingle()
+
+  if (targetMembershipError) {
+    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Workspace access could not be verified')
+  }
+
+  const targetMembership = targetMembershipData as WorkspaceFeatureMembership | null
+  if (targetMembership) {
+    const membershipEpoch = validAccessEpoch(targetMembership.workspace_access_not_before_epoch)
+    if (
+      targetMembership.workspace_id === workspace.id
+      && targetMembership.email_normalized === context.email
+      && targetMembership.status === 'active'
+      && ['owner', 'admin', 'member'].includes(targetMembership.role)
+      && membershipEpoch !== null
+      && context.tokenIssuedAt >= membershipEpoch
+      && membershipCredentialMatches(context, targetMembership)
+    ) {
+      return { workspace, role: targetMembership.role }
+    }
+  }
+
+  if (!context.platformAdmin || workspace.is_default) {
+    throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Active workspace access is required')
+  }
+
+  // Platform access is anchored to the caller's active default-workspace
+  // membership. It grants entry to another workspace, never impersonation of
+  // that workspace's owner or additional feature controls.
+  const { data: homeMembershipData, error: homeMembershipError } = await context.admin
+    .from('workspace_memberships')
+    .select('id,workspace_id,email_normalized,role,status,provisioning_method,password_change_required,workspace_access_not_before_epoch')
+    .eq('user_id', context.user.id)
+    .eq('email_normalized', context.email)
+    .eq('status', 'active')
+    .limit(2)
+
+  if (homeMembershipError) {
+    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Workspace access could not be verified')
+  }
+  if (!homeMembershipData || homeMembershipData.length !== 1) {
+    throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Active workspace access is required')
+  }
+
+  const homeMembership = homeMembershipData[0] as WorkspaceFeatureMembership
+  const membershipEpoch = validAccessEpoch(homeMembership.workspace_access_not_before_epoch)
+  const { data: homeWorkspaceData, error: homeWorkspaceError } = await context.admin
+    .from('workspaces')
+    .select('id,status,is_default,access_not_before_epoch')
+    .eq('id', homeMembership.workspace_id)
+    .maybeSingle()
+
+  const homeWorkspaceEpoch = homeWorkspaceData
+    ? validAccessEpoch(homeWorkspaceData.access_not_before_epoch as number | string)
+    : null
+  if (
+    homeWorkspaceError
+    || !homeWorkspaceData
+    || homeWorkspaceData.status !== 'active'
+    || homeWorkspaceData.is_default !== true
+    || membershipEpoch === null
+    || homeWorkspaceEpoch === null
+    || context.tokenIssuedAt < membershipEpoch
+    || context.tokenIssuedAt < homeWorkspaceEpoch
+    || !membershipCredentialMatches(context, homeMembership)
+  ) {
+    throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Active workspace access is required')
+  }
+
+  return { workspace, role: 'platform_admin' }
 }
 
 export async function secretsMatch(left: string, right: string): Promise<boolean> {

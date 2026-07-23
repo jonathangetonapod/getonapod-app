@@ -27,7 +27,8 @@ export async function scoreCompatibilityBatch(
   podcasts: PodcastForScoring[],
   batchSize: number = 10,
   onProgress?: (completed: number, total: number) => void,
-  isProspectMode: boolean = false
+  isProspectMode: boolean = false,
+  scope?: { workspaceId: string; clientId: string },
 ): Promise<CompatibilityScore[]> {
   if (!bio || bio.trim().length === 0) {
     throw new Error(`${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring`)
@@ -57,11 +58,13 @@ export async function scoreCompatibilityBatch(
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          clientBio: isProspectMode ? undefined : bio,
-          prospectBio: isProspectMode ? bio : undefined,
-          podcasts: batch,
-        }),
+        body: JSON.stringify(scope
+          ? { workspaceId: scope.workspaceId, clientId: scope.clientId, podcasts: batch }
+          : {
+              clientBio: isProspectMode ? undefined : bio,
+              prospectBio: isProspectMode ? bio : undefined,
+              podcasts: batch,
+            }),
       })
 
       if (!response.ok) {

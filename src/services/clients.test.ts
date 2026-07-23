@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getClients } from '@/services/clients'
+import { getClients, getWorkspaceResearchContext } from '@/services/clients'
 
-const { from } = vi.hoisted(() => ({ from: vi.fn() }))
+const { from, invoke } = vi.hoisted(() => ({ from: vi.fn(), invoke: vi.fn() }))
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from,
-    functions: { invoke: vi.fn() },
+    functions: { invoke },
   },
 }))
 
@@ -56,6 +56,70 @@ describe('getClients', () => {
 
     await expect(getClients({ workspaceId, status: 'active' })).rejects.toThrow(
       'The selected workspace response did not match the client scope.',
+    )
+  })
+})
+
+describe('getWorkspaceResearchContext', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('loads one client through the workspace-bound function contract', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    const context = {
+      workspace: {
+        id: workspaceId,
+        name: 'Agency',
+        slug: 'agency',
+        status: 'active',
+        is_default: false,
+        logo_path: null,
+        logo_updated_at: null,
+      },
+      client: {
+        id: clientId,
+        workspace_id: workspaceId,
+        name: 'Client',
+        email: 'client@example.com',
+        website: null,
+        status: 'active',
+        bio: 'Approved client profile',
+        photo_url: null,
+        google_sheet_configured: true,
+        updated_at: '2026-07-23T00:00:00.000Z',
+      },
+    }
+    invoke.mockResolvedValue({ data: context, error: null })
+
+    await expect(getWorkspaceResearchContext(workspaceId.toUpperCase(), clientId.toUpperCase())).resolves.toEqual(context)
+    expect(invoke).toHaveBeenCalledWith('workspace-clients', {
+      body: {
+        action: 'research-get',
+        workspace_id: workspaceId,
+        client_id: clientId,
+      },
+    })
+  })
+
+  it('rejects a client response from another workspace', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValue({
+      data: {
+        workspace: { id: workspaceId },
+        client: {
+          id: clientId,
+          workspace_id: '33333333-3333-4333-8333-333333333333',
+          status: 'active',
+        },
+      },
+      error: null,
+    })
+
+    await expect(getWorkspaceResearchContext(workspaceId, clientId)).rejects.toThrow(
+      'The podcast research context did not match the workspace client address.',
     )
   })
 })

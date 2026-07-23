@@ -3,12 +3,14 @@ import { supabase } from '@/lib/supabase'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 
 export interface GenerateQueriesInput {
+  workspaceId?: string
+  clientId?: string
   clientName?: string
   clientBio?: string
   clientEmail?: string
   prospectName?: string
   prospectBio?: string
-  additionalContext?: Record<string, any>
+  additionalContext?: Record<string, unknown>
 }
 
 export interface GenerateQueriesResponse {
@@ -22,12 +24,13 @@ export interface GenerateQueriesResponse {
 export async function generatePodcastQueries(
   input: GenerateQueriesInput
 ): Promise<string[]> {
-  const { clientName, clientBio, clientEmail, prospectName, prospectBio } = input
+  const { workspaceId, clientId, clientName, clientBio, clientEmail, prospectName, prospectBio } = input
+  const scopedRequest = Boolean(workspaceId && clientId)
 
   // Support both client and prospect mode
   const targetBio = prospectBio || clientBio
 
-  if (!targetBio || targetBio.trim().length === 0) {
+  if (!scopedRequest && (!targetBio || targetBio.trim().length === 0)) {
     throw new Error(`${prospectBio ? 'Prospect' : 'Client'} bio is required for query generation`)
   }
 
@@ -44,13 +47,9 @@ export async function generatePodcastQueries(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({
-        clientName,
-        clientBio,
-        clientEmail,
-        prospectName,
-        prospectBio,
-      }),
+      body: JSON.stringify(scopedRequest
+        ? { workspaceId, clientId }
+        : { clientName, clientBio, clientEmail, prospectName, prospectBio }),
     })
 
     if (!response.ok) {
@@ -78,12 +77,13 @@ export async function regenerateQuery(
   input: GenerateQueriesInput,
   oldQuery: string
 ): Promise<string> {
-  const { clientName, clientBio, clientEmail, prospectName, prospectBio } = input
+  const { workspaceId, clientId, clientName, clientBio, clientEmail, prospectName, prospectBio } = input
+  const scopedRequest = Boolean(workspaceId && clientId)
 
   // Support both client and prospect mode
   const targetBio = prospectBio || clientBio
 
-  if (!targetBio || targetBio.trim().length === 0) {
+  if (!scopedRequest && (!targetBio || targetBio.trim().length === 0)) {
     throw new Error(`${prospectBio ? 'Prospect' : 'Client'} bio is required for query generation`)
   }
 
@@ -100,14 +100,9 @@ export async function regenerateQuery(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({
-        clientName,
-        clientBio,
-        clientEmail,
-        prospectName,
-        prospectBio,
-        oldQuery, // Signal that we want to regenerate
-      }),
+      body: JSON.stringify(scopedRequest
+        ? { workspaceId, clientId, oldQuery }
+        : { clientName, clientBio, clientEmail, prospectName, prospectBio, oldQuery }),
     })
 
     if (!response.ok) {

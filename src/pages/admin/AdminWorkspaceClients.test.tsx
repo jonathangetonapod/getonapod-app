@@ -108,6 +108,10 @@ describe('AdminWorkspaceClients', () => {
     expect(screen.getByRole('button', { name: /add client/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Edit Acme Client' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Remove Acme Client' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Research podcasts for Acme Client' })).toHaveAttribute(
+      'href',
+      `/admin/workspaces/${workspaceId}/clients/${workspaceView().clients[0].id}/podcast-finder`,
+    )
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: /add client/i }))

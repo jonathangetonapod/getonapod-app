@@ -18,7 +18,6 @@ const workspaceId = '11111111-1111-4111-8111-111111111111'
 const expectedNavigation = [
   'Overview',
   'Onboarding',
-  'Podcast Finder',
   'Prospect Dashboards',
   'Podcast Database',
   'Client Podcast System',
@@ -72,7 +71,7 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Guest Resources' })).toHaveAttribute('href', '/app/guest-resources')
 
     const disabledModules = within(navigation).getAllByRole('button')
-    expect(disabledModules).toHaveLength(7)
+    expect(disabledModules).toHaveLength(6)
     disabledModules.forEach((module) => expect(module).toBeDisabled())
     expect(screen.getAllByText('Acme Workspace')).toHaveLength(2)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()

@@ -1,6 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
+import {
+  HttpError,
+  requireAuthenticatedUser,
+  requirePlatformAdminOrService,
+  requireUuid,
+  requireWorkspaceFeatureAccess,
+} from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -33,10 +39,20 @@ serve(async (req) => {
   }
 
   try {
-    await requirePlatformAdminOrService(req)
-    const { clientId, podcasts } = await req.json() as {
+    const { clientId, podcasts, workspaceId: rawWorkspaceId } = await req.json() as {
       clientId: string
       podcasts: PodcastExportData[]
+      workspaceId?: string
+    }
+    const workspaceId = rawWorkspaceId === undefined
+      ? null
+      : requireUuid(rawWorkspaceId, 'workspaceId')
+
+    if (workspaceId) {
+      const context = await requireAuthenticatedUser(req)
+      await requireWorkspaceFeatureAccess(context, workspaceId)
+    } else {
+      await requirePlatformAdminOrService(req)
     }
 
     if (!clientId || !podcasts || podcasts.length === 0) {
@@ -54,8 +70,9 @@ serve(async (req) => {
     // Get client's Google Sheet URL
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('google_sheet_url, name')
+      .select('workspace_id, google_sheet_url, name')
       .eq('id', clientId)
+      .match(workspaceId ? { workspace_id: workspaceId } : {})
       .single()
 
     if (clientError || !client) {
@@ -336,8 +353,11 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+        ...(error instanceof HttpError ? { code: error.code } : {}),
+      }),
+      { status: error instanceof HttpError ? error.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

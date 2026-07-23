@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Loader2, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
@@ -111,6 +112,9 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
   const activeQueryKey = isPlatformWorkspace ? platformQueryKey : tenantQueryKey
   const managementEnabled = isPlatformWorkspace || canWriteClients
   const showManagementControls = managementEnabled
+  const clientBaseHref = isPlatformWorkspace
+    ? `/admin/workspaces/${selectedWorkspaceId}`
+    : '/app'
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -247,8 +251,16 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
                         <TableCell><p>{client.contact_person || '—'}</p><p className="text-xs text-muted-foreground">{client.email || 'No email'}</p></TableCell>
                         <TableCell><Badge variant={client.status === 'active' ? 'default' : 'secondary'} className="capitalize">{client.status}</Badge></TableCell>
                         <TableCell className="text-right">
-                          {showManagementControls && (
-                            <div className="inline-flex gap-1">
+                          <div className="inline-flex items-center gap-1">
+                            {client.status === 'active' && (
+                              <Button asChild size="sm" variant="outline">
+                                <Link to={`${clientBaseHref}/clients/${client.id}/podcast-finder`} aria-label={`Research podcasts for ${client.name}`}>
+                                  <Search className="mr-2 h-4 w-4" />Research
+                                </Link>
+                              </Button>
+                            )}
+                            {showManagementControls && (
+                              <>
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -268,8 +280,9 @@ const WorkspaceClients = ({ platformWorkspaceId }: WorkspaceClientsProps) => {
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
-                            </div>
-                          )}
+                              </>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

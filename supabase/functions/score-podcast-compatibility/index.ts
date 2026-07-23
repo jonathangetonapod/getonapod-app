@@ -1,6 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
-import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
+import {
+  HttpError,
+  requireAuthenticatedUser,
+  requirePlatformAdminOrService,
+  requireUuid,
+  requireWorkspaceFeatureAccess,
+} from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -23,11 +29,40 @@ serve(async (req) => {
   }
 
   try {
-    await requirePlatformAdminOrService(req)
-    const { clientBio, prospectBio, podcasts } = await req.json() as {
+    const body = await req.json() as {
       clientBio?: string
       prospectBio?: string
       podcasts: PodcastForScoring[]
+      workspaceId?: string
+      clientId?: string
+    }
+    let { clientBio, prospectBio } = body
+    const { podcasts } = body
+    const scopedRequest = body.workspaceId !== undefined || body.clientId !== undefined
+
+    if (scopedRequest) {
+      const workspaceId = requireUuid(body.workspaceId, 'workspaceId')
+      const clientId = requireUuid(body.clientId, 'clientId')
+      const context = await requireAuthenticatedUser(req)
+      await requireWorkspaceFeatureAccess(context, workspaceId)
+      const { data: scopedClient, error: scopedClientError } = await context.admin
+        .from('clients')
+        .select('id,workspace_id,bio,status')
+        .eq('id', clientId)
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (scopedClientError) {
+        throw new HttpError(500, 'CLIENT_CONTEXT_UNAVAILABLE', 'The client profile could not be loaded')
+      }
+      if (!scopedClient || scopedClient.workspace_id !== workspaceId) {
+        throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Active workspace client not found')
+      }
+      clientBio = scopedClient.bio
+      prospectBio = undefined
+    } else {
+      await requirePlatformAdminOrService(req)
     }
 
     // Type validation
@@ -205,8 +240,11 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
   } catch (error) {
     console.error('Error:', error)
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+        ...(error instanceof HttpError ? { code: error.code } : {}),
+      }),
+      { status: error instanceof HttpError ? error.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
