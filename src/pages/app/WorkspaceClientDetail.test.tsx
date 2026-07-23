@@ -67,6 +67,14 @@ const detail: WorkspaceClientDetailData = {
     last_synced_at: '2026-07-23T08:00:00.000Z',
     last_feedback_at: '2026-07-22T12:00:00.000Z',
   },
+  outreach: {
+    initial_emails_sent: 43,
+    podcasts_contacted: 31,
+    pending_review_count: 7,
+    approved_count: 4,
+    failed_count: 1,
+    last_sent_at: '2026-07-23T09:00:00.000Z',
+  },
   bookings: [
     {
       id: 'booking-one',
@@ -94,7 +102,7 @@ const detail: WorkspaceClientDetailData = {
       host_name: null,
       scheduled_date: '2026-06-01',
       recording_date: '2026-06-01',
-      publish_date: null,
+      publish_date: '2099-10-01',
       status: 'recorded',
       episode_url: null,
       prep_sent: true,
@@ -159,11 +167,19 @@ describe('WorkspaceClientDetail', () => {
     expect(progress).not.toBeNull()
     expect(within(progress as HTMLElement).getByText('Booked').nextElementSibling).toHaveTextContent('1')
     expect(within(progress as HTMLElement).getByText('Recorded').nextElementSibling).toHaveTextContent('1')
+    const outreach = screen.getByRole('heading', { name: 'Outreach activity' }).closest('section')
+    expect(outreach).not.toBeNull()
+    expect(within(outreach as HTMLElement).getByText('Initial emails sent').nextElementSibling).toHaveTextContent('43')
+    expect(within(outreach as HTMLElement).getByText('Podcasts contacted').nextElementSibling).toHaveTextContent('31')
+    expect(within(outreach as HTMLElement).getByText('Awaiting review').nextElementSibling).toHaveTextContent('7')
+    expect(screen.getByRole('heading', { name: 'Upcoming recordings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Upcoming episode releases' })).toBeInTheDocument()
+    expect(screen.getByText('Goes live Oct 1, 2099')).toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
     expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(2)
-    expect(screen.getByRole('link', { name: /open as client/i })).toHaveAttribute('href', '/client/taylor-client-123')
+    expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.getByText('Approved').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')
     expect(screen.getByText('8/12 · 67%')).toBeInTheDocument()
@@ -173,6 +189,8 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('heading', { name: 'Client portal' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /open portal login/i })).toHaveAttribute('href', '/portal/login')
     expect(screen.getAllByText('taylor@example.com').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('heading', { name: 'Upcoming recordings' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('heading', { name: 'Upcoming episode releases' }).length).toBeGreaterThan(0)
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Podcast activity' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast activity' })).toBeInTheDocument()
@@ -210,7 +228,7 @@ describe('WorkspaceClientDetail', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
 
     expect(screen.getAllByText('Hidden').length).toBeGreaterThan(0)
-    expect(screen.queryByRole('link', { name: /open as client/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /preview as client/i })).not.toBeInTheDocument()
     expect(screen.getByText(/No podcasts are on this client’s approval shortlist yet/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /find podcasts/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
   })

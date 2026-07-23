@@ -83,6 +83,15 @@ export interface WorkspaceClientDashboardSummary {
   last_feedback_at: string | null
 }
 
+export interface WorkspaceClientOutreachSummary {
+  initial_emails_sent: number
+  podcasts_contacted: number
+  pending_review_count: number
+  approved_count: number
+  failed_count: number
+  last_sent_at: string | null
+}
+
 export interface WorkspaceClientBooking {
   id: string
   client_id: string
@@ -122,6 +131,7 @@ export interface WorkspaceClientDetail {
   can_manage: boolean
   client: WorkspaceClientProfile
   dashboard: WorkspaceClientDashboardSummary
+  outreach: WorkspaceClientOutreachSummary
   bookings: WorkspaceClientBooking[]
   onboarding: WorkspaceClientOnboardingSummary | null
 }
@@ -170,6 +180,30 @@ const cleanWorkspaceClientInput = (input: WorkspaceClientInput) => ({
   status: input.status,
   notes: input.notes?.trim() || null,
 })
+
+const EMPTY_WORKSPACE_CLIENT_OUTREACH: WorkspaceClientOutreachSummary = {
+  initial_emails_sent: 0,
+  podcasts_contacted: 0,
+  pending_review_count: 0,
+  approved_count: 0,
+  failed_count: 0,
+  last_sent_at: null,
+}
+
+function isWorkspaceClientOutreachSummary(value: unknown): value is WorkspaceClientOutreachSummary {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const summary = value as Record<string, unknown>
+  const counts = [
+    summary.initial_emails_sent,
+    summary.podcasts_contacted,
+    summary.pending_review_count,
+    summary.approved_count,
+    summary.failed_count,
+  ]
+  return counts.every((count) => Number.isInteger(count) && Number(count) >= 0)
+    && Number(summary.podcasts_contacted) <= Number(summary.initial_emails_sent)
+    && (summary.last_sent_at === null || typeof summary.last_sent_at === 'string')
+}
 
 export async function getWorkspaceClients(workspaceId: string): Promise<WorkspaceClient[]> {
   const { data, error } = await supabase.functions.invoke('workspace-clients', {
@@ -249,7 +283,13 @@ export async function getWorkspaceClientDetail(
   })
 
   if (error) throw await toFunctionError(error, 'Failed to load client details.')
-  const detail = data as WorkspaceClientDetail | null
+  const detail = data as (
+    Omit<WorkspaceClientDetail, 'outreach'>
+    & { outreach?: unknown }
+  ) | null
+  const outreach = detail?.outreach === undefined
+    ? EMPTY_WORKSPACE_CLIENT_OUTREACH
+    : detail.outreach
   if (
     !detail?.workspace
     || !detail.client
@@ -280,6 +320,7 @@ export async function getWorkspaceClientDetail(
     || detail.dashboard.reviewed_count !== detail.dashboard.approved_count + detail.dashboard.rejected_count
     || detail.dashboard.reviewed_count + detail.dashboard.to_review_count !== detail.dashboard.podcast_count
     || detail.dashboard.analyzed_count > detail.dashboard.podcast_count
+    || !isWorkspaceClientOutreachSummary(outreach)
     || (detail.onboarding !== null && (
       detail.onboarding.workspace_id !== canonicalWorkspaceId
       || detail.onboarding.client_id !== canonicalClientId
@@ -288,7 +329,7 @@ export async function getWorkspaceClientDetail(
     throw new Error('The client detail response did not match the workspace client address.')
   }
 
-  return detail
+  return { ...detail, outreach }
 }
 
 export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {

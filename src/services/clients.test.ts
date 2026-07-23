@@ -201,6 +201,14 @@ describe('getWorkspaceClientDetail', () => {
         last_synced_at: null,
         last_feedback_at: null,
       },
+      outreach: {
+        initial_emails_sent: 24,
+        podcasts_contacted: 20,
+        pending_review_count: 3,
+        approved_count: 2,
+        failed_count: 1,
+        last_sent_at: '2026-07-23T09:00:00.000Z',
+      },
       bookings: [{ id: 'booking-1', client_id: clientId }],
       onboarding: { id: 'onboarding-1', workspace_id: workspaceId, client_id: clientId },
     }

@@ -158,6 +158,7 @@ function ClientApprovalViewContent() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams] = useSearchParams()
   const forceTour = searchParams.get('tour') === '1'
+  const isAdminPreview = searchParams.get('preview') === '1'
   const queryClient = useQueryClient()
 
   // UI state
@@ -308,6 +309,13 @@ function ClientApprovalViewContent() {
   useEffect(() => {
     if (!dashboard || loading) return
 
+    // Workspace previews should open directly to the approval experience.
+    // Genuine first-time client visits still receive the guided tutorial.
+    if (isAdminPreview) {
+      setShowTutorial(false)
+      return
+    }
+
     // If ?tour=1 is in URL, always show the tutorial
     if (forceTour) {
       const timer = setTimeout(() => {
@@ -329,7 +337,7 @@ function ClientApprovalViewContent() {
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [dashboard, loading, forceTour])
+  }, [dashboard, loading, forceTour, isAdminPreview])
 
   // Mark tutorial as seen when closed
   const closeTutorial = () => {

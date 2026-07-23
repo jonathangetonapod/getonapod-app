@@ -139,7 +139,7 @@ serve(async (req) => {
         throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Workspace client not found')
       }
 
-      const [bookingsResult, onboardingResult, dashboardPodcastsResult, dashboardFeedbackResult] = await Promise.all([
+      const [bookingsResult, onboardingResult, dashboardPodcastsResult, dashboardFeedbackResult, outreachResult] = await Promise.all([
         admin
           .from('bookings')
           .select('id,client_id,podcast_id,podcast_name,podcast_url,host_name,scheduled_date,recording_date,publish_date,status,episode_url,prep_sent,notes,created_at,updated_at')
@@ -167,6 +167,12 @@ serve(async (req) => {
           .eq('client_id', clientId!)
           .order('updated_at', { ascending: false })
           .limit(500),
+        admin
+          .from('outreach_messages')
+          .select('client_id,podcast_id,podcast_name,status,sent_at,created_at')
+          .eq('client_id', clientId!)
+          .order('created_at', { ascending: false })
+          .limit(5_000),
       ])
 
       if (bookingsResult.error) {
@@ -177,6 +183,9 @@ serve(async (req) => {
       }
       if (dashboardPodcastsResult.error || dashboardFeedbackResult.error) {
         throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client dashboard summary could not be loaded')
+      }
+      if (outreachResult.error) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The client outreach activity could not be loaded')
       }
       if ((bookingsResult.data || []).some((booking) => booking.client_id !== clientId)) {
         throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client podcast activity could not be loaded')
@@ -192,6 +201,9 @@ serve(async (req) => {
         || (dashboardFeedbackResult.data || []).some((feedback) => feedback.client_id !== clientId)
       ) {
         throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client dashboard summary could not be loaded')
+      }
+      if ((outreachResult.data || []).some((message) => message.client_id !== clientId)) {
+        throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The client outreach activity could not be loaded')
       }
 
       const dashboardPodcasts = dashboardPodcastsResult.data || []
@@ -212,6 +224,15 @@ serve(async (req) => {
       const latestTimestamp = (values: Array<string | null | undefined>): string | null => (
         values.filter((value): value is string => Boolean(value)).sort().at(-1) || null
       )
+      const outreachMessages = outreachResult.data || []
+      const sentOutreach = outreachMessages.filter((message) => message.status === 'sent')
+      const contactedPodcastKeys = new Set(sentOutreach.map((message) => {
+        const podcastId = typeof message.podcast_id === 'string' ? message.podcast_id.trim() : ''
+        const podcastName = typeof message.podcast_name === 'string'
+          ? message.podcast_name.trim().toLowerCase()
+          : ''
+        return podcastId ? `id:${podcastId}` : podcastName ? `name:${podcastName}` : ''
+      }).filter(Boolean))
 
       return jsonResponse(req, METHODS, 200, {
         workspace: {
@@ -240,6 +261,14 @@ serve(async (req) => {
           analyzed_count: dashboardPodcasts.filter((podcast) => Boolean(podcast.ai_analyzed_at)).length,
           last_synced_at: latestTimestamp(dashboardPodcasts.map((podcast) => podcast.updated_at)),
           last_feedback_at: latestTimestamp(dashboardFeedback.map((feedback) => feedback.updated_at)),
+        },
+        outreach: {
+          initial_emails_sent: sentOutreach.length,
+          podcasts_contacted: contactedPodcastKeys.size,
+          pending_review_count: outreachMessages.filter((message) => message.status === 'pending_review').length,
+          approved_count: outreachMessages.filter((message) => message.status === 'approved').length,
+          failed_count: outreachMessages.filter((message) => message.status === 'failed').length,
+          last_sent_at: latestTimestamp(sentOutreach.map((message) => message.sent_at || message.created_at)),
         },
         bookings: bookingsResult.data || [],
         onboarding: access.role === 'member' ? null : onboardingResult.data || null,

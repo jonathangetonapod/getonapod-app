@@ -100,11 +100,19 @@ function scheduledDate(booking: WorkspaceClientBooking): string | null {
   return booking.recording_date || booking.scheduled_date
 }
 
-function isUpcoming(booking: WorkspaceClientBooking): boolean {
-  const value = scheduledDate(booking)
-  if (!value || ['cancelled', 'published'].includes(booking.status)) return false
+function isFutureDate(value: string | null | undefined): boolean {
+  if (!value) return false
   const date = new Date(`${value.slice(0, 10)}T23:59:59`)
   return !Number.isNaN(date.getTime()) && date.getTime() >= Date.now()
+}
+
+function isUpcomingRecording(booking: WorkspaceClientBooking): boolean {
+  if (!['conversation_started', 'in_progress', 'booked'].includes(booking.status)) return false
+  return isFutureDate(scheduledDate(booking))
+}
+
+function isUpcomingRelease(booking: WorkspaceClientBooking): boolean {
+  return !['cancelled', 'published'].includes(booking.status) && isFutureDate(booking.publish_date)
 }
 
 function ResourceCard({
@@ -179,6 +187,44 @@ function DetailRow({
   )
 }
 
+function MilestoneList({
+  bookings,
+  icon: Icon,
+  emptyTitle,
+  emptyDescription,
+  detail,
+}: {
+  bookings: WorkspaceClientBooking[]
+  icon: typeof CalendarDays
+  emptyTitle: string
+  emptyDescription: string
+  detail: (booking: WorkspaceClientBooking) => string
+}) {
+  if (bookings.length === 0) {
+    return (
+      <div className="flex min-h-40 flex-col items-center justify-center text-center">
+        <Icon className="mb-3 h-9 w-9 text-muted-foreground/50" />
+        <p className="font-medium">{emptyTitle}</p>
+        <p className="text-sm text-muted-foreground">{emptyDescription}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {bookings.map((booking) => (
+        <div key={booking.id} className="flex items-center justify-between gap-4 rounded-xl border bg-muted/20 p-4">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{booking.podcast_name}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{detail(booking)}</p>
+          </div>
+          <Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailProps) => {
   const { clientId = '' } = useParams<{ clientId: string }>()
   const { user, workspace } = useAuth()
@@ -202,9 +248,15 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const client = detail?.client
   const bookings = useMemo(() => detail?.bookings || [], [detail?.bookings])
   const onboarding = detail?.onboarding || null
-  const upcomingBookings = useMemo(
-    () => bookings.filter(isUpcoming).sort((left, right) => (
+  const upcomingRecordings = useMemo(
+    () => bookings.filter(isUpcomingRecording).sort((left, right) => (
       new Date(scheduledDate(left) || '').getTime() - new Date(scheduledDate(right) || '').getTime()
+    )).slice(0, 4),
+    [bookings],
+  )
+  const upcomingReleases = useMemo(
+    () => bookings.filter(isUpcomingRelease).sort((left, right) => (
+      new Date(left.publish_date || '').getTime() - new Date(right.publish_date || '').getTime()
     )).slice(0, 4),
     [bookings],
   )
@@ -264,6 +316,9 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     : null
   const dashboardHref = client.dashboard_enabled && client.dashboard_slug
     ? dashboardPreviewHref
+    : null
+  const dashboardAdminPreviewHref = dashboardHref
+    ? `${dashboardHref}?preview=1`
     : null
   const prospectDashboardHref = client.prospect_dashboard_slug
     ? `/prospect/${encodeURIComponent(client.prospect_dashboard_slug)}`
@@ -363,17 +418,70 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               </div>
             </section>
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,.65fr)]">
+            <section aria-labelledby="outreach-activity-heading">
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <h2 id="outreach-activity-heading" className="text-xl font-semibold">Outreach activity</h2>
+                  <p className="text-sm text-muted-foreground">Verified campaign work completed for this client.</p>
+                </div>
+                <Badge variant="outline">{detail.outreach.initial_emails_sent} sent</Badge>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  icon={Mail}
+                  label="Initial emails sent"
+                  value={detail.outreach.initial_emails_sent}
+                  detail="Does not include automated follow-ups yet"
+                  iconClassName="bg-sky-50 text-sky-600"
+                />
+                <MetricCard
+                  icon={Mic2}
+                  label="Podcasts contacted"
+                  value={detail.outreach.podcasts_contacted}
+                  detail="Unique shows with sent outreach"
+                  iconClassName="bg-indigo-50 text-indigo-600"
+                />
+                <MetricCard
+                  icon={Clock3}
+                  label="Awaiting review"
+                  value={detail.outreach.pending_review_count}
+                  detail={`${detail.outreach.approved_count} approved and ready`}
+                  iconClassName="bg-amber-50 text-amber-600"
+                />
+                <MetricCard
+                  icon={Activity}
+                  label="Last outreach"
+                  value={detail.outreach.last_sent_at ? formatDate(detail.outreach.last_sent_at) : 'Not yet'}
+                  detail={detail.outreach.failed_count > 0 ? `${detail.outreach.failed_count} delivery issue${detail.outreach.failed_count === 1 ? '' : 's'}` : 'No delivery issues'}
+                  iconClassName="bg-emerald-50 text-emerald-600"
+                />
+              </div>
+            </section>
+
+            <div className="grid gap-6 xl:grid-cols-3">
               <Card>
-                <CardHeader><CardTitle>Upcoming recordings</CardTitle><CardDescription>Next scheduled appearances for this client.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Upcoming recordings</CardTitle><CardDescription>Podcast conversations scheduled to be recorded next.</CardDescription></CardHeader>
                 <CardContent>
-                  {upcomingBookings.length === 0 ? (
-                    <div className="flex min-h-40 flex-col items-center justify-center text-center"><Mic2 className="mb-3 h-9 w-9 text-muted-foreground/50" /><p className="font-medium">No upcoming recordings</p><p className="text-sm text-muted-foreground">Scheduled bookings will appear here automatically.</p></div>
-                  ) : (
-                    <div className="space-y-3">{upcomingBookings.map((booking) => (
-                      <div key={booking.id} className="flex items-center justify-between gap-4 rounded-xl border bg-muted/20 p-4"><div className="min-w-0"><p className="truncate font-medium">{booking.podcast_name}</p><p className="mt-1 text-sm text-muted-foreground">{booking.host_name ? `Hosted by ${booking.host_name} · ` : ''}{formatDate(scheduledDate(booking))}</p></div><Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge></div>
-                    ))}</div>
-                  )}
+                  <MilestoneList
+                    bookings={upcomingRecordings}
+                    icon={Mic2}
+                    emptyTitle="No upcoming recordings"
+                    emptyDescription="Scheduled recording dates will appear here automatically."
+                    detail={(booking) => `${booking.host_name ? `Hosted by ${booking.host_name} · ` : ''}${formatDate(scheduledDate(booking))}`}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Upcoming episode releases</CardTitle><CardDescription>Recorded episodes scheduled to go live next.</CardDescription></CardHeader>
+                <CardContent>
+                  <MilestoneList
+                    bookings={upcomingReleases}
+                    icon={Radio}
+                    emptyTitle="No upcoming releases"
+                    emptyDescription="Episodes with a scheduled publish date will appear here."
+                    detail={(booking) => `Goes live ${formatDate(booking.publish_date)}`}
+                  />
                 </CardContent>
               </Card>
 
@@ -408,7 +516,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   <div className="flex flex-wrap gap-2">
                     <Button asChild variant="outline"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Manage shortlist</Link></Button>
                     {dashboardHref && <Button variant="outline" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
-                    {dashboardHref && <Button asChild><a href={dashboardHref} target="_blank" rel="noreferrer"><Eye className="mr-2 h-4 w-4" />Open as client</a></Button>}
+                    {dashboardAdminPreviewHref && <Button asChild><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
                   </div>
                 </div>
               </div>
@@ -494,7 +602,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               <MetricCard icon={Radio} label="Published" value={progress.published} iconClassName="bg-violet-50 text-violet-600" />
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-2">
+            <div className="grid gap-6 xl:grid-cols-3">
               <Card>
                 <CardHeader><CardTitle>Portal access</CardTitle><CardDescription>Login readiness and recent client activity.</CardDescription></CardHeader>
                 <CardContent>
@@ -509,15 +617,28 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               </Card>
 
               <Card>
-                <CardHeader><CardTitle>What the client sees next</CardTitle><CardDescription>The nearest scheduled placement activity.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Upcoming recordings</CardTitle><CardDescription>Podcast conversations the client will record next.</CardDescription></CardHeader>
                 <CardContent>
-                  {upcomingBookings.length === 0 ? (
-                    <div className="flex min-h-44 flex-col items-center justify-center text-center"><CalendarDays className="mb-3 h-9 w-9 text-muted-foreground/50" /><p className="font-medium">No upcoming placement</p><p className="text-sm text-muted-foreground">Newly scheduled bookings will appear in the client portal.</p></div>
-                  ) : (
-                    <div className="space-y-3">{upcomingBookings.map((booking) => (
-                      <div key={booking.id} className="flex items-center justify-between gap-4 rounded-xl border p-4"><div className="min-w-0"><p className="truncate font-medium">{booking.podcast_name}</p><p className="mt-1 text-sm text-muted-foreground">{formatDate(scheduledDate(booking))}</p></div><Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge></div>
-                    ))}</div>
-                  )}
+                  <MilestoneList
+                    bookings={upcomingRecordings}
+                    icon={Mic2}
+                    emptyTitle="No upcoming recordings"
+                    emptyDescription="New recording dates will appear in the client portal."
+                    detail={(booking) => formatDate(scheduledDate(booking))}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Upcoming episode releases</CardTitle><CardDescription>Recorded episodes the client can promote next.</CardDescription></CardHeader>
+                <CardContent>
+                  <MilestoneList
+                    bookings={upcomingReleases}
+                    icon={Radio}
+                    emptyTitle="No upcoming releases"
+                    emptyDescription="Scheduled publish dates will appear in the client portal."
+                    detail={(booking) => `Goes live ${formatDate(booking.publish_date)}`}
+                  />
                 </CardContent>
               </Card>
             </div>
