@@ -179,6 +179,7 @@ describe('WorkspaceClientDetail', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
     expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: /edit google sheet/i })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/example')
     expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.getByText('Approved').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')

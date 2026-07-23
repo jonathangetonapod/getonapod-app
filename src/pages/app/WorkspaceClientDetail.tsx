@@ -515,6 +515,15 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button asChild variant="outline"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Manage shortlist</Link></Button>
+                    {googleSheetUrl ? (
+                      <Button asChild variant="outline">
+                        <a href={googleSheetUrl} target="_blank" rel="noreferrer">
+                          <FileSpreadsheet className="mr-2 h-4 w-4" />Edit Google Sheet<ExternalLink className="ml-2 h-3.5 w-3.5" />
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button variant="outline" disabled><FileSpreadsheet className="mr-2 h-4 w-4" />No Google Sheet connected</Button>
+                    )}
                     {dashboardHref && <Button variant="outline" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
                     {dashboardAdminPreviewHref && <Button asChild><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
                   </div>
@@ -552,7 +561,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   )}
                   <div className="flex flex-wrap gap-2 border-t pt-5">
                     <Button asChild><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button>
-                    {googleSheetUrl && <Button asChild variant="outline"><a href={googleSheetUrl} target="_blank" rel="noreferrer"><FileSpreadsheet className="mr-2 h-4 w-4" />Open working sheet</a></Button>}
                   </div>
                 </CardContent>
               </Card>
