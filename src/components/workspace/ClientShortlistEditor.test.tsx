@@ -288,7 +288,7 @@ describe('ClientShortlistEditor', () => {
     expect(sequencePreview.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Guest idea for Founder Stories: Taylor Client')
     expect(sequencePreview.getByRole('article', { name: 'First follow-up preview' })).toHaveTextContent('Just following up')
     expect(sequencePreview.getByRole('article', { name: 'Second follow-up preview' })).toHaveTextContent('One last note')
-    expect(sequencePreview.getByRole('button', { name: 'Edit sequence' })).toBeInTheDocument()
+    expect(sequencePreview.getByRole('button', { name: 'Edit outputs' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
@@ -325,6 +325,36 @@ describe('ClientShortlistEditor', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Write a pitch for Founder Stories' })).not.toBeInTheDocument())
 
     expect(screen.queryByRole('button', { name: 'Write Pitch for Operator Weekly' })).not.toBeInTheDocument()
+  })
+
+  it('lets a workspace manager edit and save all three outputs from the research result', async () => {
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit outputs' }))
+
+    expect(screen.getByLabelText('Opening pitch subject')).toBeInTheDocument()
+    expect(screen.getByLabelText('Opening pitch email')).toBeInTheDocument()
+    expect(screen.getByLabelText('First follow-up subject')).toBeInTheDocument()
+    expect(screen.getByLabelText('First follow-up email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Final follow-up subject')).toBeInTheDocument()
+    expect(screen.getByLabelText('Final follow-up email')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Opening pitch subject'), { target: { value: 'A tailored Founder Stories idea' } })
+    fireEvent.change(screen.getByLabelText('Opening pitch email'), { target: { value: 'Hey Example,\n\nHere is the revised opening pitch.' } })
+    const saveChanges = screen.getByRole('button', { name: 'Save changes' })
+    await waitFor(() => expect(saveChanges).toBeEnabled())
+    fireEvent.click(saveChanges)
+
+    await waitFor(() => expect(prepareWorkspaceCampaignPodcast).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId,
+      clientId,
+      shortlistPodcastId: '33333333-3333-4333-8333-333333333333',
+      contactEmail: 'hello@founderstories.fm',
+      subject: 'A tailored Founder Stories idea',
+      pitchBody: 'Hey Example,\n\nHere is the revised opening pitch.',
+    })))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Write a pitch for Founder Stories' })).not.toBeInTheDocument())
   })
 
   it('shows live backend research progress and holds the pitch until every stage finishes', async () => {

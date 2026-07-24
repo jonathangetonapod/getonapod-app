@@ -135,6 +135,8 @@ export function ClientCampaignPrepDialog({
   const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
   const [showPodcastStats, setShowPodcastStats] = useState(false)
   const [showResearchSteps, setShowResearchSteps] = useState(false)
+  const [editingSequencePreview, setEditingSequencePreview] = useState(false)
+  const [sequenceEditSnapshot, setSequenceEditSnapshot] = useState<PodcastCampaignSequenceDraft | null>(null)
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -148,6 +150,7 @@ export function ClientCampaignPrepDialog({
     retry: false,
   })
   const campaign = campaignQuery.data?.campaign || null
+  const canManageCampaigns = Boolean(campaignQuery.data?.can_manage_campaigns)
   const target = campaignQuery.data?.targets.find((item) => item.shortlist_podcast_id === podcast?.id) || null
   const locked = Boolean(target && (
     target.instantly_lead_id
@@ -203,6 +206,8 @@ export function ClientCampaignPrepDialog({
       setEmailRoute('podcast')
       setShowPodcastStats(false)
       setShowResearchSteps(false)
+      setEditingSequencePreview(false)
+      setSequenceEditSnapshot(null)
       setSelectedAngleIndex(0)
       setHostName('')
       setContactEmail('')
@@ -244,6 +249,15 @@ export function ClientCampaignPrepDialog({
       ...nextDraft,
       researchNotes: current.researchNotes || nextDraft.researchNotes,
     }))
+  }
+  const beginSequencePreviewEdit = () => {
+    setSequenceEditSnapshot(draft)
+    setEditingSequencePreview(true)
+  }
+  const cancelSequencePreviewEdit = () => {
+    if (sequenceEditSnapshot) setDraft(sequenceEditSnapshot)
+    setSequenceEditSnapshot(null)
+    setEditingSequencePreview(false)
   }
   const applyResearchDraft = () => {
     setDraft((current) => ({ ...starterDraft, researchNotes: current.researchNotes || starterDraft.researchNotes }))
@@ -287,6 +301,8 @@ export function ClientCampaignPrepDialog({
       toast.success(result.added
         ? `${podcast?.podcast_name || 'Podcast'} pitch draft is ready for outreach review.`
         : `${podcast?.podcast_name || 'Podcast'} pitch draft was updated.`)
+      setEditingSequencePreview(false)
+      setSequenceEditSnapshot(null)
       onPrepared?.()
       onOpenChange(false)
     },
@@ -673,31 +689,42 @@ export function ClientCampaignPrepDialog({
                             <div className="flex gap-3">
                               <div className="h-fit rounded-xl bg-violet-100 p-2.5 text-violet-700"><Send className="h-5 w-5" /></div>
                               <div>
-                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">Ready to review</Badge></div>
-                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Built from the selected research angle. Review the complete sequence here, then edit it in the next step.</p>
+                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">{editingSequencePreview ? 'Editing' : 'Ready to review'}</Badge></div>
+                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{editingSequencePreview ? 'Make changes to any subject or email below, then save the sequence.' : 'Built from the selected research angle. Workspace owners can edit and save the complete sequence here.'}</p>
                               </div>
                             </div>
-                            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setActiveStep('pitch')}><PenLine className="mr-2 h-3.5 w-3.5" />Edit sequence</Button>
+                            {canManageCampaigns ? editingSequencePreview ? (
+                              <div className="flex shrink-0 flex-wrap gap-2">
+                                <Button type="button" variant="outline" size="sm" onClick={cancelSequencePreviewEdit}>Cancel edits</Button>
+                                <Button type="button" size="sm" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-2 h-3.5 w-3.5" />}Save changes</Button>
+                              </div>
+                            ) : (
+                              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={beginSequencePreviewEdit}><PenLine className="mr-2 h-3.5 w-3.5" />Edit outputs</Button>
+                            ) : <Badge variant="secondary">Read only</Badge>}
                           </div>
+
+                          {editingSequencePreview && !mappedCampaign && (
+                            <div className="flex flex-col gap-3 border-b border-amber-200 bg-amber-50/70 px-5 py-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="text-xs leading-5">You can edit the sequence now. Assign the client campaign before saving it for outreach.</p>
+                              <Button asChild variant="outline" size="sm" className="shrink-0 bg-background"><Link to={campaignHref}>Campaign setup</Link></Button>
+                            </div>
+                          )}
 
                           <div className="space-y-4 p-5">
                             <article aria-label="Opening pitch preview" className="rounded-xl border bg-muted/10 p-4">
                               <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 1 · Opening pitch</Badge><span className="text-[11px] font-medium text-muted-foreground">Sends first</span></div>
-                              <p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p>
-                              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p>
+                              {editingSequencePreview ? <div className="mt-4 space-y-3"><div className="space-y-2"><Label htmlFor="campaign-preview-pitch-subject">Subject</Label><Input id="campaign-preview-pitch-subject" aria-label="Opening pitch subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-preview-pitch-body">Email</Label><Textarea id="campaign-preview-pitch-body" aria-label="Opening pitch email" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y bg-background" maxLength={20_000} /></div></div> : <><p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p></>}
                             </article>
 
                             <div className="grid gap-4 lg:grid-cols-2">
                               <article aria-label="First follow-up preview" className="rounded-xl border p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">3 days later</span></div>
-                                <p className="mt-3 text-sm font-semibold">{draft.followUpOneSubject || 'First follow-up subject'}</p>
-                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>
+                                {editingSequencePreview ? <div className="mt-4 space-y-3"><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-one-subject">Subject</Label><Input id="campaign-preview-follow-up-one-subject" aria-label="First follow-up subject" value={draft.followUpOneSubject} onChange={(event) => updateDraft('followUpOneSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-one-body">Email</Label><Textarea id="campaign-preview-follow-up-one-body" aria-label="First follow-up email" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div></div> : <><p className="mt-3 text-sm font-semibold">{draft.followUpOneSubject || 'First follow-up subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p></>}
                               </article>
 
                               <article aria-label="Second follow-up preview" className="rounded-xl border p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">5 days later</span></div>
-                                <p className="mt-3 text-sm font-semibold">{draft.followUpTwoSubject || 'Final follow-up subject'}</p>
-                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>
+                                {editingSequencePreview ? <div className="mt-4 space-y-3"><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-two-subject">Subject</Label><Input id="campaign-preview-follow-up-two-subject" aria-label="Final follow-up subject" value={draft.followUpTwoSubject} onChange={(event) => updateDraft('followUpTwoSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-two-body">Email</Label><Textarea id="campaign-preview-follow-up-two-body" aria-label="Final follow-up email" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div></div> : <><p className="mt-3 text-sm font-semibold">{draft.followUpTwoSubject || 'Final follow-up subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p></>}
                               </article>
                             </div>
                           </div>
