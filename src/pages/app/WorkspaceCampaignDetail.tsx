@@ -63,8 +63,8 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-type PitchFilter = 'all' | 'needs-contact' | 'needs-pitch' | 'needs-review' | 'in-outreach' | 'replied'
-type PitchStage = 'needs-contact' | 'needs-pitch' | 'ready' | 'launching' | 'in-outreach' | 'replied' | 'failed' | 'completed'
+type PitchFilter = 'all' | 'ready' | 'in-outreach' | 'replied' | 'completed' | 'attention'
+type PitchStage = 'ready' | 'launching' | 'in-outreach' | 'replied' | 'failed' | 'completed'
 
 interface WorkspaceCampaignDetailProps {
   platformWorkspaceId?: string
@@ -72,11 +72,11 @@ interface WorkspaceCampaignDetailProps {
 
 const pitchFilters: Array<{ value: PitchFilter; label: string }> = [
   { value: 'all', label: 'All podcasts' },
-  { value: 'needs-contact', label: 'Needs contact' },
-  { value: 'needs-pitch', label: 'Needs pitch' },
-  { value: 'needs-review', label: 'Needs review' },
+  { value: 'ready', label: 'Ready to launch' },
   { value: 'in-outreach', label: 'In outreach' },
   { value: 'replied', label: 'Replied' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'attention', label: 'Needs attention' },
 ]
 
 function formatDate(value: string | null | undefined): string {
@@ -86,18 +86,23 @@ function formatDate(value: string | null | undefined): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function pitchStage(podcast: ClientShortlistPodcast, target?: WorkspaceCampaignTarget): PitchStage {
-  if (!target) return podcast.podcast_email ? 'needs-pitch' : 'needs-contact'
-  if (!target.contact_email) return 'needs-contact'
-  if (target.status === 'draft') return 'needs-pitch'
+function pitchStage(target?: WorkspaceCampaignTarget): PitchStage {
+  if (!target || target.status === 'draft') return 'ready'
   if (target.status === 'in_outreach') return 'in-outreach'
   return target.status
 }
 
+function targetWasSentToCampaign(target: WorkspaceCampaignTarget): boolean {
+  return target.status !== 'draft'
+    && Boolean(target.contact_email?.trim())
+    && Boolean(target.pitch_subject?.trim())
+    && Boolean(target.pitch_body?.trim())
+    && Boolean(target.follow_up_1_body?.trim())
+    && Boolean(target.follow_up_2_body?.trim())
+}
+
 function stageLabel(stage: PitchStage): string {
   const labels: Record<PitchStage, string> = {
-    'needs-contact': 'Needs contact',
-    'needs-pitch': 'Needs pitch',
     ready: 'Ready to launch',
     launching: 'Launching',
     'in-outreach': 'In outreach',
@@ -109,7 +114,7 @@ function stageLabel(stage: PitchStage): string {
 }
 
 function stageClass(stage: PitchStage): string {
-  if (stage === 'needs-contact' || stage === 'failed') return 'border-amber-200 bg-amber-50 text-amber-800'
+  if (stage === 'failed') return 'border-amber-200 bg-amber-50 text-amber-800'
   if (stage === 'ready') return 'border-violet-200 bg-violet-50 text-violet-800'
   if (stage === 'in-outreach' || stage === 'launching') return 'border-sky-200 bg-sky-50 text-sky-800'
   if (stage === 'replied' || stage === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
@@ -166,7 +171,11 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const campaignState = data?.campaignState
   const campaign = campaignState?.campaign || null
   const integration = campaignState?.integration || null
-  const campaignTargets = useMemo(() => campaignState?.targets || [], [campaignState?.targets])
+  const storedCampaignTargets = useMemo(() => campaignState?.targets || [], [campaignState?.targets])
+  const campaignTargets = useMemo(
+    () => storedCampaignTargets.filter(targetWasSentToCampaign),
+    [storedCampaignTargets],
+  )
   const targetByShortlistId = useMemo(() => new Map(
     campaignTargets.map((target) => [target.shortlist_podcast_id, target]),
   ), [campaignTargets])
@@ -314,12 +323,11 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
   const matchesPitchFilter = (podcast: ClientShortlistPodcast, filter: PitchFilter): boolean => {
     const target = targetByShortlistId.get(podcast.id)
-    const stage = pitchStage(podcast, target)
+    const stage = pitchStage(target)
     if (filter === 'all') return true
-    if (filter === 'needs-contact' || filter === 'needs-pitch') return stage === filter
-    if (filter === 'needs-review') return stage === 'ready'
     if (filter === 'in-outreach') return stage === 'in-outreach' || stage === 'launching'
-    return stage === 'replied'
+    if (filter === 'attention') return stage === 'failed'
+    return stage === filter
   }
   const filteredPodcasts = campaignPodcasts.filter((podcast) => {
     return matchesPitchFilter(podcast, pitchFilter)
@@ -472,7 +480,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           <TabsContent value="leads" className="mt-0 space-y-4">
             <Card className="overflow-hidden">
               <div className="border-b border-border bg-muted/15 p-4">
-                <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Pitch queue filters">
+                <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Campaign podcast filters">
                     {pitchFilters.map((filter) => (
                       <Button
                         key={filter.value}
@@ -506,35 +514,34 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <div className="space-y-2 p-3 md:hidden">
                     {filteredPodcasts.map((podcast) => {
                       const target = targetByShortlistId.get(podcast.id)
-                      const stage = pitchStage(podcast, target)
+                      const stage = pitchStage(target)
                       const contactEmail = target?.contact_email || podcast.podcast_email
                       return (
                         <button key={podcast.id} type="button" onClick={() => setSelectedPodcastId(podcast.id)} className="w-full rounded-xl border p-4 text-left hover:bg-muted/30">
                           <div className="flex items-start justify-between gap-3"><p className="font-semibold">{podcast.podcast_name}</p><Badge variant="outline" className={stageClass(stage)}>{stageLabel(stage)}</Badge></div>
                           <p className="mt-2 text-xs text-muted-foreground">{target?.host_name || podcast.publisher_name || 'Host not identified'} · {contactEmail || 'Contact needed'}</p>
-                          <p className="mt-3 text-sm font-medium text-primary">Open pitch workspace<ArrowRight className="ml-1 inline h-3.5 w-3.5" /></p>
+                          <p className="mt-3 text-sm font-medium text-primary">{stage === 'ready' ? 'Review & launch' : stage === 'failed' ? 'Review issue' : 'View outreach'}<ArrowRight className="ml-1 inline h-3.5 w-3.5" /></p>
                         </button>
                       )
                     })}
                   </div>
                   <div className="hidden overflow-x-auto md:block">
                     <Table>
-                      <TableHeader><TableRow><TableHead className="min-w-64">Podcast</TableHead><TableHead className="min-w-48">Host / contact</TableHead><TableHead>Client decision</TableHead><TableHead>Pitch status</TableHead><TableHead>Outreach</TableHead><TableHead>Last activity</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+                      <TableHeader><TableRow><TableHead className="min-w-64">Podcast</TableHead><TableHead className="min-w-48">Host / contact</TableHead><TableHead>Sequence</TableHead><TableHead>Outreach status</TableHead><TableHead>Last activity</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                       <TableBody>
                         {filteredPodcasts.map((podcast) => {
                           const target = targetByShortlistId.get(podcast.id)
-                          const stage = pitchStage(podcast, target)
+                          const stage = pitchStage(target)
                           const contactEmail = target?.contact_email || podcast.podcast_email
                           const podcastUrl = podcast.podcast_url ? safeExternalUrl(podcast.podcast_url) : null
                           return (
                             <TableRow key={podcast.id}>
                               <TableCell><div className="flex items-center gap-3">{podcast.podcast_image_url ? <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 rounded-lg border object-cover" /> : <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted"><Mic2 className="h-4 w-4" /></div>}<div className="min-w-0"><p className="font-semibold">{podcast.podcast_name}</p>{podcastUrl && <a href={podcastUrl} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-primary">Open podcast<ExternalLink className="ml-1 inline h-3 w-3" /></a>}</div></div></TableCell>
                               <TableCell><p className="font-medium">{target?.host_name || podcast.publisher_name || 'Host needed'}</p><p className="text-xs text-muted-foreground">{contactEmail || 'Email not found'}</p></TableCell>
-                              <TableCell><Badge variant="outline" className={podcast.feedback_status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{podcast.feedback_status === 'approved' ? 'Positive' : 'Owner selected'}</Badge></TableCell>
+                              <TableCell><Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">3 emails ready</Badge></TableCell>
                               <TableCell><Badge variant="outline" className={stageClass(stage)}>{stageLabel(stage)}</Badge></TableCell>
-                              <TableCell><span className="text-sm text-muted-foreground">{target ? stageLabel(stage) : 'Not started'}</span></TableCell>
                               <TableCell><span className="text-sm text-muted-foreground">{formatDate(target?.last_activity_at || target?.updated_at || podcast.feedback_updated_at || podcast.updated_at)}</span></TableCell>
-                              <TableCell className="text-right"><Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => setSelectedPodcastId(podcast.id)}>{target && ['in_outreach', 'replied', 'completed'].includes(target.status) ? 'View pitch' : 'Review pitch'}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></TableCell>
+                              <TableCell className="text-right"><Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => setSelectedPodcastId(podcast.id)}>{stage === 'ready' ? 'Review & launch' : stage === 'failed' ? 'Review issue' : 'View outreach'}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></TableCell>
                             </TableRow>
                           )
                         })}
@@ -578,7 +585,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">{target.podcast_name}</p><span className="text-xs text-muted-foreground">{formatDate(target.last_activity_at || target.updated_at)}</span></div>
-                            <p className="mt-1 text-sm text-muted-foreground">{stageLabel(target.status === 'draft' ? 'needs-pitch' : target.status === 'in_outreach' ? 'in-outreach' : target.status)} · {target.email_reply_count} repl{target.email_reply_count === 1 ? 'y' : 'ies'}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">{stageLabel(pitchStage(target))} · {target.email_reply_count} repl{target.email_reply_count === 1 ? 'y' : 'ies'}</p>
                           </div>
                         </div>
                       ))}
@@ -687,7 +694,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           {selectedPodcast && (
             <>
               <SheetHeader className="border-b p-5 pr-12 sm:p-6 sm:pr-12">
-                <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={stageClass(pitchStage(selectedPodcast, selectedTarget || undefined))}>{stageLabel(pitchStage(selectedPodcast, selectedTarget || undefined))}</Badge><Badge variant="outline">{selectedPodcast.feedback_status === 'approved' ? 'Client positive' : 'Owner selected'}</Badge></div>
+                <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={stageClass(pitchStage(selectedTarget || undefined))}>{stageLabel(pitchStage(selectedTarget || undefined))}</Badge><Badge variant="outline">{selectedPodcast.feedback_status === 'approved' ? 'Client positive' : 'Owner selected'}</Badge></div>
                 <SheetTitle className="text-2xl">{selectedPodcast.podcast_name}</SheetTitle>
                 <SheetDescription>Review the podcast context, confirm the contact, and prepare its custom pitch.</SheetDescription>
               </SheetHeader>
