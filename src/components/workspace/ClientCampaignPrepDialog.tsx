@@ -78,6 +78,11 @@ interface EmailUnlockStep {
   title: string
 }
 
+interface ResearchRegenerationPreview {
+  podcastId: string
+  stageIndex: number
+}
+
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
   { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
   { id: 'research', step: '2', title: 'Research', detail: 'Understand the show and audience' },
@@ -162,6 +167,7 @@ export function ClientCampaignPrepDialog({
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
   const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
   const [previewEmailSearchPodcastId, setPreviewEmailSearchPodcastId] = useState<string | null>(null)
+  const [researchRegenerationPreview, setResearchRegenerationPreview] = useState<ResearchRegenerationPreview | null>(null)
   const [showPodcastDetails, setShowPodcastDetails] = useState(false)
   const [showResearchSteps, setShowResearchSteps] = useState(false)
   const [showPromptSettings, setShowPromptSettings] = useState(false)
@@ -223,7 +229,22 @@ export function ClientCampaignPrepDialog({
   const selectedPitchAngle = pitchAngles[selectedAngleIndex] || null
   const sequenceOptionCount = Math.max(Math.min(pitchAngles.length, 3), 1)
   const researchProgress = podcast?.research_progress || null
+  const researchRegenerationStageIndex = researchRegenerationPreview
+    && researchRegenerationPreview.podcastId === podcast?.podcast_id
+    ? researchRegenerationPreview.stageIndex
+    : null
+  const researchRegenerating = researchRegenerationStageIndex !== null
   const visibleResearchSteps = useMemo(() => {
+    if (researchRegenerationStageIndex !== null) {
+      return researchProgressSteps.map((step, index): ResearchProgressStep & { status: ResearchProgressStatus } => ({
+        ...step,
+        status: index < researchRegenerationStageIndex
+          ? 'complete'
+          : index === researchRegenerationStageIndex
+            ? 'active'
+            : 'queued',
+      }))
+    }
     const completedStages = new Set(researchProgress?.completed_stages || [])
     return researchProgressSteps.map((step): ResearchProgressStep & { status: ResearchProgressStatus } => {
       if (!researchProgress || researchProgress.status === 'completed') return { ...step, status: 'complete' }
@@ -233,22 +254,26 @@ export function ClientCampaignPrepDialog({
       }
       return { ...step, status: 'queued' }
     })
-  }, [researchProgress])
+  }, [researchProgress, researchRegenerationStageIndex])
   const completedResearchStepCount = visibleResearchSteps.filter((step) => step.status === 'complete').length
   const activeResearchStep = visibleResearchSteps.find((step) => step.status === 'active') || null
   const failedResearchStep = visibleResearchSteps.find((step) => step.status === 'failed') || null
-  const researchComplete = !researchProgress || researchProgress.status === 'completed'
-  const researchFailed = researchProgress?.status === 'failed'
-  const researchWorking = researchProgress?.status === 'queued' || researchProgress?.status === 'running'
+  const researchComplete = !researchRegenerating && (!researchProgress || researchProgress.status === 'completed')
+  const researchFailed = !researchRegenerating && researchProgress?.status === 'failed'
+  const researchWorking = researchRegenerating || researchProgress?.status === 'queued' || researchProgress?.status === 'running'
   const researchStepsExpanded = !researchComplete || showResearchSteps
-  const researchStatusTitle = researchComplete
+  const researchStatusTitle = researchRegenerating && activeResearchStep
+    ? `${activeResearchStep.title} · ${completedResearchStepCount} of ${researchProgressSteps.length} prompts complete`
+    : researchComplete
     ? `Research ready · ${researchProgressSteps.length} of ${researchProgressSteps.length} steps complete`
     : researchFailed
       ? `Research paused · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
       : activeResearchStep
         ? `${activeResearchStep.title} · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
         : `Research queued · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
-  const researchStatusDetail = researchComplete
+  const researchStatusDetail = researchRegenerating && activeResearchStep
+    ? `Running the saved workspace prompt for stage ${(researchRegenerationStageIndex || 0) + 1}. ${activeResearchStep.detail}.`
+    : researchComplete
     ? 'The research is saved to this podcast and will still be here when you return.'
     : researchFailed
       ? researchProgress?.message || `We could not finish ${failedResearchStep?.title.toLowerCase() || 'this research stage'}. Your completed work is saved.`
@@ -258,10 +283,6 @@ export function ClientCampaignPrepDialog({
   const selectedPromptStage = researchProgressSteps.find((step) => step.id === selectedPromptStageId) || researchProgressSteps[0]
   const promptDirty = promptDraft !== researchPrompts[selectedPromptStageId]
   const customPromptCount = researchProgressSteps.filter((step) => researchPrompts[step.id] !== defaultResearchPrompts[step.id]).length
-
-  const starterDraft = useMemo(() => podcast
-    ? buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio, angleIndex: selectedAngleIndex })
-    : emptyDraft(), [clientBio, clientName, podcast, selectedAngleIndex])
 
   useEffect(() => {
     if (!open) {
@@ -310,6 +331,22 @@ export function ClientCampaignPrepDialog({
     })
   }, [campaignQuery.isLoading, clientBio, clientName, emailAlreadyUnlocked, emailSearchRunning, open, podcast, publicPodcastEmail, storedEmailUnlock?.host_name, target, unlockedEmail])
 
+  useEffect(() => {
+    if (!researchRegenerationPreview) return
+    const timeoutId = window.setTimeout(() => {
+      if (researchRegenerationPreview.stageIndex >= researchProgressSteps.length - 1) {
+        setResearchRegenerationPreview(null)
+        toast.success('Research regenerated through all 6 saved workspace prompts.')
+        return
+      }
+      setResearchRegenerationPreview({
+        ...researchRegenerationPreview,
+        stageIndex: researchRegenerationPreview.stageIndex + 1,
+      })
+    }, 900)
+    return () => window.clearTimeout(timeoutId)
+  }, [researchRegenerationPreview])
+
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
   }
@@ -341,6 +378,22 @@ export function ClientCampaignPrepDialog({
     setPromptDraft(prompt)
     toast.success(`${selectedPromptStage.title} prompt saved for this workspace.`)
   }
+  const beginResearchRegeneration = () => {
+    if (!podcast) return
+    if (promptDirty) {
+      toast.info('Save or discard the current prompt changes before regenerating research.')
+      setActiveStep('research')
+      setShowPromptSettings(true)
+      return
+    }
+    setEditingSequencePreview(false)
+    setSequenceEditSnapshot(null)
+    setShowPromptSettings(false)
+    setShowResearchSteps(true)
+    setActiveStep('research')
+    setResearchRegenerationPreview({ podcastId: podcast.podcast_id, stageIndex: 0 })
+    toast.info('Regenerating all 6 stages with their saved workspace prompts.')
+  }
   const choosePitchAngle = (angleIndex: number) => {
     setSelectedAngleIndex(angleIndex)
     if (!podcast) return
@@ -358,10 +411,6 @@ export function ClientCampaignPrepDialog({
     if (sequenceEditSnapshot) setDraft(sequenceEditSnapshot)
     setSequenceEditSnapshot(null)
     setEditingSequencePreview(false)
-  }
-  const applyResearchDraft = () => {
-    setDraft((current) => ({ ...starterDraft, researchNotes: current.researchNotes || starterDraft.researchNotes }))
-    toast.success('A fresh three-email draft was built from the selected research angle.')
   }
 
   const normalizedEmail = contactEmail.trim().toLowerCase()
@@ -741,18 +790,33 @@ export function ClientCampaignPrepDialog({
                               <p className={`mt-1 text-xs leading-5 ${researchComplete ? 'text-emerald-900/75' : researchFailed ? 'text-destructive/80' : 'text-sky-900/75'}`}>{researchStatusDetail}</p>
                             </div>
                           </div>
-                          <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
                             <p className={`hidden text-xs font-medium lg:block ${researchComplete ? 'text-emerald-800' : researchFailed ? 'text-destructive' : 'text-sky-800'}`}>
                               {researchComplete
                                 ? podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'
-                                : researchFailed ? 'Completed work saved' : 'Working in the background'}
+                                : researchFailed ? 'Completed work saved' : researchRegenerating ? 'Running prompts in order' : 'Working in the background'}
                             </p>
+                            {canManageCampaigns && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="bg-background"
+                                disabled={researchWorking}
+                                title="Reruns all six research stages using the saved prompt for each stage"
+                                onClick={beginResearchRegeneration}
+                              >
+                                {researchRegenerating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-2 h-3.5 w-3.5" />}
+                                {researchRegenerating ? 'Regenerating' : researchWorking ? 'Research running' : 'Regenerate'}
+                              </Button>
+                            )}
                             {canCustomizePrompts && (
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 className="bg-background"
+                                disabled={researchRegenerating}
                                 aria-expanded={showPromptSettings}
                                 aria-controls="campaign-research-prompt-settings"
                                 onClick={togglePromptSettings}
@@ -797,7 +861,9 @@ export function ClientCampaignPrepDialog({
                             <div className="flex gap-2 border-t px-4 py-3 text-[11px] leading-4 text-muted-foreground">
                               {researchWorking ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" /> : researchFailed ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
                               <p>{researchWorking
-                                ? 'Research continues in the background. You can safely close this window and return without losing progress.'
+                                ? researchRegenerating
+                                  ? 'All six saved workspace prompts run in order. You can safely close this window and return without losing progress.'
+                                  : 'Research continues in the background. You can safely close this window and return without losing progress.'
                                 : researchFailed
                                   ? 'Completed stages are saved. Retrying can continue from the stage that needs attention.'
                                   : 'Every stage is saved with this podcast, so the research does not need to run again when you return.'}</p>
@@ -866,8 +932,14 @@ export function ClientCampaignPrepDialog({
                       <section className="rounded-2xl border p-5">
                         <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">Each direction creates its own opening pitch and two follow-ups. Select an option to compare the complete sequence below.</p>
+                        {researchRegenerating && (
+                          <div className="mt-4 flex gap-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-xs leading-5 text-sky-950">
+                            <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-700" />
+                            <p>Previous options remain visible for reference. Three refreshed sequences will replace them after every saved stage prompt has finished.</p>
+                          </div>
+                        )}
                         {pitchAngles.length > 0
-                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={editingSequencePreview} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
+                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={editingSequencePreview || researchWorking} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{researchWorking ? 'Refreshing this sequence' : selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
                           : <p className="mt-3 text-sm leading-6 text-muted-foreground">Three complete sequence options will appear here once the podcast research is ready.</p>}
                       </section>
 
@@ -933,7 +1005,7 @@ export function ClientCampaignPrepDialog({
                       <div className="flex shrink-0 gap-2">{campaignQuery.error && <Button type="button" variant="outline" size="sm" onClick={() => void campaignQuery.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>}<Button asChild variant="outline" size="sm"><Link to={campaignHref}>Campaign setup</Link></Button></div>
                     </div>
                   )}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Review the pitch and follow-ups</h3><p className="mt-1 text-sm text-muted-foreground">Edit the opening pitch and two follow-ups before saving the sequence for outreach.</p></div><Button type="button" variant="outline" onClick={applyResearchDraft}><Sparkles className="mr-2 h-4 w-4" />Rebuild from selected angle</Button></div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Review the pitch and follow-ups</h3><p className="mt-1 text-sm text-muted-foreground">Edit the opening pitch and two follow-ups before saving the sequence for outreach.</p></div><Button type="button" variant="outline" disabled={researchWorking} title="Returns to Research and reruns all six saved stage prompts" onClick={beginResearchRegeneration}>{researchWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{researchWorking ? 'Research running' : 'Regenerate with prompts'}</Button></div>
                   <div className="grid gap-4 lg:grid-cols-2">
                     <section className="space-y-3 rounded-2xl border p-5 lg:col-span-2"><div><Badge variant="secondary">Email 1 · Opening pitch</Badge><p className="mt-2 text-xs text-muted-foreground">Your personalized first note to the host or producer.</p></div><div className="space-y-2"><Label htmlFor="campaign-pitch-subject">Subject</Label><Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-pitch-body">Opening email</Label><Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y" maxLength={20_000} /></div></section>
                     <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days and reply in the original thread. Stop when the host replies.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 reply</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
@@ -957,7 +1029,9 @@ export function ClientCampaignPrepDialog({
                       : 'The direct email search is still running. You can safely close this window and return later.'
                     : 'A valid email is required before you can continue to Research.')}
                 {activeStep === 'research' && (researchWorking
-                  ? 'Research is running in the background. You can close this window and return without losing progress.'
+                  ? researchRegenerating
+                    ? 'Regeneration is running all six saved workspace prompts in order. You can close this window and return without losing progress.'
+                    : 'Research is running in the background. You can close this window and return without losing progress.'
                   : researchFailed
                     ? 'Research paused before the pitch could be prepared. Completed stages are saved.'
                     : 'Research is included with your plan, saved to this podcast, and used to shape the pitch.')}

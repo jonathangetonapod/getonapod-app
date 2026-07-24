@@ -402,6 +402,32 @@ describe('ClientShortlistEditor', () => {
     expect((promptSettings.getByLabelText('Prompt for Confirming the host') as HTMLTextAreaElement).value).toContain('Identify every host')
   })
 
+  it('routes regeneration through every saved research prompt before replacing the sequence', async () => {
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+
+    expect(screen.getByRole('button', { name: 'Regenerate' })).toHaveAttribute(
+      'title',
+      'Reruns all six research stages using the saved prompt for each stage',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Review and edit emails' }))
+    expect(screen.getByRole('heading', { name: 'Review the pitch and follow-ups' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate with prompts' }))
+
+    expect(screen.getByRole('heading', { name: 'Research this podcast' })).toBeInTheDocument()
+    expect(screen.getByText('Reading the podcast profile · 0 of 6 prompts complete')).toBeInTheDocument()
+    expect(screen.getByText(/Running the saved workspace prompt for stage 1/i)).toBeInTheDocument()
+    const researchProgress = within(screen.getByRole('list', { name: 'Podcast research progress' }))
+    expect(researchProgress.getByText('In progress')).toBeInTheDocument()
+    expect(researchProgress.getAllByText('Waiting')).toHaveLength(5)
+    expect(screen.getByRole('button', { name: 'Regenerating' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Edit stage prompts' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Review and edit emails' })).toBeDisabled()
+    expect(screen.getAllByText(/all six saved workspace prompts run in order/i).length).toBeGreaterThan(0)
+  })
+
   it('keeps workspace research prompt controls owner-only', async () => {
     renderEditor('admin')
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
