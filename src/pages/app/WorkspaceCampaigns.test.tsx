@@ -5,12 +5,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceCampaigns from '@/pages/app/WorkspaceCampaigns'
 import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clientShortlist'
 import { getWorkspaceClientDetail, type WorkspaceClient, type WorkspaceClientDetail } from '@/services/clients'
+import {
+  connectWorkspaceInstantly,
+  getWorkspaceCampaignOverview,
+  saveWorkspaceCampaign,
+  type WorkspaceCampaignOverview,
+} from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
+vi.mock('@/services/workspaceCampaigns', () => ({
+  connectWorkspaceInstantly: vi.fn(),
+  disconnectWorkspaceInstantly: vi.fn(),
+  getWorkspaceCampaignOverview: vi.fn(),
+  refreshWorkspaceInstantly: vi.fn(),
+  saveWorkspaceCampaign: vi.fn(),
+}))
 
 const mockedShortlist = vi.mocked(getClientShortlist)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
+const mockedOverview = vi.mocked(getWorkspaceCampaignOverview)
+const mockedSaveCampaign = vi.mocked(saveWorkspaceCampaign)
+const mockedConnectInstantly = vi.mocked(connectWorkspaceInstantly)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 
@@ -66,6 +82,25 @@ const podcasts = [
   },
 ] as ClientShortlistPodcast[]
 
+const campaignOverview = {
+  integration: {
+    connected: false,
+    status: 'disconnected',
+    provider_workspace_id: null,
+    provider_workspace_name: null,
+    api_key_last_four: null,
+    accounts: [],
+    active_account_count: 0,
+    connected_at: null,
+    last_verified_at: null,
+    last_error: null,
+    can_manage: true,
+    required_scopes: [],
+  },
+  can_manage_campaigns: true,
+  campaigns: [],
+} as WorkspaceCampaignOverview
+
 const Location = () => {
   const location = useLocation()
   return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
@@ -95,13 +130,23 @@ describe('WorkspaceCampaigns', () => {
     vi.clearAllMocks()
     mockedDetail.mockResolvedValue(detail)
     mockedShortlist.mockResolvedValue({ client: { id: clientId, name: client.name }, podcasts })
+    mockedOverview.mockResolvedValue(campaignOverview)
+    mockedSaveCampaign.mockResolvedValue({ campaign: null, targets: [] })
+    mockedConnectInstantly.mockResolvedValue({
+      ...campaignOverview.integration,
+      connected: true,
+      status: 'connected',
+      provider_workspace_id: '44444444-4444-4444-8444-444444444444',
+      provider_workspace_name: 'Acme Instantly',
+      api_key_last_four: 'test',
+    })
   })
 
   it('organizes real client outreach into an operational campaign table', async () => {
     renderCampaigns()
 
     expect(await screen.findByRole('link', { name: client.name })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
-    expect(screen.getByText('Needs attention')).toBeInTheDocument()
+    expect(screen.getAllByText('Needs attention').length).toBeGreaterThan(0)
     expect((await screen.findAllByText('Review 2 pitches')).length).toBeGreaterThan(0)
     const table = screen.getByRole('table')
     expect(within(table).getByText('9')).toBeInTheDocument()
@@ -124,9 +169,43 @@ describe('WorkspaceCampaigns', () => {
     expect(screen.getByText('Client positive')).toBeInTheDocument()
     expect(screen.getByText('Owner override')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /open draft workspace/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save & open campaign/i }))
+    await waitFor(() => expect(mockedSaveCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId,
+      clientId,
+      shortlistPodcastIds: ['shortlist-one'],
+    })))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
-      `/app/client-campaigns/${clientId}?podcasts=shortlist-one`,
+      `/app/client-campaigns/${clientId}`,
     ))
+  })
+
+  it('clears the owner API key immediately after connection submission', async () => {
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Instantly' }))
+    const input = screen.getByLabelText('Instantly V2 API key')
+    fireEvent.change(input, { target: { value: 'instantly-owner-key-longer-than-20' } })
+    fireEvent.click(screen.getByRole('button', { name: /verify & save key/i }))
+
+    expect(input).toHaveValue('')
+    await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalledWith(
+      workspaceId,
+      'instantly-owner-key-longer-than-20',
+    ))
+  })
+
+  it('keeps campaign creation and credential controls owner-manager only', async () => {
+    mockedOverview.mockResolvedValueOnce({
+      ...campaignOverview,
+      can_manage_campaigns: false,
+      integration: { ...campaignOverview.integration, can_manage: false },
+    })
+
+    renderCampaigns()
+
+    expect(await screen.findByRole('link', { name: client.name })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New campaign' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Connect Instantly' })).not.toBeInTheDocument()
   })
 })

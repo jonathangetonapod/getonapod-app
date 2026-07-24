@@ -180,6 +180,7 @@ const RELEASE_INPUT_PATHS = [
   'supabase/migrations/20260723000700_workspace_client_branding.sql',
   'supabase/migrations/20260723000800_workspace_name_management.sql',
   'supabase/migrations/20260723000900_client_dashboard_visibility.sql',
+  'supabase/migrations/20260724000100_workspace_client_campaigns.sql',
   'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
   'supabase/functions/account-context/index.ts',
@@ -189,9 +190,11 @@ const RELEASE_INPUT_PATHS = [
   'supabase/functions/provision-workspace-account/index.ts',
   'supabase/functions/public-client-dashboard/index.ts',
   'supabase/functions/get-client-podcasts/index.ts',
+  'supabase/functions/workspace-client-campaigns/index.ts',
   'supabase/functions/workspace-client-shortlist/index.ts',
   'supabase/functions/workspace-clients/index.ts',
   'supabase/functions/_shared/workspaceCredentials.ts',
+  'supabase/functions/_shared/instantly.ts',
 ] as const
 const ACCEPTANCE_ENV_ALLOWLIST = new Set([
   'ACCEPTANCE_ADMIN_EMAIL',

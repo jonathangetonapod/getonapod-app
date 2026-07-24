@@ -83,6 +83,32 @@ interface ShortlistPodcastInput {
   rss_feed: string | null
 }
 
+interface ShortlistPodcastRow extends Record<string, unknown> {
+  id: string
+  podcast_id: string
+  podcast_url: string | null
+  publisher_name: string | null
+}
+
+interface CatalogPodcastRow extends Record<string, unknown> {
+  podscan_id: string
+  podcast_name: string | null
+  podcast_description: string | null
+  podcast_image_url: string | null
+  podcast_url: string | null
+  publisher_name: string | null
+  itunes_rating: number | null
+  episode_count: number | null
+  audience_size: number | null
+  last_posted_at: string | null
+  podcast_categories: unknown
+  language: string | null
+  region: string | null
+  podscan_email: string | null
+  rss_url: string | null
+  demographics?: unknown
+}
+
 function requireManager(access: WorkspaceFeatureAccess): void {
   if (!MANAGER_ROLES.has(access.role)) {
     throw new HttpError(403, 'WORKSPACE_MANAGER_REQUIRED', 'Workspace manager access is required')
@@ -284,13 +310,35 @@ serve(async (req) => {
       if (shortlistResult.error || feedbackResult.error) {
         throw new HttpError(500, 'SHORTLIST_LOOKUP_FAILED', 'The client podcast list could not be loaded')
       }
+      const shortlistRows = (shortlistResult.data || []) as unknown as ShortlistPodcastRow[]
+      const shortlistPodcastIds = shortlistRows.map((podcast) => podcast.podcast_id)
+      const catalogResult = shortlistPodcastIds.length > 0
+        ? await authContext.admin
+          .from('podcasts')
+          .select('podscan_id,podscan_email,rss_url,language,region,podcast_url,publisher_name')
+          .in('podscan_id', shortlistPodcastIds)
+        : { data: [], error: null }
+      if (catalogResult.error) {
+        throw new HttpError(500, 'SHORTLIST_LOOKUP_FAILED', 'Podcast contact details could not be loaded')
+      }
       const feedbackByPodcast = new Map(
         (feedbackResult.data || []).map((feedback) => [feedback.podcast_id, feedback]),
       )
-      const podcasts = (shortlistResult.data || []).map((podcast) => {
+      const catalogByPodcast = new Map(
+        ((catalogResult.data || []) as unknown as CatalogPodcastRow[])
+          .map((podcast) => [podcast.podscan_id, podcast]),
+      )
+      const podcasts = shortlistRows.map((podcast) => {
         const feedback = feedbackByPodcast.get(podcast.podcast_id)
+        const catalog = catalogByPodcast.get(podcast.podcast_id)
         return {
           ...podcast,
+          podcast_url: podcast.podcast_url || catalog?.podcast_url || null,
+          publisher_name: podcast.publisher_name || catalog?.publisher_name || null,
+          podcast_email: catalog?.podscan_email || null,
+          rss_feed: catalog?.rss_url || null,
+          language: catalog?.language || null,
+          region: catalog?.region || null,
           feedback_status: feedback?.status || null,
           feedback_notes: feedback?.notes || null,
           feedback_updated_at: feedback?.updated_at || null,
@@ -317,7 +365,11 @@ serve(async (req) => {
         throw new HttpError(500, 'CATALOG_SEARCH_FAILED', 'The podcast catalog could not be searched')
       }
       const merged = new Map<string, Record<string, unknown>>()
-      for (const podcast of [...(nameResult.data || []), ...(publisherResult.data || [])]) {
+      const catalogRows = [
+        ...((nameResult.data || []) as unknown as CatalogPodcastRow[]),
+        ...((publisherResult.data || []) as unknown as CatalogPodcastRow[]),
+      ]
+      for (const podcast of catalogRows) {
         if (!merged.has(podcast.podscan_id)) merged.set(podcast.podscan_id, podcast)
       }
       const results = Array.from(merged.values())
@@ -408,7 +460,8 @@ serve(async (req) => {
           throw new HttpError(500, 'SHORTLIST_ADD_FAILED', 'Podcast details could not be loaded')
         }
         const centralById = new Map(
-          (centralDetailsResult.data || []).map((podcast) => [podcast.podscan_id, podcast]),
+          ((centralDetailsResult.data || []) as unknown as CatalogPodcastRow[])
+            .map((podcast) => [podcast.podscan_id, podcast]),
         )
 
         const { data: lastPosition, error: positionError } = await authContext.admin
@@ -543,6 +596,7 @@ serve(async (req) => {
       if (error || !data) {
         throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The client podcast list could not be updated')
       }
+      const updatedPodcast = data as unknown as ShortlistPodcastRow
       const { data: feedback, error: feedbackError } = await authContext.admin
         .from('client_podcast_feedback')
         .select('status,notes,updated_at')
@@ -557,12 +611,12 @@ serve(async (req) => {
         actorUserId: authContext.user.id,
         action: 'workspace.client.shortlist.updated',
         entityType: 'client_dashboard_podcast',
-        entityId: data.id,
+        entityId: updatedPodcast.id,
         metadata: { podcast_id: podcastId, changes: update },
       })
       return jsonResponse(req, METHODS, 200, {
         podcast: {
-          ...data,
+          ...updatedPodcast,
           feedback_status: feedback?.status || null,
           feedback_notes: feedback?.notes || null,
           feedback_updated_at: feedback?.updated_at || null,

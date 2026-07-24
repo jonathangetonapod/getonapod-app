@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
   AlertCircle,
@@ -14,6 +14,9 @@ import {
   MessageSquare,
   Mic2,
   Plus,
+  Pause,
+  Play,
+  RefreshCw,
   Search,
   Send,
   Settings2,
@@ -21,10 +24,12 @@ import {
   UserRound,
 } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -44,11 +49,22 @@ import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clientShortlist'
 import { getWorkspaceClientDetail } from '@/services/clients'
+import {
+  getWorkspaceCampaign,
+  launchWorkspaceCampaignPitch,
+  saveWorkspaceCampaign,
+  saveWorkspaceCampaignPitch,
+  setWorkspaceCampaignRunning,
+  syncWorkspaceCampaign,
+  updateWorkspaceCampaignContact,
+  updateWorkspaceCampaignSettings,
+  type WorkspaceCampaignTarget,
+} from '@/services/workspaceCampaigns'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 type PitchFilter = 'all' | 'needs-contact' | 'needs-pitch' | 'needs-review' | 'in-outreach' | 'replied' | 'booked'
-type PitchStage = 'needs-contact' | 'needs-pitch'
+type PitchStage = 'needs-contact' | 'needs-pitch' | 'ready' | 'launching' | 'in-outreach' | 'replied' | 'failed' | 'completed'
 
 interface WorkspaceCampaignDetailProps {
   platformWorkspaceId?: string
@@ -96,18 +112,34 @@ function waveLabel(key: string): string {
   return `${startLabel}–${endLabel}`
 }
 
-function pitchStage(podcast: ClientShortlistPodcast): PitchStage {
-  return podcast.podcast_email ? 'needs-pitch' : 'needs-contact'
+function pitchStage(podcast: ClientShortlistPodcast, target?: WorkspaceCampaignTarget): PitchStage {
+  if (!target) return podcast.podcast_email ? 'needs-pitch' : 'needs-contact'
+  if (!target.contact_email) return 'needs-contact'
+  if (target.status === 'draft') return 'needs-pitch'
+  if (target.status === 'in_outreach') return 'in-outreach'
+  return target.status
 }
 
 function stageLabel(stage: PitchStage): string {
-  return stage === 'needs-contact' ? 'Needs contact' : 'Needs pitch'
+  const labels: Record<PitchStage, string> = {
+    'needs-contact': 'Needs contact',
+    'needs-pitch': 'Needs pitch',
+    ready: 'Ready to launch',
+    launching: 'Launching',
+    'in-outreach': 'In outreach',
+    replied: 'Replied',
+    failed: 'Needs attention',
+    completed: 'Completed',
+  }
+  return labels[stage]
 }
 
 function stageClass(stage: PitchStage): string {
-  return stage === 'needs-contact'
-    ? 'border-amber-200 bg-amber-50 text-amber-800'
-    : 'border-sky-200 bg-sky-50 text-sky-800'
+  if (stage === 'needs-contact' || stage === 'failed') return 'border-amber-200 bg-amber-50 text-amber-800'
+  if (stage === 'ready') return 'border-violet-200 bg-violet-50 text-violet-800'
+  if (stage === 'in-outreach' || stage === 'launching') return 'border-sky-200 bg-sky-50 text-sky-800'
+  if (stage === 'replied' || stage === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  return 'border-slate-200 bg-slate-50 text-slate-700'
 }
 
 function Metric({ label, value, detail, icon: Icon }: { label: string; value: number | string; detail: string; icon: typeof Mic2 }) {
@@ -125,6 +157,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const { clientId: routeClientId = '' } = useParams<{ clientId: string }>()
   const [searchParams] = useSearchParams()
   const { user, workspace } = useAuth()
+  const queryClient = useQueryClient()
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const clientId = routeClientId.toLowerCase()
@@ -134,18 +167,20 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const campaignQuery = useQuery({
     queryKey: [isPlatformWorkspace ? 'platform' : 'tenant', user?.id || 'unknown', 'workspace', workspaceId, 'campaign-layout', clientId],
     queryFn: async () => {
-      const [detail, shortlist] = await Promise.all([
+      const [detail, shortlist, campaignState] = await Promise.all([
         getWorkspaceClientDetail(workspaceId, clientId),
         getClientShortlist(workspaceId, clientId),
+        getWorkspaceCampaign(workspaceId, clientId),
       ])
       if (
         detail.workspace.id !== workspaceId
         || detail.client.id !== clientId
         || shortlist.client.id !== clientId
+        || (campaignState.campaign && campaignState.campaign.client_id !== clientId)
       ) {
         throw new Error('The campaign workspace did not match the client address.')
       }
-      return { detail, shortlist }
+      return { detail, shortlist, campaignState }
     },
     enabled: validAddress,
     retry: false,
@@ -155,6 +190,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const data = campaignQuery.data
   const detail = data?.detail
   const client = detail?.client
+  const campaignState = data?.campaignState
+  const campaign = campaignState?.campaign || null
+  const integration = campaignState?.integration || null
+  const campaignTargets = useMemo(() => campaignState?.targets || [], [campaignState?.targets])
+  const targetByShortlistId = useMemo(() => new Map(
+    campaignTargets.map((target) => [target.shortlist_podcast_id, target]),
+  ), [campaignTargets])
   const effectiveWorkspace = detail?.workspace
   const platformWorkspace: PlatformWorkspaceConfig | undefined = isPlatformWorkspace
     ? {
@@ -171,43 +213,158 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const queryPodcastIds = useMemo(() => new Set(
     (searchParams.get('podcasts') || '').split(',').map((value) => value.trim()).filter(Boolean),
   ), [searchParams])
+  const persistedPodcastIds = useMemo(() => new Set(
+    campaignTargets.map((target) => target.shortlist_podcast_id),
+  ), [campaignTargets])
   const campaignPodcasts = useMemo(() => (data?.shortlist.podcasts || []).filter((podcast) => (
     podcast.visibility === 'visible'
-    && (podcast.feedback_status === 'approved' || queryPodcastIds.has(podcast.id))
-  )), [data?.shortlist.podcasts, queryPodcastIds])
-  const waves = useMemo(() => Array.from(new Set(campaignPodcasts.map((podcast) => waveKey(podcast.created_at))))
+    && (podcast.feedback_status === 'approved' || queryPodcastIds.has(podcast.id) || persistedPodcastIds.has(podcast.id))
+  )), [data?.shortlist.podcasts, persistedPodcastIds, queryPodcastIds])
+  const podcastWaveKey = (podcast: ClientShortlistPodcast): string => {
+    const targetWave = targetByShortlistId.get(podcast.id)?.wave_started_on
+    return targetWave || waveKey(podcast.feedback_updated_at || podcast.updated_at || podcast.created_at)
+  }
+  const waves = useMemo(() => Array.from(new Set(campaignPodcasts.map((podcast) => (
+    targetByShortlistId.get(podcast.id)?.wave_started_on
+      || waveKey(podcast.feedback_updated_at || podcast.updated_at || podcast.created_at)
+  ))))
     .filter((key) => key !== 'unknown')
-    .sort((left, right) => right.localeCompare(left)), [campaignPodcasts])
+    .sort((left, right) => right.localeCompare(left)), [campaignPodcasts, targetByShortlistId])
   const currentWaveKey = waves[0] || ''
   const [waveFilter, setWaveFilter] = useState<'current' | 'all' | string>('current')
   const [pitchFilter, setPitchFilter] = useState<PitchFilter>('all')
   const [selectedPodcastId, setSelectedPodcastId] = useState<string | null>(null)
   const [subjectDraft, setSubjectDraft] = useState('')
   const [pitchDraft, setPitchDraft] = useState('')
+  const [hostNameDraft, setHostNameDraft] = useState('')
+  const [contactEmailDraft, setContactEmailDraft] = useState('')
+  const [settingsName, setSettingsName] = useState('')
+  const [settingsTimezone, setSettingsTimezone] = useState('America/New_York')
+  const [settingsDailyLimit, setSettingsDailyLimit] = useState(30)
+  const [settingsSenders, setSettingsSenders] = useState<Set<string>>(new Set())
 
   const selectedPodcast = campaignPodcasts.find((podcast) => podcast.id === selectedPodcastId) || null
+  const selectedTarget = selectedPodcast ? targetByShortlistId.get(selectedPodcast.id) || null : null
   useEffect(() => {
-    setSubjectDraft('')
-    setPitchDraft('')
-  }, [selectedPodcastId])
+    setHostNameDraft(selectedTarget?.host_name || selectedPodcast?.publisher_name || '')
+    setContactEmailDraft(selectedTarget?.contact_email || selectedPodcast?.podcast_email || '')
+  }, [selectedPodcast, selectedTarget])
+
+  useEffect(() => {
+    if (!selectedPodcast || !client) {
+      setSubjectDraft('')
+      setPitchDraft('')
+      return
+    }
+    const suggestedAngle = selectedPodcast.ai_pitch_angles?.[0]
+    const bioContext = client.bio?.trim()
+      ? ` ${client.bio.trim().slice(0, 420)}${client.bio.trim().length > 420 ? '…' : ''}`
+      : ''
+    setSubjectDraft(selectedTarget?.pitch_subject || `Guest idea for ${selectedPodcast.podcast_name}: ${client.name}`)
+    setPitchDraft(selectedTarget?.pitch_body || `Hi${selectedPodcast.publisher_name ? ` ${selectedPodcast.publisher_name.split(/\s+/)[0]}` : ''},\n\nI’m reaching out with a guest idea for ${selectedPodcast.podcast_name}. ${client.name} could bring a practical, audience-first conversation to the show.${bioContext}\n\n${suggestedAngle ? `A strong angle would be “${suggestedAngle.title}” — ${suggestedAngle.description}\n\n` : ''}Would you be open to taking a look at a few tailored talking points?\n\nBest,`)
+  }, [client, selectedPodcast, selectedTarget])
+
+  useEffect(() => {
+    setSettingsName(campaign?.name || (client ? `${client.name} Podcast Outreach` : ''))
+    setSettingsTimezone(campaign?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York')
+    setSettingsDailyLimit(campaign?.daily_limit || 30)
+    setSettingsSenders(new Set(campaign?.sender_accounts || []))
+  }, [campaign, client])
+
+  const refreshCampaignData = async () => {
+    await Promise.all([
+      campaignQuery.refetch(),
+      queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
+    ])
+  }
+  const savePitchMutation = useMutation({
+    mutationFn: saveWorkspaceCampaignPitch,
+    onSuccess: async () => {
+      await refreshCampaignData()
+      toast.success('Pitch draft saved.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The pitch could not be saved.'),
+  })
+  const saveContactMutation = useMutation({
+    mutationFn: updateWorkspaceCampaignContact,
+    onSuccess: async () => {
+      await refreshCampaignData()
+      toast.success('Podcast contact saved.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The podcast contact could not be saved.'),
+  })
+  const launchPitchMutation = useMutation({
+    mutationFn: launchWorkspaceCampaignPitch,
+    onSuccess: async () => {
+      await refreshCampaignData()
+      toast.success('Pitch approved and added to the live Instantly campaign.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Outreach could not be started.'),
+  })
+  const syncMutation = useMutation({
+    mutationFn: () => syncWorkspaceCampaign(workspaceId, clientId),
+    onSuccess: async () => {
+      await refreshCampaignData()
+      toast.success('Campaign activity synced from Instantly.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The campaign could not be synced.'),
+  })
+  const runningMutation = useMutation({
+    mutationFn: (running: boolean) => setWorkspaceCampaignRunning(workspaceId, clientId, running),
+    onSuccess: async (_result, running) => {
+      await refreshCampaignData()
+      toast.success(running ? 'Campaign resumed.' : 'Campaign paused.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Campaign status could not be changed.'),
+  })
+  const settingsMutation = useMutation({
+    mutationFn: async () => {
+      const common = {
+        workspaceId,
+        clientId,
+        name: settingsName.trim(),
+        timezone: settingsTimezone.trim(),
+        dailyLimit: settingsDailyLimit,
+        senderAccounts: Array.from(settingsSenders),
+      }
+      return campaign
+        ? await updateWorkspaceCampaignSettings(common)
+        : await saveWorkspaceCampaign({
+            ...common,
+            shortlistPodcastIds: campaignPodcasts.map((podcast) => podcast.id),
+          })
+    },
+    onSuccess: async () => {
+      await refreshCampaignData()
+      toast.success('Campaign settings saved.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Campaign settings could not be saved.'),
+  })
 
   const wavePodcasts = campaignPodcasts.filter((podcast) => {
     if (waveFilter === 'all') return true
-    if (waveFilter === 'current') return !currentWaveKey || waveKey(podcast.created_at) === currentWaveKey
-    return waveKey(podcast.created_at) === waveFilter
+    if (waveFilter === 'current') return !currentWaveKey || podcastWaveKey(podcast) === currentWaveKey
+    return podcastWaveKey(podcast) === waveFilter
   })
+  const bookedPodcastIds = new Set((detail?.bookings || [])
+    .filter((booking) => ['booked', 'recorded', 'published'].includes(booking.status))
+    .map((booking) => booking.podcast_id)
+    .filter((podcastId): podcastId is string => Boolean(podcastId)))
+  const matchesPitchFilter = (podcast: ClientShortlistPodcast, filter: PitchFilter): boolean => {
+    const target = targetByShortlistId.get(podcast.id)
+    const stage = pitchStage(podcast, target)
+    if (filter === 'all') return true
+    if (filter === 'needs-contact' || filter === 'needs-pitch') return stage === filter
+    if (filter === 'needs-review') return stage === 'ready'
+    if (filter === 'in-outreach') return stage === 'in-outreach' || stage === 'launching'
+    if (filter === 'replied') return stage === 'replied'
+    return bookedPodcastIds.has(podcast.podcast_id)
+  }
   const filteredPodcasts = wavePodcasts.filter((podcast) => {
-    if (pitchFilter === 'all') return true
-    if (pitchFilter === 'needs-contact' || pitchFilter === 'needs-pitch') return pitchStage(podcast) === pitchFilter
-    return false
+    return matchesPitchFilter(podcast, pitchFilter)
   })
   const filterCount = (filter: PitchFilter): number => {
-    if (filter === 'all') return wavePodcasts.length
-    if (filter === 'needs-contact' || filter === 'needs-pitch') {
-      return wavePodcasts.filter((podcast) => pitchStage(podcast) === filter).length
-    }
-    if (filter === 'needs-review') return detail?.outreach.pending_review_count || 0
-    return 0
+    return wavePodcasts.filter((podcast) => matchesPitchFilter(podcast, filter)).length
   }
 
   if (!isPlatformWorkspace && !workspace) {
@@ -234,22 +391,74 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     )
   }
 
-  const missingContacts = campaignPodcasts.filter((podcast) => !podcast.podcast_email).length
+  const newCampaignPodcasts = campaignPodcasts.filter((podcast) => !targetByShortlistId.has(podcast.id))
+  const missingContacts = campaign
+    ? campaign.target_counts.needs_contact
+      + newCampaignPodcasts.filter((podcast) => !podcast.podcast_email).length
+    : campaignPodcasts.filter((podcast) => !podcast.podcast_email).length
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const clientHref = `${baseHref}/clients/${client.id}`
   const bookedCount = detail.bookings.filter((booking) => ['booked', 'recorded', 'published'].includes(booking.status)).length
-  const campaignStatus = detail.outreach.pending_review_count > 0
+  const campaignStatus = campaign?.status === 'attention'
     ? 'Needs attention'
-    : detail.outreach.initial_emails_sent > 0
+    : campaign?.status === 'active'
       ? 'Active'
-      : campaignPodcasts.length > 0
-        ? 'Draft'
-        : 'Not started'
+      : campaign?.status === 'paused'
+        ? 'Paused'
+        : campaign?.status === 'completed'
+          ? 'Completed'
+          : campaign
+            ? 'Draft'
+            : detail.outreach.pending_review_count > 0
+              ? 'Needs attention'
+              : detail.outreach.initial_emails_sent > 0
+                ? 'Active'
+                : campaignPodcasts.length > 0
+                  ? 'Draft'
+                  : 'Not started'
   const campaignStatusClass = campaignStatus === 'Active'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
     : campaignStatus === 'Needs attention'
       ? 'border-amber-200 bg-amber-50 text-amber-800'
-      : 'border-slate-200 bg-slate-50 text-slate-700'
+      : campaignStatus === 'Paused'
+        ? 'border-violet-200 bg-violet-50 text-violet-800'
+        : 'border-slate-200 bg-slate-50 text-slate-700'
+  const campaignAnalytics = campaign?.analytics
+  const contactedCount = campaignAnalytics?.contacted_count ?? detail.outreach.podcasts_contacted
+  const replyCount = campaignAnalytics?.reply_count_unique ?? 0
+  const positiveReplyCount = (campaignAnalytics?.total_interested || 0)
+    + (campaignAnalytics?.total_meeting_booked || 0)
+  const replyRate = contactedCount > 0 ? Math.round((replyCount / contactedCount) * 100) : 0
+  const positiveReplyRate = contactedCount > 0 ? Math.round((positiveReplyCount / contactedCount) * 100) : 0
+  const activityTargets = [...campaignTargets]
+    .filter((target) => target.launched_at || ['in_outreach', 'replied', 'completed', 'failed'].includes(target.status))
+    .sort((left, right) => (right.last_activity_at || right.updated_at).localeCompare(left.last_activity_at || left.updated_at))
+  const activeProviderAccounts = (integration?.accounts || []).filter((account) => account.status === 1)
+  const canManageCampaign = Boolean(campaignState?.can_manage_campaigns)
+  const selectedContactEmail = selectedTarget?.contact_email || selectedPodcast?.podcast_email || null
+  const selectedPitchLocked = Boolean(selectedTarget && (
+    selectedTarget.instantly_lead_id
+    || ['launching', 'in_outreach', 'replied', 'completed'].includes(selectedTarget.status)
+  ))
+  const savedHostName = selectedTarget?.host_name || selectedPodcast?.publisher_name || ''
+  const savedContactEmail = selectedContactEmail || ''
+  const normalizedContactDraft = contactEmailDraft.trim().toLowerCase()
+  const contactDraftDirty = hostNameDraft.trim() !== savedHostName.trim()
+    || normalizedContactDraft !== savedContactEmail.trim().toLowerCase()
+  const contactEmailValid = normalizedContactDraft === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedContactDraft)
+  const canSaveContact = canManageCampaign
+    && Boolean(selectedPodcast)
+    && !selectedPitchLocked
+    && contactDraftDirty
+    && contactEmailValid
+  const canSaveSelectedPitch = canManageCampaign && Boolean(selectedPodcast) && !selectedPitchLocked
+  const canLaunchSelectedPitch = canSaveSelectedPitch
+    && Boolean(integration?.connected)
+    && Boolean(selectedContactEmail)
+    && !contactDraftDirty
+    && Boolean(campaign?.sender_accounts.length)
+    && Boolean(subjectDraft.trim())
+    && Boolean(pitchDraft.trim())
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
@@ -263,22 +472,34 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-primary">Client campaign</p>
               <Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge>
-              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Instantly not connected</Badge>
+              <Badge
+                variant="outline"
+                className={integration?.connected
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-800'}
+              >
+                {integration?.connected ? `Instantly · ${integration.active_account_count} sender${integration.active_account_count === 1 ? '' : 's'}` : 'Instantly not connected'}
+              </Badge>
             </div>
-            <h1 className="mt-2 truncate text-3xl font-bold tracking-tight">{client.name} Podcast Outreach</h1>
+            <h1 className="mt-2 truncate text-3xl font-bold tracking-tight">{campaign?.name || `${client.name} Podcast Outreach`}</h1>
             <p className="mt-2 text-sm text-muted-foreground">One ongoing campaign · weekly podcast waves · a custom reviewed pitch for every show</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {campaign?.instantly_campaign_id && campaignState?.can_manage_campaigns && (
+              <Button variant="outline" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />Sync Instantly
+              </Button>
+            )}
             <Button asChild variant="outline"><Link to={clientHref}><UserRound className="mr-2 h-4 w-4" />Open client</Link></Button>
-            <Button asChild><Link to={finderHref}><Plus className="mr-2 h-4 w-4" />Add podcasts</Link></Button>
+            <Button asChild variant={canManageCampaign ? 'default' : 'outline'}><Link to={finderHref}>{canManageCampaign ? <Plus className="mr-2 h-4 w-4" /> : <Search className="mr-2 h-4 w-4" />}{canManageCampaign ? 'Add podcasts' : 'Open podcasts'}</Link></Button>
           </div>
         </header>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Eligible podcasts" value={campaignPodcasts.length} detail="Client-positive or owner-selected" icon={Mic2} />
           <Metric label="Needs contact" value={missingContacts} detail="Resolve before pitch approval" icon={Search} />
-          <Metric label="Needs review" value={detail.outreach.pending_review_count} detail="Existing custom pitch queue" icon={AlertCircle} />
-          <Metric label="Contacted" value={detail.outreach.podcasts_contacted} detail={`${bookedCount} booking${bookedCount === 1 ? '' : 's'} recorded`} icon={Send} />
+          <Metric label="Ready to launch" value={campaign?.target_counts.ready ?? detail.outreach.pending_review_count} detail="Reviewed pitches awaiting launch" icon={AlertCircle} />
+          <Metric label="Contacted" value={campaign?.analytics.contacted_count ?? detail.outreach.podcasts_contacted} detail={`${bookedCount} booking${bookedCount === 1 ? '' : 's'} recorded`} icon={Send} />
         </div>
 
         <Tabs defaultValue="queue" className="space-y-4">
@@ -342,11 +563,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 <>
                   <div className="space-y-2 p-3 md:hidden">
                     {filteredPodcasts.map((podcast) => {
-                      const stage = pitchStage(podcast)
+                      const target = targetByShortlistId.get(podcast.id)
+                      const stage = pitchStage(podcast, target)
+                      const contactEmail = target?.contact_email || podcast.podcast_email
                       return (
                         <button key={podcast.id} type="button" onClick={() => setSelectedPodcastId(podcast.id)} className="w-full rounded-xl border p-4 text-left hover:bg-muted/30">
                           <div className="flex items-start justify-between gap-3"><p className="font-semibold">{podcast.podcast_name}</p><Badge variant="outline" className={stageClass(stage)}>{stageLabel(stage)}</Badge></div>
-                          <p className="mt-2 text-xs text-muted-foreground">{podcast.publisher_name || 'Host not identified'} · {podcast.podcast_email || 'Contact needed'}</p>
+                          <p className="mt-2 text-xs text-muted-foreground">{target?.host_name || podcast.publisher_name || 'Host not identified'} · {contactEmail || 'Contact needed'}</p>
                           <p className="mt-3 text-sm font-medium text-primary">Open pitch workspace<ArrowRight className="ml-1 inline h-3.5 w-3.5" /></p>
                         </button>
                       )
@@ -357,17 +580,19 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       <TableHeader><TableRow><TableHead className="min-w-64">Podcast</TableHead><TableHead className="min-w-48">Host / contact</TableHead><TableHead>Client decision</TableHead><TableHead>Pitch status</TableHead><TableHead>Outreach</TableHead><TableHead>Last activity</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                       <TableBody>
                         {filteredPodcasts.map((podcast) => {
-                          const stage = pitchStage(podcast)
+                          const target = targetByShortlistId.get(podcast.id)
+                          const stage = pitchStage(podcast, target)
+                          const contactEmail = target?.contact_email || podcast.podcast_email
                           const podcastUrl = podcast.podcast_url ? safeExternalUrl(podcast.podcast_url) : null
                           return (
                             <TableRow key={podcast.id}>
                               <TableCell><div className="flex items-center gap-3">{podcast.podcast_image_url ? <img src={podcast.podcast_image_url} alt="" className="h-10 w-10 rounded-lg border object-cover" /> : <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted"><Mic2 className="h-4 w-4" /></div>}<div className="min-w-0"><p className="font-semibold">{podcast.podcast_name}</p>{podcastUrl && <a href={podcastUrl} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-primary">Open podcast<ExternalLink className="ml-1 inline h-3 w-3" /></a>}</div></div></TableCell>
-                              <TableCell><p className="font-medium">{podcast.publisher_name || 'Host needed'}</p><p className="text-xs text-muted-foreground">{podcast.podcast_email || 'Email not found'}</p></TableCell>
+                              <TableCell><p className="font-medium">{target?.host_name || podcast.publisher_name || 'Host needed'}</p><p className="text-xs text-muted-foreground">{contactEmail || 'Email not found'}</p></TableCell>
                               <TableCell><Badge variant="outline" className={podcast.feedback_status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{podcast.feedback_status === 'approved' ? 'Positive' : 'Owner selected'}</Badge></TableCell>
                               <TableCell><Badge variant="outline" className={stageClass(stage)}>{stageLabel(stage)}</Badge></TableCell>
-                              <TableCell><span className="text-sm text-muted-foreground">Not started</span></TableCell>
-                              <TableCell><span className="text-sm text-muted-foreground">{formatDate(podcast.feedback_updated_at || podcast.updated_at)}</span></TableCell>
-                              <TableCell className="text-right"><Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => setSelectedPodcastId(podcast.id)}>Review pitch<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></TableCell>
+                              <TableCell><span className="text-sm text-muted-foreground">{target ? stageLabel(stage) : 'Not started'}</span></TableCell>
+                              <TableCell><span className="text-sm text-muted-foreground">{formatDate(target?.last_activity_at || target?.updated_at || podcast.feedback_updated_at || podcast.updated_at)}</span></TableCell>
+                              <TableCell className="text-right"><Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => setSelectedPodcastId(podcast.id)}>{target && ['in_outreach', 'replied', 'completed'].includes(target.status) ? 'View pitch' : 'Review pitch'}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></TableCell>
                             </TableRow>
                           )
                         })}
@@ -381,20 +606,91 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
           <TabsContent value="activity" className="mt-0">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.7fr)]">
-              <Card><CardHeader><CardTitle>Outreach timeline</CardTitle><CardDescription>Every pitch, send, follow-up, reply, and booking will appear in chronological order.</CardDescription></CardHeader><CardContent><div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed text-center"><Activity className="h-8 w-8 text-muted-foreground/50" /><p className="mt-3 font-semibold">No Instantly activity synced</p><p className="mt-1 max-w-md text-sm text-muted-foreground">Existing verified totals remain visible, but provider-level events will appear only after the connection is active.</p></div></CardContent></Card>
-              <Card><CardHeader><CardTitle>Verified activity</CardTitle><CardDescription>Current workspace totals for this client.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Initial emails sent</span><strong>{detail.outreach.initial_emails_sent}</strong></div><div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{detail.outreach.podcasts_contacted}</strong></div><div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Last outreach</span><strong className="text-sm">{formatDate(detail.outreach.last_sent_at)}</strong></div></CardContent></Card>
+              <Card>
+                <CardHeader><CardTitle>Outreach timeline</CardTitle><CardDescription>Launches and reply activity synced from this client’s Instantly campaign.</CardDescription></CardHeader>
+                <CardContent>
+                  {activityTargets.length === 0 ? (
+                    <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed text-center">
+                      <Activity className="h-8 w-8 text-muted-foreground/50" />
+                      <p className="mt-3 font-semibold">No outreach activity yet</p>
+                      <p className="mt-1 max-w-md text-sm text-muted-foreground">Approve the first custom pitch to add a podcast to the live campaign.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {activityTargets.slice(0, 30).map((target) => (
+                        <div key={target.id} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+                          <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${target.status === 'replied' ? 'bg-emerald-100 text-emerald-700' : target.status === 'failed' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>
+                            {target.status === 'replied' ? <MessageSquare className="h-4 w-4" /> : target.status === 'failed' ? <AlertCircle className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">{target.podcast_name}</p><span className="text-xs text-muted-foreground">{formatDate(target.last_activity_at || target.updated_at)}</span></div>
+                            <p className="mt-1 text-sm text-muted-foreground">{stageLabel(target.status === 'draft' ? 'needs-pitch' : target.status === 'in_outreach' ? 'in-outreach' : target.status)} · {target.email_reply_count} repl{target.email_reply_count === 1 ? 'y' : 'ies'}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Synced activity</CardTitle><CardDescription>{campaign?.last_synced_at ? `Last synced ${formatDate(campaign.last_synced_at)}` : 'Sync after the first launch.'}</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Emails sent</span><strong>{campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{contactedCount}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Unique replies</span><strong>{replyCount}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Interested</span><strong>{positiveReplyCount}</strong></div>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
           <TabsContent value="performance" className="mt-0 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Contacted" value={detail.outreach.podcasts_contacted} detail="Unique podcasts" icon={Mail} /><Metric label="Replies" value="—" detail="Available after Instantly sync" icon={MessageSquare} /><Metric label="Positive replies" value="—" detail="Available after Instantly sync" icon={Inbox} /><Metric label="Bookings" value={bookedCount} detail="Booked, recorded, or published" icon={CalendarDays} /></div>
-            <Card><CardHeader><CardTitle>Campaign performance</CardTitle><CardDescription>Response rate, positive-reply rate, and bookings by wave will appear here once Instantly events are available.</CardDescription></CardHeader><CardContent><div className="flex min-h-56 items-center justify-center rounded-xl border border-dashed"><p className="text-sm text-muted-foreground">Performance chart awaiting campaign sync</p></div></CardContent></Card>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Contacted" value={contactedCount} detail="Unique podcast contacts" icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Positive replies" value={positiveReplyCount} detail={`${positiveReplyRate}% positive reply rate`} icon={Inbox} /><Metric label="Bookings" value={bookedCount} detail="Booked, recorded, or published" icon={CalendarDays} /></div>
+            <Card>
+              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from outreach to replies, interest, and booked appearances.</CardDescription></CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-4">
+                {[['Contacted', contactedCount], ['Replied', replyCount], ['Interested', positiveReplyCount], ['Booked', bookedCount]].map(([label, value], index) => (
+                  <div key={String(label)} className="relative rounded-xl border bg-muted/15 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p>
+                    {index < 3 && <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-background text-muted-foreground sm:block" />}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="settings" className="mt-0">
             <div className="grid gap-4 lg:grid-cols-2">
-              <Card><CardHeader><CardTitle>Campaign identity</CardTitle><CardDescription>This client uses one ongoing podcast outreach campaign.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="space-y-2"><Label htmlFor="campaign-detail-name">Campaign name</Label><Input id="campaign-detail-name" value={`${client.name} Podcast Outreach`} readOnly /></div><div className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">Campaign status</p><p className="text-xs text-muted-foreground">Status follows verified outreach activity.</p></div><Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge></div></CardContent></Card>
-              <Card><CardHeader><CardTitle>Sending behavior</CardTitle><CardDescription>Follow-ups, schedules, and sending accounts are managed by Instantly.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="flex items-start gap-3 rounded-xl border p-3"><Settings2 className="mt-0.5 h-4 w-4 text-muted-foreground" /><div><p className="text-sm font-medium">Instantly-managed execution</p><p className="mt-1 text-xs leading-5 text-muted-foreground">GOAP owns podcast selection and custom pitch approval. Instantly will own follow-up execution after approval.</p></div></div><Button variant="outline" disabled>Archive campaign</Button></CardContent></Card>
+              <Card>
+                <CardHeader><CardTitle>Campaign settings</CardTitle><CardDescription>One ongoing campaign for this client, with new podcasts added in weekly waves.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2"><Label htmlFor="campaign-detail-name">Campaign name</Label><Input id="campaign-detail-name" value={settingsName} onChange={(event) => setSettingsName(event.target.value)} disabled={!canManageCampaign} /></div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2"><Label htmlFor="campaign-detail-timezone">Sending timezone</Label><Input id="campaign-detail-timezone" value={settingsTimezone} onChange={(event) => setSettingsTimezone(event.target.value)} disabled={!canManageCampaign} /></div>
+                    <div className="space-y-2"><Label htmlFor="campaign-detail-limit">Daily lead limit</Label><Input id="campaign-detail-limit" type="number" min={1} max={1000} value={settingsDailyLimit} onChange={(event) => setSettingsDailyLimit(Number(event.target.value) || 1)} disabled={!canManageCampaign} /></div>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">Campaign status</p><p className="text-xs text-muted-foreground">Synced from Instantly after launch.</p></div><Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge></div>
+                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{campaign ? 'Save campaign settings' : 'Create campaign draft'}</Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Sending accounts &amp; sequence</CardTitle><CardDescription>Choose active Instantly senders. GOAP controls the reviewed opening pitch and a standard two-follow-up sequence.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                  {integration?.connected ? activeProviderAccounts.length > 0 ? (
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border p-3">
+                      {activeProviderAccounts.map((account) => (
+                        <label key={account.email} className="flex cursor-pointer items-center gap-3 text-sm"><Checkbox checked={settingsSenders.has(account.email)} onCheckedChange={(checked) => setSettingsSenders((current) => { const next = new Set(current); if (checked) next.add(account.email); else next.delete(account.email); return next })} disabled={!canManageCampaign} aria-label={`Use ${account.email}`} /><span className="truncate">{account.email}</span><Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-emerald-800">Active</Badge></label>
+                      ))}
+                    </div>
+                  ) : <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">No active sending accounts are available in the connected Instantly workspace.</div> : <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">The workspace owner must connect Instantly from the Client Campaigns page before launch.</div>}
+                  <div className="flex items-start gap-3 rounded-xl border p-3"><Settings2 className="mt-0.5 h-4 w-4 text-muted-foreground" /><div><p className="text-sm font-medium">Standard campaign sequence</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Custom approved opening · follow-up after 3 days · final follow-up after 5 more days · stop immediately on reply. No subsequences.</p></div></div>
+                  {campaign?.instantly_campaign_id && canManageCampaign && (
+                    <Button variant="outline" disabled={runningMutation.isPending} onClick={() => runningMutation.mutate(campaign.status !== 'active')}>
+                      {campaign.status === 'active' ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaign.status === 'active' ? 'Pause campaign' : 'Resume campaign'}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
         </Tabs>
@@ -405,15 +701,43 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           {selectedPodcast && (
             <>
               <SheetHeader className="border-b p-5 pr-12 sm:p-6 sm:pr-12">
-                <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={stageClass(pitchStage(selectedPodcast))}>{stageLabel(pitchStage(selectedPodcast))}</Badge><Badge variant="outline">{selectedPodcast.feedback_status === 'approved' ? 'Client positive' : 'Owner selected'}</Badge></div>
+                <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={stageClass(pitchStage(selectedPodcast, selectedTarget || undefined))}>{stageLabel(pitchStage(selectedPodcast, selectedTarget || undefined))}</Badge><Badge variant="outline">{selectedPodcast.feedback_status === 'approved' ? 'Client positive' : 'Owner selected'}</Badge></div>
                 <SheetTitle className="text-2xl">{selectedPodcast.podcast_name}</SheetTitle>
                 <SheetDescription>Review the podcast context, confirm the contact, and prepare its custom pitch.</SheetDescription>
               </SheetHeader>
 
               <div className="space-y-6 p-5 sm:p-6">
                 <section className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Host contact</p><p className="mt-2 font-semibold">{selectedPodcast.publisher_name || 'Host not identified'}</p><p className="mt-1 text-sm text-muted-foreground">{selectedPodcast.podcast_email || 'No contact email found'}</p></div>{selectedPodcast.podcast_email ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <AlertCircle className="h-5 w-5 text-amber-600" />}</div>
-                  {!selectedPodcast.podcast_email && <Button asChild variant="outline" size="sm" className="mt-4"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find contact</Link></Button>}
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Host contact</p><p className="mt-1 text-sm text-muted-foreground">Confirm who should receive this pitch before outreach starts.</p></div>
+                    {selectedContactEmail && !contactDraftDirty ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" /> : <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />}
+                  </div>
+                  {selectedPitchLocked || !canManageCampaign ? (
+                    <div className="mt-4 rounded-lg bg-muted/30 p-3">
+                      <p className="font-medium">{savedHostName || 'Host not identified'}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{savedContactEmail || 'No contact email found'}</p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2"><Label htmlFor="host-name">Host name</Label><Input id="host-name" value={hostNameDraft} onChange={(event) => setHostNameDraft(event.target.value)} placeholder="Host or booking contact" /></div>
+                      <div className="space-y-2"><Label htmlFor="contact-email">Contact email</Label><Input id="contact-email" type="email" value={contactEmailDraft} onChange={(event) => setContactEmailDraft(event.target.value)} placeholder="host@podcast.com" aria-invalid={!contactEmailValid} /></div>
+                      <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!canSaveContact || saveContactMutation.isPending}
+                          onClick={() => saveContactMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, contactEmail: normalizedContactDraft, hostName: hostNameDraft.trim() })}
+                        >
+                          {saveContactMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save contact
+                        </Button>
+                        {!contactEmailValid
+                          ? <p className="text-xs text-destructive">Enter a valid email address.</p>
+                          : contactDraftDirty
+                            ? <p className="text-xs text-amber-700">Save this contact before starting outreach.</p>
+                            : <p className="text-xs text-muted-foreground">Contact details are saved only to this client campaign.</p>}
+                      </div>
+                    </div>
+                  )}
                 </section>
 
                 {(selectedPodcast.ai_fit_reasons?.length || selectedPodcast.ai_pitch_angles?.length) && (
@@ -426,15 +750,39 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
                 <section className="space-y-4">
                   <div><h3 className="font-semibold">Custom pitch</h3><p className="mt-1 text-sm text-muted-foreground">Every podcast receives its own subject and opening message.</p></div>
-                  <div className="space-y-2"><Label htmlFor="pitch-subject">Subject line</Label><Input id="pitch-subject" value={subjectDraft} onChange={(event) => setSubjectDraft(event.target.value)} placeholder={`Podcast guest idea for ${selectedPodcast.podcast_name}`} /></div>
-                  <div className="space-y-2"><Label htmlFor="pitch-body">Email pitch</Label><Textarea id="pitch-body" value={pitchDraft} onChange={(event) => setPitchDraft(event.target.value)} placeholder="Write or generate a custom pitch using the client profile and podcast context…" className="min-h-64 resize-y" /></div>
-                  <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">Draft saving and approval activate with the Instantly campaign connection. Follow-ups will be managed by Instantly after the first pitch is approved.</div>
+                  <div className="space-y-2"><Label htmlFor="pitch-subject">Subject line</Label><Input id="pitch-subject" value={subjectDraft} onChange={(event) => setSubjectDraft(event.target.value)} placeholder={`Podcast guest idea for ${selectedPodcast.podcast_name}`} disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                  <div className="space-y-2"><Label htmlFor="pitch-body">Email pitch</Label><Textarea id="pitch-body" value={pitchDraft} onChange={(event) => setPitchDraft(event.target.value)} placeholder="Write a custom pitch using the client profile and podcast context…" className="min-h-64 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                  <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
+                    {selectedPitchLocked
+                      ? 'This approved pitch is locked because outreach has started. Sync the campaign to update reply activity.'
+                      : contactDraftDirty
+                        ? 'Save the host contact above before approving this pitch for outreach.'
+                      : !integration?.connected
+                        ? 'You can save this draft now. The workspace owner must connect Instantly before launch.'
+                        : !campaign?.sender_accounts.length
+                          ? 'Save the draft, then choose an active sending account in Campaign Settings before launch.'
+                          : 'Approval adds this podcast contact to the client’s live Instantly campaign. Standard follow-ups stop automatically on reply.'}
+                  </div>
                 </section>
               </div>
 
               <div className="sticky bottom-0 flex flex-col gap-2 border-t bg-background/95 p-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">No message will be sent from this layout preview.</p>
-                <div className="flex gap-2"><Button variant="outline" disabled>Save draft</Button><Button disabled><Send className="mr-2 h-4 w-4" />Approve &amp; start outreach</Button></div>
+                <p className="text-xs text-muted-foreground">{selectedTarget?.last_error || (selectedPitchLocked ? `Outreach started ${formatDate(selectedTarget?.launched_at)}` : 'Saving a draft never sends email.')}</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={!canSaveSelectedPitch || savePitchMutation.isPending || saveContactMutation.isPending || launchPitchMutation.isPending}
+                    onClick={() => savePitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft })}
+                  >
+                    {savePitchMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save draft
+                  </Button>
+                  <Button
+                    disabled={!canLaunchSelectedPitch || launchPitchMutation.isPending || savePitchMutation.isPending || saveContactMutation.isPending}
+                    onClick={() => launchPitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft })}
+                  >
+                    {launchPitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Approve &amp; start outreach
+                  </Button>
+                </div>
               </div>
             </>
           )}

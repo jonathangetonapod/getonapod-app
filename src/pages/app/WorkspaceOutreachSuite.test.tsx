@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import WorkspaceOutreachSuite, { type OutreachWorkspaceModule } from '@/pages/app/WorkspaceOutreachSuite'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { getWorkspaceClients } from '@/services/clients'
+import { getWorkspaceCampaignOverview } from '@/services/workspaceCampaigns'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
@@ -14,6 +15,13 @@ vi.mock('@/services/clients', () => ({
   getWorkspaceClientDetail: vi.fn(),
 }))
 vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
+vi.mock('@/services/workspaceCampaigns', () => ({
+  connectWorkspaceInstantly: vi.fn(),
+  disconnectWorkspaceInstantly: vi.fn(),
+  getWorkspaceCampaignOverview: vi.fn(),
+  refreshWorkspaceInstantly: vi.fn(),
+  saveWorkspaceCampaign: vi.fn(),
+}))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
   WorkspaceLayout: ({ children, platformWorkspace }: {
     children: React.ReactNode
@@ -32,6 +40,7 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedView = vi.mocked(getAdminWorkspaceView)
 const mockedClients = vi.mocked(getWorkspaceClients)
+const mockedCampaignOverview = vi.mocked(getWorkspaceCampaignOverview)
 const defaultWorkspaceId = '00000000-0000-4000-8000-000000000000'
 const selectedWorkspaceId = '11111111-1111-4111-8111-111111111111'
 
@@ -92,6 +101,24 @@ describe('WorkspaceOutreachSuite', () => {
       clients: [],
     })
     mockedClients.mockResolvedValue([])
+    mockedCampaignOverview.mockResolvedValue({
+      integration: {
+        connected: false,
+        status: 'disconnected',
+        provider_workspace_id: null,
+        provider_workspace_name: null,
+        api_key_last_four: null,
+        accounts: [],
+        active_account_count: 0,
+        connected_at: null,
+        last_verified_at: null,
+        last_error: null,
+        can_manage: true,
+        required_scopes: [],
+      },
+      can_manage_campaigns: true,
+      campaigns: [],
+    })
   })
 
   it.each([
@@ -103,7 +130,11 @@ describe('WorkspaceOutreachSuite', () => {
 
     expect(screen.getByRole('heading', { name: title, level: 1 })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: emptyState })).toBeInTheDocument()
-    expect(screen.getByTestId('instantly-connection-state')).toHaveTextContent('not connected')
+    if (module === 'client-campaigns') {
+      expect(await screen.findByTestId('instantly-connection-card')).toHaveTextContent('Connect Instantly')
+    } else {
+      expect(screen.getByTestId('instantly-connection-state')).toHaveTextContent('not connected')
+    }
     expect(screen.getByText('My Workspace')).toBeInTheDocument()
     expect(mockedView).not.toHaveBeenCalled()
   })

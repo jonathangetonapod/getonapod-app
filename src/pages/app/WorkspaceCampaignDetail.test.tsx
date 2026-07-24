@@ -1,15 +1,30 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import WorkspaceCampaignDetail from '@/pages/app/WorkspaceCampaignDetail'
 import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clientShortlist'
 import { getWorkspaceClientDetail, type WorkspaceClientDetail } from '@/services/clients'
+import {
+  getWorkspaceCampaign,
+  updateWorkspaceCampaignContact,
+  type WorkspaceCampaignDetailResponse,
+} from '@/services/workspaceCampaigns'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
+vi.mock('@/services/workspaceCampaigns', () => ({
+  getWorkspaceCampaign: vi.fn(),
+  launchWorkspaceCampaignPitch: vi.fn(),
+  saveWorkspaceCampaign: vi.fn(),
+  saveWorkspaceCampaignPitch: vi.fn(),
+  setWorkspaceCampaignRunning: vi.fn(),
+  syncWorkspaceCampaign: vi.fn(),
+  updateWorkspaceCampaignContact: vi.fn(),
+  updateWorkspaceCampaignSettings: vi.fn(),
+}))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
   WorkspaceLayout: ({ children, platformWorkspace }: { children: React.ReactNode; platformWorkspace?: { baseHref: string } }) => <div data-testid="workspace-layout" data-base-href={platformWorkspace?.baseHref || '/app'}>{children}</div>,
 }))
@@ -17,6 +32,8 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedShortlist = vi.mocked(getClientShortlist)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
+const mockedCampaign = vi.mocked(getWorkspaceCampaign)
+const mockedUpdateContact = vi.mocked(updateWorkspaceCampaignContact)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 
@@ -38,6 +55,26 @@ const podcasts = [
   },
 ] as ClientShortlistPodcast[]
 
+const campaignState = {
+  integration: {
+    connected: false,
+    status: 'disconnected',
+    provider_workspace_id: null,
+    provider_workspace_name: null,
+    api_key_last_four: null,
+    accounts: [],
+    active_account_count: 0,
+    connected_at: null,
+    last_verified_at: null,
+    last_error: null,
+    can_manage: true,
+    required_scopes: [],
+  },
+  can_manage_campaigns: true,
+  campaign: null,
+  targets: [],
+} as WorkspaceCampaignDetailResponse
+
 function renderPage(platformWorkspaceId?: string) {
   const base = platformWorkspaceId ? `/app/workspaces/${workspaceId}` : '/app'
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -56,6 +93,8 @@ describe('WorkspaceCampaignDetail', () => {
     mockedUseAuth.mockReturnValue({ user: { id: 'user-1' }, workspace: { id: workspaceId, name: 'Acme Workspace' } } as never)
     mockedDetail.mockResolvedValue(detail)
     mockedShortlist.mockResolvedValue({ client: { id: clientId, name: 'Dallas Fontaine' }, podcasts })
+    mockedCampaign.mockResolvedValue(campaignState)
+    mockedUpdateContact.mockResolvedValue({ id: 'target-two' } as never)
   })
 
   it('shows the weekly pitch queue and opens a custom podcast pitch drawer', async () => {
@@ -73,7 +112,7 @@ describe('WorkspaceCampaignDetail', () => {
     expect(await screen.findByRole('heading', { name: 'Founder Show' })).toBeInTheDocument()
     expect(screen.getByText('Dallas has direct founder experience.')).toBeInTheDocument()
     expect(screen.getByLabelText('Subject line')).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /approve & start outreach/i })).toBeDisabled()
   })
 
@@ -84,5 +123,26 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.getByTestId('workspace-layout')).toHaveAttribute('data-base-href', `/app/workspaces/${workspaceId}`)
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
     expect(mockedShortlist).toHaveBeenCalledWith(workspaceId, clientId)
+    expect(mockedCampaign).toHaveBeenCalledWith(workspaceId, clientId)
+  })
+
+  it('saves a missing host contact directly from the pitch drawer', async () => {
+    renderPage()
+
+    const operatorRow = within(await screen.findByRole('table')).getByText('Operator Stories').closest('tr')
+    expect(operatorRow).not.toBeNull()
+    fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: /review pitch/i }))
+
+    fireEvent.change(await screen.findByLabelText('Host name'), { target: { value: 'Taylor Host' } })
+    fireEvent.change(screen.getByLabelText('Contact email'), { target: { value: 'TAYLOR@EXAMPLE.COM' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save contact' }))
+
+    await waitFor(() => expect(mockedUpdateContact).toHaveBeenCalledWith({
+      workspaceId,
+      clientId,
+      shortlistPodcastId: 'shortlist-two',
+      contactEmail: 'taylor@example.com',
+      hostName: 'Taylor Host',
+    }))
   })
 })

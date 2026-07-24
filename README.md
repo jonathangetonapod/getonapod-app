@@ -38,7 +38,7 @@ Each client command center includes an approval-dashboard editor. The agency can
 
 ### 4. Run outreach
 
-The workspace outreach suite is organized into Client Campaigns, Master Inbox, and Mailboxes. Each active client has one ongoing campaign, with new podcast opportunities added in weekly waves. Workspace operators select client-positive podcasts by default, may explicitly include an owner-approved exception, and review a custom pitch for each show in a dedicated campaign workspace. Instantly.ai is the target sending provider; provider authentication, synchronization, webhooks, draft persistence, and send actions still require a tenant-safe server implementation.
+Client Campaigns gives each active client one ongoing podcast-outreach campaign, with new opportunities added in weekly waves. Operators review an individual pitch before launch, then start, pause, resume, and manually synchronize the corresponding standard Instantly campaign. The workspace owner connects one Instantly V2 API key; authorized workspace managers can run campaigns without seeing the credential. Master Inbox and Mailboxes remain separate future integrations.
 
 ### 5. Deliver a white-label client experience
 
@@ -54,9 +54,9 @@ Workspace branding controls the agency name, logo, primary color, and accent col
 | Onboarding | Available | Forms, invitations, autosave, review, revisions, files, and pitch approval |
 | Podcast Finder | Available | Client-selectable recurring discovery with history deduplication |
 | Clients | Available | Client records and command centers |
-| Client Campaigns | Operations layout | Client campaign index, weekly pitch queue, pitch detail drawer, activity, performance, and settings surfaces |
-| Master Inbox | Integration foundation | Cross-campaign reply queue with client and thread context |
-| Mailboxes | Integration foundation | Sending-account health, warmup, capacity, and assignment surface |
+| Client Campaigns | Available with Instantly V2 | Encrypted workspace connection, campaign index, weekly pitch queue, per-podcast launch, activity, analytics sync, and settings |
+| Master Inbox | Layout preview | Future cross-campaign reply queue with client and thread context |
+| Mailboxes | Layout preview | Future sending-account health, capacity, and assignment surface |
 | Guest Resources | Available | Workspace-authored resources for all clients or selected clients |
 | Settings | Available to owners/admins | Team access, credentials, branding, agency name, and sidebar order |
 | Prospect Dashboards | Planned workspace migration | Prospect lead-magnet dashboards |
@@ -74,11 +74,15 @@ The outreach experience is intentionally split by job-to-be-done:
 The campaign experience is organized around one ongoing podcast-booking campaign per client:
 
 - an operational index surfaces campaign status, the current weekly wave, pitch readiness, contacted podcasts, bookings, and the next action;
-- a two-step creation flow chooses the client and first wave without pretending to create remote provider data;
+- a two-step creation flow chooses the client, active sending accounts, and first wave while saving the draft in GOAP;
 - client-positive podcasts are selected automatically, while an owner can deliberately include another shortlisted show;
 - the campaign workspace groups podcasts by weekly wave and supports focused pitch-queue views;
-- selecting a podcast opens a right-side workspace with host contact details, fit context, suggested angles, and an individual pitch editor; and
-- activity, performance, and campaign settings have dedicated tabs ready for workspace-scoped Instantly data.
+- selecting a podcast opens a right-side workspace where managers confirm or correct the campaign-local host contact, review fit context and suggested angles, and write the individual pitch;
+- saving a draft does not contact anyone; the explicit **Approve & start outreach** action creates or recovers the mapped provider campaign, adds that podcast contact, and activates sending;
+- activity and performance use sanitized workspace-scoped campaign and lead data returned by Instantly; and
+- settings update the campaign name, IANA timezone, daily limit, and active sending accounts.
+
+GOAP creates a standard three-email Instantly sequence and stops on reply. Workspace groups and subsequences are intentionally not used. A podcast host may be contacted for different GOAP clients, so provider duplicate-skipping is disabled while local client/campaign ownership remains exact.
 
 The same campaign surfaces are available in My Workspace and in a platform-owner-selected workspace. Client command centers link directly to their campaign.
 
@@ -102,22 +106,21 @@ The infrastructure view should expose:
 - campaign and client assignments; and
 - last successful provider synchronization.
 
-### Required backend boundary
+### Implemented Client Campaigns boundary
 
-Instantly credentials must never be shipped in the browser. The integration should be implemented behind authenticated Supabase Edge Functions with a service-only database transaction layer.
+Instantly credentials are never returned to the browser after the owner submits the connection form. The authenticated `workspace-client-campaigns` Edge Function verifies the key, encrypts it with AES-GCM, and stores only ciphertext, IV, and a four-character hint in a service-role-only table. The browser receives sanitized integration metadata, account summaries, campaign analytics, and target state—never the stored credential.
 
-The minimum safe design is:
+The campaign boundary also enforces:
 
-1. Store a workspace-scoped integration record with encrypted or platform-secret-backed provider credentials.
-2. Map every remote campaign and mailbox to an exact `workspace_id`; campaigns also map to an exact same-workspace `client_id`.
-3. Ingest provider webhooks into an append-only event ledger keyed by provider event ID.
-4. Quarantine unknown or ambiguous campaign events instead of guessing ownership.
-5. Use per-workspace synchronization cursors and idempotent upserts.
-6. Recheck actor, role, selected workspace, and object ownership inside SQL for every mutation.
-7. Put outbound provider writes through an idempotent outbox and record the real actor in the audit log.
-8. Redact credentials, reply bodies, and personal data from operational logs.
+1. one Instantly workspace connection per GOAP workspace, with an Instantly workspace prevented from being attached to multiple tenants;
+2. one local campaign per exact same-workspace client and one provider campaign mapping per local campaign;
+3. owner-only credential connection and removal, with campaign actions restricted to owner, admin, or platform-owner workspace access;
+4. deterministic provider campaign naming and recoverable launch states to prevent duplicate campaigns after retries or timeouts;
+5. per-target launch states, podcast uniqueness, provider lead IDs, and same-campaign contact checks so retries recover safely without silently duplicating or overwriting outreach;
+6. fixed-origin server-side Instantly requests with timeouts, response-size limits, permission-safe provider errors, and sanitized analytics; and
+7. actor-aware audit records for connection, draft, launch, pause, resume, and other material campaign actions.
 
-Until that boundary ships, the three pages show an honest disconnected state and perform no Instantly reads or writes.
+Client Campaigns currently synchronizes on an explicit operator action; webhook-driven reply ingestion is not part of this release. Master Inbox and Mailboxes remain non-operational previews until their own event-ledger, ownership, and provider-write boundaries are implemented.
 
 Legacy Bison/Clay outreach code remains in the repository for operator history. It is global-provider code and must not be wired into workspace routes without the same ownership, event-ledger, and isolation guarantees.
 
@@ -160,8 +163,8 @@ See [`docs/subagency-saas-architecture.md`](docs/subagency-saas-architecture.md)
 | `/app/clients/:clientId` | Client command center |
 | `/app/client-campaigns` | Client campaign operations index |
 | `/app/client-campaigns/:clientId` | Weekly pitch queue and campaign workspace |
-| `/app/master-inbox` | Instantly inbox foundation |
-| `/app/mailboxes` | Instantly mailbox foundation |
+| `/app/master-inbox` | Future Instantly inbox preview |
+| `/app/mailboxes` | Future Instantly mailbox preview |
 | `/app/guest-resources` | Workspace guest resources |
 | `/app/settings` | Workspace settings, team, branding, and navigation order |
 
@@ -208,7 +211,7 @@ flowchart LR
     DB[(Postgres + RLS + transactional RPCs)]
     Storage[Private/public Storage]
     Providers[Podscan · Resend · AI providers]
-    Instantly[Instantly.ai\nplanned workspace integration]
+    Instantly[Instantly.ai V2\nClient Campaigns only]
 
     Browser --> Auth
     Browser --> Edge
@@ -288,7 +291,9 @@ Provider credentials belong in Supabase secret storage or the authorized operato
 - `RESEND_API_KEY`
 - `ONBOARDING_CAPABILITY_SECRET`
 - Google service-account credentials
-- the future Instantly API credential
+- `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` (at least 32 random characters; server-side encryption key)
+
+Each workspace owner's Instantly V2 API key is entered in Client Campaigns and encrypted before database storage. It is tenant data, not a shared deployment secret, and must never be copied into a `VITE_*` variable.
 
 Never prefix a private credential with `VITE_`, commit it to a dotenv file, paste it into a migration, or expose it in a client error message. Run `npm run check:secrets` before release.
 

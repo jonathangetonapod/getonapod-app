@@ -1,10 +1,10 @@
 {
   "release": "invite-only-workspace-mvp",
   "base_commit": "b46a737631ee840f2f49270bdfbbe392833e814a",
-  "generated_on": "2026-07-23",
+  "generated_on": "2026-07-24",
   "scope": "Every changed or new Supabase Edge Function relative to base_commit",
-  "expected_unique_function_count": 96,
-  "expected_deploy_count": 94,
+  "expected_unique_function_count": 97,
+  "expected_deploy_count": 95,
   "retired_http_410_functions": [
     "analyze-sales-call",
     "batch-update-orders",
@@ -127,6 +127,7 @@
       "submit-to-indexing",
       "sync-replies",
       "update-prospect-dashboard",
+      "workspace-client-campaigns",
       "workspace-client-shortlist",
       "workspace-clients",
       "workspace-guest-resources",

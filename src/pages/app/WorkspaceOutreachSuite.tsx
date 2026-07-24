@@ -322,9 +322,11 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{config.description}</p>
           </div>
-          <div data-testid="instantly-connection-state" className="flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-            <PlugZap className="h-3.5 w-3.5" />Instantly not connected
-          </div>
+          {module !== 'client-campaigns' && (
+            <div data-testid="instantly-connection-state" className="flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+              <PlugZap className="h-3.5 w-3.5" />Instantly not connected
+            </div>
+          )}
         </header>
 
         <nav aria-label="Outreach suite" className="flex max-w-full gap-1 overflow-x-auto border-b border-border">
@@ -367,12 +369,14 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
         {module === 'master-inbox' && <InboxContent />}
         {module === 'mailboxes' && <MailboxesContent />}
 
-        <div className="flex items-start gap-3 rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-          <p className="leading-6">
-            This is the workspace-safe Instantly foundation. It does not send email, fetch replies, or expose provider credentials until the server-side integration and workspace mappings are released.
-          </p>
-        </div>
+        {module !== 'client-campaigns' && (
+          <div className="flex items-start gap-3 rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <p className="leading-6">
+              This page remains a layout preview until its own workspace-safe Instantly data boundary is released.
+            </p>
+          </div>
+        )}
       </div>
     </WorkspaceLayout>
   )

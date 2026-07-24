@@ -1,18 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  KeyRound,
   Loader2,
   Mail,
   MessageSquare,
   Mic2,
   Plus,
+  PlugZap,
+  RefreshCw,
   Search,
+  ShieldCheck,
 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,13 +47,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clientShortlist'
 import {
+  connectWorkspaceInstantly,
+  disconnectWorkspaceInstantly,
+  getWorkspaceCampaignOverview,
+  refreshWorkspaceInstantly,
+  saveWorkspaceCampaign,
+  type WorkspaceClientCampaign,
+  type WorkspaceInstantlyIntegration,
+} from '@/services/workspaceCampaigns'
+import {
   getWorkspaceClientDetail,
   type WorkspaceClient,
   type WorkspaceClientDetail,
 } from '@/services/clients'
 
-type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'setup'
-type CampaignStatus = 'Needs attention' | 'Draft' | 'Active' | 'Not started'
+type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed' | 'setup'
+type CampaignStatus = 'Needs attention' | 'Draft' | 'Active' | 'Paused' | 'Completed' | 'Not started'
 
 interface WorkspaceCampaignsProps {
   workspaceId: string
@@ -54,6 +79,7 @@ interface CampaignSummary {
   shortlist: ClientShortlistPodcast[]
   loading: boolean
   error: boolean
+  campaign: WorkspaceClientCampaign | null
   status: CampaignStatus
   approvedPodcasts: number
   missingContacts: number
@@ -67,6 +93,8 @@ const filterLabels: Array<{ value: CampaignFilter; label: string }> = [
   { value: 'attention', label: 'Needs attention' },
   { value: 'draft', label: 'Draft' },
   { value: 'active', label: 'Active' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'completed', label: 'Completed' },
   { value: 'setup', label: 'Not started' },
 ]
 
@@ -74,6 +102,8 @@ const statusClasses: Record<CampaignStatus, string> = {
   'Needs attention': 'border-amber-200 bg-amber-50 text-amber-800',
   Draft: 'border-sky-200 bg-sky-50 text-sky-800',
   Active: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  Paused: 'border-violet-200 bg-violet-50 text-violet-800',
+  Completed: 'border-slate-200 bg-slate-100 text-slate-700',
   'Not started': 'border-slate-200 bg-slate-50 text-slate-700',
 }
 
@@ -101,9 +131,14 @@ function formatWave(start: Date | null): string {
   return `${startLabel}–${endLabel}`
 }
 
+function podcastDecisionDate(podcast: ClientShortlistPodcast): string {
+  return podcast.feedback_updated_at || podcast.updated_at || podcast.created_at
+}
+
 function summarizeCampaign(
   client: WorkspaceClient,
   data: { detail: WorkspaceClientDetail; podcasts: ClientShortlistPodcast[] } | undefined,
+  campaign: WorkspaceClientCampaign | null,
   loading: boolean,
   error: boolean,
 ): CampaignSummary {
@@ -111,27 +146,54 @@ function summarizeCampaign(
   const approved = shortlist.filter((podcast) => (
     podcast.visibility === 'visible' && podcast.feedback_status === 'approved'
   ))
-  const missingContacts = approved.filter((podcast) => !podcast.podcast_email).length
+  const targetedShortlistIds = new Set(campaign?.target_shortlist_podcast_ids || [])
+  const newlyApproved = campaign
+    ? approved.filter((podcast) => !targetedShortlistIds.has(podcast.id))
+    : []
+  const missingContacts = campaign
+    ? campaign.target_counts.needs_contact
+      + newlyApproved.filter((podcast) => !podcast.podcast_email).length
+    : approved.filter((podcast) => !podcast.podcast_email).length
   const latestWave = approved
-    .map((podcast) => startOfWeek(podcast.created_at))
+    .map((podcast) => startOfWeek(podcastDecisionDate(podcast)))
     .filter((date): date is Date => Boolean(date))
     .sort((left, right) => right.getTime() - left.getTime())[0] || null
   const currentWaveCount = latestWave
-    ? approved.filter((podcast) => startOfWeek(podcast.created_at)?.getTime() === latestWave.getTime()).length
+    ? approved.filter((podcast) => startOfWeek(podcastDecisionDate(podcast))?.getTime() === latestWave.getTime()).length
     : 0
   const outreach = data?.detail.outreach
-  const status: CampaignStatus = outreach?.pending_review_count
+  const status: CampaignStatus = campaign?.status === 'attention'
     ? 'Needs attention'
-    : outreach && outreach.initial_emails_sent > 0
+    : campaign?.status === 'active'
       ? 'Active'
-      : approved.length > 0
-        ? 'Draft'
-        : 'Not started'
-  const nextAction = outreach?.pending_review_count
-    ? `Review ${outreach.pending_review_count} pitch${outreach.pending_review_count === 1 ? '' : 'es'}`
+      : campaign?.status === 'paused'
+        ? 'Paused'
+        : campaign?.status === 'completed'
+          ? 'Completed'
+          : campaign
+            ? 'Draft'
+            : outreach?.pending_review_count
+              ? 'Needs attention'
+              : outreach && outreach.initial_emails_sent > 0
+                ? 'Active'
+                : approved.length > 0
+                  ? 'Draft'
+                  : 'Not started'
+  const readyCount = campaign?.target_counts.ready || 0
+  const needsPitchCount = campaign?.target_counts.needs_pitch || 0
+  const nextAction = campaign?.last_error
+    ? 'Resolve campaign issue'
+    : newlyApproved.length > 0
+      ? `Review ${newlyApproved.length} new podcast${newlyApproved.length === 1 ? '' : 's'}`
+      : readyCount > 0
+      ? `Launch ${readyCount} approved pitch${readyCount === 1 ? '' : 'es'}`
+      : needsPitchCount > 0
+        ? `Write ${needsPitchCount} pitch${needsPitchCount === 1 ? '' : 'es'}`
+        : !campaign && outreach?.pending_review_count
+          ? `Review ${outreach.pending_review_count} pitch${outreach.pending_review_count === 1 ? '' : 'es'}`
     : missingContacts > 0
       ? `Find ${missingContacts} contact${missingContacts === 1 ? '' : 's'}`
-      : approved.length > 0
+      : (campaign?.target_counts.total || approved.length) > 0
         ? 'Review custom pitches'
         : 'Add approved podcasts'
 
@@ -141,8 +203,11 @@ function summarizeCampaign(
     shortlist,
     loading,
     error,
+    campaign,
     status,
-    approvedPodcasts: approved.length,
+    approvedPodcasts: campaign
+      ? campaign.target_counts.total + newlyApproved.length
+      : approved.length,
     missingContacts,
     currentWaveCount,
     currentWaveLabel: formatWave(latestWave),
@@ -188,10 +253,21 @@ const WorkspaceCampaigns = ({
   onRetryClients,
 }: WorkspaceCampaignsProps) => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const activeClients = useMemo(
     () => clients.filter((client) => client.status === 'active'),
     [clients],
   )
+  const campaignOverviewQuery = useQuery({
+    queryKey: ['workspace-client-campaigns', workspaceId, 'overview'],
+    queryFn: () => getWorkspaceCampaignOverview(workspaceId),
+    enabled: Boolean(workspaceId),
+    retry: false,
+    staleTime: 15_000,
+  })
+  const persistedCampaigns = useMemo(() => new Map(
+    (campaignOverviewQuery.data?.campaigns || []).map((campaign) => [campaign.client_id, campaign]),
+  ), [campaignOverviewQuery.data?.campaigns])
   const campaignQueries = useQueries({
     queries: activeClients.map((client) => ({
       queryKey: ['workspace-campaign-layout', workspaceId, client.id],
@@ -216,6 +292,7 @@ const WorkspaceCampaigns = ({
   const summaries = activeClients.map((client, index) => summarizeCampaign(
     client,
     campaignQueries[index]?.data,
+    persistedCampaigns.get(client.id) || null,
     Boolean(campaignQueries[index]?.isLoading),
     Boolean(campaignQueries[index]?.error),
   ))
@@ -226,8 +303,49 @@ const WorkspaceCampaigns = ({
   const [createStep, setCreateStep] = useState<1 | 2>(1)
   const [selectedClientId, setSelectedClientId] = useState('')
   const [campaignName, setCampaignName] = useState('')
+  const [campaignTimezoneDraft, setCampaignTimezoneDraft] = useState(() => (
+    Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'
+  ))
+  const [campaignDailyLimit, setCampaignDailyLimit] = useState(30)
+  const [selectedSenderAccounts, setSelectedSenderAccounts] = useState<Set<string>>(new Set())
   const [selectedPodcastIds, setSelectedPodcastIds] = useState<Set<string>>(new Set())
   const [initializedClientId, setInitializedClientId] = useState('')
+  const [connectionOpen, setConnectionOpen] = useState(false)
+  const [apiKeyDraft, setApiKeyDraft] = useState('')
+  const [connectionSaving, setConnectionSaving] = useState(false)
+
+  const integration = campaignOverviewQuery.data?.integration || null
+  const canManageCampaigns = Boolean(campaignOverviewQuery.data?.can_manage_campaigns)
+  const activeSendingAccounts = (integration?.accounts || []).filter((account) => account.status === 1)
+
+  const refreshConnectionMutation = useMutation({
+    mutationFn: () => refreshWorkspaceInstantly(workspaceId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      toast.success('Instantly connection refreshed.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Instantly could not be refreshed.'),
+  })
+  const disconnectMutation = useMutation({
+    mutationFn: () => disconnectWorkspaceInstantly(workspaceId),
+    onSuccess: async () => {
+      setApiKeyDraft('')
+      setConnectionOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      toast.success('Instantly API access removed from this workspace.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Instantly could not be disconnected.'),
+  })
+  const saveCampaignMutation = useMutation({
+    mutationFn: saveWorkspaceCampaign,
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      resetCreateDialog()
+      navigate(`${baseHref}/client-campaigns/${variables.clientId}`)
+      toast.success('Campaign draft saved.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The campaign draft could not be saved.'),
+  })
 
   const selectedClient = activeClients.find((client) => client.id === selectedClientId) || null
   const creationShortlistQuery = useQuery({
@@ -263,6 +381,8 @@ const WorkspaceCampaigns = ({
       || (filter === 'attention' && summary.status === 'Needs attention')
       || (filter === 'draft' && summary.status === 'Draft')
       || (filter === 'active' && summary.status === 'Active')
+      || (filter === 'paused' && summary.status === 'Paused')
+      || (filter === 'completed' && summary.status === 'Completed')
       || (filter === 'setup' && summary.status === 'Not started')
     return matchesSearch && matchesFilter
   }).sort((left, right) => {
@@ -270,7 +390,9 @@ const WorkspaceCampaigns = ({
       'Needs attention': 0,
       Draft: 1,
       Active: 2,
-      'Not started': 3,
+      Paused: 3,
+      Completed: 4,
+      'Not started': 5,
     }
     return priority[left.status] - priority[right.status]
       || left.client.name.localeCompare(right.client.name)
@@ -278,37 +400,70 @@ const WorkspaceCampaigns = ({
 
   const activeCount = summaries.filter((summary) => summary.status === 'Active').length
   const reviewCount = summaries.reduce((total, summary) => (
-    total + (summary.detail?.outreach.pending_review_count || 0)
+    total + (summary.campaign
+      ? summary.campaign.target_counts.ready
+      : summary.detail?.outreach.pending_review_count || 0)
   ), 0)
   const sentCount = summaries.reduce((total, summary) => (
-    total + (summary.detail?.outreach.initial_emails_sent || 0)
+    total + (summary.campaign?.analytics.emails_sent_count ?? summary.detail?.outreach.initial_emails_sent ?? 0)
   ), 0)
+  const positiveReplyCount = summaries.reduce((total, summary) => (
+    total
+    + (summary.campaign?.analytics.total_interested || 0)
+    + (summary.campaign?.analytics.total_meeting_booked || 0)
+  ), 0)
+  const availableCampaignClients = activeClients.filter((client) => !persistedCampaigns.has(client.id))
 
-  const resetCreateDialog = () => {
+  const saveInstantlyConnection = async () => {
+    let apiKey = apiKeyDraft.trim()
+    if (apiKey.length < 20 || connectionSaving) return
+    setApiKeyDraft('')
+    setConnectionSaving(true)
+    try {
+      await connectWorkspaceInstantly(workspaceId, apiKey)
+      setConnectionOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      toast.success('Instantly connected. Campaign launching is ready.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Instantly could not be connected.')
+    } finally {
+      apiKey = ''
+      setConnectionSaving(false)
+    }
+  }
+
+  function resetCreateDialog() {
     setCreateOpen(false)
     setCreateStep(1)
     setSelectedClientId('')
     setCampaignName('')
+    setCampaignTimezoneDraft(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York')
+    setCampaignDailyLimit(30)
+    setSelectedSenderAccounts(new Set())
     setSelectedPodcastIds(new Set())
     setInitializedClientId('')
   }
 
   const selectClient = (clientId: string) => {
-    const client = activeClients.find((candidate) => candidate.id === clientId)
+    const client = availableCampaignClients.find((candidate) => candidate.id === clientId)
     setSelectedClientId(clientId)
     setCampaignName(client ? `${client.name} Podcast Outreach` : '')
+    setSelectedSenderAccounts(new Set(activeSendingAccounts[0] ? [activeSendingAccounts[0].email] : []))
     setSelectedPodcastIds(new Set())
     setInitializedClientId('')
   }
 
   const openDraftWorkspace = () => {
     if (!selectedClientId) return
-    const selectedIds = Array.from(selectedPodcastIds)
-    const query = selectedIds.length > 0
-      ? `?podcasts=${encodeURIComponent(selectedIds.join(','))}`
-      : ''
-    resetCreateDialog()
-    navigate(`${baseHref}/client-campaigns/${selectedClientId}${query}`)
+    saveCampaignMutation.mutate({
+      workspaceId,
+      clientId: selectedClientId,
+      name: campaignName.trim(),
+      timezone: campaignTimezoneDraft,
+      dailyLimit: campaignDailyLimit,
+      senderAccounts: Array.from(selectedSenderAccounts),
+      shortlistPodcastIds: Array.from(selectedPodcastIds),
+    })
   }
 
   if (clientsError) {
@@ -325,21 +480,74 @@ const WorkspaceCampaigns = ({
 
   return (
     <div className="space-y-5">
+      <Card
+        data-testid="instantly-connection-card"
+        className={integration?.connected ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/40'}
+      >
+        <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${integration?.connected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+              {campaignOverviewQuery.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <PlugZap className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">
+                  {campaignOverviewQuery.isLoading
+                    ? 'Checking Instantly connection…'
+                    : integration?.connected
+                      ? integration.provider_workspace_name || 'Instantly connected'
+                      : integration?.status === 'error'
+                        ? 'Instantly needs attention'
+                        : 'Connect Instantly to launch outreach'}
+                </p>
+                {integration?.connected && <Badge variant="outline" className="border-emerald-200 bg-background text-emerald-800">Connected</Badge>}
+              </div>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                {campaignOverviewQuery.error instanceof Error
+                  ? campaignOverviewQuery.error.message
+                  : integration?.connected
+                    ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · key ending ${integration.api_key_last_four || '••••'}`
+                    : integration?.last_error || 'Draft campaigns and pitches now; the workspace owner connects one V2 API key before anyone sends.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {campaignOverviewQuery.error && (
+              <Button type="button" variant="outline" size="sm" onClick={() => void campaignOverviewQuery.refetch()}>
+                <RefreshCw className="mr-2 h-4 w-4" />Try again
+              </Button>
+            )}
+            {integration?.connected && canManageCampaigns && (
+              <Button type="button" variant="outline" size="sm" disabled={refreshConnectionMutation.isPending} onClick={() => refreshConnectionMutation.mutate()}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${refreshConnectionMutation.isPending ? 'animate-spin' : ''}`} />Refresh
+              </Button>
+            )}
+            {integration?.can_manage && (
+              <Button type="button" size="sm" variant={integration.connected ? 'outline' : 'default'} onClick={() => setConnectionOpen(true)}>
+                <KeyRound className="mr-2 h-4 w-4" />{integration.connected ? 'Manage key' : 'Connect Instantly'}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Campaign operations</h2>
           <p className="mt-1 text-sm text-muted-foreground">One ongoing podcast outreach campaign for every active client.</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} disabled={clientsLoading || activeClients.length === 0}>
-          <Plus className="mr-2 h-4 w-4" />New campaign
-        </Button>
+        {canManageCampaigns && (
+          <Button onClick={() => setCreateOpen(true)} disabled={clientsLoading || campaignOverviewQuery.isLoading || availableCampaignClients.length === 0}>
+            <Plus className="mr-2 h-4 w-4" />New campaign
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryMetric label="Active campaigns" value={activeCount} detail="Currently sending outreach" icon={CheckCircle2} />
-        <SummaryMetric label="Needs review" value={reviewCount} detail="Custom pitches awaiting a decision" icon={AlertCircle} />
-        <SummaryMetric label="Initial emails sent" value={sentCount} detail="Verified workspace outreach" icon={Mail} />
-        <SummaryMetric label="Positive replies" value="—" detail="Available after Instantly sync" icon={MessageSquare} />
+        <SummaryMetric label="Ready to launch" value={reviewCount} detail="Reviewed pitches ready for outreach" icon={AlertCircle} />
+        <SummaryMetric label="Emails sent" value={sentCount} detail="Synced campaign outreach" icon={Mail} />
+        <SummaryMetric label="Positive replies" value={integration?.connected ? positiveReplyCount : '—'} detail={integration?.connected ? 'Marked interested in Instantly' : 'Available after Instantly sync'} icon={MessageSquare} />
       </div>
 
       <Card className="overflow-hidden">
@@ -416,11 +624,14 @@ const WorkspaceCampaigns = ({
                 <TableBody>
                   {filteredSummaries.map((summary) => {
                     const outreach = summary.detail?.outreach
+                    const campaign = summary.campaign
                     const bookings = summary.detail?.bookings.filter((booking) => (
                       ['booked', 'recorded', 'published'].includes(booking.status)
                     )).length || 0
-                    const ready = outreach?.approved_count || 0
-                    const reviewTotal = ready + (outreach?.pending_review_count || 0)
+                    const ready = campaign?.target_counts.ready ?? outreach?.approved_count ?? 0
+                    const reviewTotal = campaign
+                      ? campaign.target_counts.ready + campaign.target_counts.needs_pitch
+                      : ready + (outreach?.pending_review_count || 0)
                     return (
                       <TableRow key={summary.client.id} className="group">
                         <TableCell>
@@ -430,8 +641,8 @@ const WorkspaceCampaigns = ({
                         <TableCell>{summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : summary.error ? <Badge variant="destructive">Unavailable</Badge> : <CampaignStatusBadge status={summary.status} />}</TableCell>
                         <TableCell><p className="font-medium">{summary.currentWaveLabel}</p><p className="text-xs text-muted-foreground">{summary.currentWaveCount} podcast{summary.currentWaveCount === 1 ? '' : 's'}</p></TableCell>
                         <TableCell><p className="font-medium">{reviewTotal > 0 ? `${ready}/${reviewTotal} ready` : `${summary.approvedPodcasts} eligible`}</p><p className="text-xs text-muted-foreground">{summary.missingContacts > 0 ? `${summary.missingContacts} missing contact` : 'Contact-ready'}</p></TableCell>
-                        <TableCell>{outreach?.podcasts_contacted ?? '—'}</TableCell>
-                        <TableCell><span className="text-muted-foreground">—</span></TableCell>
+                        <TableCell>{campaign?.analytics.contacted_count ?? outreach?.podcasts_contacted ?? '—'}</TableCell>
+                        <TableCell>{campaign?.analytics.reply_count_unique ?? <span className="text-muted-foreground">—</span>}</TableCell>
                         <TableCell>{bookings}</TableCell>
                         <TableCell><Button asChild variant="ghost" size="sm" className="-ml-3 justify-start text-primary"><Link to={`${baseHref}/client-campaigns/${summary.client.id}`}>{summary.error ? 'Try campaign workspace' : summary.nextAction}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Link></Button></TableCell>
                       </TableRow>
@@ -466,7 +677,7 @@ const WorkspaceCampaigns = ({
                 <Select value={selectedClientId} onValueChange={selectClient}>
                   <SelectTrigger id="campaign-client"><SelectValue placeholder="Select an active client" /></SelectTrigger>
                   <SelectContent>
-                    {activeClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
+                    {availableCampaignClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -474,6 +685,53 @@ const WorkspaceCampaigns = ({
                 <Label htmlFor="campaign-name">Campaign name</Label>
                 <Input id="campaign-name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} disabled={!selectedClient} />
                 <p className="text-xs text-muted-foreground">Use the client’s ongoing campaign for every weekly outreach wave.</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="campaign-timezone">Sending timezone</Label>
+                  <Input id="campaign-timezone" value={campaignTimezoneDraft} onChange={(event) => setCampaignTimezoneDraft(event.target.value)} disabled={!selectedClient} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="campaign-daily-limit">Daily lead limit</Label>
+                  <Input
+                    id="campaign-daily-limit"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={campaignDailyLimit}
+                    onChange={(event) => setCampaignDailyLimit(Number(event.target.value) || 1)}
+                    disabled={!selectedClient}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Sending accounts</Label>
+                {integration?.connected && activeSendingAccounts.length > 0 ? (
+                  <div className="max-h-36 space-y-2 overflow-y-auto rounded-xl border p-3">
+                    {activeSendingAccounts.map((account) => (
+                      <label key={account.email} className="flex cursor-pointer items-center gap-3 text-sm">
+                        <Checkbox
+                          checked={selectedSenderAccounts.has(account.email)}
+                          onCheckedChange={(checked) => setSelectedSenderAccounts((current) => {
+                            const next = new Set(current)
+                            if (checked) next.add(account.email)
+                            else next.delete(account.email)
+                            return next
+                          })}
+                          aria-label={`Use ${account.email}`}
+                        />
+                        <span className="min-w-0 truncate">{account.email}</span>
+                        <Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-emerald-800">Active</Badge>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
+                    {integration?.connected
+                      ? 'No active Instantly sending accounts are available. You can save the draft, then resolve sender health before launch.'
+                      : 'No sender is required to save a draft. The workspace owner can connect Instantly before launch.'}
+                  </div>
+                )}
               </div>
             </div>
           ) : creationShortlistQuery.isLoading ? (
@@ -518,7 +776,7 @@ const WorkspaceCampaigns = ({
           )}
 
           <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-            The campaign workspace is available now. Saving pitches and starting outreach remain disabled until Instantly campaign storage is connected.
+            Saving creates a real workspace campaign and first weekly wave. Email only begins after a reviewed pitch is explicitly approved in the campaign workspace.
           </div>
 
           <DialogFooter>
@@ -526,8 +784,98 @@ const WorkspaceCampaigns = ({
             {createStep === 1 ? (
               <Button type="button" disabled={!selectedClientId || !campaignName.trim()} onClick={() => setCreateStep(2)}>Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>
             ) : (
-              <Button type="button" disabled={creationShortlistQuery.isLoading} onClick={openDraftWorkspace}>Open draft workspace<ArrowRight className="ml-2 h-4 w-4" /></Button>
+              <Button type="button" disabled={creationShortlistQuery.isLoading || saveCampaignMutation.isPending} onClick={openDraftWorkspace}>
+                {saveCampaignMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Save &amp; open campaign<ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={connectionOpen} onOpenChange={(open) => {
+        setConnectionOpen(open)
+        if (!open) setApiKeyDraft('')
+      }}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <KeyRound className="h-5 w-5" />
+            </div>
+            <DialogTitle>{integration?.connected ? 'Manage Instantly connection' : 'Connect your Instantly workspace'}</DialogTitle>
+            <DialogDescription>
+              Enter a V2 API key for this agency workspace. The key is verified against Instantly, encrypted server-side, and never shown again.
+            </DialogDescription>
+          </DialogHeader>
+
+          {integration?.connected && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+              <p className="font-semibold text-emerald-900">{integration.provider_workspace_name}</p>
+              <p className="mt-1 text-emerald-800">Key ending {integration.api_key_last_four} · {integration.active_account_count} active sender{integration.active_account_count === 1 ? '' : 's'}</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="instantly-api-key">{integration?.connected ? 'Replacement API key' : 'Instantly V2 API key'}</Label>
+            <Input
+              id="instantly-api-key"
+              type="password"
+              value={apiKeyDraft}
+              onChange={(event) => setApiKeyDraft(event.target.value)}
+              placeholder="Paste the workspace API key"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+            />
+            <p className="text-xs leading-5 text-muted-foreground">
+              Required scopes: workspace and account read; campaign read/create/update; lead read/create/update. No inbox or subsequence permissions are needed.
+            </p>
+          </div>
+
+          <div className="flex gap-3 rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <p>Staff can use the connected campaign tools, but only the workspace owner can replace or remove the credential.</p>
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div>
+              {integration?.connected && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="ghost" className="text-destructive hover:text-destructive">Disconnect</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Disconnect Instantly?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes the stored API key immediately. Existing Instantly campaigns keep running there until they are paused in Instantly or reconnected here.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep connected</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        disabled={disconnectMutation.isPending}
+                        onClick={() => disconnectMutation.mutate()}
+                      >
+                        Remove API key
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setConnectionOpen(false)}>Cancel</Button>
+              <Button
+                type="button"
+                disabled={apiKeyDraft.trim().length < 20 || connectionSaving}
+                onClick={() => void saveInstantlyConnection()}
+              >
+                {connectionSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Verify &amp; save key
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
