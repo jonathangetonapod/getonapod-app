@@ -234,6 +234,7 @@ describe('WorkspaceStaff', () => {
     expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
     expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
     expect(within(settingsNavigation).getByRole('link', { name: /Billing/ })).toHaveAttribute('href', '/app/settings/billing')
+    expect(within(settingsNavigation).queryByRole('link', { name: /^Credits/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Client-facing brand', level: 2 })).toBeInTheDocument()
@@ -475,8 +476,14 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
 
     expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
-    expect(screen.getByText('Manage the identity, client experience, and team access for Acme Workspace.')).toBeInTheDocument()
+    expect(screen.getByText('Manage the identity, client experience, credits, and team access for Acme Workspace.')).toBeInTheDocument()
     expect(screen.getByText('Manage the people who can access this workspace.')).toBeInTheDocument()
+    const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
+    expect(within(settingsNavigation).getByRole('link', { name: /^Credits/ })).toHaveAttribute('href', '#workspace-credits')
+    const creditsSection = screen.getByRole('region', { name: 'Workspace credits' })
+    expect(within(creditsSection).getByText('Design preview · not saved')).toBeInTheDocument()
+    expect(within(creditsSection).getByText(/credits are granted to Acme Workspace, not to this person/i)).toBeInTheDocument()
+    expect(within(creditsSection).getByLabelText('0 credits available')).toBeInTheDocument()
     expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Sidebar navigation' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Organize sidebar' })).not.toBeInTheDocument()
@@ -513,6 +520,43 @@ describe('WorkspaceStaff', () => {
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
   })
 
+  it('previews a manual credit grant with an explicit reason, note, and confirmation', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'platform@example.com' },
+      workspace: null,
+      membership: null,
+      isPlatformAdmin: true,
+      refreshAccount,
+      refreshSession,
+      signOut,
+    } as never)
+
+    renderPage(workspaceId)
+
+    const creditsSection = await screen.findByRole('region', { name: 'Workspace credits' })
+    const reviewButton = within(creditsSection).getByRole('button', { name: 'Review credit grant' })
+    expect(reviewButton).toBeDisabled()
+
+    fireEvent.click(within(creditsSection).getByRole('combobox', { name: 'Reason' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Customer support' }))
+    fireEvent.change(within(creditsSection).getByLabelText('Internal note'), {
+      target: { value: 'Onboarding courtesy for the new workspace.' },
+    })
+    expect(reviewButton).toBeEnabled()
+    fireEvent.click(reviewButton)
+
+    const confirmation = screen.getByRole('alertdialog', { name: 'Add 100 credits to Acme Workspace?' })
+    expect(within(confirmation).getByText('Workspace Owner')).toBeInTheDocument()
+    expect(within(confirmation).getByText('Customer support')).toBeInTheDocument()
+    expect(within(confirmation).getByText('Onboarding courtesy for the new workspace.')).toBeInTheDocument()
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm preview' }))
+
+    await waitFor(() => expect(within(creditsSection).getByLabelText('100 credits available')).toBeInTheDocument())
+    expect(within(creditsSection).getByText('+100 credits')).toBeInTheDocument()
+    expect(within(creditsSection).getByText('Previewed by platform@example.com')).toBeInTheDocument()
+    expect(toastSuccess).toHaveBeenCalledWith('Credit grant previewed. No changes were saved.')
+  })
+
   it('lets the platform owner reset the selected workspace owner without exposing an old password', async () => {
     const resettableOwner: WorkspaceStaffMember = { ...owner, allowed_actions: ['reset_password'] }
     mockedUseAuth.mockReturnValue({
@@ -538,7 +582,8 @@ describe('WorkspaceStaff', () => {
     })
 
     renderPage(workspaceId)
-    const ownerRow = (await screen.findByText('Workspace Owner')).closest('tr')
+    const teamTable = await screen.findByRole('table')
+    const ownerRow = within(teamTable).getByText('Workspace Owner').closest('tr')
     expect(ownerRow).not.toBeNull()
     fireEvent.click(within(ownerRow as HTMLElement).getByRole('button', { name: 'Reset password' }))
     const confirmation = screen.getByRole('alertdialog', { name: 'Reset Workspace Owner’s password?' })

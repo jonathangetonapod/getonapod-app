@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Building2,
   Copy,
+  Coins,
   CreditCard,
   Crown,
   Eye,
@@ -29,6 +30,7 @@ import {
   WorkspaceBrandLogo,
   WorkspaceLayout,
 } from '@/components/workspace/WorkspaceLayout'
+import { WorkspaceCreditGrantPreview } from '@/components/workspace/WorkspaceCreditGrantPreview'
 import { useAuth } from '@/contexts/AuthContext'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -458,6 +460,8 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       }
     : undefined
 
+  const workspaceOwner = staff.find((member) => member.role === 'owner')
+
   const settingsNavigation = [
     { href: '#workspace-general', label: 'General', description: 'Workspace identity', icon: Building2 },
     ...(canOrganizeSidebar
@@ -465,6 +469,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       : []),
     { href: '#client-branding', label: 'Client branding', description: 'Logo, name, and colors', icon: Palette },
     { href: '#workspace-access', label: 'Team & access', description: 'Users, roles, and passwords', icon: Users },
+    ...(isPlatformWorkspace
+      ? [{ href: '#workspace-credits', label: 'Credits', description: 'Manual Waterfall grants', icon: Coins }]
+      : []),
     ...(!isPlatformWorkspace
       ? [{ href: '/app/settings/billing', label: 'Billing', description: 'Plan and Waterfall credits', icon: CreditCard }]
       : []),
@@ -493,7 +500,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
                     <p className="mt-1.5 max-w-2xl text-muted-foreground">
                       {isPlatformWorkspace
-                        ? `Manage the identity, client experience, and team access for ${data.workspace.name}.`
+                        ? `Manage the identity, client experience, credits, and team access for ${data.workspace.name}.`
                         : 'Manage your workspace identity, client experience, and team access.'}
                     </p>
                   </div>
@@ -513,7 +520,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     aria-label="Settings sections"
                     className={cn(
                       'grid gap-2 lg:grid-cols-1 lg:gap-1',
-                      canOrganizeSidebar ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3',
+                      'grid-cols-2 sm:grid-cols-4',
                     )}
                   >
                     {settingsNavigation.map((item) => {
@@ -982,6 +989,15 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       </CardContent>
                     </Card>
                   </section>
+
+                  {isPlatformWorkspace && workspaceOwner && (
+                    <WorkspaceCreditGrantPreview
+                      workspaceName={data.workspace.name}
+                      ownerName={workspaceOwner.full_name || workspaceOwner.email}
+                      ownerEmail={workspaceOwner.email}
+                      actorEmail={user?.email || 'Platform administrator'}
+                    />
+                  )}
                 </div>
               </div>
             </div>
