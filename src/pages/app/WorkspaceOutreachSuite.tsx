@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
-  ArrowRight,
   Inbox,
   Layers3,
   Loader2,
@@ -45,7 +44,6 @@ interface WorkspaceOutreachSuiteProps {
 interface SuiteItem {
   module: OutreachWorkspaceModule
   name: string
-  shortDescription: string
   icon: LucideIcon
 }
 
@@ -59,19 +57,16 @@ const suiteItems = [
   {
     module: 'client-campaigns',
     name: 'Client Campaigns',
-    shortDescription: 'Launch and monitor outreach by client.',
     icon: Megaphone,
   },
   {
     module: 'master-inbox',
     name: 'Master Inbox',
-    shortDescription: 'Handle every reply in one queue.',
     icon: Inbox,
   },
   {
     module: 'mailboxes',
     name: 'Mailboxes',
-    shortDescription: 'Protect sender health and capacity.',
     icon: Mailbox,
   },
 ] as const satisfies readonly SuiteItem[]
@@ -332,7 +327,7 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
           </div>
         </header>
 
-        <nav aria-label="Outreach suite" className="grid gap-3 lg:grid-cols-3">
+        <nav aria-label="Outreach suite" className="flex max-w-full gap-1 overflow-x-auto border-b border-border">
           {suiteItems.map((item) => {
             const Icon = item.icon
             const active = item.module === module
@@ -342,23 +337,14 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
                 to={workspaceModuleHref(baseHref, item.module)}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'group flex min-w-0 items-center gap-3 rounded-2xl border bg-card p-4 transition-colors',
+                  'group inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors',
                   active
-                    ? 'border-primary/40 bg-primary/[0.04] shadow-sm'
-                    : 'border-border hover:border-primary/30 hover:bg-muted/30',
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground',
                 )}
               >
-                <div className={cn(
-                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                  active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground group-hover:text-foreground',
-                )}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{item.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.shortDescription}</p>
-                </div>
-                <ArrowRight className={cn('h-4 w-4 shrink-0', active ? 'text-primary' : 'text-muted-foreground/60')} />
+                <Icon className={cn('h-4 w-4', active ? 'text-primary' : 'text-muted-foreground')} />
+                <span>{item.name}</span>
               </Link>
             )
           })}

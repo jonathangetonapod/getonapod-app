@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
@@ -115,9 +115,10 @@ describe('WorkspaceOutreachSuite', () => {
     expect(navigation).toHaveTextContent('Client Campaigns')
     expect(navigation).toHaveTextContent('Master Inbox')
     expect(navigation).toHaveTextContent('Mailboxes')
-    expect(screen.getByRole('link', { name: /launch and monitor outreach by client/i })).toHaveAttribute('href', '/app/client-campaigns')
-    expect(screen.getByRole('link', { name: /handle every reply in one queue/i })).toHaveAttribute('href', '/app/master-inbox')
-    expect(screen.getByRole('link', { name: /protect sender health and capacity/i })).toHaveAttribute('href', '/app/mailboxes')
+    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
+    expect(within(navigation).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('href', '/app/master-inbox')
+    expect(within(navigation).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('aria-current', 'page')
+    expect(within(navigation).getByRole('link', { name: 'Mailboxes' })).toHaveAttribute('href', '/app/mailboxes')
   })
 
   it('loads a selected workspace and scopes every suite route to it', async () => {
@@ -126,7 +127,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(await screen.findByText('Acme Workspace')).toBeInTheDocument()
     const baseHref = `/app/workspaces/${selectedWorkspaceId}`
     expect(screen.getByTestId('workspace-layout')).toHaveAttribute('data-base-href', baseHref)
-    expect(screen.getByRole('link', { name: /handle every reply in one queue/i })).toHaveAttribute('href', `${baseHref}/master-inbox`)
+    expect(screen.getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('href', `${baseHref}/master-inbox`)
     expect(screen.getByRole('link', { name: /open clients/i })).toHaveAttribute('href', `${baseHref}/clients`)
     expect(mockedView).toHaveBeenCalledWith(selectedWorkspaceId, expect.any(AbortSignal))
   })
