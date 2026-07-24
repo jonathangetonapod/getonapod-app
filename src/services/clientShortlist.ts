@@ -5,6 +5,8 @@ export type ClientShortlistVisibility = 'visible' | 'archived'
 export type ClientShortlistFeedbackStatus = 'approved' | 'rejected' | null
 export type ClientShortlistResearchStageId = 'podcast_profile' | 'host_profile' | 'recent_episodes' | 'guest_patterns' | 'guest_fit' | 'pitch_angles'
 export type ClientShortlistResearchStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type ClientShortlistEmailUnlockStageId = 'identify_contact' | 'find_email' | 'verify_email'
+export type ClientShortlistEmailUnlockStatus = 'queued' | 'running' | 'unlocked' | 'not_found' | 'failed'
 
 export interface ClientShortlistResearchProgress {
   status: ClientShortlistResearchStatus
@@ -13,6 +15,18 @@ export interface ClientShortlistResearchProgress {
   message?: string | null
   started_at?: string | null
   updated_at?: string | null
+}
+
+export interface ClientShortlistEmailUnlock {
+  status: ClientShortlistEmailUnlockStatus
+  current_stage: ClientShortlistEmailUnlockStageId | null
+  completed_stages: ClientShortlistEmailUnlockStageId[]
+  email?: string | null
+  host_name?: string | null
+  message?: string | null
+  started_at?: string | null
+  updated_at?: string | null
+  unlocked_at?: string | null
 }
 
 export interface ClientShortlistCategory {
@@ -58,6 +72,7 @@ export interface ClientShortlistPodcast extends ClientShortlistPodcastInput {
   ai_pitch_angles: Array<{ title: string; description: string }> | null
   ai_analyzed_at: string | null
   research_progress?: ClientShortlistResearchProgress | null
+  email_unlock?: ClientShortlistEmailUnlock | null
   visibility: ClientShortlistVisibility
   display_order: number
   is_featured: boolean

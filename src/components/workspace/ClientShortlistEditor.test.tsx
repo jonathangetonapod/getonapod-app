@@ -243,6 +243,10 @@ describe('ClientShortlistEditor', () => {
     expect(billingLink).toHaveAttribute('href', '/app/settings/billing')
     expect(billingLink).toHaveAttribute('target', '_blank')
     expect(screen.getByText(/Billing opens in a new tab so this pitch stays here/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Start direct email search' }))
+    expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
+    expect(screen.getByText(/reopening this podcast returns to the same job/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start direct email search' })).not.toBeInTheDocument()
     expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument()
@@ -405,6 +409,103 @@ describe('ClientShortlistEditor', () => {
 
     expect(screen.queryByRole('button', { name: 'Edit stage prompts' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Workspace research prompts' })).not.toBeInTheDocument()
+  })
+
+  it('reuses a workspace-unlocked direct email after the modal is closed and reopened', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValueOnce({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        email_unlock: {
+          status: 'unlocked',
+          current_stage: null,
+          completed_stages: ['identify_contact', 'find_email', 'verify_email'],
+          email: 'direct@founderstories.fm',
+          host_name: 'Jamie Host',
+          unlocked_at: '2026-07-24T12:00:00.000Z',
+        },
+      })],
+    })
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+
+    expect(await screen.findByText('Direct email unlocked · 0 additional credits')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getAllByText('Already unlocked').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('0 additional credits').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Future host and contact refreshes are included at no additional charge/i)).toBeInTheDocument()
+    expect(screen.queryByText('direct@founderstories.fm')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start direct email search' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+    expect(await screen.findByText('Direct email unlocked · 0 additional credits')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
+  })
+
+  it('keeps a newly started email search visible when the visual modal is reopened', async () => {
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Try waterfall enrichment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start direct email search' }))
+    expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+    expect(await screen.findByText('Direct email search in progress')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
+  })
+
+  it('restores an in-progress email search and lets the owner use the free inbox instead', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValueOnce({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        email_unlock: {
+          status: 'running',
+          current_stage: 'find_email',
+          completed_stages: ['identify_contact'],
+          started_at: '2026-07-24T12:00:00.000Z',
+          updated_at: '2026-07-24T12:01:00.000Z',
+        },
+      })],
+    })
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+
+    expect(await screen.findByText('Direct email search in progress')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Confirming the right contact')).toBeInTheDocument()
+    expect(screen.getByText('Searching trusted sources')).toBeInTheDocument()
+    expect(screen.getByText('Verifying the email')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
+    expect(screen.getByText(/keeps running if you close this modal/i)).toBeInTheDocument()
+  })
+
+  it('shows a no-charge retry state when a direct email was not found', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValueOnce({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        email_unlock: {
+          status: 'not_found',
+          current_stage: null,
+          completed_stages: ['identify_contact', 'find_email'],
+          message: 'We could not verify a direct host email for this show.',
+        },
+      })],
+    })
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+
+    expect(await screen.findByText('No direct email found yet')).toBeInTheDocument()
+    expect(screen.getByText('You were not charged')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    expect(screen.getByText('No verified direct email · No charge')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try search again' }))
+    expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
   })
 
   it('lets a workspace manager edit and save all three outputs from the research result', async () => {

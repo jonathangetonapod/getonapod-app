@@ -39,6 +39,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { buildPodcastCampaignSequenceDraft, buildThreadReplySubject, type PodcastCampaignSequenceDraft } from '@/lib/campaignSequence'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type {
+  ClientShortlistEmailUnlockStageId,
   ClientShortlistPodcast,
   ClientShortlistResearchStageId,
 } from '@/services/clientShortlist'
@@ -64,11 +65,17 @@ interface ClientCampaignPrepDialogProps {
 type PitchStep = 'email' | 'research' | 'pitch'
 type EmailRoute = 'podcast' | 'waterfall' | 'manual'
 type ResearchProgressStatus = 'complete' | 'active' | 'queued' | 'failed'
+type EmailUnlockVisualStatus = 'available' | 'queued' | 'running' | 'unlocked' | 'not_found' | 'failed'
 
 interface ResearchProgressStep {
   id: ClientShortlistResearchStageId
   title: string
   detail: string
+}
+
+interface EmailUnlockStep {
+  id: ClientShortlistEmailUnlockStageId
+  title: string
 }
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
@@ -84,6 +91,12 @@ const researchProgressSteps: ResearchProgressStep[] = [
   { id: 'guest_patterns', title: 'Checking guest patterns', detail: 'Guest format and recent conversations' },
   { id: 'guest_fit', title: 'Matching guest expertise', detail: 'Audience needs and credible fit' },
   { id: 'pitch_angles', title: 'Preparing pitch angles', detail: 'Primary topic and useful alternatives' },
+]
+
+const emailUnlockSteps: EmailUnlockStep[] = [
+  { id: 'identify_contact', title: 'Confirming the right contact' },
+  { id: 'find_email', title: 'Searching trusted sources' },
+  { id: 'verify_email', title: 'Verifying the email' },
 ]
 
 const defaultResearchPrompts: Record<ClientShortlistResearchStageId, string> = {
@@ -109,6 +122,10 @@ function emptyDraft(): PodcastCampaignSequenceDraft {
 
 function fieldComplete(value: string): boolean {
   return Boolean(value.trim())
+}
+
+function validEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase())
 }
 
 function compactNumber(value: number | null | undefined): string {
@@ -144,6 +161,7 @@ export function ClientCampaignPrepDialog({
   const queryClient = useQueryClient()
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
   const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
+  const [previewEmailSearchPodcastId, setPreviewEmailSearchPodcastId] = useState<string | null>(null)
   const [showPodcastDetails, setShowPodcastDetails] = useState(false)
   const [showResearchSteps, setShowResearchSteps] = useState(false)
   const [showPromptSettings, setShowPromptSettings] = useState(false)
@@ -176,6 +194,30 @@ export function ClientCampaignPrepDialog({
   const podcastUrl = safeExternalUrl(podcast?.podcast_url)
   const podcastImageUrl = safeExternalUrl(podcast?.podcast_image_url)
   const publicPodcastEmail = podcast?.podcast_email?.trim() || ''
+  const storedEmailUnlock = podcast?.email_unlock || null
+  const previewEmailSearchRunning = previewEmailSearchPodcastId === podcast?.podcast_id
+    && storedEmailUnlock?.status !== 'unlocked'
+  const emailUnlockStatus: EmailUnlockVisualStatus = previewEmailSearchRunning
+    ? 'running'
+    : storedEmailUnlock?.status || 'available'
+  const unlockedEmail = emailUnlockStatus === 'unlocked'
+    ? storedEmailUnlock?.email?.trim() || target?.contact_email?.trim() || ''
+    : ''
+  const emailSearchRunning = emailUnlockStatus === 'queued' || emailUnlockStatus === 'running'
+  const emailAlreadyUnlocked = emailUnlockStatus === 'unlocked' && validEmail(unlockedEmail)
+  const emailSearchHasNoResult = emailUnlockStatus === 'not_found' || emailUnlockStatus === 'failed'
+  const emailUnlockCurrentStage = previewEmailSearchRunning
+    ? 'identify_contact'
+    : storedEmailUnlock?.current_stage || null
+  const emailUnlockCompletedStages = new Set(storedEmailUnlock?.completed_stages || [])
+  const visibleEmailUnlockSteps = emailUnlockSteps.map((step) => ({
+    ...step,
+    status: emailAlreadyUnlocked || emailUnlockCompletedStages.has(step.id)
+      ? 'complete'
+      : emailUnlockCurrentStage === step.id
+        ? 'active'
+        : 'queued',
+  }))
   const fitReasons = podcast?.ai_fit_reasons || []
   const pitchAngles = podcast?.ai_pitch_angles || []
   const selectedPitchAngle = pitchAngles[selectedAngleIndex] || null
@@ -241,14 +283,22 @@ export function ClientCampaignPrepDialog({
     if (!open || !podcast || campaignQuery.isLoading) return
     const initial = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio })
     const savedContactEmail = target?.contact_email?.trim() || ''
-    setHostName(target?.host_name || podcast.publisher_name || '')
-    setContactEmail(savedContactEmail || publicPodcastEmail)
-    setEmailRoute(
-      publicPodcastEmail
-      && (!savedContactEmail || savedContactEmail.toLowerCase() === publicPodcastEmail.toLowerCase())
-        ? 'podcast'
-        : 'waterfall',
-    )
+    setHostName(storedEmailUnlock?.host_name || target?.host_name || podcast.publisher_name || '')
+    if (emailAlreadyUnlocked) {
+      setContactEmail(unlockedEmail)
+      setEmailRoute('waterfall')
+    } else if (emailSearchRunning) {
+      setContactEmail('')
+      setEmailRoute('waterfall')
+    } else {
+      setContactEmail(savedContactEmail || publicPodcastEmail)
+      setEmailRoute(
+        publicPodcastEmail
+        && (!savedContactEmail || savedContactEmail.toLowerCase() === publicPodcastEmail.toLowerCase())
+          ? 'podcast'
+          : 'waterfall',
+      )
+    }
     setDraft({
       researchNotes: target?.research_notes || initial.researchNotes,
       subject: target?.pitch_subject || initial.subject,
@@ -258,10 +308,15 @@ export function ClientCampaignPrepDialog({
       followUpTwoSubject: target?.follow_up_2_subject || initial.followUpTwoSubject,
       followUpTwoBody: target?.follow_up_2_body || initial.followUpTwoBody,
     })
-  }, [campaignQuery.isLoading, clientBio, clientName, open, podcast, publicPodcastEmail, target])
+  }, [campaignQuery.isLoading, clientBio, clientName, emailAlreadyUnlocked, emailSearchRunning, open, podcast, publicPodcastEmail, storedEmailUnlock?.host_name, target, unlockedEmail])
 
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
+  }
+  const beginEmailSearchPreview = () => {
+    setEmailRoute('waterfall')
+    setContactEmail('')
+    setPreviewEmailSearchPodcastId(podcast?.podcast_id || null)
   }
   const selectPromptStage = (stageId: ClientShortlistResearchStageId) => {
     if (promptDirty) {
@@ -310,7 +365,7 @@ export function ClientCampaignPrepDialog({
   }
 
   const normalizedEmail = contactEmail.trim().toLowerCase()
-  const emailReady = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+  const emailReady = validEmail(normalizedEmail)
   const sequenceComplete = [
     draft.subject,
     draft.pitchBody,
@@ -538,27 +593,49 @@ export function ClientCampaignPrepDialog({
                             aria-label="Try waterfall enrichment"
                             aria-pressed={emailRoute === 'waterfall'}
                             className={`relative flex min-h-64 flex-col rounded-2xl border p-5 text-left transition-all ${emailRoute === 'waterfall' ? 'border-violet-500 bg-violet-50/50 shadow-sm ring-1 ring-violet-200' : 'bg-background hover:border-violet-300 hover:bg-violet-50/20'}`}
-                            onClick={() => setEmailRoute('waterfall')}
+                            onClick={() => {
+                              setEmailRoute('waterfall')
+                              setContactEmail(emailAlreadyUnlocked ? unlockedEmail : '')
+                            }}
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700"><Search className="h-5 w-5" /></div>
+                              <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700">{emailAlreadyUnlocked ? <CheckCircle2 className="h-5 w-5" /> : emailSearchRunning ? <Loader2 className="h-5 w-5 animate-spin" /> : emailSearchHasNoResult ? <AlertCircle className="h-5 w-5" /> : <Search className="h-5 w-5" />}</div>
                               <div className="flex flex-col items-end gap-1.5">
-                                <Badge className="border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100">Recommended</Badge>
-                                <span className="text-[11px] font-semibold text-violet-800">1 credit on success</span>
+                                <Badge className="border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100">{emailAlreadyUnlocked ? 'Already unlocked' : emailSearchRunning ? 'Search in progress' : emailSearchHasNoResult ? 'No result yet' : 'Recommended'}</Badge>
+                                <span className="text-[11px] font-semibold text-violet-800">{emailAlreadyUnlocked ? '0 additional credits' : emailSearchRunning ? 'Safe to close' : emailSearchHasNoResult ? 'You were not charged' : '1 credit on success'}</span>
                               </div>
                             </div>
-                            <h4 className="mt-4 font-semibold">Find the host's direct email</h4>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">Run a waterfall search to identify the host and verify a work or personal address—the stronger route for reply potential.</p>
-                            <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
-                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host</span>
-                              <ArrowRight className="h-3 w-3 text-violet-400" />
-                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity</span>
-                              <ArrowRight className="h-3 w-3 text-violet-400" />
-                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email</span>
-                            </div>
+                            <h4 className="mt-4 font-semibold">{emailAlreadyUnlocked ? 'Use the direct host email' : emailSearchRunning ? 'Finding the direct host email' : emailSearchHasNoResult ? 'No direct email found yet' : "Find the host's direct email"}</h4>
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">{emailAlreadyUnlocked
+                              ? 'This workspace has already unlocked a verified direct contact for this podcast. It can be reused for every client and campaign.'
+                              : emailSearchRunning
+                                ? 'The search belongs to your workspace and keeps running if you close this modal or return later.'
+                                : emailSearchHasNoResult
+                                  ? storedEmailUnlock?.message || 'The last search did not return a verified direct email. Use the public inbox, enter your own address, or try again.'
+                                  : 'Run a waterfall search to identify the host and verify a work or personal address—the stronger route for reply potential.'}</p>
+                            {emailAlreadyUnlocked ? (
+                              <div className="mt-4 rounded-xl border border-violet-200 bg-background/80 px-3 py-2.5">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">Direct email ready</p>
+                                <p className="mt-1 text-xs leading-5 text-muted-foreground">{storedEmailUnlock?.unlocked_at ? `Unlocked ${formatPodcastDate(storedEmailUnlock.unlocked_at)}.` : 'Saved to this workspace.'} Future host and contact refreshes are included.</p>
+                              </div>
+                            ) : emailSearchRunning ? (
+                              <div className="mt-4 space-y-2">
+                                {visibleEmailUnlockSteps.map((step) => <div key={step.id} className="flex items-center gap-2 text-[11px] font-medium text-violet-900">{step.status === 'complete' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : step.status === 'active' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-700" /> : <span className="h-3.5 w-3.5 rounded-full border border-violet-300" />}<span>{step.title}</span><span className="ml-auto text-violet-700/70">{step.status === 'complete' ? 'Done' : step.status === 'active' ? 'In progress' : 'Waiting'}</span></div>)}
+                              </div>
+                            ) : emailSearchHasNoResult ? (
+                              <p className="mt-4 rounded-xl border border-violet-200 bg-background/80 px-3 py-2.5 text-xs leading-5 text-violet-900">No credit was used. A future retry is still charged only if this podcast is successfully unlocked for the first time.</p>
+                            ) : (
+                              <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host</span>
+                                <ArrowRight className="h-3 w-3 text-violet-400" />
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity</span>
+                                <ArrowRight className="h-3 w-3 text-violet-400" />
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email</span>
+                              </div>
+                            )}
                             <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">
                               {emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border border-violet-300" />}
-                              {emailRoute === 'waterfall' ? 'Selected' : 'Try for a better contact'}
+                              {emailRoute === 'waterfall' ? emailAlreadyUnlocked ? 'Selected · ready to use' : emailSearchRunning ? 'Selected · search continues' : 'Selected' : emailAlreadyUnlocked ? 'Use unlocked contact' : emailSearchRunning ? 'View search progress' : 'Try for a better contact'}
                             </div>
                           </button>
                         </div>
@@ -570,7 +647,7 @@ export function ClientCampaignPrepDialog({
                           className={`mt-4 flex w-full flex-col gap-3 rounded-xl border p-4 text-left transition-all sm:flex-row sm:items-center ${emailRoute === 'manual' ? 'border-slate-500 bg-slate-50 shadow-sm ring-1 ring-slate-200' : 'bg-background hover:border-slate-300 hover:bg-muted/20'}`}
                           onClick={() => {
                             setEmailRoute('manual')
-                            if (contactEmail.trim().toLowerCase() === publicPodcastEmail.toLowerCase()) setContactEmail('')
+                            if ([publicPodcastEmail, unlockedEmail].filter(Boolean).some((email) => contactEmail.trim().toLowerCase() === email.toLowerCase())) setContactEmail('')
                           }}
                         >
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><PenLine className="h-4 w-4" /></span>
@@ -599,19 +676,33 @@ export function ClientCampaignPrepDialog({
                       </div>
 
                       {emailRoute === 'waterfall' && (
-                        <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex gap-3">
-                              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-                              <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We will identify the host, confirm the right person, and then verify the best available email. The public podcast inbox remains available as a fallback. No verified direct email means no credit is charged.</p></div>
-                            </div>
-                            <Button asChild variant="outline" size="sm" className="shrink-0 border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to="/app/settings/billing" target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button>
+                        emailAlreadyUnlocked ? (
+                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                            <div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><div><p className="text-sm font-semibold text-emerald-950">Direct email unlocked · 0 additional credits</p><p className="mt-1 max-w-3xl text-xs leading-5 text-emerald-900/75">This contact is permanently available to the workspace, including when the podcast is used for another client. Future host and contact refreshes are included at no additional charge.</p></div></div>
                           </div>
-                          <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium leading-5 text-violet-800">Credit top-ups are available on every paid plan, including Solo. Billing opens in a new tab so this pitch stays here.</p>
-                        </div>
+                        ) : emailSearchRunning ? (
+                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                            <div className="flex gap-3"><Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-violet-700" /><div><p className="text-sm font-semibold text-violet-950">Direct email search in progress</p><p className="mt-1 max-w-3xl text-xs leading-5 text-violet-900/75">You can safely close this modal. The search continues in the background, and reopening this podcast returns to the same job without reserving or charging another credit.</p></div></div>
+                          </div>
+                        ) : emailSearchHasNoResult ? (
+                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">No verified direct email · No charge</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-900/75">Try again, use the free podcast inbox, or enter an address manually. This podcast is charged only after its first successful workspace unlock.</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 border-amber-200 bg-background text-amber-950" onClick={beginEmailSearchPreview}>Try search again</Button></div>
+                          </div>
+                        ) : (
+                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="flex gap-3">
+                                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
+                                <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We will identify the host, confirm the right person, and then verify the best available email. No verified direct email means no credit is charged.</p></div>
+                              </div>
+                              <div className="flex shrink-0 flex-wrap gap-2"><Button asChild variant="outline" size="sm" className="border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to="/app/settings/billing" target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button><Button type="button" size="sm" onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />Start direct email search</Button></div>
+                            </div>
+                            <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium leading-5 text-violet-800">Once successfully unlocked, this podcast never costs the workspace another email credit. Billing opens in a new tab so this pitch stays here.</p>
+                          </div>
+                        )
                       )}
 
-                      {!emailReady && (
+                      {!emailReady && !publicPodcastEmail && !emailSearchRunning && (
                         <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
                           <div><p className="text-sm font-semibold">No usable email?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Archive this podcast instead of moving an incomplete contact into research.</p></div>
                           <Button type="button" variant="outline" className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" onClick={onArchive}><Archive className="mr-2 h-4 w-4" />Archive podcast</Button>
@@ -860,7 +951,11 @@ export function ClientCampaignPrepDialog({
               <p className="max-w-xl text-xs leading-5 text-muted-foreground">
                 {activeStep === 'email' && (emailReady
                   ? 'Email ready. Research is unlocked.'
-                  : 'A valid email is required before you can continue to Research.')}
+                  : emailSearchRunning
+                    ? publicPodcastEmail
+                      ? 'The direct email search is still running. You can close this window or choose the free public inbox while it continues.'
+                      : 'The direct email search is still running. You can safely close this window and return later.'
+                    : 'A valid email is required before you can continue to Research.')}
                 {activeStep === 'research' && (researchWorking
                   ? 'Research is running in the background. You can close this window and return without losing progress.'
                   : researchFailed
