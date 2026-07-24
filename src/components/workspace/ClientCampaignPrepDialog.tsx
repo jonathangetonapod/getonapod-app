@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   Coins,
   ExternalLink,
   FileSearch,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  SkipForward,
   Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -52,7 +54,7 @@ interface ClientCampaignPrepDialogProps {
 }
 
 type PitchStep = 'email' | 'research' | 'pitch'
-type EmailRoute = 'podcast' | 'waterfall'
+type EmailRoute = 'podcast' | 'waterfall' | 'skip'
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
   { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
@@ -107,6 +109,7 @@ export function ClientCampaignPrepDialog({
   const queryClient = useQueryClient()
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
   const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
+  const [showPodcastStats, setShowPodcastStats] = useState(false)
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -140,6 +143,7 @@ export function ClientCampaignPrepDialog({
     if (!open) {
       setActiveStep('email')
       setEmailRoute('podcast')
+      setShowPodcastStats(false)
       setSelectedAngleIndex(0)
       setHostName('')
       setContactEmail('')
@@ -179,7 +183,6 @@ export function ClientCampaignPrepDialog({
   }
 
   const normalizedEmail = contactEmail.trim().toLowerCase()
-  const emailValid = !normalizedEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
   const sequenceComplete = [
     draft.subject,
     draft.pitchBody,
@@ -224,7 +227,6 @@ export function ClientCampaignPrepDialog({
   const submitDisabled = !podcast
     || !mappedCampaign
     || locked
-    || !emailValid
     || !sequenceComplete
     || prepareMutation.isPending
 
@@ -255,9 +257,9 @@ export function ClientCampaignPrepDialog({
             <div>
               <div className="border-b bg-muted/10 px-5 py-4 sm:px-6">
                 <section aria-labelledby="pitch-podcast-context-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                  <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
+                  <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
                     <div className="flex min-w-0 flex-1 gap-4">
-                      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted shadow-sm">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted shadow-sm">
                         {podcastImageUrl
                           ? <img src={podcastImageUrl} alt="" className="h-full w-full object-cover" />
                           : <Radio className="h-7 w-7 text-muted-foreground/60" />}
@@ -269,28 +271,48 @@ export function ClientCampaignPrepDialog({
                           <span className="text-muted-foreground" aria-hidden="true">·</span>
                           <p className="text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>
                         </div>
-                        <p className="mt-2 line-clamp-2 max-w-2xl text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No podcast description is available yet.'}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-expanded={showPodcastStats}
+                        aria-controls="pitch-podcast-stats"
+                        onClick={() => setShowPodcastStats((current) => !current)}
+                      >
+                        {showPodcastStats ? 'Hide podcast stats' : 'Show podcast stats'}
+                        <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showPodcastStats ? 'rotate-180' : ''}`} />
+                      </Button>
+                      {podcastUrl && <Button asChild variant="outline" size="sm"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
+                    </div>
+                  </div>
+
+                  {showPodcastStats && (
+                    <div id="pitch-podcast-stats">
+                      <div className="border-t px-4 py-4 sm:px-5">
+                        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No podcast description is available yet.'}</p>
                         {podcast.podcast_categories && podcast.podcast_categories.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {podcast.podcast_categories.slice(0, 3).map((category) => <Badge key={category.category_id} variant="secondary" className="font-normal">{category.category_name}</Badge>)}
                           </div>
                         )}
                       </div>
-                    </div>
-                    {podcastUrl && <Button asChild variant="outline" size="sm" className="shrink-0"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                  </div>
 
-                  <div className="grid grid-cols-2 border-t bg-muted/15 sm:grid-cols-4">
-                    <div className="border-b border-r px-4 py-3 sm:border-b-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Est. audience</p><p className="mt-1 text-sm font-semibold">{compactNumber(podcast.audience_size)}</p></div>
-                    <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Apple rating</p><p className="mt-1 text-sm font-semibold">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
-                    <div className="border-r px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episodes</p><p className="mt-1 text-sm font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
-                    <div className="px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Latest episode</p><p className="mt-1 text-sm font-semibold">{formatPodcastDate(podcast.last_posted_at)}</p></div>
-                  </div>
+                      <div className="grid grid-cols-2 border-t bg-muted/15 sm:grid-cols-4">
+                        <div className="border-b border-r px-4 py-3 sm:border-b-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Est. audience</p><p className="mt-1 text-sm font-semibold">{compactNumber(podcast.audience_size)}</p></div>
+                        <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Apple rating</p><p className="mt-1 text-sm font-semibold">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
+                        <div className="border-r px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episodes</p><p className="mt-1 text-sm font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
+                        <div className="px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Latest episode</p><p className="mt-1 text-sm font-semibold">{formatPodcastDate(podcast.last_posted_at)}</p></div>
+                      </div>
 
-                  {podcast.feedback_notes && (
-                    <div className="flex gap-3 border-t border-emerald-100 bg-emerald-50/60 px-4 py-3 sm:px-5">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-                      <p className="text-sm leading-5 text-emerald-950"><span className="font-semibold">Client note:</span> “{podcast.feedback_notes}”</p>
+                      {podcast.feedback_notes && (
+                        <div className="flex gap-3 border-t border-emerald-100 bg-emerald-50/60 px-4 py-3 sm:px-5">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                          <p className="text-sm leading-5 text-emerald-950"><span className="font-semibold">Client note:</span> “{podcast.feedback_notes}”</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </section>
@@ -321,14 +343,14 @@ export function ClientCampaignPrepDialog({
                     <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
                       <div className="flex gap-3">
                         <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
-                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Choose the free public inbox already on file, or try a deeper waterfall search for the host's direct email.</p></div>
+                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Use the free public inbox, try a deeper search for the host's direct email, or skip this step without using credits.</p></div>
                       </div>
                     </div>
 
                     <div className="space-y-6 p-5 sm:p-6">
                       <div>
                         <p className="text-sm font-semibold">Choose an email path</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">You can use the basic address immediately or look for a more personal route that is more likely to earn a response.</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose the route you want. Contact discovery and verification happen automatically behind the scenes.</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <button
                             type="button"
@@ -386,6 +408,21 @@ export function ClientCampaignPrepDialog({
                             </div>
                           </button>
                         </div>
+
+                        <button
+                          type="button"
+                          aria-label="Skip email for now"
+                          aria-pressed={emailRoute === 'skip'}
+                          className={`mt-4 flex w-full flex-col gap-3 rounded-xl border p-4 text-left transition-all sm:flex-row sm:items-center ${emailRoute === 'skip' ? 'border-slate-500 bg-slate-50 shadow-sm ring-1 ring-slate-200' : 'bg-background hover:border-slate-300 hover:bg-muted/20'}`}
+                          onClick={() => {
+                            setEmailRoute('skip')
+                            setContactEmail('')
+                          }}
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><SkipForward className="h-4 w-4" /></span>
+                          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Skip email for now</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Continue without searching or using credits. You can find the contact later.</span></span>
+                          <span className="flex shrink-0 items-center gap-2"><Badge variant="outline">0 credits</Badge>{emailRoute === 'skip' && <CheckCircle2 className="h-4 w-4 text-slate-700" />}</span>
+                        </button>
                       </div>
 
                       {emailRoute === 'waterfall' && (
@@ -401,15 +438,6 @@ export function ClientCampaignPrepDialog({
                         </div>
                       )}
 
-                      <div className="border-t pt-5">
-                        <p className="text-sm font-semibold">Contact record</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Confirm or edit the person and best email before moving to research.</p>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2"><Label htmlFor="campaign-host-name">Host or producer</Label><Input id="campaign-host-name" value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={500} placeholder="Host or booking contact" /></div>
-                        <div className="space-y-2"><Label htmlFor="campaign-contact-email">Email</Label><Input id="campaign-contact-email" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} maxLength={254} placeholder="host@podcast.com" aria-invalid={!emailValid} />{!emailValid && <p className="text-xs text-destructive">Enter a valid email address or leave it blank.</p>}</div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Contact details stay private to your workspace.</p>
                     </div>
                   </section>
                 </div>
@@ -454,14 +482,16 @@ export function ClientCampaignPrepDialog({
         {podcast && !locked && !campaignQuery.isLoading && (
           <DialogFooter className="border-t bg-background px-5 py-4 sm:items-center sm:justify-between sm:px-6">
             <p className="max-w-xl text-xs leading-5 text-muted-foreground">
-              {activeStep === 'email' && 'This step is only for identifying and confirming the right contact.'}
+              {activeStep === 'email' && (emailRoute === 'skip'
+                ? 'No email search will run and no credits will be used.'
+                : 'Contact discovery and verification are handled automatically.')}
               {activeStep === 'research' && 'This step is only for understanding the podcast and choosing the strongest angle.'}
               {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
             </p>
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
-              {activeStep === 'email' && <Button type="button" onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+              {activeStep === 'email' && <Button type="button" onClick={() => setActiveStep('research')}>{emailRoute === 'skip' ? 'Skip email and continue' : 'Continue to research'}<ArrowRight className="ml-2 h-4 w-4" /></Button>}
               {activeStep === 'research' && <Button type="button" onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
               {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
             </div>

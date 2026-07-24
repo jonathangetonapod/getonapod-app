@@ -191,6 +191,12 @@ describe('ClientShortlistEditor', () => {
     const podcastContext = within(screen.getByRole('region', { name: 'Podcast context' }))
     expect(podcastContext.getByRole('heading', { name: 'Founder Stories' })).toBeInTheDocument()
     expect(podcastContext.getByText('Example Media')).toBeInTheDocument()
+    expect(podcastContext.queryByText('Conversations with company builders.')).not.toBeInTheDocument()
+    expect(podcastContext.queryByText('24K')).not.toBeInTheDocument()
+    const showStatsButton = podcastContext.getByRole('button', { name: 'Show podcast stats' })
+    expect(showStatsButton).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(showStatsButton)
+    expect(podcastContext.getByRole('button', { name: 'Hide podcast stats' })).toHaveAttribute('aria-expanded', 'true')
     expect(podcastContext.getByText('Conversations with company builders.')).toBeInTheDocument()
     expect(podcastContext.getByText('24K')).toBeInTheDocument()
     expect(podcastContext.getByText('4.8')).toBeInTheDocument()
@@ -204,6 +210,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('hello@founderstories.fm')).toBeInTheDocument()
     expect(screen.getByText('0 credits · Basic')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Skip email for now' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('1 credit on success')).toBeInTheDocument()
     expect(screen.getByText(/stronger route for reply potential/i)).toBeInTheDocument()
 
@@ -218,13 +225,19 @@ describe('ClientShortlistEditor', () => {
     expect(billingLink).toHaveAttribute('href', '/app/settings/billing')
     expect(billingLink).toHaveAttribute('target', '_blank')
     expect(screen.getByText(/Billing opens in a new tab so this pitch stays here/i)).toBeInTheDocument()
-    expect(screen.getByLabelText('Email')).toHaveValue('hello@founderstories.fm')
+    expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Research the podcast' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Write the pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip email for now' }))
+    expect(screen.getByRole('button', { name: 'Skip email for now' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByLabelText('Waterfall enrichment plan')).not.toBeInTheDocument()
+    expect(screen.getByText('No email search will run and no credits will be used.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip email and continue' }))
 
     expect(screen.getByRole('heading', { name: 'Research the podcast' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
@@ -254,6 +267,7 @@ describe('ClientShortlistEditor', () => {
       workspaceId,
       clientId,
       shortlistPodcastId: '33333333-3333-4333-8333-333333333333',
+      contactEmail: '',
       subject: 'Guest idea for Founder Stories: Taylor Client',
       pitchBody: expect.stringContaining('Founder Stories'),
       followUpOneBody: expect.stringContaining('Just following up'),
@@ -262,6 +276,24 @@ describe('ClientShortlistEditor', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Write a pitch for Founder Stories' })).not.toBeInTheDocument())
 
     expect(screen.queryByRole('button', { name: 'Write Pitch for Operator Weekly' })).not.toBeInTheDocument()
+  })
+
+  it('offers a zero-credit skip when no public podcast email is available', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValueOnce({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({ podcast_email: null })],
+    })
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+
+    expect(await screen.findByText('No public email found')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use free podcast email' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip email for now' }))
+    expect(screen.getByRole('button', { name: 'Skip email for now' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Skip email and continue' })).toBeInTheDocument()
+    expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
   })
 
   it('keeps the pitch design visible when campaign setup is not ready', async () => {
