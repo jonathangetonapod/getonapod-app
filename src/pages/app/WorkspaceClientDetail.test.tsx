@@ -6,7 +6,6 @@ import WorkspaceClientDetail from '@/pages/app/WorkspaceClientDetail'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   getWorkspaceClientDetail,
-  setWorkspaceClientDashboardVisibility,
   setWorkspaceClientPassword,
   updateWorkspaceClient,
   type WorkspaceClientDetail as WorkspaceClientDetailData,
@@ -16,7 +15,6 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({
   generatePassword: vi.fn(() => 'Generated-Portal-42!'),
   getWorkspaceClientDetail: vi.fn(),
-  setWorkspaceClientDashboardVisibility: vi.fn(),
   setWorkspaceClientPassword: vi.fn(),
   updateWorkspaceClient: vi.fn(),
 }))
@@ -27,7 +25,6 @@ vi.mock('@/components/workspace/ClientShortlistEditor', () => ({
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
-const mockedSetDashboardVisibility = vi.mocked(setWorkspaceClientDashboardVisibility)
 const mockedSetPortalPassword = vi.mocked(setWorkspaceClientPassword)
 const mockedUpdateClient = vi.mocked(updateWorkspaceClient)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
@@ -167,13 +164,6 @@ describe('WorkspaceClientDetail', () => {
       signOut: vi.fn(),
     } as never)
     mockedDetail.mockResolvedValue(detail)
-    mockedSetDashboardVisibility.mockResolvedValue({
-      id: clientId,
-      workspace_id: workspaceId,
-      dashboard_slug: detail.client.dashboard_slug,
-      dashboard_enabled: true,
-      updated_at: '2026-07-23T22:00:00.000Z',
-    })
     mockedSetPortalPassword.mockResolvedValue(undefined)
     mockedUpdateClient.mockResolvedValue(detail.client)
   })
@@ -208,18 +198,19 @@ describe('WorkspaceClientDetail', () => {
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
-    expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(2)
+    expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(1)
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view & edit podcasts/i })).toHaveAttribute('href', '#client-podcast-list')
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
-    expect(screen.getByRole('button', { name: 'Stop sharing' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Stop sharing' })).not.toBeInTheDocument()
     expect(screen.getByText('Positive').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('Negative').nextElementSibling).toHaveTextContent('3')
     expect(screen.getByText('To review').nextElementSibling).toHaveTextContent('4')
     expect(screen.queryByRole('heading', { name: 'Review completion' })).not.toBeInTheDocument()
     expect(screen.queryByText('AI fit insights ready')).not.toBeInTheDocument()
-    expect(screen.getByText('14')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Client engagement' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Dashboard setup' })).not.toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Client portal' })).toBeInTheDocument()
@@ -241,7 +232,7 @@ describe('WorkspaceClientDetail', () => {
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
   })
 
-  it('lets a manager make a prepared dashboard live from its clear not-shared state', async () => {
+  it('treats every configured approval dashboard as live even for a legacy disabled row', async () => {
     mockedDetail.mockResolvedValueOnce({
       ...detail,
       client: { ...detail.client, dashboard_enabled: false },
@@ -263,23 +254,15 @@ describe('WorkspaceClientDetail', () => {
     await screen.findByRole('heading', { name: 'Taylor Client' })
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
 
-    expect(screen.getAllByText('Not shared').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Live').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Not shared')).not.toBeInTheDocument()
     expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /preview as client/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Review completion' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /run fresh discovery/i })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Make dashboard live' }))
-    await waitFor(() => expect(mockedSetDashboardVisibility).toHaveBeenCalledWith(
-      workspaceId,
-      clientId,
-      true,
-    ))
-    expect(await screen.findByRole('link', { name: /preview as client/i })).toHaveAttribute(
-      'href',
-      '/client/taylor-client-123?preview=1',
-    )
+    expect(screen.queryByRole('button', { name: 'Make dashboard live' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Stop sharing' })).not.toBeInTheDocument()
   })
 
   it('edits internal account notes without leaving the client command center', async () => {

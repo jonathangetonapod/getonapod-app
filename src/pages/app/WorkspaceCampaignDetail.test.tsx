@@ -97,20 +97,22 @@ describe('WorkspaceCampaignDetail', () => {
     mockedUpdateContact.mockResolvedValue({ id: 'target-two' } as never)
   })
 
-  it('opens with campaign analytics and keeps the podcast pitch workflow under Leads', async () => {
+  it('opens with campaign analytics and keeps the message workflow under Podcasts', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Dallas Fontaine Podcast Outreach', level: 1 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Analytics' })).toHaveAttribute('data-state', 'active')
-    expect(screen.getByRole('tab', { name: 'Leads' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Podcasts' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Sequences' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Options' })).toBeInTheDocument()
+    expect(screen.queryByText('Bookings')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /add podcasts/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Leads' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Podcasts' }), { button: 0 })
     expect(screen.getAllByText('Needs contact').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Needs pitch').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Current wave|podcasts in view/i)).not.toBeInTheDocument()
 
     const founderRow = within(screen.getByRole('table')).getByText('Founder Show').closest('tr')
     expect(founderRow).not.toBeNull()
@@ -135,7 +137,7 @@ describe('WorkspaceCampaignDetail', () => {
   it('saves a missing host contact directly from the pitch drawer', async () => {
     renderPage()
 
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Leads' }), { button: 0 })
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Podcasts' }), { button: 0 })
     const operatorRow = within(await screen.findByRole('table')).getByText('Operator Stories').closest('tr')
     expect(operatorRow).not.toBeNull()
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: /review pitch/i }))
@@ -151,5 +153,37 @@ describe('WorkspaceCampaignDetail', () => {
       contactEmail: 'taylor@example.com',
       hostName: 'Taylor Host',
     }))
+  })
+
+  it('shows every Instantly mailbox in campaign options while disabling unavailable accounts', async () => {
+    mockedCampaign.mockResolvedValueOnce({
+      ...campaignState,
+      integration: {
+        ...campaignState.integration,
+        connected: true,
+        status: 'connected',
+        accounts: [
+          { email: 'active@example.com', first_name: 'Active', last_name: 'Sender', status: 1, warmup_status: 1, daily_limit: 40 },
+          { email: 'paused@example.com', first_name: 'Paused', last_name: 'Sender', status: 0, warmup_status: 0, daily_limit: 20 },
+        ],
+        active_account_count: 1,
+      },
+    })
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Options' }), { button: 0 })
+    expect(screen.getByText('Select one or more accounts to send emails from.')).toBeInTheDocument()
+    expect(screen.getByText('active@example.com')).toBeInTheDocument()
+    expect(screen.getByText('paused@example.com')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Use active@example.com' })).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: 'Use paused@example.com' })).toBeDisabled()
+  })
+
+  it('explains that podcast messages can be AI, template, or manually prepared before Instantly sends them', async () => {
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Sequences' }), { button: 0 })
+    expect(screen.getByText(/written manually, generated with AI, or started from a template/i)).toBeInTheDocument()
+    expect(screen.getByText(/Message creation belongs in Podcasts/i)).toBeInTheDocument()
   })
 })

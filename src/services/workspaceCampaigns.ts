@@ -69,6 +69,18 @@ export interface WorkspaceClientCampaign {
   updated_at: string
 }
 
+export interface WorkspaceInstantlyCampaign {
+  id: string
+  name: string
+  status: number
+  sender_accounts: string[]
+  timezone: string
+  daily_limit: number
+  timestamp_created: string | null
+  timestamp_updated: string | null
+  mapped_client_id: string | null
+}
+
 export interface WorkspaceCampaignTarget {
   id: string
   shortlist_podcast_id: string
@@ -98,6 +110,8 @@ export interface WorkspaceCampaignOverview {
   integration: WorkspaceInstantlyIntegration
   can_manage_campaigns: boolean
   campaigns: WorkspaceClientCampaign[]
+  provider_campaigns: WorkspaceInstantlyCampaign[]
+  provider_campaigns_error: string | null
 }
 
 export interface WorkspaceCampaignDetailResponse {
@@ -172,6 +186,7 @@ export async function saveWorkspaceCampaign(input: {
   dailyLimit: number
   senderAccounts: string[]
   shortlistPodcastIds: string[]
+  providerCampaignId?: string | null
 }): Promise<CampaignMutationResponse> {
   return await invokeWorkspaceCampaigns<CampaignMutationResponse>({
     action: 'upsert',
@@ -182,7 +197,21 @@ export async function saveWorkspaceCampaign(input: {
     daily_limit: input.dailyLimit,
     sender_accounts: input.senderAccounts,
     shortlist_podcast_ids: input.shortlistPodcastIds,
+    provider_campaign_id: input.providerCampaignId || null,
   }, 'The campaign draft could not be saved.')
+}
+
+export async function addWorkspaceCampaignPodcasts(input: {
+  workspaceId: string
+  clientId: string
+  shortlistPodcastIds: string[]
+}): Promise<{ added: number; campaign: WorkspaceClientCampaign; targets: WorkspaceCampaignTarget[] }> {
+  return await invokeWorkspaceCampaigns({
+    action: 'add-podcasts',
+    workspace_id: input.workspaceId,
+    client_id: input.clientId,
+    shortlist_podcast_ids: input.shortlistPodcastIds,
+  }, 'The podcast could not be added to the client campaign.')
 }
 
 export async function saveWorkspaceCampaignPitch(input: {

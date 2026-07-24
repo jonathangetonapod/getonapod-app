@@ -31,6 +31,7 @@ import {
 
 const METHODS = ["POST"] as const;
 const CAMPAIGN_MANAGER_ROLES = new Set(["owner", "admin", "platform_admin"]);
+const MAX_PROVIDER_CAMPAIGN_PAGES = 10;
 const CAMPAIGN_COLUMNS = [
   "id",
   "workspace_id",
@@ -175,6 +176,11 @@ interface ProviderCampaign {
   id: string;
   status: number;
   name: string;
+  senderAccounts: string[];
+  timezone: string;
+  dailyLimit: number;
+  timestampCreated: string | null;
+  timestampUpdated: string | null;
 }
 
 interface ProviderLead {
@@ -443,11 +449,11 @@ function uuidList(value: unknown, field: string, max: number): string[] {
 }
 
 function emailList(value: unknown): string[] {
-  if (!Array.isArray(value) || value.length > 50) {
+  if (!Array.isArray(value) || value.length > 1_000) {
     throw new HttpError(
       400,
       "INVALID_FIELD",
-      "sender_accounts must contain no more than 50 items",
+      "sender_accounts must contain no more than 1000 items",
     );
   }
   const emails = value.map((item, index) => {
@@ -546,7 +552,89 @@ function providerCampaign(value: unknown): ProviderCampaign {
       "Instantly returned an invalid campaign",
     );
   }
-  return { id, status, name };
+  const senderAccounts = Array.isArray(item.email_list)
+    ? Array.from(new Set(item.email_list.flatMap((candidate) => {
+      if (typeof candidate !== "string") return [];
+      const email = candidate.trim().toLowerCase();
+      return email && email.length <= 254 ? [email] : [];
+    })))
+    : [];
+  const schedule = item.campaign_schedule &&
+      typeof item.campaign_schedule === "object" &&
+      !Array.isArray(item.campaign_schedule)
+    ? item.campaign_schedule as Record<string, unknown>
+    : null;
+  const firstSchedule = Array.isArray(schedule?.schedules) &&
+      schedule.schedules[0] &&
+      typeof schedule.schedules[0] === "object" &&
+      !Array.isArray(schedule.schedules[0])
+    ? schedule.schedules[0] as Record<string, unknown>
+    : null;
+  const timezone = typeof firstSchedule?.timezone === "string" &&
+      firstSchedule.timezone.trim() && firstSchedule.timezone.length <= 100
+    ? firstSchedule.timezone.trim()
+    : "America/New_York";
+  const dailyLimit = typeof item.daily_limit === "number" &&
+      Number.isInteger(item.daily_limit) && item.daily_limit >= 1 &&
+      item.daily_limit <= 1_000
+    ? item.daily_limit
+    : 30;
+  const timestamp = (candidate: unknown): string | null => (
+      typeof candidate === "string" && !Number.isNaN(Date.parse(candidate))
+        ? candidate
+        : null
+    );
+  return {
+    id,
+    status,
+    name: name.slice(0, 500),
+    senderAccounts,
+    timezone,
+    dailyLimit,
+    timestampCreated: timestamp(item.timestamp_created),
+    timestampUpdated: timestamp(item.timestamp_updated),
+  };
+}
+
+async function listProviderCampaigns(apiKey: string): Promise<ProviderCampaign[]> {
+  const campaigns = new Map<string, ProviderCampaign>();
+  let startingAfter = "";
+  for (let page = 0; page < MAX_PROVIDER_CAMPAIGN_PAGES; page += 1) {
+    const query = new URLSearchParams({ limit: "100" });
+    if (startingAfter) query.set("starting_after", startingAfter);
+    const value = await instantlyRequest<unknown>(apiKey, "/campaigns", {
+      query,
+    });
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new InstantlyApiError(
+        502,
+        "INSTANTLY_RESPONSE_INVALID",
+        "Instantly returned an invalid campaign list",
+      );
+    }
+    const response = value as Record<string, unknown>;
+    if (!Array.isArray(response.items)) {
+      throw new InstantlyApiError(
+        502,
+        "INSTANTLY_RESPONSE_INVALID",
+        "Instantly returned an invalid campaign list",
+      );
+    }
+    for (const item of response.items) {
+      const campaign = providerCampaign(item);
+      campaigns.set(campaign.id, campaign);
+    }
+    const next = typeof response.next_starting_after === "string"
+      ? response.next_starting_after.trim()
+      : "";
+    if (!next || next === startingAfter) break;
+    startingAfter = next;
+  }
+  return Array.from(campaigns.values()).sort((left, right) => (
+    (right.timestampUpdated || right.timestampCreated || "").localeCompare(
+      left.timestampUpdated || left.timestampCreated || "",
+    ) || left.name.localeCompare(right.name)
+  ));
 }
 
 async function verifyProviderReadAccess(apiKey: string): Promise<void> {
@@ -735,6 +823,7 @@ async function addCampaignTargets(
   context: AuthContext,
   campaign: CampaignRow,
   shortlistIds: string[],
+  options: { requireApproved?: boolean } = {},
 ): Promise<TargetRow[]> {
   if (shortlistIds.length === 0) {
     return await readTargets(context.admin, campaign.workspace_id, campaign.id);
@@ -787,6 +876,17 @@ async function addCampaignTargets(
       row,
     ) => [String(row.podcast_id), row.status]),
   );
+  if (
+    options.requireApproved && shortlistData.some((podcast) =>
+      feedbackByPodcast.get(String(podcast.podcast_id)) !== "approved"
+    )
+  ) {
+    throw new HttpError(
+      409,
+      "CAMPAIGN_TARGET_NOT_APPROVED",
+      "Only approved podcasts can be added to a client campaign",
+    );
+  }
   const catalogByPodcast = new Map(
     (catalogResult.data || []).map((row) => [String(row.podscan_id), row]),
   );
@@ -1707,6 +1807,7 @@ serve(async (req) => {
         );
       }
       const targets = (targetsResult.data || []) as unknown as TargetRow[];
+      const campaigns = (campaignsResult.data || []) as unknown as CampaignRow[];
       const targetsByCampaign = new Map<string, TargetRow[]>();
       for (const target of targets) {
         targetsByCampaign.set(target.campaign_id, [
@@ -1714,15 +1815,41 @@ serve(async (req) => {
           target,
         ]);
       }
+      const mappedByProviderId = new Map(
+        campaigns.flatMap((campaign) => campaign.instantly_campaign_id
+          ? [[campaign.instantly_campaign_id, campaign] as const]
+          : []),
+      );
+      let providerCampaigns: ProviderCampaign[] = [];
+      let providerCampaignsError: string | null = null;
+      if (connection?.status === "connected") {
+        try {
+          providerCampaigns = await listProviderCampaigns(
+            await integrationApiKey(connection),
+          );
+        } catch (error) {
+          providerCampaignsError = safeInstantlyError(error).message;
+        }
+      }
       return jsonResponse(req, METHODS, 200, {
         integration: connectionDto(connection, access),
         can_manage_campaigns: CAMPAIGN_MANAGER_ROLES.has(access.role),
-        campaigns: ((campaignsResult.data || []) as unknown as CampaignRow[])
-          .map((
-            campaign,
-          ) => (
+        campaigns: campaigns.map((campaign) => (
             campaignDto(campaign, targetsByCampaign.get(campaign.id) || [])
           )),
+        provider_campaigns: providerCampaigns.map((campaign) => ({
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          sender_accounts: campaign.senderAccounts,
+          timezone: campaign.timezone,
+          daily_limit: campaign.dailyLimit,
+          timestamp_created: campaign.timestampCreated,
+          timestamp_updated: campaign.timestampUpdated,
+          mapped_client_id: mappedByProviderId.get(campaign.id)?.client_id ||
+            null,
+        })),
+        provider_campaigns_error: providerCampaignsError,
       });
     }
 
@@ -1939,6 +2066,69 @@ serve(async (req) => {
       });
     }
 
+    if (action === "add-podcasts") {
+      requireOnlyKeys(body, [
+        "action",
+        "workspace_id",
+        "client_id",
+        "shortlist_podcast_ids",
+      ]);
+      requireCampaignManager(access);
+      const shortlistIds = uuidList(
+        body.shortlist_podcast_ids,
+        "shortlist_podcast_ids",
+        500,
+      );
+      if (shortlistIds.length === 0) {
+        throw new HttpError(
+          400,
+          "CAMPAIGN_PODCAST_REQUIRED",
+          "Choose at least one podcast to add",
+        );
+      }
+      const campaign = await readCampaign(context.admin, workspaceId, clientId);
+      if (!campaign?.instantly_campaign_id) {
+        throw new HttpError(
+          409,
+          "CAMPAIGN_NOT_ASSIGNED",
+          "Create or assign an Instantly campaign to this client first",
+        );
+      }
+      const existingTargets = await readTargets(
+        context.admin,
+        workspaceId,
+        campaign.id,
+      );
+      const existingShortlistIds = new Set(
+        existingTargets.map((target) => target.shortlist_podcast_id),
+      );
+      const targets = await addCampaignTargets(
+        context,
+        campaign,
+        shortlistIds,
+        { requireApproved: true },
+      );
+      const added = shortlistIds.filter((id) => !existingShortlistIds.has(id))
+        .length;
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: "workspace.client_campaign.podcasts_added",
+        entityType: "workspace_client_campaign",
+        entityId: campaign.id,
+        metadata: {
+          client_id: clientId,
+          requested_count: shortlistIds.length,
+          added_count: added,
+        },
+      });
+      return jsonResponse(req, METHODS, 200, {
+        added,
+        campaign: campaignDto(campaign, targets),
+        targets: targets.map(targetDto),
+      });
+    }
+
     if (action === "upsert") {
       requireOnlyKeys(body, [
         "action",
@@ -1949,38 +2139,119 @@ serve(async (req) => {
         "daily_limit",
         "sender_accounts",
         "shortlist_podcast_ids",
+        "provider_campaign_id",
       ]);
       requireCampaignManager(access);
       const name = requireString(body.name, "name", { max: 180 });
       const timezone = campaignTimezone(body.timezone);
       const limit = dailyLimit(body.daily_limit);
       const senderAccounts = emailList(body.sender_accounts);
+      const requestedProviderCampaignId = body.provider_campaign_id == null
+        ? null
+        : providerUuid(body.provider_campaign_id);
+      if (
+        body.provider_campaign_id != null && !requestedProviderCampaignId
+      ) {
+        throw new HttpError(
+          400,
+          "INVALID_FIELD",
+          "provider_campaign_id must be a valid Instantly campaign ID or null",
+        );
+      }
       const shortlistIds = uuidList(
         body.shortlist_podcast_ids,
         "shortlist_podcast_ids",
         500,
       );
       const connection = await readConnection(context.admin, workspaceId);
-      verifySelectedAccounts(
-        senderAccounts,
-        accountsFromSnapshot(connection?.accounts_snapshot),
-      );
+      const apiKey = await integrationApiKey(connection);
+      let selectedProviderCampaign: ProviderCampaign | null = null;
+      if (requestedProviderCampaignId) {
+        selectedProviderCampaign = providerCampaign(
+          await instantlyRequest<unknown>(
+            apiKey,
+            `/campaigns/${encodeURIComponent(requestedProviderCampaignId)}`,
+          ),
+        );
+      } else {
+        if (senderAccounts.length === 0) {
+          throw new HttpError(
+            400,
+            "CAMPAIGN_SENDER_REQUIRED",
+            "Select at least one active Instantly account",
+          );
+        }
+        verifySelectedAccounts(
+          senderAccounts,
+          accountsFromSnapshot(connection?.accounts_snapshot),
+        );
+      }
       let campaign = await ensureLocalCampaign(context, workspaceId, client, {
-        name,
-        timezone,
-        dailyLimit: limit,
-        senderAccounts,
+        name: selectedProviderCampaign?.name.slice(0, 180) || name,
+        timezone: selectedProviderCampaign?.timezone || timezone,
+        dailyLimit: selectedProviderCampaign?.dailyLimit || limit,
+        senderAccounts: selectedProviderCampaign?.senderAccounts ||
+          senderAccounts,
       });
-      if (!campaign.instantly_campaign_id) {
+      if (
+        campaign.instantly_campaign_id && requestedProviderCampaignId &&
+        campaign.instantly_campaign_id !== requestedProviderCampaignId
+      ) {
+        throw new HttpError(
+          409,
+          "CAMPAIGN_ALREADY_MAPPED",
+          "This client already has a different Instantly campaign",
+        );
+      }
+      if (requestedProviderCampaignId) {
+        const { data: existingMapping, error: mappingError } = await context
+          .admin
+          .from("workspace_client_campaigns")
+          .select("id,client_id")
+          .eq("instantly_campaign_id", requestedProviderCampaignId)
+          .neq("id", campaign.id)
+          .maybeSingle();
+        if (mappingError) {
+          throw new HttpError(
+            500,
+            "CAMPAIGN_MAPPING_LOOKUP_FAILED",
+            "The Instantly campaign mapping could not be checked",
+          );
+        }
+        if (existingMapping) {
+          throw new HttpError(
+            409,
+            "CAMPAIGN_ALREADY_MAPPED",
+            "That Instantly campaign is already assigned to another client",
+          );
+        }
+      }
+      const campaignUpdate = selectedProviderCampaign
+        ? {
+          name: selectedProviderCampaign.name.slice(0, 180),
+          timezone: selectedProviderCampaign.timezone,
+          daily_limit: selectedProviderCampaign.dailyLimit,
+          sender_accounts: selectedProviderCampaign.senderAccounts,
+          instantly_campaign_id: selectedProviderCampaign.id,
+          instantly_campaign_status: selectedProviderCampaign.status,
+          status: localCampaignStatus(selectedProviderCampaign.status),
+          provider_sync_state: "idle",
+          provider_sync_started_at: null,
+          last_synced_at: new Date().toISOString(),
+          last_error: null,
+          updated_by: context.user.id,
+        }
+        : {
+          name,
+          timezone,
+          daily_limit: limit,
+          sender_accounts: senderAccounts,
+          updated_by: context.user.id,
+        };
+      if (!campaign.instantly_campaign_id || selectedProviderCampaign) {
         const { data, error } = await context.admin
           .from("workspace_client_campaigns")
-          .update({
-            name,
-            timezone,
-            daily_limit: limit,
-            sender_accounts: senderAccounts,
-            updated_by: context.user.id,
-          })
+          .update(campaignUpdate)
           .eq("id", campaign.id)
           .eq("workspace_id", workspaceId)
           .select(CAMPAIGN_COLUMNS)
@@ -1989,7 +2260,7 @@ serve(async (req) => {
           throw new HttpError(
             500,
             "CAMPAIGN_UPDATE_FAILED",
-            "The campaign draft could not be saved",
+            "The Instantly campaign could not be assigned to this client",
           );
         }
         campaign = data as unknown as CampaignRow;
@@ -1999,13 +2270,49 @@ serve(async (req) => {
         campaign,
         shortlistIds,
       );
+      if (!campaign.instantly_campaign_id) {
+        await ensureProviderCampaign(context, campaign, apiKey);
+        const mappedCampaign = await readCampaign(
+          context.admin,
+          workspaceId,
+          clientId,
+        );
+        if (!mappedCampaign?.instantly_campaign_id) {
+          throw new HttpError(
+            500,
+            "CAMPAIGN_PROVIDER_MAPPING_FAILED",
+            "Instantly created the campaign but its client mapping could not be confirmed",
+          );
+        }
+        campaign = mappedCampaign;
+      } else if (selectedProviderCampaign && connection) {
+        try {
+          await syncProviderCampaign(context, connection, campaign);
+          campaign = await readCampaign(context.admin, workspaceId, clientId) ||
+            campaign;
+        } catch (error) {
+          const safe = safeInstantlyError(error);
+          await context.admin
+            .from("workspace_client_campaigns")
+            .update({ last_error: safe.message, updated_by: context.user.id })
+            .eq("id", campaign.id)
+            .eq("workspace_id", workspaceId);
+        }
+      }
       await writeAudit(context.admin, {
         workspaceId,
         actorUserId: context.user.id,
         action: "workspace.client_campaign.saved",
         entityType: "workspace_client_campaign",
         entityId: campaign.id,
-        metadata: { client_id: clientId, target_count: targets.length },
+        metadata: {
+          client_id: clientId,
+          target_count: targets.length,
+          instantly_campaign_id: campaign.instantly_campaign_id,
+          provider_campaign_source: selectedProviderCampaign
+            ? "existing"
+            : "created",
+        },
       });
       return jsonResponse(req, METHODS, 200, {
         campaign: campaignDto(campaign, targets),

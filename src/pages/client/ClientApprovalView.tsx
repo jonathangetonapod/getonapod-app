@@ -89,7 +89,6 @@ interface ClientDashboard {
   dashboard_tagline: string | null
   dashboard_view_count: number
   dashboard_last_viewed_at: string | null
-  dashboard_enabled: boolean | null
   workspace?: {
     name?: string | null
     logo_url?: string | null
@@ -370,7 +369,6 @@ function ClientApprovalViewContent() {
   const loading = dashboardLoading
   const loadingPodcasts = podcastsLoading
   const error = dashboardError?.message || podcastsError?.message || feedbackError?.message || null
-  const cacheNotReady = dashboard && dashboard.dashboard_enabled === false
 
   // Debounce search query for better performance
   useEffect(() => {
@@ -679,27 +677,6 @@ function ClientApprovalViewContent() {
             <div className="space-y-2">
               <h2 className="text-xl font-semibold">Dashboard Not Available</h2>
               <p className="text-muted-foreground">{error || 'This dashboard could not be found.'}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Cache not ready state - admin hasn't built the cache yet
-  if (cacheNotReady) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-0 shadow-xl">
-          <CardContent className="pt-8 pb-8 text-center space-y-4">
-            <div className="h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mx-auto">
-              <Clock className="h-8 w-8 text-amber-600" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold">Coming Soon!</h2>
-              <p className="text-muted-foreground">
-                Hi {dashboard.name}! Your personalized podcast opportunities are being prepared. Check back shortly!
-              </p>
             </div>
           </CardContent>
         </Card>

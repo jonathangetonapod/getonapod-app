@@ -7,7 +7,6 @@ import {
   ArrowUp,
   CheckCircle2,
   Eye,
-  EyeOff,
   ExternalLink,
   FileText,
   Library,
@@ -20,7 +19,9 @@ import {
   Sparkles,
   Star,
   ThumbsDown,
+  ThumbsUp,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -59,8 +60,9 @@ import {
   type ClientShortlistPodcast,
   type ClientShortlistVisibility,
 } from '@/services/clientShortlist'
+import { addWorkspaceCampaignPodcasts } from '@/services/workspaceCampaigns'
 
-type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'hidden' | 'archived'
+type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'archived'
 type ListSort = 'list_order' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
 
 interface ClientShortlistEditorProps {
@@ -106,9 +108,6 @@ function feedbackBadge(podcast: ClientShortlistPodcast) {
 }
 
 function visibilityBadge(visibility: ClientShortlistVisibility) {
-  if (visibility === 'hidden') {
-    return <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800"><EyeOff className="mr-1 h-3 w-3" />Hidden</Badge>
-  }
   if (visibility === 'archived') {
     return <Badge variant="outline" className="border-slate-200 bg-slate-100 text-slate-700"><Archive className="mr-1 h-3 w-3" />Archived</Badge>
   }
@@ -188,7 +187,6 @@ export function ClientShortlistEditor({
     .sort((left, right) => (left.featured_order ?? 99) - (right.featured_order ?? 99)), [podcasts])
   const counts = useMemo(() => ({
     active: podcasts.filter((podcast) => podcast.visibility === 'visible').length,
-    hidden: podcasts.filter((podcast) => podcast.visibility === 'hidden').length,
     archived: podcasts.filter((podcast) => podcast.visibility === 'archived').length,
     approved: podcasts.filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'approved').length,
     rejected: podcasts.filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'rejected').length,
@@ -198,8 +196,7 @@ export function ClientShortlistEditor({
     const query = searchQuery.trim().toLowerCase()
     const matching = podcasts.filter((podcast) => {
       if (query && !`${podcast.podcast_name} ${podcast.publisher_name || ''}`.toLowerCase().includes(query)) return false
-      if (filter === 'all') return podcast.visibility !== 'archived'
-      if (filter === 'hidden') return podcast.visibility === 'hidden'
+      if (filter === 'all') return podcast.visibility === 'visible'
       if (filter === 'archived') return podcast.visibility === 'archived'
       if (podcast.visibility !== 'visible') return false
       if (filter === 'approved') return podcast.feedback_status === 'approved'
@@ -247,6 +244,27 @@ export function ClientShortlistEditor({
       toast.success(successMessage)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The podcast could not be updated.')
+    } finally {
+      setPendingPodcastId(null)
+    }
+  }
+
+  const addToClientCampaign = async (podcast: ClientShortlistPodcast) => {
+    if (pendingPodcastId) return
+    setPendingPodcastId(podcast.podcast_id)
+    try {
+      const result = await addWorkspaceCampaignPodcasts({
+        workspaceId,
+        clientId,
+        shortlistPodcastIds: [podcast.id],
+      })
+      if (result.added === 0) {
+        toast.info(`${podcast.podcast_name} is already in the client campaign.`)
+      } else {
+        toast.success(`${podcast.podcast_name} added to the client campaign.`)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'The podcast could not be added to the client campaign.')
     } finally {
       setPendingPodcastId(null)
     }
@@ -373,7 +391,7 @@ export function ClientShortlistEditor({
             <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Visible to client</p><p className="mt-2 text-2xl font-bold">{counts.active}</p></div>
             <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Featured</p><p className="mt-2 text-2xl font-bold">{featured.length}<span className="text-sm font-normal text-muted-foreground"> / 6</span></p></div>
             <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Client decisions</p><p className="mt-2 text-2xl font-bold">{counts.approved + counts.rejected}</p></div>
-            <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hidden or archived</p><p className="mt-2 text-2xl font-bold">{counts.hidden + counts.archived}</p></div>
+            <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Archived</p><p className="mt-2 text-2xl font-bold">{counts.archived}</p></div>
           </div>
         </CardContent>
       </Card>
@@ -429,11 +447,10 @@ export function ClientShortlistEditor({
             </div>
             <div className="flex flex-wrap gap-2">
               {([
-                ['all', `All ${counts.active + counts.hidden}`],
+                ['all', `All ${counts.active}`],
                 ['not_reviewed', `To review ${counts.notReviewed}`],
                 ['approved', `Approved ${counts.approved}`],
                 ['rejected', `Passed ${counts.rejected}`],
-                ['hidden', `Hidden ${counts.hidden}`],
                 ['archived', `Archived ${counts.archived}`],
               ] as Array<[ListFilter, string]>).map(([value, label]) => (
                 <Button key={value} type="button" size="sm" variant={filter === value ? 'default' : 'outline'} onClick={() => setFilter(value)}>{label}</Button>
@@ -465,9 +482,11 @@ export function ClientShortlistEditor({
                       <DropdownMenuContent align="end" className="w-56">
                         <DropdownMenuItem onClick={() => openPodcastDetails(podcast)}><FileText className="mr-2 h-4 w-4" />View details &amp; notes</DropdownMenuItem>
                         <DropdownMenuSeparator />
+                        {podcast.feedback_status !== 'approved' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'approved' }, `${podcast.podcast_name} marked approved.`)}><ThumbsUp className="mr-2 h-4 w-4 text-emerald-600" />Mark approved</DropdownMenuItem>}
+                        {podcast.feedback_status !== 'rejected' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'rejected' }, `${podcast.podcast_name} marked passed.`)}><ThumbsDown className="mr-2 h-4 w-4 text-rose-600" />Mark passed</DropdownMenuItem>}
+                        <DropdownMenuSeparator />
+                        {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && <DropdownMenuItem onClick={() => void addToClientCampaign(podcast)}><UserPlus className="mr-2 h-4 w-4 text-primary" />Add to client campaign</DropdownMenuItem>}
                         {podcast.visibility === 'visible' && <DropdownMenuItem onClick={() => void toggleFeatured(podcast)}><Star className="mr-2 h-4 w-4" />{podcast.is_featured ? 'Remove from featured' : 'Add to featured'}</DropdownMenuItem>}
-                        {podcast.visibility === 'visible' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { visibility: 'hidden' }, `${podcast.podcast_name} hidden from the client.`)}><EyeOff className="mr-2 h-4 w-4" />Hide from client</DropdownMenuItem>}
-                        {podcast.visibility === 'hidden' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} is visible to the client.`)}><Eye className="mr-2 h-4 w-4" />Show to client</DropdownMenuItem>}
                         {podcast.visibility === 'archived' ? (
                           <DropdownMenuItem onClick={() => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}><RotateCcw className="mr-2 h-4 w-4" />Restore to list</DropdownMenuItem>
                         ) : (
@@ -535,7 +554,7 @@ export function ClientShortlistEditor({
                     <Checkbox checked={selectedCatalogIds.has(podcast.podcast_id)} disabled={podcast.already_added} onCheckedChange={(checked) => setSelectedCatalogIds((current) => { const next = new Set(current); if (checked) next.add(podcast.podcast_id); else next.delete(podcast.podcast_id); return next })} aria-label={`Select ${podcast.podcast_name}`} />
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">{podcast.podcast_image_url ? <img src={podcast.podcast_image_url} alt="" className="h-full w-full object-cover" /> : <Radio className="h-5 w-5 text-muted-foreground" />}</div>
                     <div className="min-w-0 flex-1"><p className="truncate font-medium">{podcast.podcast_name}</p><p className="truncate text-xs text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'} · {compactNumber(podcast.audience_size)} estimated listeners</p></div>
-                    {podcast.already_added && <Badge variant="outline">{podcast.existing_visibility === 'archived' ? 'Archived' : podcast.existing_visibility === 'hidden' ? 'Hidden' : 'Already added'}</Badge>}
+                    {podcast.already_added && <Badge variant="outline">{podcast.existing_visibility === 'archived' ? 'Archived' : 'Already added'}</Badge>}
                   </label>
                 ))}
               </div>

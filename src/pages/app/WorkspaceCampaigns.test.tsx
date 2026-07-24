@@ -99,7 +99,43 @@ const campaignOverview = {
   },
   can_manage_campaigns: true,
   campaigns: [],
+  provider_campaigns: [],
+  provider_campaigns_error: null,
 } as WorkspaceCampaignOverview
+
+const connectedIntegration = {
+  ...campaignOverview.integration,
+  connected: true,
+  status: 'connected' as const,
+  provider_workspace_id: '44444444-4444-4444-8444-444444444444',
+  provider_workspace_name: 'Power Payback 1',
+  api_key_last_four: 'test',
+  accounts: [
+    { email: 'active@example.com', first_name: 'Active', last_name: 'Sender', status: 1, warmup_status: 1, daily_limit: 40 },
+    { email: 'paused@example.com', first_name: 'Paused', last_name: 'Sender', status: 0, warmup_status: 0, daily_limit: 20 },
+  ],
+  active_account_count: 1,
+}
+
+const persistedCampaign = {
+  id: '55555555-5555-4555-8555-555555555555',
+  workspace_id: workspaceId,
+  client_id: clientId,
+  name: 'Dallas Fontaine Podcast Outreach',
+  status: 'active' as const,
+  instantly_campaign_id: '66666666-6666-4666-8666-666666666666',
+  instantly_campaign_status: 1,
+  sender_accounts: ['active@example.com'],
+  timezone: 'America/New_York',
+  daily_limit: 30,
+  analytics: { emails_sent_count: 12, contacted_count: 9, open_count_unique: 4, reply_count_unique: 2, bounced_count: 0, unsubscribed_count: 0, total_interested: 1, total_meeting_booked: 0 },
+  target_counts: { total: 2, needs_contact: 1, needs_pitch: 0, ready: 0, in_outreach: 1, replied: 1, failed: 0 },
+  target_shortlist_podcast_ids: ['shortlist-one', 'shortlist-two'],
+  last_synced_at: '2026-07-23T12:00:00Z',
+  last_error: null,
+  created_at: '2026-07-20T12:00:00Z',
+  updated_at: '2026-07-23T12:00:00Z',
+}
 
 const Location = () => {
   const location = useLocation()
@@ -143,32 +179,44 @@ describe('WorkspaceCampaigns', () => {
   })
 
   it('organizes real client outreach into an operational campaign table', async () => {
+    mockedOverview.mockResolvedValueOnce({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      campaigns: [persistedCampaign],
+      provider_campaigns: [{ id: persistedCampaign.instantly_campaign_id, name: persistedCampaign.name, status: 1, sender_accounts: ['active@example.com'], timezone: 'America/New_York', daily_limit: 30, timestamp_created: '2026-07-20T12:00:00Z', timestamp_updated: '2026-07-23T12:00:00Z', mapped_client_id: clientId }],
+    })
     renderCampaigns()
 
     const table = await screen.findByRole('table')
     expect(within(table).getByRole('link', { name: `${client.name} Podcast Outreach` })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     expect(screen.getByRole('combobox', { name: 'Filter campaigns by client' })).toHaveTextContent('All clients')
-    expect(screen.getAllByText('Needs attention').length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Review 2 pitches')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0)
     expect(within(table).getByRole('columnheader', { name: 'Name' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Client' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'Progress' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'Sent' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'Replies' })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: 'Opportunities' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Positive replies' })).toBeInTheDocument()
     expect(within(table).getByText('12')).toBeInTheDocument()
-    expect(within(table).getByText('No sender selected')).toBeInTheDocument()
-    expect(screen.getByText('Available after Instantly sync')).toBeInTheDocument()
+    expect(within(table).getByText('active@example.com')).toBeInTheDocument()
+    expect(screen.getByText('Replies marked interested')).toBeInTheDocument()
     expect(screen.queryByText('Ready to launch')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Feb 16–22|podcasts in view|Current wave/i)).not.toBeInTheDocument()
   })
 
-  it('creates the campaign layout from a client and a selected first wave', async () => {
+  it('creates a real Instantly campaign from a client, selected accounts, and starting podcasts', async () => {
+    mockedOverview.mockResolvedValueOnce({ ...campaignOverview, integration: connectedIntegration })
     renderCampaigns()
 
-    await screen.findByRole('table')
-    fireEvent.click(screen.getByRole('button', { name: 'New campaign' }))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'New campaign' }))[0])
     fireEvent.click(screen.getByRole('combobox', { name: 'Client' }))
     fireEvent.click(await screen.findByRole('option', { name: client.name }))
     expect(screen.getByDisplayValue(`${client.name} Podcast Outreach`)).toBeInTheDocument()
+    expect(screen.getByText('Select one or more accounts to send emails from.')).toBeInTheDocument()
+    expect(screen.getByText('active@example.com')).toBeInTheDocument()
+    expect(screen.getByText('paused@example.com')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Use paused@example.com' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Use active@example.com' }))
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
     expect(await screen.findByRole('checkbox', { name: 'Select Founder Show' })).toBeChecked()
@@ -180,11 +228,50 @@ describe('WorkspaceCampaigns', () => {
     await waitFor(() => expect(mockedSaveCampaign).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId,
       clientId,
+      senderAccounts: ['active@example.com'],
       shortlistPodcastIds: ['shortlist-one'],
+      providerCampaignId: null,
     })))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
       `/app/client-campaigns/${clientId}`,
     ))
+  })
+
+  it('assigns an existing unassigned Instantly campaign to a client', async () => {
+    const providerCampaign = {
+      id: '77777777-7777-4777-8777-777777777777',
+      name: 'Existing Podcast Campaign',
+      status: 2,
+      sender_accounts: ['active@example.com'],
+      timezone: 'America/Chicago',
+      daily_limit: 25,
+      timestamp_created: '2026-07-01T12:00:00Z',
+      timestamp_updated: '2026-07-23T12:00:00Z',
+      mapped_client_id: null,
+    }
+    mockedOverview.mockResolvedValueOnce({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      provider_campaigns: [providerCampaign],
+    })
+    renderCampaigns()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'New campaign' }))[0])
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client' }))
+    fireEvent.click(await screen.findByRole('option', { name: client.name }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Instantly campaign' }))
+    fireEvent.click(await screen.findByRole('option', { name: /Existing Podcast Campaign/ }))
+    expect(screen.getByText(`This exact Instantly campaign will be assigned to ${client.name}.`)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+    await screen.findByRole('checkbox', { name: 'Select Founder Show' })
+    fireEvent.click(screen.getByRole('button', { name: /save & open campaign/i }))
+    await waitFor(() => expect(mockedSaveCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId,
+      clientId,
+      providerCampaignId: providerCampaign.id,
+      senderAccounts: ['active@example.com'],
+    })))
   })
 
   it('clears the owner API key immediately after connection submission', async () => {
@@ -211,7 +298,7 @@ describe('WorkspaceCampaigns', () => {
 
     renderCampaigns()
 
-    expect(await screen.findByRole('table')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No Instantly campaigns assigned yet' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'New campaign' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect Instantly' })).not.toBeInTheDocument()
   })

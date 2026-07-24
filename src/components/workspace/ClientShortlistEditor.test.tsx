@@ -11,6 +11,7 @@ import {
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
 } from '@/services/clientShortlist'
+import { addWorkspaceCampaignPodcasts } from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({
   addClientShortlistPodcasts: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('@/services/clientShortlist', () => ({
   searchClientPodcastCatalog: vi.fn(),
   updateClientShortlistPodcast: vi.fn(),
 }))
+vi.mock('@/services/workspaceCampaigns', () => ({ addWorkspaceCampaignPodcasts: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }))
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
@@ -109,6 +111,7 @@ describe('ClientShortlistEditor', () => {
     vi.mocked(addClientShortlistPodcasts).mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['podcast-new'] })
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast())
     vi.mocked(reorderClientShortlistFeatured).mockResolvedValue()
+    vi.mocked(addWorkspaceCampaignPodcasts).mockResolvedValue({ added: 1, campaign: {} as never, targets: [] })
   })
 
   it('shows the client-visible list, feedback, featured order, and archived dedupe history', async () => {
@@ -122,6 +125,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('/ 6', { exact: false })).toBeInTheDocument()
     expect(screen.queryByText('Archived Show')).not.toBeInTheDocument()
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Hidden\b/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'View details for Founder Stories' }))
     expect(screen.getByRole('heading', { name: 'Founder Stories' })).toBeInTheDocument()
@@ -130,7 +134,49 @@ describe('ClientShortlistEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Archived 1' }))
     expect(screen.getByText('Archived Show')).toBeInTheDocument()
-    expect(screen.getByText('Archived', { exact: true })).toBeInTheDocument()
+    expect(screen.getAllByText('Archived', { exact: true }).length).toBeGreaterThan(0)
+  })
+
+  it('lets an owner mark a podcast approved or passed directly from its actions menu', async () => {
+    vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast({
+      podcast_id: 'podcast-two',
+      podcast_name: 'Operator Weekly',
+      feedback_status: 'approved',
+    }))
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+
+    const actions = screen.getByRole('button', { name: 'Actions for Operator Weekly' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Mark approved/i }))
+
+    await waitFor(() => expect(updateClientShortlistPodcast).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      'podcast-two',
+      { feedback_status: 'approved' },
+    ))
+    expect(screen.queryByRole('menuitem', { name: /Hide from client/i })).not.toBeInTheDocument()
+  })
+
+  it('adds a podcast to the client campaign from its actions menu', async () => {
+    renderEditor()
+    const actions = await screen.findByRole('button', { name: 'Actions for Founder Stories' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Add to client campaign/i }))
+
+    await waitFor(() => expect(addWorkspaceCampaignPodcasts).toHaveBeenCalledWith({
+      workspaceId,
+      clientId,
+      shortlistPodcastIds: ['33333333-3333-4333-8333-333333333333'],
+    }))
+
+    const unapprovedActions = screen.getByRole('button', { name: 'Actions for Operator Weekly' })
+    unapprovedActions.focus()
+    fireEvent.keyDown(unapprovedActions, { key: 'Enter', code: 'Enter' })
+    expect(screen.queryByRole('menuitem', { name: /Add to client campaign/i })).not.toBeInTheDocument()
   })
 
   it('shows no more than ten podcasts on each list page', async () => {

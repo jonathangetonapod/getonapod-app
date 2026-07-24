@@ -32,8 +32,8 @@ const clientBrandingMigration = readFileSync(
   'supabase/migrations/20260723000700_workspace_client_branding.sql',
   'utf8',
 )
-const dashboardVisibilityMigration = readFileSync(
-  'supabase/migrations/20260723000900_client_dashboard_visibility.sql',
+const dashboardAlwaysLiveMigration = readFileSync(
+  'supabase/migrations/20260724000200_client_dashboards_always_live.sql',
   'utf8',
 )
 
@@ -55,8 +55,7 @@ assert.doesNotMatch(edge, /portal_password/u)
 assert.match(edge, /const historyTables = \[[\s\S]*?'client_dashboard_podcasts',[\s\S]*?'client_podcast_feedback',[\s\S]*?'podcast_outreach_actions',[\s\S]*?'bookings'/u)
 assert.match(edge, /\.range\(offset, offset \+ pageSize - 1\)/u)
 assert.match(edge, /existing_podcast_ids: existingPodcastIds/u)
-assert.match(edge, /action === 'dashboard-visibility-update'[\s\S]*?requireOnlyKeys\(body, \['action', 'workspace_id', 'client_id', 'enabled'\]\)[\s\S]*?typeof body\.enabled !== 'boolean'/u)
-assert.match(edge, /if \(action === 'dashboard-visibility-update'\)[\s\S]*?requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\['owner', 'admin', 'platform_admin'\]\.includes\(access\.role\)[\s\S]*?rpc\([\s\S]*?'set_workspace_client_dashboard_visibility_v1'/u)
+assert.doesNotMatch(edge, /dashboard-visibility-update|set_workspace_client_dashboard_visibility_v1/u)
 assert.match(edge, /admin\.rpc\('workspace_client_operation_v2', \{[\s\S]*?p_action: action,[\s\S]*?p_workspace_id: workspaceId,[\s\S]*?p_client_id: clientId,[\s\S]*?p_payload: payload,[\s\S]*?p_actor_user_id: user\.id,[\s\S]*?p_token_issued_at: tokenIssuedAt/u)
 assert.match(edge, /message\.includes\('active workspace staff'\)/u)
 assert.match(edge, /message\.includes\('active selected workspace'\)/u)
@@ -123,14 +122,14 @@ assert.match(clientBrandingMigration, /client_brand_name TEXT/u)
 assert.match(clientBrandingMigration, /client_brand_primary_color TEXT/u)
 assert.match(clientBrandingMigration, /client_brand_accent_color TEXT/u)
 assert.match(clientBrandingMigration, /WITH latest_compatibility_brand AS[\s\S]*?workspace\.branding\.client_identity_updated[\s\S]*?workspace\.client_brand_name IS NULL/u)
-assert.match(dashboardVisibilityMigration, /CREATE OR REPLACE FUNCTION public\.set_workspace_client_dashboard_visibility_v1/u)
-assert.match(dashboardVisibilityMigration, /workspace_staff_actor_role_v1\([\s\S]*?p_workspace_id,[\s\S]*?p_actor_user_id,[\s\S]*?p_token_issued_at,[\s\S]*?true/u)
-assert.match(dashboardVisibilityMigration, /actor_role NOT IN \('owner', 'admin', 'platform_admin'\)/u)
-assert.match(dashboardVisibilityMigration, /client\.id = p_client_id[\s\S]*?client\.workspace_id = p_workspace_id[\s\S]*?FOR UPDATE OF client/u)
-assert.match(dashboardVisibilityMigration, /p_enabled AND dashboard_slug IS NULL/u)
-assert.match(dashboardVisibilityMigration, /workspace\.client\.dashboard_shared[\s\S]*?workspace\.client\.dashboard_unshared/u)
-assert.match(dashboardVisibilityMigration, /REVOKE ALL ON FUNCTION public\.set_workspace_client_dashboard_visibility_v1\([\s\S]*?FROM PUBLIC, anon, authenticated, service_role/u)
-assert.match(dashboardVisibilityMigration, /GRANT EXECUTE ON FUNCTION public\.set_workspace_client_dashboard_visibility_v1\([\s\S]*?TO service_role/u)
+assert.match(dashboardAlwaysLiveMigration, /UPDATE public\.clients[\s\S]*?SET dashboard_enabled = true[\s\S]*?dashboard_slug IS NOT NULL/u)
+assert.match(dashboardAlwaysLiveMigration, /UPDATE public\.client_dashboard_podcasts[\s\S]*?visibility = 'archived'[\s\S]*?WHERE visibility = 'hidden'/u)
+assert.match(dashboardAlwaysLiveMigration, /CHECK \(visibility IN \('visible', 'archived'\)\)/u)
+assert.match(dashboardAlwaysLiveMigration, /CHECK \(dashboard_slug IS NULL OR dashboard_enabled\)/u)
+assert.match(dashboardAlwaysLiveMigration, /DROP FUNCTION IF EXISTS public\.set_workspace_client_dashboard_visibility_v1/u)
+assert.doesNotMatch(shortlistEdge, /'hidden'/u)
+assert.doesNotMatch(publicDashboardEdge, /dashboard_enabled/u)
+assert.doesNotMatch(clientPodcastsEdge, /dashboard_enabled/u)
 
 assert.match(exportEdge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 assert.match(exportEdge, /fields=sheets\.properties/u)

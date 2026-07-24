@@ -287,10 +287,9 @@ serve(async (req) => {
 
       const { data: dashboard, error: dashboardError } = await supabase
         .from('clients')
-        .select('id,name,bio,dashboard_enabled,workspace:workspaces(status)')
+        .select('id,name,bio,workspace:workspaces(status)')
         .eq('id', clientId)
         .eq('dashboard_slug', dashboardSlug.trim().toLowerCase())
-        .eq('dashboard_enabled', true)
         .maybeSingle()
 
       const workspace = dashboard?.workspace as { status?: string } | null

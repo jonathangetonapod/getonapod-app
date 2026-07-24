@@ -21,7 +21,6 @@ const DASHBOARD_FIELDS = [
   'dashboard_tagline',
   'dashboard_view_count',
   'dashboard_last_viewed_at',
-  'dashboard_enabled',
 ].join(',')
 const FEEDBACK_FIELDS = [
   'id',
@@ -34,8 +33,15 @@ const FEEDBACK_FIELDS = [
   'updated_at',
 ].join(',')
 
-type ClientDashboardRow = Record<string, unknown> & {
+type ClientDashboardRow = {
   id: string
+  name: string
+  bio: string | null
+  photo_url: string | null
+  media_kit_url: string | null
+  dashboard_tagline: string | null
+  dashboard_view_count: number
+  dashboard_last_viewed_at: string | null
   workspace?: {
     id?: unknown
     name?: unknown
@@ -46,6 +52,17 @@ type ClientDashboardRow = Record<string, unknown> & {
     client_brand_primary_color?: unknown
     client_brand_accent_color?: unknown
   } | null
+}
+
+type ClientFeedbackRow = {
+  id: string
+  client_id: string
+  podcast_id: string
+  podcast_name: string
+  status: 'approved' | 'rejected' | null
+  notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 interface DatabaseError {
@@ -173,7 +190,6 @@ async function findDashboard(
     .from('clients')
     .select(`${DASHBOARD_FIELDS},workspace:workspaces(id,name,status,logo_path,logo_updated_at)`)
     .eq('dashboard_slug', slug)
-    .eq('dashboard_enabled', true)
     .maybeSingle()
 
   if (error) throw new HttpError(500, 'DASHBOARD_LOOKUP_FAILED', 'Dashboard could not be loaded')
@@ -249,7 +265,8 @@ serve(async (req) => {
 
       if (error) throw new HttpError(500, 'FEEDBACK_LOOKUP_FAILED', 'Feedback could not be loaded')
       const visiblePodcastIdSet = new Set(visiblePodcastIds)
-      const feedback = (data ?? []).filter((entry) => visiblePodcastIdSet.has(entry.podcast_id))
+      const feedback = ((data ?? []) as unknown as ClientFeedbackRow[])
+        .filter((entry) => visiblePodcastIdSet.has(entry.podcast_id))
       return jsonResponse(req, METHODS, 200, { feedback })
     }
 

@@ -5,7 +5,6 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   ExternalLink,
   Inbox,
@@ -30,9 +29,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { InstantlyAccountPicker } from '@/components/workspace/InstantlyAccountPicker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Sheet,
   SheetContent,
@@ -63,7 +62,7 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-type PitchFilter = 'all' | 'needs-contact' | 'needs-pitch' | 'needs-review' | 'in-outreach' | 'replied' | 'booked'
+type PitchFilter = 'all' | 'needs-contact' | 'needs-pitch' | 'needs-review' | 'in-outreach' | 'replied'
 type PitchStage = 'needs-contact' | 'needs-pitch' | 'ready' | 'launching' | 'in-outreach' | 'replied' | 'failed' | 'completed'
 
 interface WorkspaceCampaignDetailProps {
@@ -77,7 +76,6 @@ const pitchFilters: Array<{ value: PitchFilter; label: string }> = [
   { value: 'needs-review', label: 'Needs review' },
   { value: 'in-outreach', label: 'In outreach' },
   { value: 'replied', label: 'Replied' },
-  { value: 'booked', label: 'Booked' },
 ]
 
 function formatDate(value: string | null | undefined): string {
@@ -85,31 +83,6 @@ function formatDate(value: string | null | undefined): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Not yet'
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function weekStart(value: string): Date | null {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  const day = date.getDay()
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day))
-  return date
-}
-
-function waveKey(value: string): string {
-  return weekStart(value)?.toISOString().slice(0, 10) || 'unknown'
-}
-
-function waveLabel(key: string): string {
-  const start = new Date(`${key}T00:00:00`)
-  if (Number.isNaN(start.getTime())) return 'Unknown wave'
-  const end = new Date(start)
-  end.setDate(start.getDate() + 6)
-  const startLabel = start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  const endLabel = end.toLocaleDateString(undefined, start.getMonth() === end.getMonth()
-    ? { day: 'numeric' }
-    : { month: 'short', day: 'numeric' })
-  return `${startLabel}–${endLabel}`
 }
 
 function pitchStage(podcast: ClientShortlistPodcast, target?: WorkspaceCampaignTarget): PitchStage {
@@ -220,18 +193,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     podcast.visibility === 'visible'
     && (podcast.feedback_status === 'approved' || queryPodcastIds.has(podcast.id) || persistedPodcastIds.has(podcast.id))
   )), [data?.shortlist.podcasts, persistedPodcastIds, queryPodcastIds])
-  const podcastWaveKey = (podcast: ClientShortlistPodcast): string => {
-    const targetWave = targetByShortlistId.get(podcast.id)?.wave_started_on
-    return targetWave || waveKey(podcast.feedback_updated_at || podcast.updated_at || podcast.created_at)
-  }
-  const waves = useMemo(() => Array.from(new Set(campaignPodcasts.map((podcast) => (
-    targetByShortlistId.get(podcast.id)?.wave_started_on
-      || waveKey(podcast.feedback_updated_at || podcast.updated_at || podcast.created_at)
-  ))))
-    .filter((key) => key !== 'unknown')
-    .sort((left, right) => right.localeCompare(left)), [campaignPodcasts, targetByShortlistId])
-  const currentWaveKey = waves[0] || ''
-  const [waveFilter, setWaveFilter] = useState<'current' | 'all' | string>('current')
   const [pitchFilter, setPitchFilter] = useState<PitchFilter>('all')
   const [selectedPodcastId, setSelectedPodcastId] = useState<string | null>(null)
   const [subjectDraft, setSubjectDraft] = useState('')
@@ -341,15 +302,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Campaign settings could not be saved.'),
   })
 
-  const wavePodcasts = campaignPodcasts.filter((podcast) => {
-    if (waveFilter === 'all') return true
-    if (waveFilter === 'current') return !currentWaveKey || podcastWaveKey(podcast) === currentWaveKey
-    return podcastWaveKey(podcast) === waveFilter
-  })
-  const bookedPodcastIds = new Set((detail?.bookings || [])
-    .filter((booking) => ['booked', 'recorded', 'published'].includes(booking.status))
-    .map((booking) => booking.podcast_id)
-    .filter((podcastId): podcastId is string => Boolean(podcastId)))
   const matchesPitchFilter = (podcast: ClientShortlistPodcast, filter: PitchFilter): boolean => {
     const target = targetByShortlistId.get(podcast.id)
     const stage = pitchStage(podcast, target)
@@ -357,14 +309,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     if (filter === 'needs-contact' || filter === 'needs-pitch') return stage === filter
     if (filter === 'needs-review') return stage === 'ready'
     if (filter === 'in-outreach') return stage === 'in-outreach' || stage === 'launching'
-    if (filter === 'replied') return stage === 'replied'
-    return bookedPodcastIds.has(podcast.podcast_id)
+    return stage === 'replied'
   }
-  const filteredPodcasts = wavePodcasts.filter((podcast) => {
+  const filteredPodcasts = campaignPodcasts.filter((podcast) => {
     return matchesPitchFilter(podcast, pitchFilter)
   })
   const filterCount = (filter: PitchFilter): number => {
-    return wavePodcasts.filter((podcast) => matchesPitchFilter(podcast, filter)).length
+    return campaignPodcasts.filter((podcast) => matchesPitchFilter(podcast, filter)).length
   }
 
   if (!isPlatformWorkspace && !workspace) {
@@ -393,7 +344,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const clientHref = `${baseHref}/clients/${client.id}`
-  const bookedCount = detail.bookings.filter((booking) => ['booked', 'recorded', 'published'].includes(booking.status)).length
   const campaignStatus = campaign?.status === 'attention'
     ? 'Needs attention'
     : campaign?.status === 'active'
@@ -421,14 +371,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const campaignAnalytics = campaign?.analytics
   const contactedCount = campaignAnalytics?.contacted_count ?? detail.outreach.podcasts_contacted
   const replyCount = campaignAnalytics?.reply_count_unique ?? 0
-  const positiveReplyCount = (campaignAnalytics?.total_interested || 0)
-    + (campaignAnalytics?.total_meeting_booked || 0)
+  const positiveReplyCount = campaignAnalytics?.total_interested || 0
   const replyRate = contactedCount > 0 ? Math.round((replyCount / contactedCount) * 100) : 0
   const positiveReplyRate = contactedCount > 0 ? Math.round((positiveReplyCount / contactedCount) * 100) : 0
   const activityTargets = [...campaignTargets]
     .filter((target) => target.launched_at || ['in_outreach', 'replied', 'completed', 'failed'].includes(target.status))
     .sort((left, right) => (right.last_activity_at || right.updated_at).localeCompare(left.last_activity_at || left.updated_at))
-  const activeProviderAccounts = (integration?.accounts || []).filter((account) => account.status === 1)
+  const providerAccounts = integration?.accounts || []
   const canManageCampaign = Boolean(campaignState?.can_manage_campaigns)
   const selectedContactEmail = selectedTarget?.contact_email || selectedPodcast?.podcast_email || null
   const selectedPitchLocked = Boolean(selectedTarget && (
@@ -465,7 +414,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
         <header className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-primary">Client campaign</p>
+              <p className="text-sm font-semibold text-primary">Client · {client.name}</p>
               <Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge>
               <Badge
                 variant="outline"
@@ -477,7 +426,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               </Badge>
             </div>
             <h1 className="mt-2 truncate text-3xl font-bold tracking-tight">{campaign?.name || `${client.name} Podcast Outreach`}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">One ongoing campaign · weekly podcast waves · a custom reviewed pitch for every show</p>
+            <p className="mt-2 text-sm text-muted-foreground">Podcast outreach with a custom reviewed pitch for every show</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {campaign?.instantly_campaign_id && campaignState?.can_manage_campaigns && (
@@ -494,7 +443,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           <div className="overflow-x-auto pb-1">
             <TabsList className="h-auto min-w-max justify-start" aria-label="Campaign sections">
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
-              <TabsTrigger value="leads">Leads</TabsTrigger>
+              <TabsTrigger value="leads">Podcasts</TabsTrigger>
               <TabsTrigger value="sequences">Sequences</TabsTrigger>
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="options">Options</TabsTrigger>
@@ -504,21 +453,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           <TabsContent value="leads" className="mt-0 space-y-4">
             <Card className="overflow-hidden">
               <div className="border-b border-border bg-muted/15 p-4">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-48">
-                      <Select value={waveFilter} onValueChange={setWaveFilter}>
-                        <SelectTrigger aria-label="Select outreach wave"><CalendarDays className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="current">Current wave{currentWaveKey ? ` · ${waveLabel(currentWaveKey)}` : ''}</SelectItem>
-                          <SelectItem value="all">All outreach waves</SelectItem>
-                          {waves.slice(1).map((key) => <SelectItem key={key} value={key}>{waveLabel(key)}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <p className="hidden text-xs text-muted-foreground sm:block">{wavePodcasts.length} podcast{wavePodcasts.length === 1 ? '' : 's'} in view</p>
-                  </div>
-                  <div className="flex max-w-full gap-2 overflow-x-auto pb-1 xl:pb-0" aria-label="Pitch queue filters">
+                <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Pitch queue filters">
                     {pitchFilters.map((filter) => (
                       <Button
                         key={filter.value}
@@ -531,7 +466,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         {filter.label}<span className="ml-1.5 text-xs text-muted-foreground">{filterCount(filter.value)}</span>
                       </Button>
                     ))}
-                  </div>
                 </div>
               </div>
 
@@ -546,7 +480,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
                   <CheckCircle2 className="h-8 w-8 text-muted-foreground/50" />
                   <h2 className="mt-3 font-semibold">Nothing needs this action</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Choose another pitch status or outreach wave.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Choose another pitch status.</p>
                 </div>
               ) : (
                 <>
@@ -594,14 +528,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-0 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Sent" value={campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent} detail={`${contactedCount} unique podcast contacts`} icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Opportunities" value={positiveReplyCount} detail={`${positiveReplyRate}% positive reply rate`} icon={Inbox} /><Metric label="Bookings" value={bookedCount} detail="Booked, recorded, or published" icon={CalendarDays} /></div>
+            <div className="grid gap-3 sm:grid-cols-3"><Metric label="Sent" value={campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent} detail={`${contactedCount} unique podcast contacts`} icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Positive replies" value={positiveReplyCount} detail={`${positiveReplyRate}% positive reply rate`} icon={Inbox} /></div>
             <Card>
-              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from outreach to replies, opportunities, and booked appearances.</CardDescription></CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-4">
-                {[['Contacted', contactedCount], ['Replied', replyCount], ['Opportunities', positiveReplyCount], ['Booked', bookedCount]].map(([label, value], index) => (
+              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from podcast outreach to replies and positive interest.</CardDescription></CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-3">
+                {[['Contacted', contactedCount], ['Replied', replyCount], ['Positive replies', positiveReplyCount]].map(([label, value], index) => (
                   <div key={String(label)} className="relative rounded-xl border bg-muted/15 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p>
-                    {index < 3 && <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-background text-muted-foreground sm:block" />}
+                    {index < 2 && <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-background text-muted-foreground sm:block" />}
                   </div>
                 ))}
               </CardContent>
@@ -639,7 +573,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Emails sent</span><strong>{campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{contactedCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Unique replies</span><strong>{replyCount}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Opportunities</span><strong>{positiveReplyCount}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Positive replies</span><strong>{positiveReplyCount}</strong></div>
                 </CardContent>
               </Card>
             </div>
@@ -647,10 +581,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
           <TabsContent value="sequences" className="mt-0">
             <Card>
-              <CardHeader><CardTitle>Outreach sequence</CardTitle><CardDescription>Every lead receives one reviewed opening pitch and two consistent follow-ups. Sending stops immediately when the contact replies.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Outreach sequence</CardTitle><CardDescription>The opening message is prepared for each show in Podcasts—written manually, generated with AI, or started from a template—then sent through this client’s associated Instantly campaign.</CardDescription></CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  { step: 'Email 1', timing: 'Send when approved', title: 'Custom podcast pitch', detail: 'Uses the subject and message reviewed for this individual podcast.' },
+                  { step: 'Email 1', timing: 'Send when approved', title: 'Approved podcast message', detail: 'Uses the AI, template, or manually written subject and message reviewed for this podcast.' },
                   { step: 'Email 2', timing: 'Wait 3 days', title: 'Helpful follow-up', detail: 'Returns to the guest idea and offers tailored talking points for the show.' },
                   { step: 'Email 3', timing: 'Wait 5 more days', title: 'Final follow-up', detail: 'Closes the loop without adding the contact to another sequence.' },
                 ].map((item, index) => (
@@ -660,7 +594,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                     <Badge variant="outline" className="w-fit">{item.timing}</Badge>
                   </div>
                 ))}
-                <div className="flex items-start gap-3 rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground"><Settings2 className="mt-0.5 h-4 w-4 shrink-0" /><p>Standard sequence · text-only email · open tracking on · link tracking off · stop on reply · no subsequences.</p></div>
+                <div className="flex items-start gap-3 rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground"><Settings2 className="mt-0.5 h-4 w-4 shrink-0" /><p>Message creation belongs in Podcasts. This section controls delivery cadence: text-only email, open tracking on, link tracking off, and stop on reply.</p></div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -699,16 +633,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>Sending accounts</CardTitle><CardDescription>Choose which active Instantly mailboxes can send this client campaign.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Accounts to use</CardTitle><CardDescription>Select the Instantly mailboxes assigned to this client campaign.</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
-                  {integration?.connected ? activeProviderAccounts.length > 0 ? (
-                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border p-3">
-                      {activeProviderAccounts.map((account) => (
-                        <label key={account.email} className="flex cursor-pointer items-center gap-3 text-sm"><Checkbox checked={settingsSenders.has(account.email)} onCheckedChange={(checked) => setSettingsSenders((current) => { const next = new Set(current); if (checked) next.add(account.email); else next.delete(account.email); return next })} disabled={!canManageCampaign} aria-label={`Use ${account.email}`} /><span className="truncate">{account.email}</span><Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-emerald-800">Active</Badge></label>
-                      ))}
-                    </div>
-                  ) : <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">No active sending accounts are available in the connected Instantly workspace.</div> : <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">The workspace owner must connect Instantly from the Client Campaigns page before launch.</div>}
-                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save sending accounts</Button>
+                  <InstantlyAccountPicker accounts={providerAccounts} connected={Boolean(integration?.connected)} selected={settingsSenders} onChange={setSettingsSenders} disabled={!canManageCampaign} />
+                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save accounts</Button>
                   {campaign?.instantly_campaign_id && canManageCampaign && (
                     <Button variant="outline" disabled={runningMutation.isPending} onClick={() => runningMutation.mutate(campaign.status !== 'active')}>
                       {campaign.status === 'active' ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaign.status === 'active' ? 'Pause campaign' : 'Resume campaign'}
@@ -774,7 +702,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 )}
 
                 <section className="space-y-4">
-                  <div><h3 className="font-semibold">Custom pitch</h3><p className="mt-1 text-sm text-muted-foreground">Every podcast receives its own subject and opening message.</p></div>
+                  <div><h3 className="font-semibold">Podcast message</h3><p className="mt-1 text-sm text-muted-foreground">Prepare the opening email with AI, a reusable template, or manual writing, then review it before sending.</p></div>
                   <div className="space-y-2"><Label htmlFor="pitch-subject">Subject line</Label><Input id="pitch-subject" value={subjectDraft} onChange={(event) => setSubjectDraft(event.target.value)} placeholder={`Podcast guest idea for ${selectedPodcast.podcast_name}`} disabled={!canManageCampaign || selectedPitchLocked} /></div>
                   <div className="space-y-2"><Label htmlFor="pitch-body">Email pitch</Label><Textarea id="pitch-body" value={pitchDraft} onChange={(event) => setPitchDraft(event.target.value)} placeholder="Write a custom pitch using the client profile and podcast context…" className="min-h-64 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
                   <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">

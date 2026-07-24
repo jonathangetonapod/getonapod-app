@@ -49,7 +49,6 @@ import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspa
 import {
   getWorkspaceClientDetail,
   generatePassword,
-  setWorkspaceClientDashboardVisibility,
   setWorkspaceClientPassword,
   updateWorkspaceClient,
   type WorkspaceClientBooking,
@@ -249,7 +248,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const [portalPasswordSaved, setPortalPasswordSaved] = useState(false)
   const [portalPasswordError, setPortalPasswordError] = useState<string | null>(null)
   const [portalPasswordBusy, setPortalPasswordBusy] = useState(false)
-  const [dashboardVisibilityBusy, setDashboardVisibilityBusy] = useState(false)
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesDraft, setNotesDraft] = useState('')
   const [notesBusy, setNotesBusy] = useState(false)
@@ -338,9 +336,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const dashboardPreviewHref = client.dashboard_slug
     ? `/client/${encodeURIComponent(client.dashboard_slug)}`
     : null
-  const dashboardHref = client.dashboard_enabled && client.dashboard_slug
-    ? dashboardPreviewHref
-    : null
+  const dashboardHref = dashboardPreviewHref
   const dashboardAdminPreviewHref = dashboardHref
     ? `${dashboardHref}?preview=1`
     : null
@@ -351,16 +347,12 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const campaignHref = `${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`
   const clientInitials = client.name.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'C'
-  const dashboardStatus = dashboard.enabled && dashboard.configured
+  const dashboardStatus = dashboard.configured
     ? 'Live'
-    : dashboard.configured
-      ? 'Not shared'
-      : 'Needs setup'
-  const dashboardStatusClassName = dashboard.enabled && dashboard.configured
+    : 'Needs setup'
+  const dashboardStatusClassName = dashboard.configured
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-    : dashboard.configured
-      ? 'border-amber-200 bg-amber-50 text-amber-800'
-      : undefined
+    : undefined
   const canManageCredentials = detail.viewer_role === 'owner'
     || detail.viewer_role === 'platform_admin'
   const portalPasswordValid = portalPassword.length >= 12
@@ -438,22 +430,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       toast.success(`${label} copied.`)
     } catch {
       toast.error('Copy failed. Open the page and copy the address manually.')
-    }
-  }
-
-  const updateDashboardVisibility = async (enabled: boolean) => {
-    if (!canManage || !dashboard.configured || dashboardVisibilityBusy) return
-    setDashboardVisibilityBusy(true)
-    try {
-      await setWorkspaceClientDashboardVisibility(workspaceId, canonicalClientId, enabled)
-      await detailQuery.refetch()
-      toast.success(enabled
-        ? 'Dashboard is now live for the client.'
-        : 'Dashboard is no longer shared with the client.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Dashboard sharing could not be updated.')
-    } finally {
-      setDashboardVisibilityBusy(false)
     }
   }
 
@@ -646,21 +622,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {canManage && <Button asChild variant="outline"><a href="#client-podcast-list"><LayoutDashboard className="mr-2 h-4 w-4" />View &amp; edit podcasts</a></Button>}
-                    {canManage && dashboard.configured && (
-                      <Button
-                        type="button"
-                        variant={dashboard.enabled ? 'outline' : 'default'}
-                        disabled={dashboardVisibilityBusy}
-                        onClick={() => void updateDashboardVisibility(!dashboard.enabled)}
-                      >
-                        {dashboardVisibilityBusy
-                          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          : dashboard.enabled
-                            ? <EyeOff className="mr-2 h-4 w-4" />
-                            : <Globe2 className="mr-2 h-4 w-4" />}
-                        {dashboard.enabled ? 'Stop sharing' : 'Make dashboard live'}
-                      </Button>
-                    )}
                     {dashboardHref && <Button variant="outline" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
                     {dashboardAdminPreviewHref && <Button asChild><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
                   </div>
@@ -680,35 +641,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 <MetricCard icon={Clock3} label="To review" value={dashboard.to_review_count} iconClassName="bg-amber-50 text-amber-600" />
               </div>
             </section>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardHeader><CardTitle>Client engagement</CardTitle><CardDescription>How the approval dashboard is being used.</CardDescription></CardHeader>
-                <CardContent>
-                  <DetailRow label="Dashboard views" value={dashboard.view_count.toLocaleString()} />
-                  <DetailRow label="Last viewed" value={formatDateTime(dashboard.last_viewed_at)} />
-                  <DetailRow label="Last decision" value={formatDateTime(dashboard.last_feedback_at)} />
-                  <DetailRow label="List updated" value={formatDateTime(dashboard.last_synced_at)} />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Dashboard setup</CardTitle>
-                  <CardDescription>
-                    {dashboard.enabled
-                      ? 'The client link is active and ready to share.'
-                      : dashboard.configured
-                        ? 'The dashboard is ready, but the client link is not active yet.'
-                        : 'Create a dashboard address before sharing this page with the client.'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <DetailRow label="Visibility" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
-                  <DetailRow label="Address" value={dashboardPreviewHref || 'Not generated'} />
-                  <DetailRow label="Personalized tagline" value={dashboard.tagline || 'Using the standard client introduction'} />
-                </CardContent>
-              </Card>
-            </div>
 
             {canManage && (
               <ClientShortlistEditor

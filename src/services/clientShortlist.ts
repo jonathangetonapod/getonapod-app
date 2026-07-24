@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 
-export type ClientShortlistVisibility = 'visible' | 'hidden' | 'archived'
+export type ClientShortlistVisibility = 'visible' | 'archived'
 export type ClientShortlistFeedbackStatus = 'approved' | 'rejected' | null
 
 export interface ClientShortlistCategory {
@@ -147,6 +147,7 @@ export async function updateClientShortlistPodcast(
     visibility?: ClientShortlistVisibility
     is_featured?: boolean
     operator_notes?: string | null
+    feedback_status?: ClientShortlistFeedbackStatus
   },
 ): Promise<ClientShortlistPodcast> {
   const data = await invokeClientShortlist<{ podcast: ClientShortlistPodcast }>({

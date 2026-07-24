@@ -18,7 +18,7 @@ readonly -a SOURCE_INPUTS=(
   'supabase/migrations/20260723000600_fix_client_portal_password_management.sql'
   'supabase/migrations/20260723000700_workspace_client_branding.sql'
   'supabase/migrations/20260723000800_workspace_name_management.sql'
-  'supabase/migrations/20260723000900_client_dashboard_visibility.sql'
+  'supabase/migrations/20260724000200_client_dashboards_always_live.sql'
   "${BEHAVIOR_TEST}"
 )
 readonly -a REQUIRED_ENV=(

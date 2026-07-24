@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { supabase } from '@/lib/supabase'
 import {
+  addWorkspaceCampaignPodcasts,
   connectWorkspaceInstantly,
   getWorkspaceCampaignOverview,
   launchWorkspaceCampaignPitch,
@@ -74,6 +75,7 @@ describe('workspaceCampaigns service', () => {
       dailyLimit: 30,
       senderAccounts: ['sender@example.com'],
       shortlistPodcastIds: [shortlistPodcastId],
+      providerCampaignId: '77777777-7777-4777-8777-777777777777',
     })
     await launchWorkspaceCampaignPitch({
       workspaceId,
@@ -93,6 +95,7 @@ describe('workspaceCampaigns service', () => {
         daily_limit: 30,
         sender_accounts: ['sender@example.com'],
         shortlist_podcast_ids: [shortlistPodcastId],
+        provider_campaign_id: '77777777-7777-4777-8777-777777777777',
       },
     })
     expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-client-campaigns', {
@@ -126,6 +129,21 @@ describe('workspaceCampaigns service', () => {
         shortlist_podcast_id: shortlistPodcastId,
         contact_email: 'host@example.com',
         host_name: 'Jamie Host',
+      },
+    })
+  })
+
+  it('appends podcasts to an existing client campaign through a narrow action', async () => {
+    invoke.mockResolvedValueOnce({ data: { added: 1, campaign: {}, targets: [] }, error: null } as never)
+
+    await addWorkspaceCampaignPodcasts({ workspaceId, clientId, shortlistPodcastIds: [shortlistPodcastId] })
+
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: {
+        action: 'add-podcasts',
+        workspace_id: workspaceId,
+        client_id: clientId,
+        shortlist_podcast_ids: [shortlistPodcastId],
       },
     })
   })

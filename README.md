@@ -34,11 +34,11 @@ Podcast Finder is a workspace-level tool with a selectable active client. It com
 
 ### 3. Manage the client shortlist
 
-Each client command center includes an approval-dashboard editor. The agency can curate, feature, reorder, and remove opportunities without returning to Podcast Finder. A dashboard can remain private or be made live through its shareable client URL.
+Each client command center includes an approval-dashboard editor. The agency can curate, feature, reorder, archive, and decide on opportunities without returning to Podcast Finder. Once a dashboard address is configured, its shareable client URL is live without a separate visibility switch.
 
 ### 4. Run outreach
 
-Client Campaigns gives each active client one ongoing podcast-outreach campaign, with new opportunities added in weekly waves. Operators review an individual pitch before launch, then start, pause, resume, and manually synchronize the corresponding standard Instantly campaign. The workspace owner connects one Instantly V2 API key; authorized workspace managers can run campaigns without seeing the credential. Master Inbox and Mailboxes remain separate future integrations.
+Client Campaigns gives each active client one ongoing podcast-outreach campaign. Operators choose the Instantly mailboxes assigned to the campaign, review each individual pitch before launch, then start, pause, resume, and manually synchronize the corresponding standard Instantly campaign. The workspace owner connects one Instantly V2 API key; authorized workspace managers can run campaigns without seeing the credential. Master Inbox and Mailboxes remain separate future integrations.
 
 ### 5. Deliver a white-label client experience
 
@@ -73,10 +73,10 @@ The outreach experience is intentionally split by job-to-be-done:
 
 The campaign experience is organized around one ongoing podcast-booking campaign per client:
 
-- an operational index surfaces campaign status, the current weekly wave, pitch readiness, contacted podcasts, bookings, and the next action;
-- a two-step creation flow chooses the client, active sending accounts, and first wave while saving the draft in GOAP;
+- an operational index surfaces campaign status, sender accounts, progress, sent volume, replies, positive replies, and the next action;
+- a two-step creation flow chooses the client, one or more sending accounts, and the starting podcasts while saving the draft in GOAP;
 - client-positive podcasts are selected automatically, while an owner can deliberately include another shortlisted show;
-- the campaign workspace groups podcasts by weekly wave and supports focused pitch-queue views;
+- the campaign workspace keeps every eligible podcast in one Leads view with focused status filters;
 - selecting a podcast opens a right-side workspace where managers confirm or correct the campaign-local host contact, review fit context and suggested angles, and write the individual pitch;
 - saving a draft does not contact anyone; the explicit **Approve & start outreach** action creates or recovers the mapped provider campaign, adds that podcast contact, and activates sending;
 - activity and performance use sanitized workspace-scoped campaign and lead data returned by Instantly; and
@@ -387,9 +387,9 @@ The `OPTIONS` request must return a successful status with the shared allowed-or
 
 Check that the route contains a canonical UUID, the workspace is active, and it has exactly one available owner. Selected-workspace pages intentionally fail closed if the returned workspace, owner, clients, or route ID do not agree.
 
-### A client dashboard is hidden
+### A client dashboard will not load
 
-Hidden means the dashboard exists but is not shared. Open the client command center, use the Approval dashboard section, and make the dashboard live. The public route remains inaccessible while `dashboard_enabled` is false.
+A configured approval dashboard is always live. If its public link does not load, confirm the client has a dashboard slug, the client belongs to an active workspace, and the public dashboard functions are deployed. There is no separate share/unshare switch.
 
 ### The production page still shows an older bundle
 

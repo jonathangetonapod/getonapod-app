@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { InstantlyAccountPicker } from '@/components/workspace/InstantlyAccountPicker'
 import {
   Dialog,
   DialogContent,
@@ -63,8 +64,8 @@ import {
   type WorkspaceClientDetail,
 } from '@/services/clients'
 
-type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed' | 'setup'
-type CampaignStatus = 'Needs attention' | 'Draft' | 'Active' | 'Paused' | 'Completed' | 'Not started'
+type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed'
+type CampaignStatus = 'Needs attention' | 'Draft' | 'Active' | 'Paused' | 'Completed'
 
 interface WorkspaceCampaignsProps {
   workspaceId: string
@@ -85,8 +86,6 @@ interface CampaignSummary {
   status: CampaignStatus
   approvedPodcasts: number
   missingContacts: number
-  currentWaveCount: number
-  currentWaveLabel: string
   nextAction: string
 }
 
@@ -97,7 +96,6 @@ const filterLabels: Array<{ value: CampaignFilter; label: string }> = [
   { value: 'active', label: 'Active' },
   { value: 'paused', label: 'Paused' },
   { value: 'completed', label: 'Completed' },
-  { value: 'setup', label: 'Not started' },
 ]
 
 const statusClasses: Record<CampaignStatus, string> = {
@@ -106,35 +104,14 @@ const statusClasses: Record<CampaignStatus, string> = {
   Active: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   Paused: 'border-violet-200 bg-violet-50 text-violet-800',
   Completed: 'border-slate-200 bg-slate-100 text-slate-700',
-  'Not started': 'border-slate-200 bg-slate-50 text-slate-700',
 }
 
-function startOfWeek(value: string): Date | null {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  const day = date.getDay()
-  const offset = day === 0 ? -6 : 1 - day
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() + offset)
-  return date
-}
-
-function formatWave(start: Date | null): string {
-  if (!start) return 'No wave yet'
-  const end = new Date(start)
-  end.setDate(start.getDate() + 6)
-  const sameMonth = start.getMonth() === end.getMonth()
-  const startLabel = start.toLocaleDateString(undefined, sameMonth
-    ? { month: 'short', day: 'numeric' }
-    : { month: 'short', day: 'numeric' })
-  const endLabel = end.toLocaleDateString(undefined, sameMonth
-    ? { day: 'numeric' }
-    : { month: 'short', day: 'numeric' })
-  return `${startLabel}–${endLabel}`
-}
-
-function podcastDecisionDate(podcast: ClientShortlistPodcast): string {
-  return podcast.feedback_updated_at || podcast.updated_at || podcast.created_at
+function instantlyStatusLabel(status: number): CampaignStatus {
+  if (status === 1 || status === 4) return 'Active'
+  if (status === 2) return 'Paused'
+  if (status === 3) return 'Completed'
+  if (status === 0) return 'Draft'
+  return 'Needs attention'
 }
 
 function summarizeCampaign(
@@ -156,14 +133,6 @@ function summarizeCampaign(
     ? campaign.target_counts.needs_contact
       + newlyApproved.filter((podcast) => !podcast.podcast_email).length
     : approved.filter((podcast) => !podcast.podcast_email).length
-  const latestWave = approved
-    .map((podcast) => startOfWeek(podcastDecisionDate(podcast)))
-    .filter((date): date is Date => Boolean(date))
-    .sort((left, right) => right.getTime() - left.getTime())[0] || null
-  const currentWaveCount = latestWave
-    ? approved.filter((podcast) => startOfWeek(podcastDecisionDate(podcast))?.getTime() === latestWave.getTime()).length
-    : 0
-  const outreach = data?.detail.outreach
   const status: CampaignStatus = campaign?.status === 'attention'
     ? 'Needs attention'
     : campaign?.status === 'active'
@@ -172,15 +141,7 @@ function summarizeCampaign(
         ? 'Paused'
         : campaign?.status === 'completed'
           ? 'Completed'
-          : campaign
-            ? 'Draft'
-            : outreach?.pending_review_count
-              ? 'Needs attention'
-              : outreach && outreach.initial_emails_sent > 0
-                ? 'Active'
-                : approved.length > 0
-                  ? 'Draft'
-                  : 'Not started'
+          : 'Draft'
   const readyCount = campaign?.target_counts.ready || 0
   const needsPitchCount = campaign?.target_counts.needs_pitch || 0
   const nextAction = campaign?.last_error
@@ -191,9 +152,7 @@ function summarizeCampaign(
       ? `Launch ${readyCount} approved pitch${readyCount === 1 ? '' : 'es'}`
       : needsPitchCount > 0
         ? `Write ${needsPitchCount} pitch${needsPitchCount === 1 ? '' : 'es'}`
-        : !campaign && outreach?.pending_review_count
-          ? `Review ${outreach.pending_review_count} pitch${outreach.pending_review_count === 1 ? '' : 'es'}`
-    : missingContacts > 0
+        : missingContacts > 0
       ? `Find ${missingContacts} contact${missingContacts === 1 ? '' : 's'}`
       : (campaign?.target_counts.total || approved.length) > 0
         ? 'Review custom pitches'
@@ -211,8 +170,6 @@ function summarizeCampaign(
       ? campaign.target_counts.total + newlyApproved.length
       : approved.length,
     missingContacts,
-    currentWaveCount,
-    currentWaveLabel: formatWave(latestWave),
     nextAction,
   }
 }
@@ -223,7 +180,7 @@ function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
 
 function campaignListMetrics(summary: CampaignSummary) {
   const campaign = summary.campaign
-  const contacted = campaign?.analytics.contacted_count ?? summary.detail?.outreach.podcasts_contacted ?? 0
+  const contacted = campaign?.analytics.contacted_count ?? 0
   const totalTargets = campaign?.target_counts.total || 0
   const progress = campaign && totalTargets > 0
     ? Math.min(100, Math.round((contacted / totalTargets) * 100))
@@ -231,11 +188,9 @@ function campaignListMetrics(summary: CampaignSummary) {
   const senderAccounts = campaign?.sender_accounts || []
   return {
     progress: summary.status === 'Completed' ? 100 : progress,
-    sent: campaign?.analytics.emails_sent_count ?? summary.detail?.outreach.initial_emails_sent ?? 0,
+    sent: campaign?.analytics.emails_sent_count ?? 0,
     replies: campaign ? campaign.analytics.reply_count_unique : null,
-    opportunities: campaign
-      ? campaign.analytics.total_interested + campaign.analytics.total_meeting_booked
-      : null,
+    positiveReplies: campaign ? campaign.analytics.total_interested : null,
     sender: senderAccounts[0] || null,
     additionalSenders: Math.max(0, senderAccounts.length - 1),
   }
@@ -287,11 +242,19 @@ const WorkspaceCampaigns = ({
     retry: false,
     staleTime: 15_000,
   })
-  const persistedCampaigns = useMemo(() => new Map(
-    (campaignOverviewQuery.data?.campaigns || []).map((campaign) => [campaign.client_id, campaign]),
+  const providerBackedCampaigns = useMemo(() => (
+    (campaignOverviewQuery.data?.campaigns || []).filter((campaign) => Boolean(campaign.instantly_campaign_id))
   ), [campaignOverviewQuery.data?.campaigns])
+  const clientById = useMemo(
+    () => new Map(clients.map((client) => [client.id, client])),
+    [clients],
+  )
+  const campaignEntries = useMemo(() => providerBackedCampaigns.flatMap((campaign) => {
+    const client = clientById.get(campaign.client_id)
+    return client ? [{ campaign, client }] : []
+  }), [clientById, providerBackedCampaigns])
   const campaignQueries = useQueries({
-    queries: activeClients.map((client) => ({
+    queries: campaignEntries.map(({ client }) => ({
       queryKey: ['workspace-campaign-layout', workspaceId, client.id],
       queryFn: async () => {
         const [detail, shortlist] = await Promise.all([
@@ -311,10 +274,10 @@ const WorkspaceCampaigns = ({
       staleTime: 30_000,
     })),
   })
-  const summaries = activeClients.map((client, index) => summarizeCampaign(
+  const summaries = campaignEntries.map(({ campaign, client }, index) => summarizeCampaign(
     client,
     campaignQueries[index]?.data,
-    persistedCampaigns.get(client.id) || null,
+    campaign,
     Boolean(campaignQueries[index]?.isLoading),
     Boolean(campaignQueries[index]?.error),
   ))
@@ -325,6 +288,7 @@ const WorkspaceCampaigns = ({
   const [createOpen, setCreateOpen] = useState(false)
   const [createStep, setCreateStep] = useState<1 | 2>(1)
   const [selectedClientId, setSelectedClientId] = useState('')
+  const [selectedProviderCampaignId, setSelectedProviderCampaignId] = useState('new')
   const [campaignName, setCampaignName] = useState('')
   const [campaignTimezoneDraft, setCampaignTimezoneDraft] = useState(() => (
     Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'
@@ -339,7 +303,9 @@ const WorkspaceCampaigns = ({
 
   const integration = campaignOverviewQuery.data?.integration || null
   const canManageCampaigns = Boolean(campaignOverviewQuery.data?.can_manage_campaigns)
-  const activeSendingAccounts = (integration?.accounts || []).filter((account) => account.status === 1)
+  const sendingAccounts = integration?.accounts || []
+  const providerCampaigns = campaignOverviewQuery.data?.provider_campaigns || []
+  const unassignedProviderCampaigns = providerCampaigns.filter((campaign) => !campaign.mapped_client_id)
 
   const refreshConnectionMutation = useMutation({
     mutationFn: () => refreshWorkspaceInstantly(workspaceId),
@@ -407,7 +373,6 @@ const WorkspaceCampaigns = ({
       || (filter === 'active' && summary.status === 'Active')
       || (filter === 'paused' && summary.status === 'Paused')
       || (filter === 'completed' && summary.status === 'Completed')
-      || (filter === 'setup' && summary.status === 'Not started')
     return matchesSearch && matchesClient && matchesFilter
   }).sort((left, right) => {
     const priority: Record<CampaignStatus, number> = {
@@ -416,7 +381,6 @@ const WorkspaceCampaigns = ({
       Active: 2,
       Paused: 3,
       Completed: 4,
-      'Not started': 5,
     }
     return priority[left.status] - priority[right.status]
       || left.client.name.localeCompare(right.client.name)
@@ -424,14 +388,16 @@ const WorkspaceCampaigns = ({
 
   const activeCount = summaries.filter((summary) => summary.status === 'Active').length
   const sentCount = summaries.reduce((total, summary) => (
-    total + (summary.campaign?.analytics.emails_sent_count ?? summary.detail?.outreach.initial_emails_sent ?? 0)
+    total + (summary.campaign?.analytics.emails_sent_count ?? 0)
   ), 0)
   const positiveReplyCount = summaries.reduce((total, summary) => (
-    total
-    + (summary.campaign?.analytics.total_interested || 0)
-    + (summary.campaign?.analytics.total_meeting_booked || 0)
+    total + (summary.campaign?.analytics.total_interested || 0)
   ), 0)
-  const availableCampaignClients = activeClients.filter((client) => !persistedCampaigns.has(client.id))
+  const assignedClientIds = new Set(providerBackedCampaigns.map((campaign) => campaign.client_id))
+  const availableCampaignClients = activeClients.filter((client) => !assignedClientIds.has(client.id))
+  const selectedProviderCampaign = selectedProviderCampaignId === 'new'
+    ? null
+    : unassignedProviderCampaigns.find((campaign) => campaign.id === selectedProviderCampaignId) || null
 
   const saveInstantlyConnection = async () => {
     let apiKey = apiKeyDraft.trim()
@@ -455,6 +421,7 @@ const WorkspaceCampaigns = ({
     setCreateOpen(false)
     setCreateStep(1)
     setSelectedClientId('')
+    setSelectedProviderCampaignId('new')
     setCampaignName('')
     setCampaignTimezoneDraft(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York')
     setCampaignDailyLimit(30)
@@ -466,10 +433,28 @@ const WorkspaceCampaigns = ({
   const selectClient = (clientId: string) => {
     const client = availableCampaignClients.find((candidate) => candidate.id === clientId)
     setSelectedClientId(clientId)
+    setSelectedProviderCampaignId('new')
     setCampaignName(client ? `${client.name} Podcast Outreach` : '')
-    setSelectedSenderAccounts(new Set(activeSendingAccounts[0] ? [activeSendingAccounts[0].email] : []))
+    setSelectedSenderAccounts(new Set())
     setSelectedPodcastIds(new Set())
     setInitializedClientId('')
+  }
+
+  const selectProviderCampaign = (providerCampaignId: string) => {
+    setSelectedProviderCampaignId(providerCampaignId)
+    if (providerCampaignId === 'new') {
+      setCampaignName(selectedClient ? `${selectedClient.name} Podcast Outreach` : '')
+      setCampaignTimezoneDraft(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York')
+      setCampaignDailyLimit(30)
+      setSelectedSenderAccounts(new Set())
+      return
+    }
+    const providerCampaign = unassignedProviderCampaigns.find((campaign) => campaign.id === providerCampaignId)
+    if (!providerCampaign) return
+    setCampaignName(providerCampaign.name)
+    setCampaignTimezoneDraft(providerCampaign.timezone)
+    setCampaignDailyLimit(providerCampaign.daily_limit)
+    setSelectedSenderAccounts(new Set(providerCampaign.sender_accounts))
   }
 
   const openDraftWorkspace = () => {
@@ -482,6 +467,7 @@ const WorkspaceCampaigns = ({
       dailyLimit: campaignDailyLimit,
       senderAccounts: Array.from(selectedSenderAccounts),
       shortlistPodcastIds: Array.from(selectedPodcastIds),
+      providerCampaignId: selectedProviderCampaign?.id || null,
     })
   }
 
@@ -525,7 +511,7 @@ const WorkspaceCampaigns = ({
                 {campaignOverviewQuery.error instanceof Error
                   ? campaignOverviewQuery.error.message
                   : integration?.connected
-                    ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · key ending ${integration.api_key_last_four || '••••'}`
+                    ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · ${providerCampaigns.length} Instantly campaign${providerCampaigns.length === 1 ? '' : 's'} found · key ending ${integration.api_key_last_four || '••••'}`
                     : integration?.last_error || 'Draft campaigns and pitches now; the workspace owner connects one V2 API key before anyone sends.'}
               </p>
             </div>
@@ -550,13 +536,20 @@ const WorkspaceCampaigns = ({
         </CardContent>
       </Card>
 
+      {campaignOverviewQuery.data?.provider_campaigns_error && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div><p className="font-medium">Instantly campaigns could not be refreshed</p><p className="mt-0.5 text-amber-800">{campaignOverviewQuery.data.provider_campaigns_error}</p></div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">All campaigns</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Select a client or scan every podcast outreach campaign in one place.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Every row is a real Instantly campaign assigned to one client.</p>
         </div>
         {canManageCampaigns && (
-          <Button onClick={() => setCreateOpen(true)} disabled={clientsLoading || campaignOverviewQuery.isLoading || availableCampaignClients.length === 0}>
+          <Button onClick={() => setCreateOpen(true)} disabled={clientsLoading || campaignOverviewQuery.isLoading || !integration?.connected || availableCampaignClients.length === 0}>
             <Plus className="mr-2 h-4 w-4" />New campaign
           </Button>
         )}
@@ -565,7 +558,7 @@ const WorkspaceCampaigns = ({
       <div className="grid gap-3 sm:grid-cols-3">
         <SummaryMetric label="Active campaigns" value={activeCount} detail="Currently sending outreach" icon={CheckCircle2} />
         <SummaryMetric label="Emails sent" value={sentCount} detail="Synced campaign outreach" icon={Mail} />
-        <SummaryMetric label="Opportunities" value={integration?.connected ? positiveReplyCount : '—'} detail={integration?.connected ? 'Interested replies and meetings' : 'Available after Instantly sync'} icon={MessageSquare} />
+        <SummaryMetric label="Positive replies" value={integration?.connected ? positiveReplyCount : '—'} detail={integration?.connected ? 'Replies marked interested' : 'Available after Instantly sync'} icon={MessageSquare} />
       </div>
 
       <Card className="overflow-hidden">
@@ -610,6 +603,13 @@ const WorkspaceCampaigns = ({
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">Add or reactivate a client before creating a podcast outreach campaign.</p>
             <Button asChild variant="outline" className="mt-4"><Link to={`${baseHref}/clients`}>Open clients</Link></Button>
           </div>
+        ) : summaries.length === 0 ? (
+          <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
+            <PlugZap className="h-8 w-8 text-muted-foreground/50" />
+            <h3 className="mt-3 font-semibold">No Instantly campaigns assigned yet</h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">Create a new campaign in Instantly or assign an existing Instantly campaign to a client.</p>
+            {canManageCampaigns && integration?.connected && availableCampaignClients.length > 0 && <Button className="mt-4" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />New campaign</Button>}
+          </div>
         ) : filteredSummaries.length === 0 ? (
           <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
             <Search className="h-8 w-8 text-muted-foreground/50" />
@@ -631,7 +631,7 @@ const WorkspaceCampaigns = ({
                       <div><p className="text-xs text-muted-foreground">Progress</p><p className="mt-1 font-medium">{metrics.progress === null ? '—' : `${metrics.progress}%`}</p></div>
                       <div><p className="text-xs text-muted-foreground">Sent</p><p className="mt-1 font-medium">{metrics.sent.toLocaleString()}</p></div>
                       <div><p className="text-xs text-muted-foreground">Replies</p><p className="mt-1 font-medium">{metrics.replies === null ? '—' : metrics.replies.toLocaleString()}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Opportunities</p><p className="mt-1 font-medium">{metrics.opportunities === null ? '—' : metrics.opportunities.toLocaleString()}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Positive replies</p><p className="mt-1 font-medium">{metrics.positiveReplies === null ? '—' : metrics.positiveReplies.toLocaleString()}</p></div>
                       <div className="col-span-2"><p className="text-xs text-muted-foreground">Next step</p><p className="mt-1 font-medium text-primary">{summary.error ? 'Campaign data unavailable' : summary.nextAction}</p></div>
                     </div>
                   </Link>
@@ -644,12 +644,13 @@ const WorkspaceCampaigns = ({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="min-w-64">Name</TableHead>
+                    <TableHead className="min-w-44">Client</TableHead>
                     <TableHead className="min-w-48">Sender</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="min-w-36">Progress</TableHead>
                     <TableHead>Sent</TableHead>
                     <TableHead>Replies</TableHead>
-                    <TableHead>Opportunities</TableHead>
+                    <TableHead>Positive replies</TableHead>
                     <TableHead className="w-20 text-right">Open</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -660,14 +661,14 @@ const WorkspaceCampaigns = ({
                       <TableRow key={summary.client.id} className="group">
                         <TableCell>
                           <Link to={`${baseHref}/client-campaigns/${summary.client.id}`} className="font-semibold hover:text-primary hover:underline">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</Link>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{summary.client.name} · {summary.currentWaveLabel}</p>
                         </TableCell>
+                        <TableCell><Link to={`${baseHref}/clients/${summary.client.id}`} className="text-sm font-medium text-muted-foreground hover:text-primary hover:underline">{summary.client.name}</Link></TableCell>
                         <TableCell><p className="max-w-48 truncate text-sm font-medium">{metrics.sender || 'No sender selected'}</p>{metrics.additionalSenders > 0 && <p className="text-xs text-muted-foreground">+{metrics.additionalSenders} more</p>}</TableCell>
                         <TableCell>{summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : summary.error ? <Badge variant="destructive">Unavailable</Badge> : <CampaignStatusBadge status={summary.status} />}</TableCell>
                         <TableCell>{metrics.progress === null ? <span className="text-muted-foreground">—</span> : <div className="flex items-center gap-2"><Progress value={metrics.progress} className="h-1.5 w-20" aria-label={`${summary.client.name} campaign progress`} /><span className="text-sm font-medium">{metrics.progress}%</span></div>}</TableCell>
                         <TableCell>{metrics.sent.toLocaleString()}</TableCell>
                         <TableCell>{metrics.replies === null ? <span className="text-muted-foreground">—</span> : metrics.replies.toLocaleString()}</TableCell>
-                        <TableCell>{metrics.opportunities === null ? <span className="text-muted-foreground">—</span> : metrics.opportunities.toLocaleString()}</TableCell>
+                        <TableCell>{metrics.positiveReplies === null ? <span className="text-muted-foreground">—</span> : metrics.positiveReplies.toLocaleString()}</TableCell>
                         <TableCell className="text-right"><Button asChild variant="ghost" size="icon" className="text-primary"><Link to={`${baseHref}/client-campaigns/${summary.client.id}`} aria-label={`Open ${summary.client.name} campaign`}><ArrowRight className="h-4 w-4" /></Link></Button></TableCell>
                       </TableRow>
                     )
@@ -686,7 +687,7 @@ const WorkspaceCampaigns = ({
               <span>Step {createStep} of 2</span>
               <span className="text-muted-foreground">Create client campaign</span>
             </div>
-            <DialogTitle>{createStep === 1 ? 'Choose the client' : 'Choose the first podcast wave'}</DialogTitle>
+            <DialogTitle>{createStep === 1 ? 'Choose the client' : 'Choose the starting podcasts'}</DialogTitle>
             <DialogDescription>
               {createStep === 1
                 ? 'Each active client has one ongoing podcast outreach campaign.'
@@ -706,11 +707,37 @@ const WorkspaceCampaigns = ({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="campaign-name">Campaign name</Label>
-                <Input id="campaign-name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} disabled={!selectedClient} />
-                <p className="text-xs text-muted-foreground">Use the client’s ongoing campaign for every weekly outreach wave.</p>
+                <Label htmlFor="instantly-campaign">Instantly campaign</Label>
+                <Select value={selectedProviderCampaignId} onValueChange={selectProviderCampaign} disabled={!selectedClient}>
+                  <SelectTrigger id="instantly-campaign"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new">Create a new Instantly campaign</SelectItem>
+                    {unassignedProviderCampaigns.map((campaign) => (
+                      <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} · {instantlyStatusLabel(campaign.status)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Choose an existing unassigned campaign, or create a new provider campaign for this client.</p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              {selectedProviderCampaign ? (
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div><p className="font-semibold">{selectedProviderCampaign.name}</p><p className="mt-1 text-xs text-muted-foreground">This exact Instantly campaign will be assigned to {selectedClient?.name}.</p></div>
+                    <CampaignStatusBadge status={instantlyStatusLabel(selectedProviderCampaign.status)} />
+                  </div>
+                  <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div><p className="text-xs text-muted-foreground">Sending accounts</p><p className="mt-1 font-medium">{selectedProviderCampaign.sender_accounts.length}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Daily limit</p><p className="mt-1 font-medium">{selectedProviderCampaign.daily_limit.toLocaleString()}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Timezone</p><p className="mt-1 truncate font-medium">{selectedProviderCampaign.timezone}</p></div>
+                  </div>
+                </div>
+              ) : <>
+                <div className="space-y-2">
+                  <Label htmlFor="campaign-name">Campaign name</Label>
+                  <Input id="campaign-name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} disabled={!selectedClient} />
+                  <p className="text-xs text-muted-foreground">This name will also be used for the new campaign in Instantly.</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="campaign-timezone">Sending timezone</Label>
                   <Input id="campaign-timezone" value={campaignTimezoneDraft} onChange={(event) => setCampaignTimezoneDraft(event.target.value)} disabled={!selectedClient} />
@@ -728,35 +755,14 @@ const WorkspaceCampaigns = ({
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Sending accounts</Label>
-                {integration?.connected && activeSendingAccounts.length > 0 ? (
-                  <div className="max-h-36 space-y-2 overflow-y-auto rounded-xl border p-3">
-                    {activeSendingAccounts.map((account) => (
-                      <label key={account.email} className="flex cursor-pointer items-center gap-3 text-sm">
-                        <Checkbox
-                          checked={selectedSenderAccounts.has(account.email)}
-                          onCheckedChange={(checked) => setSelectedSenderAccounts((current) => {
-                            const next = new Set(current)
-                            if (checked) next.add(account.email)
-                            else next.delete(account.email)
-                            return next
-                          })}
-                          aria-label={`Use ${account.email}`}
-                        />
-                        <span className="min-w-0 truncate">{account.email}</span>
-                        <Badge variant="outline" className="ml-auto border-emerald-200 bg-emerald-50 text-emerald-800">Active</Badge>
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">
-                    {integration?.connected
-                      ? 'No active Instantly sending accounts are available. You can save the draft, then resolve sender health before launch.'
-                      : 'No sender is required to save a draft. The workspace owner can connect Instantly before launch.'}
-                  </div>
-                )}
-              </div>
+              <InstantlyAccountPicker
+                accounts={sendingAccounts}
+                connected={Boolean(integration?.connected)}
+                selected={selectedSenderAccounts}
+                onChange={setSelectedSenderAccounts}
+                className="max-h-52"
+              />
+              </>}
             </div>
           ) : creationShortlistQuery.isLoading ? (
             <div className="flex min-h-52 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
@@ -800,13 +806,13 @@ const WorkspaceCampaigns = ({
           )}
 
           <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-            Saving creates a real workspace campaign and first weekly wave. Email only begins after a reviewed pitch is explicitly approved in the campaign workspace.
+            Saving creates or assigns a real Instantly campaign and ties it to this client. Email only begins after a podcast message is explicitly approved.
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={createStep === 1 ? resetCreateDialog : () => setCreateStep(1)}>{createStep === 1 ? 'Cancel' : 'Back'}</Button>
             {createStep === 1 ? (
-              <Button type="button" disabled={!selectedClientId || !campaignName.trim()} onClick={() => setCreateStep(2)}>Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>
+              <Button type="button" disabled={!selectedClientId || !campaignName.trim() || (selectedProviderCampaignId === 'new' ? selectedSenderAccounts.size === 0 : !selectedProviderCampaign)} onClick={() => setCreateStep(2)}>Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>
             ) : (
               <Button type="button" disabled={creationShortlistQuery.isLoading || saveCampaignMutation.isPending} onClick={openDraftWorkspace}>
                 {saveCampaignMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

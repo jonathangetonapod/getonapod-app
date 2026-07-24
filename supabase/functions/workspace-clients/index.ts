@@ -106,7 +106,6 @@ serve(async (req) => {
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
     let clientId: string | null = null
     let payload: Record<string, string | null> = {}
-    let dashboardEnabled: boolean | null = null
 
     if (action === 'research-get' || action === 'detail-get') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
@@ -123,13 +122,6 @@ serve(async (req) => {
     } else if (action === 'delete') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
       clientId = requireUuid(body.client_id, 'client_id')
-    } else if (action === 'dashboard-visibility-update') {
-      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'enabled'])
-      clientId = requireUuid(body.client_id, 'client_id')
-      if (typeof body.enabled !== 'boolean') {
-        throw new HttpError(400, 'INVALID_FIELD', 'enabled must be a boolean')
-      }
-      dashboardEnabled = body.enabled
     } else {
       throw new HttpError(400, 'INVALID_ACTION', 'Unknown workspace client action')
     }
@@ -261,7 +253,7 @@ serve(async (req) => {
         client,
         dashboard: {
           configured: Boolean(client.dashboard_slug),
-          enabled: Boolean(client.dashboard_enabled && client.dashboard_slug),
+          enabled: Boolean(client.dashboard_slug),
           tagline: client.dashboard_tagline || null,
           view_count: Math.max(0, client.dashboard_view_count || 0),
           last_viewed_at: client.dashboard_last_viewed_at || null,
@@ -379,25 +371,6 @@ serve(async (req) => {
         throw new HttpError(500, 'CLIENT_SCOPE_MISMATCH', 'The workspace clients could not be loaded')
       }
       return jsonResponse(req, METHODS, 200, { clients: clients || [] })
-    }
-
-    if (action === 'dashboard-visibility-update') {
-      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
-      if (!['owner', 'admin', 'platform_admin'].includes(access.role)) {
-        throw new HttpError(403, 'WORKSPACE_MANAGER_REQUIRED', 'Active workspace manager access is required')
-      }
-      const { data, error } = await admin.rpc(
-        'set_workspace_client_dashboard_visibility_v1',
-        {
-          p_workspace_id: workspaceId,
-          p_client_id: clientId,
-          p_enabled: dashboardEnabled,
-          p_actor_user_id: user.id,
-          p_token_issued_at: tokenIssuedAt,
-        },
-      )
-      if (error) rpcError(error)
-      return jsonResponse(req, METHODS, 200, { success: true, client: data })
     }
 
     const { data, error } = await admin.rpc('workspace_client_operation_v2', {

@@ -118,6 +118,8 @@ describe('WorkspaceOutreachSuite', () => {
       },
       can_manage_campaigns: true,
       campaigns: [],
+      provider_campaigns: [],
+      provider_campaigns_error: null,
     })
   })
 

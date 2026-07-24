@@ -86,6 +86,7 @@ interface ShortlistPodcastInput {
 interface ShortlistPodcastRow extends Record<string, unknown> {
   id: string
   podcast_id: string
+  podcast_name: string
   podcast_url: string | null
   publisher_name: string | null
 }
@@ -526,7 +527,7 @@ serve(async (req) => {
         throw new HttpError(400, 'INVALID_FIELD', 'changes must be an object')
       }
       const changes = body.changes as Record<string, unknown>
-      requireOnlyKeys(changes, ['visibility', 'is_featured', 'operator_notes'])
+      requireOnlyKeys(changes, ['visibility', 'is_featured', 'operator_notes', 'feedback_status'])
       if (Object.keys(changes).length === 0) {
         throw new HttpError(400, 'INVALID_FIELD', 'changes cannot be empty')
       }
@@ -540,9 +541,16 @@ serve(async (req) => {
       if (!existing) throw new HttpError(404, 'PODCAST_NOT_FOUND', 'Podcast is not on this client list')
 
       const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      let feedbackStatus: 'approved' | 'rejected' | null | undefined
+      if (Object.hasOwn(changes, 'feedback_status')) {
+        if (changes.feedback_status !== null && changes.feedback_status !== 'approved' && changes.feedback_status !== 'rejected') {
+          throw new HttpError(400, 'INVALID_FIELD', 'feedback_status must be approved, rejected, or null')
+        }
+        feedbackStatus = changes.feedback_status
+      }
       if (Object.hasOwn(changes, 'visibility')) {
         const visibility = requireString(changes.visibility, 'visibility', { max: 20 })
-        if (!['visible', 'hidden', 'archived'].includes(visibility)) {
+        if (!['visible', 'archived'].includes(visibility)) {
           throw new HttpError(400, 'INVALID_FIELD', 'visibility is invalid')
         }
         update.visibility = visibility
@@ -597,14 +605,44 @@ serve(async (req) => {
         throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The client podcast list could not be updated')
       }
       const updatedPodcast = data as unknown as ShortlistPodcastRow
-      const { data: feedback, error: feedbackError } = await authContext.admin
-        .from('client_podcast_feedback')
-        .select('status,notes,updated_at')
-        .eq('client_id', clientId)
-        .eq('podcast_id', podcastId)
-        .maybeSingle()
-      if (feedbackError) {
-        throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The updated podcast feedback could not be loaded')
+      let feedback: { status: string | null; notes: string | null; updated_at: string | null } | null = null
+      if (feedbackStatus !== undefined) {
+        const { data: currentFeedback, error: currentFeedbackError } = await authContext.admin
+          .from('client_podcast_feedback')
+          .select('notes')
+          .eq('client_id', clientId)
+          .eq('podcast_id', podcastId)
+          .maybeSingle()
+        if (currentFeedbackError) {
+          throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The podcast decision could not be checked')
+        }
+        const { data: savedFeedback, error: savedFeedbackError } = await authContext.admin
+          .from('client_podcast_feedback')
+          .upsert({
+            client_id: clientId,
+            podcast_id: podcastId,
+            podcast_name: updatedPodcast.podcast_name,
+            status: feedbackStatus,
+            notes: currentFeedback?.notes || null,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'client_id,podcast_id' })
+          .select('status,notes,updated_at')
+          .single()
+        if (savedFeedbackError || !savedFeedback) {
+          throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The podcast decision could not be saved')
+        }
+        feedback = savedFeedback
+      } else {
+        const { data: currentFeedback, error: feedbackError } = await authContext.admin
+          .from('client_podcast_feedback')
+          .select('status,notes,updated_at')
+          .eq('client_id', clientId)
+          .eq('podcast_id', podcastId)
+          .maybeSingle()
+        if (feedbackError) {
+          throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The updated podcast feedback could not be loaded')
+        }
+        feedback = currentFeedback
       }
       await writeAudit(authContext.admin, {
         workspaceId,
@@ -612,7 +650,13 @@ serve(async (req) => {
         action: 'workspace.client.shortlist.updated',
         entityType: 'client_dashboard_podcast',
         entityId: updatedPodcast.id,
-        metadata: { podcast_id: podcastId, changes: update },
+        metadata: {
+          podcast_id: podcastId,
+          changes: {
+            ...update,
+            ...(feedbackStatus !== undefined ? { feedback_status: feedbackStatus } : {}),
+          },
+        },
       })
       return jsonResponse(req, METHODS, 200, {
         podcast: {
