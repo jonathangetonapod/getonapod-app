@@ -11,7 +11,7 @@ import {
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
 } from '@/services/clientShortlist'
-import { addWorkspaceCampaignPodcasts } from '@/services/workspaceCampaigns'
+import { getWorkspaceCampaign, prepareWorkspaceCampaignPodcast } from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({
   addClientShortlistPodcasts: vi.fn(),
@@ -20,7 +20,10 @@ vi.mock('@/services/clientShortlist', () => ({
   searchClientPodcastCatalog: vi.fn(),
   updateClientShortlistPodcast: vi.fn(),
 }))
-vi.mock('@/services/workspaceCampaigns', () => ({ addWorkspaceCampaignPodcasts: vi.fn() }))
+vi.mock('@/services/workspaceCampaigns', () => ({
+  getWorkspaceCampaign: vi.fn(),
+  prepareWorkspaceCampaignPodcast: vi.fn(),
+}))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }))
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
@@ -69,7 +72,9 @@ function renderEditor() {
           workspaceId={workspaceId}
           clientId={clientId}
           clientName="Taylor Client"
+          clientBio="Taylor helps founders turn complicated ideas into practical growth systems."
           finderHref={`/app/podcast-finder?client=${clientId}`}
+          campaignHref={`/app/client-campaigns/${clientId}`}
         />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -111,7 +116,21 @@ describe('ClientShortlistEditor', () => {
     vi.mocked(addClientShortlistPodcasts).mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['podcast-new'] })
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast())
     vi.mocked(reorderClientShortlistFeatured).mockResolvedValue()
-    vi.mocked(addWorkspaceCampaignPodcasts).mockResolvedValue({ added: 1, campaign: {} as never, targets: [] })
+    vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+      integration: {} as never,
+      can_manage_campaigns: true,
+      campaign: {
+        id: 'campaign-one',
+        name: 'Taylor Client Podcast Outreach',
+        instantly_campaign_id: '77777777-7777-4777-8777-777777777777',
+      } as never,
+      targets: [],
+    })
+    vi.mocked(prepareWorkspaceCampaignPodcast).mockResolvedValue({
+      added: true,
+      campaign: { name: 'Taylor Client Podcast Outreach' } as never,
+      target: {} as never,
+    })
   })
 
   it('shows the client-visible list, feedback, featured order, and archived dedupe history', async () => {
@@ -160,23 +179,57 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByRole('menuitem', { name: /Hide from client/i })).not.toBeInTheDocument()
   })
 
-  it('adds a podcast to the client campaign from its actions menu', async () => {
+  it('prepares research, the pitch, and both follow-ups before pushing an approved podcast to its campaign', async () => {
     renderEditor()
     const actions = await screen.findByRole('button', { name: 'Actions for Founder Stories' })
     actions.focus()
     fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
     fireEvent.click(await screen.findByRole('menuitem', { name: /Add to client campaign/i }))
 
-    await waitFor(() => expect(addWorkspaceCampaignPodcasts).toHaveBeenCalledWith({
+    expect(await screen.findByRole('heading', { name: 'Prepare Founder Stories outreach' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
+    expect(screen.getByLabelText('Opening email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Follow-up 1 email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Follow-up 2 email')).toBeInTheDocument()
+    expect(screen.getByText(/Nothing sends from this modal/i)).toBeInTheDocument()
+
+    const pushButton = screen.getByRole('button', { name: 'Push to client campaign' })
+    await waitFor(() => expect(pushButton).toBeEnabled())
+    fireEvent.click(pushButton)
+
+    await waitFor(() => expect(prepareWorkspaceCampaignPodcast).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId,
       clientId,
-      shortlistPodcastIds: ['33333333-3333-4333-8333-333333333333'],
-    }))
+      shortlistPodcastId: '33333333-3333-4333-8333-333333333333',
+      subject: 'Guest idea for Founder Stories: Taylor Client',
+      pitchBody: expect.stringContaining('Founder Stories'),
+      followUpOneBody: expect.stringContaining('Just following up'),
+      followUpTwoBody: expect.stringContaining('One last note'),
+    })))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Prepare Founder Stories outreach' })).not.toBeInTheDocument())
 
     const unapprovedActions = screen.getByRole('button', { name: 'Actions for Operator Weekly' })
     unapprovedActions.focus()
     fireEvent.keyDown(unapprovedActions, { key: 'Enter', code: 'Enter' })
     expect(screen.queryByRole('menuitem', { name: /Add to client campaign/i })).not.toBeInTheDocument()
+  })
+
+  it('routes the owner to campaign setup when the client has no mapped Instantly campaign', async () => {
+    vi.mocked(getWorkspaceCampaign).mockResolvedValueOnce({
+      integration: {} as never,
+      can_manage_campaigns: true,
+      campaign: null,
+      targets: [],
+    })
+    renderEditor()
+    const actions = await screen.findByRole('button', { name: 'Actions for Founder Stories' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Add to client campaign/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Create or assign the client campaign first' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(prepareWorkspaceCampaignPodcast).not.toHaveBeenCalled()
   })
 
   it('shows no more than ten podcasts on each list page', async () => {

@@ -120,6 +120,9 @@ describe('WorkspaceCampaignDetail', () => {
     expect(await screen.findByRole('heading', { name: 'Founder Show' })).toBeInTheDocument()
     expect(screen.getByText('Dallas has direct founder experience.')).toBeInTheDocument()
     expect(screen.getByLabelText('Subject line')).toBeEnabled()
+    expect(screen.getByLabelText('Opening email')).toBeEnabled()
+    expect(screen.getByLabelText('Follow-up 1 email')).toBeEnabled()
+    expect(screen.getByLabelText('Follow-up 2 email')).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Save draft' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /approve & start outreach/i })).toBeDisabled()
   })
@@ -179,11 +182,11 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.getByRole('checkbox', { name: 'Use paused@example.com' })).toBeDisabled()
   })
 
-  it('explains that podcast messages can be AI, template, or manually prepared before Instantly sends them', async () => {
+  it('explains that every podcast has a reviewed three-email sequence before Instantly sends it', async () => {
     renderPage()
 
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Sequences' }), { button: 0 })
-    expect(screen.getByText(/written manually, generated with AI, or started from a template/i)).toBeInTheDocument()
-    expect(screen.getByText(/Message creation belongs in Podcasts/i)).toBeInTheDocument()
+    expect(screen.getByText(/Research and all three messages are prepared for each show/i)).toBeInTheDocument()
+    expect(screen.getByText(/Message preparation belongs in Podcasts/i)).toBeInTheDocument()
   })
 })

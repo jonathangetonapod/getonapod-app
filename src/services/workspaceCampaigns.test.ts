@@ -5,6 +5,7 @@ import {
   connectWorkspaceInstantly,
   getWorkspaceCampaignOverview,
   launchWorkspaceCampaignPitch,
+  prepareWorkspaceCampaignPodcast,
   saveWorkspaceCampaign,
   updateWorkspaceCampaignContact,
 } from '@/services/workspaceCampaigns'
@@ -83,6 +84,10 @@ describe('workspaceCampaigns service', () => {
       shortlistPodcastId,
       subject: 'A tailored guest idea',
       pitchBody: 'A reviewed opening pitch.',
+      followUpOneSubject: 'Re: A tailored guest idea',
+      followUpOneBody: 'A reviewed first follow-up.',
+      followUpTwoSubject: 'Re: A tailored guest idea',
+      followUpTwoBody: 'A reviewed final follow-up.',
     })
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-client-campaigns', {
@@ -106,6 +111,47 @@ describe('workspaceCampaigns service', () => {
         shortlist_podcast_id: shortlistPodcastId,
         subject: 'A tailored guest idea',
         pitch_body: 'A reviewed opening pitch.',
+        follow_up_1_subject: 'Re: A tailored guest idea',
+        follow_up_1_body: 'A reviewed first follow-up.',
+        follow_up_2_subject: 'Re: A tailored guest idea',
+        follow_up_2_body: 'A reviewed final follow-up.',
+      },
+    })
+  })
+
+  it('pushes a researched three-email package into the existing client campaign', async () => {
+    invoke.mockResolvedValueOnce({ data: { added: true, campaign: {}, target: {} }, error: null } as never)
+
+    await prepareWorkspaceCampaignPodcast({
+      workspaceId,
+      clientId,
+      shortlistPodcastId,
+      researchNotes: 'Recent episodes and audience notes.',
+      hostName: 'Jamie Host',
+      contactEmail: 'host@example.com',
+      subject: 'A tailored guest idea',
+      pitchBody: 'A reviewed opening pitch.',
+      followUpOneSubject: 'Re: A tailored guest idea',
+      followUpOneBody: 'A reviewed first follow-up.',
+      followUpTwoSubject: 'Re: A tailored guest idea',
+      followUpTwoBody: 'A reviewed final follow-up.',
+    })
+
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: {
+        action: 'prepare-podcast',
+        workspace_id: workspaceId,
+        client_id: clientId,
+        shortlist_podcast_id: shortlistPodcastId,
+        research_notes: 'Recent episodes and audience notes.',
+        host_name: 'Jamie Host',
+        contact_email: 'host@example.com',
+        subject: 'A tailored guest idea',
+        pitch_body: 'A reviewed opening pitch.',
+        follow_up_1_subject: 'Re: A tailored guest idea',
+        follow_up_1_body: 'A reviewed first follow-up.',
+        follow_up_2_subject: 'Re: A tailored guest idea',
+        follow_up_2_body: 'A reviewed final follow-up.',
       },
     })
   })

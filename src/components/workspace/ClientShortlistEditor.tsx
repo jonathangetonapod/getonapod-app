@@ -24,6 +24,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { ClientCampaignPrepDialog } from '@/components/workspace/ClientCampaignPrepDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,7 +61,6 @@ import {
   type ClientShortlistPodcast,
   type ClientShortlistVisibility,
 } from '@/services/clientShortlist'
-import { addWorkspaceCampaignPodcasts } from '@/services/workspaceCampaigns'
 
 type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'archived'
 type ListSort = 'list_order' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
@@ -69,7 +69,9 @@ interface ClientShortlistEditorProps {
   workspaceId: string
   clientId: string
   clientName: string
+  clientBio?: string | null
   finderHref: string
+  campaignHref: string
   onChanged?: () => void
 }
 
@@ -141,7 +143,9 @@ export function ClientShortlistEditor({
   workspaceId,
   clientId,
   clientName,
+  clientBio,
   finderHref,
+  campaignHref,
   onChanged,
 }: ClientShortlistEditorProps) {
   const queryClient = useQueryClient()
@@ -158,6 +162,7 @@ export function ClientShortlistEditor({
   const [isReordering, setIsReordering] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<ClientShortlistPodcast | null>(null)
   const [detailPodcast, setDetailPodcast] = useState<ClientShortlistPodcast | null>(null)
+  const [campaignPrepPodcast, setCampaignPrepPodcast] = useState<ClientShortlistPodcast | null>(null)
   const [operatorNotes, setOperatorNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
 
@@ -244,27 +249,6 @@ export function ClientShortlistEditor({
       toast.success(successMessage)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The podcast could not be updated.')
-    } finally {
-      setPendingPodcastId(null)
-    }
-  }
-
-  const addToClientCampaign = async (podcast: ClientShortlistPodcast) => {
-    if (pendingPodcastId) return
-    setPendingPodcastId(podcast.podcast_id)
-    try {
-      const result = await addWorkspaceCampaignPodcasts({
-        workspaceId,
-        clientId,
-        shortlistPodcastIds: [podcast.id],
-      })
-      if (result.added === 0) {
-        toast.info(`${podcast.podcast_name} is already in the client campaign.`)
-      } else {
-        toast.success(`${podcast.podcast_name} added to the client campaign.`)
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The podcast could not be added to the client campaign.')
     } finally {
       setPendingPodcastId(null)
     }
@@ -485,7 +469,7 @@ export function ClientShortlistEditor({
                         {podcast.feedback_status !== 'approved' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'approved' }, `${podcast.podcast_name} marked approved.`)}><ThumbsUp className="mr-2 h-4 w-4 text-emerald-600" />Mark approved</DropdownMenuItem>}
                         {podcast.feedback_status !== 'rejected' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'rejected' }, `${podcast.podcast_name} marked passed.`)}><ThumbsDown className="mr-2 h-4 w-4 text-rose-600" />Mark passed</DropdownMenuItem>}
                         <DropdownMenuSeparator />
-                        {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && <DropdownMenuItem onClick={() => void addToClientCampaign(podcast)}><UserPlus className="mr-2 h-4 w-4 text-primary" />Add to client campaign</DropdownMenuItem>}
+                        {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && <DropdownMenuItem onClick={() => setCampaignPrepPodcast(podcast)}><UserPlus className="mr-2 h-4 w-4 text-primary" />Add to client campaign</DropdownMenuItem>}
                         {podcast.visibility === 'visible' && <DropdownMenuItem onClick={() => void toggleFeatured(podcast)}><Star className="mr-2 h-4 w-4" />{podcast.is_featured ? 'Remove from featured' : 'Add to featured'}</DropdownMenuItem>}
                         {podcast.visibility === 'archived' ? (
                           <DropdownMenuItem onClick={() => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}><RotateCcw className="mr-2 h-4 w-4" />Restore to list</DropdownMenuItem>
@@ -566,6 +550,17 @@ export function ClientShortlistEditor({
           </div>
         </SheetContent>
       </Sheet>
+
+      <ClientCampaignPrepDialog
+        open={Boolean(campaignPrepPodcast)}
+        onOpenChange={(open) => { if (!open) setCampaignPrepPodcast(null) }}
+        workspaceId={workspaceId}
+        clientId={clientId}
+        clientName={clientName}
+        clientBio={clientBio}
+        campaignHref={campaignHref}
+        podcast={campaignPrepPodcast}
+      />
 
       <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(open) => !open && setArchiveTarget(null)}>
         <AlertDialogContent>

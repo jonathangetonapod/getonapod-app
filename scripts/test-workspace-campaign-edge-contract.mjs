@@ -7,6 +7,10 @@ const migration = readFileSync(
   'supabase/migrations/20260724000100_workspace_client_campaigns.sql',
   'utf8',
 )
+const sequenceMigration = readFileSync(
+  'supabase/migrations/20260724000300_workspace_campaign_sequence_copy.sql',
+  'utf8',
+)
 const config = readFileSync('supabase/config.toml', 'utf8')
 
 assert.match(edge, /if \(req\.method === "OPTIONS"\) return optionsResponse\(req, METHODS\)/u)
@@ -17,6 +21,8 @@ assert.match(edge, /function requireIntegrationOwner[\s\S]*?access\.role !== "ow
 assert.match(edge, /action === "connect-instantly"[\s\S]*?requireIntegrationOwner\(access\)/u)
 assert.match(edge, /action === "disconnect-instantly"[\s\S]*?requireIntegrationOwner\(access\)/u)
 assert.match(edge, /action === "launch-pitch"[\s\S]*?requireCampaignManager\(access\)/u)
+assert.match(edge, /action === "prepare-podcast"[\s\S]*?requireCampaignManager\(access\)/u)
+assert.match(edge, /action === "prepare-podcast"[\s\S]*?CAMPAIGN_NOT_ASSIGNED[\s\S]*?requireApproved: true/u)
 assert.match(edge, /action === "update-contact"[\s\S]*?requireCampaignManager\(access\)/u)
 assert.match(edge, /action === "add-podcasts"[\s\S]*?requireCampaignManager\(access\)[\s\S]*?CAMPAIGN_NOT_ASSIGNED[\s\S]*?addCampaignTargets[\s\S]*?requireApproved: true/u)
 assert.match(edge, /options\.requireApproved[\s\S]*?CAMPAIGN_TARGET_NOT_APPROVED/u)
@@ -34,6 +40,11 @@ assert.match(edge, /\.eq\("campaign_id", campaign\.id\)[\s\S]*?\.eq\("contact_em
 assert.match(edge, /provider_sync_state: "creating"[\s\S]*?\.in\("provider_sync_state", \["idle", "error"\]\)/u)
 assert.match(edge, /provider_sync_state", "creating"[\s\S]*?\.lt\("provider_sync_started_at", staleBefore\)/u)
 assert.doesNotMatch(edge, /subsequence|workspace[_ -]group/iu)
+assert.match(edge, /goapFollowUpOneSubject/u)
+assert.match(edge, /goapFollowUpOneBody/u)
+assert.match(edge, /goapFollowUpTwoSubject/u)
+assert.match(edge, /goapFollowUpTwoBody/u)
+assert.match(edge, /variables: \[[\s\S]*?"goapFollowUpOneSubject"[\s\S]*?"goapFollowUpTwoBody"/u)
 
 const connectionProjection = edge.match(/function connectionDto[\s\S]*?return \{([\s\S]*?)\n  \};\n\}/u)?.[1]
 assert.ok(connectionProjection, 'the integration response must use an explicit DTO')
@@ -68,6 +79,18 @@ assert.match(migration, /provider_workspace_id UUID NOT NULL UNIQUE/u)
 assert.match(migration, /UNIQUE \(workspace_id, client_id\)/u)
 assert.match(migration, /UNIQUE \(campaign_id, shortlist_podcast_id\)/u)
 assert.match(migration, /FOREIGN KEY \(workspace_id, client_id, campaign_id\)[\s\S]*?REFERENCES public\.workspace_client_campaigns\(workspace_id, client_id, id\)/u)
+for (const column of [
+  'research_notes',
+  'follow_up_1_subject',
+  'follow_up_1_body',
+  'follow_up_2_subject',
+  'follow_up_2_body',
+]) {
+  assert.match(sequenceMigration, new RegExp(`ADD COLUMN ${column} TEXT`, 'u'))
+}
+assert.match(sequenceMigration, /research_notes IS NULL OR char_length\(research_notes\) <= 10000/u)
+assert.match(sequenceMigration, /follow_up_1_subject IS NULL OR char_length\(follow_up_1_subject\) <= 300/u)
+assert.match(sequenceMigration, /follow_up_2_body IS NULL OR char_length\(follow_up_2_body\) <= 20000/u)
 assert.match(config, /\[functions\.workspace-client-campaigns\]\s+verify_jwt = true/u)
 
 process.stdout.write('Workspace Client Campaign Edge contract checks passed\n')

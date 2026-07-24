@@ -64,8 +64,13 @@ const TARGET_COLUMNS = [
   "contact_email",
   "selection_source",
   "wave_started_on",
+  "research_notes",
   "pitch_subject",
   "pitch_body",
+  "follow_up_1_subject",
+  "follow_up_1_body",
+  "follow_up_2_subject",
+  "follow_up_2_body",
   "status",
   "instantly_lead_id",
   "instantly_lead_status",
@@ -150,8 +155,13 @@ interface TargetRow {
   contact_email: string | null;
   selection_source: "client_positive" | "owner_override";
   wave_started_on: string;
+  research_notes: string | null;
   pitch_subject: string | null;
   pitch_body: string | null;
+  follow_up_1_subject: string | null;
+  follow_up_1_body: string | null;
+  follow_up_2_subject: string | null;
+  follow_up_2_body: string | null;
   status:
     | "draft"
     | "ready"
@@ -190,6 +200,15 @@ interface ProviderLead {
   email_open_count: number;
   email_reply_count: number;
   timestamp_updated: string | null;
+}
+
+interface OutreachSequence {
+  subject: string;
+  body: string;
+  followUpOneSubject: string;
+  followUpOneBody: string;
+  followUpTwoSubject: string;
+  followUpTwoBody: string;
 }
 
 function requireCampaignManager(access: WorkspaceFeatureAccess): void {
@@ -415,8 +434,13 @@ function targetDto(target: TargetRow) {
     contact_email: target.contact_email,
     selection_source: target.selection_source,
     wave_started_on: target.wave_started_on,
+    research_notes: target.research_notes,
     pitch_subject: target.pitch_subject,
     pitch_body: target.pitch_body,
+    follow_up_1_subject: target.follow_up_1_subject,
+    follow_up_1_body: target.follow_up_1_body,
+    follow_up_2_subject: target.follow_up_2_subject,
+    follow_up_2_body: target.follow_up_2_body,
     status: target.status,
     instantly_lead_id: target.instantly_lead_id,
     instantly_lead_status: target.instantly_lead_status,
@@ -522,6 +546,25 @@ function draftText(value: unknown, field: string, max: number): string | null {
     throw new HttpError(400, "INVALID_FIELD", `${field} is too long`);
   }
   return text || null;
+}
+
+function completeTargetSequence(target: Pick<
+  TargetRow,
+  | "pitch_subject"
+  | "pitch_body"
+  | "follow_up_1_subject"
+  | "follow_up_1_body"
+  | "follow_up_2_subject"
+  | "follow_up_2_body"
+>): boolean {
+  return Boolean(
+    target.pitch_subject &&
+      target.pitch_body &&
+      target.follow_up_1_subject &&
+      target.follow_up_1_body &&
+      target.follow_up_2_subject &&
+      target.follow_up_2_body,
+  );
 }
 
 function providerUuid(value: unknown): string | null {
@@ -1094,9 +1137,8 @@ function campaignConfiguration(campaign: CampaignRow): Record<string, unknown> {
           delay: 5,
           delay_unit: "days",
           variants: [{
-            subject: "Re: {{goapPitchSubject}}",
-            body:
-              "Hi,\n\nJust following up on the guest idea I sent for {{podcastName}}. I think {{clientName}} could bring a genuinely useful perspective to your audience.\n\nWould you be open to taking a quick look?\n\nBest,",
+            subject: "{{goapFollowUpOneSubject}}",
+            body: "{{goapFollowUpOneBody}}",
             v_disabled: false,
           }],
         },
@@ -1105,9 +1147,8 @@ function campaignConfiguration(campaign: CampaignRow): Record<string, unknown> {
           delay: 0,
           delay_unit: "days",
           variants: [{
-            subject: "Re: {{goapPitchSubject}}",
-            body:
-              "Hi,\n\nOne last note in case the original guest idea got buried. Happy to send more context on {{clientName}} or tailor the angle for {{podcastName}}.\n\nThanks for considering it.\n\nBest,",
+            subject: "{{goapFollowUpTwoSubject}}",
+            body: "{{goapFollowUpTwoBody}}",
             v_disabled: false,
           }],
         },
@@ -1261,6 +1302,10 @@ async function ensureProviderCampaign(
           variables: [
             "goapPitchSubject",
             "goapPitchBody",
+            "goapFollowUpOneSubject",
+            "goapFollowUpOneBody",
+            "goapFollowUpTwoSubject",
+            "goapFollowUpTwoBody",
             "clientName",
             "podcastName",
             "goapTargetId",
@@ -1386,8 +1431,7 @@ async function launchTarget(
   client: WorkspaceClientRow,
   campaign: CampaignRow,
   target: TargetRow,
-  subject: string,
-  body: string,
+  sequence: OutreachSequence,
 ): Promise<void> {
   if (!target.contact_email) {
     throw new HttpError(
@@ -1414,8 +1458,12 @@ async function launchTarget(
   const { data: claimed, error: claimError } = await context.admin
     .from("workspace_client_campaign_targets")
     .update({
-      pitch_subject: subject,
-      pitch_body: body,
+      pitch_subject: sequence.subject,
+      pitch_body: sequence.body,
+      follow_up_1_subject: sequence.followUpOneSubject,
+      follow_up_1_body: sequence.followUpOneBody,
+      follow_up_2_subject: sequence.followUpTwoSubject,
+      follow_up_2_body: sequence.followUpTwoBody,
       status: "launching",
       last_error: null,
       updated_by: context.user.id,
@@ -1521,8 +1569,12 @@ async function launchTarget(
       }
     }
     const customVariables = {
-      goapPitchSubject: subject,
-      goapPitchBody: body,
+      goapPitchSubject: sequence.subject,
+      goapPitchBody: sequence.body,
+      goapFollowUpOneSubject: sequence.followUpOneSubject,
+      goapFollowUpOneBody: sequence.followUpOneBody,
+      goapFollowUpTwoSubject: sequence.followUpTwoSubject,
+      goapFollowUpTwoBody: sequence.followUpTwoBody,
       clientName: client.name,
       podcastName: target.podcast_name,
       goapTargetId: target.id,
@@ -1550,7 +1602,7 @@ async function launchTarget(
               first_name: target.host_name?.split(/\s+/)[0] || undefined,
               company_name: target.podcast_name,
               website: target.podcast_url || undefined,
-              personalization: body,
+              personalization: sequence.body,
               custom_variables: customVariables,
             }],
             verify_leads_on_import: false,
@@ -1609,8 +1661,12 @@ async function launchTarget(
       context.admin
         .from("workspace_client_campaign_targets")
         .update({
-          pitch_subject: subject,
-          pitch_body: body,
+          pitch_subject: sequence.subject,
+          pitch_body: sequence.body,
+          follow_up_1_subject: sequence.followUpOneSubject,
+          follow_up_1_body: sequence.followUpOneBody,
+          follow_up_2_subject: sequence.followUpTwoSubject,
+          follow_up_2_body: sequence.followUpTwoBody,
           status: lead.email_reply_count > 0 ? "replied" : "in_outreach",
           instantly_lead_id: lead.id,
           instantly_lead_status: lead.status,
@@ -2129,6 +2185,153 @@ serve(async (req) => {
       });
     }
 
+    if (action === "prepare-podcast") {
+      requireOnlyKeys(body, [
+        "action",
+        "workspace_id",
+        "client_id",
+        "shortlist_podcast_id",
+        "research_notes",
+        "host_name",
+        "contact_email",
+        "subject",
+        "pitch_body",
+        "follow_up_1_subject",
+        "follow_up_1_body",
+        "follow_up_2_subject",
+        "follow_up_2_body",
+      ]);
+      requireCampaignManager(access);
+      const shortlistPodcastId = requireUuid(
+        body.shortlist_podcast_id,
+        "shortlist_podcast_id",
+      );
+      const researchNotes = draftText(
+        body.research_notes,
+        "research_notes",
+        10_000,
+      );
+      const hostName = draftText(body.host_name, "host_name", 500);
+      const contactEmail = contactEmailInput(body.contact_email);
+      const sequence: OutreachSequence = {
+        subject: requireString(body.subject, "subject", { max: 300 }),
+        body: requireString(body.pitch_body, "pitch_body", { max: 20_000 }),
+        followUpOneSubject: requireString(
+          body.follow_up_1_subject,
+          "follow_up_1_subject",
+          { max: 300 },
+        ),
+        followUpOneBody: requireString(
+          body.follow_up_1_body,
+          "follow_up_1_body",
+          { max: 20_000 },
+        ),
+        followUpTwoSubject: requireString(
+          body.follow_up_2_subject,
+          "follow_up_2_subject",
+          { max: 300 },
+        ),
+        followUpTwoBody: requireString(
+          body.follow_up_2_body,
+          "follow_up_2_body",
+          { max: 20_000 },
+        ),
+      };
+      const campaign = await readCampaign(context.admin, workspaceId, clientId);
+      if (!campaign?.instantly_campaign_id) {
+        throw new HttpError(
+          409,
+          "CAMPAIGN_NOT_ASSIGNED",
+          "Create or assign an Instantly campaign to this client first",
+        );
+      }
+      const existingTargets = await readTargets(
+        context.admin,
+        workspaceId,
+        campaign.id,
+      );
+      const added = !existingTargets.some((target) =>
+        target.shortlist_podcast_id === shortlistPodcastId
+      );
+      const targets = await addCampaignTargets(
+        context,
+        campaign,
+        [shortlistPodcastId],
+        { requireApproved: true },
+      );
+      const target = targets.find((item) =>
+        item.shortlist_podcast_id === shortlistPodcastId
+      );
+      if (!target) {
+        throw new HttpError(
+          404,
+          "CAMPAIGN_TARGET_NOT_FOUND",
+          "Campaign podcast not found",
+        );
+      }
+      if (
+        target.instantly_lead_id ||
+        ["launching", "in_outreach", "replied", "completed"].includes(
+          target.status,
+        )
+      ) {
+        throw new HttpError(
+          409,
+          "CAMPAIGN_PITCH_LOCKED",
+          "The outreach sequence cannot be edited after outreach starts",
+        );
+      }
+      const { data, error } = await context.admin
+        .from("workspace_client_campaign_targets")
+        .update({
+          research_notes: researchNotes,
+          host_name: hostName,
+          contact_email: contactEmail,
+          pitch_subject: sequence.subject,
+          pitch_body: sequence.body,
+          follow_up_1_subject: sequence.followUpOneSubject,
+          follow_up_1_body: sequence.followUpOneBody,
+          follow_up_2_subject: sequence.followUpTwoSubject,
+          follow_up_2_body: sequence.followUpTwoBody,
+          status: contactEmail ? "ready" : "draft",
+          last_error: null,
+          updated_by: context.user.id,
+        })
+        .eq("id", target.id)
+        .eq("workspace_id", workspaceId)
+        .select(TARGET_COLUMNS)
+        .single();
+      if (error || !data) {
+        throw new HttpError(
+          500,
+          "CAMPAIGN_PREPARATION_SAVE_FAILED",
+          "The prepared outreach could not be saved",
+        );
+      }
+      const prepared = data as unknown as TargetRow;
+      const refreshedTargets = targets.map((item) =>
+        item.id === prepared.id ? prepared : item
+      );
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: "workspace.client_campaign.podcast_prepared",
+        entityType: "workspace_client_campaign_target",
+        entityId: target.id,
+        metadata: {
+          client_id: clientId,
+          podcast_id: target.podcast_id,
+          added,
+          contact_present: Boolean(contactEmail),
+        },
+      });
+      return jsonResponse(req, METHODS, 200, {
+        added,
+        campaign: campaignDto(campaign, refreshedTargets),
+        target: targetDto(prepared),
+      });
+    }
+
     if (action === "upsert") {
       requireOnlyKeys(body, [
         "action",
@@ -2354,7 +2557,7 @@ serve(async (req) => {
           "The contact cannot be changed after outreach starts",
         );
       }
-      const status = contactEmail && target.pitch_subject && target.pitch_body
+      const status = contactEmail && completeTargetSequence(target)
         ? "ready"
         : "draft";
       const { data, error } = await context.admin
@@ -2402,6 +2605,10 @@ serve(async (req) => {
         "shortlist_podcast_id",
         "subject",
         "pitch_body",
+        "follow_up_1_subject",
+        "follow_up_1_body",
+        "follow_up_2_subject",
+        "follow_up_2_body",
       ]);
       requireCampaignManager(access);
       const shortlistPodcastId = requireUuid(
@@ -2410,6 +2617,26 @@ serve(async (req) => {
       );
       const subject = draftText(body.subject, "subject", 300);
       const pitchBody = draftText(body.pitch_body, "pitch_body", 20_000);
+      const followUpOneSubject = draftText(
+        body.follow_up_1_subject,
+        "follow_up_1_subject",
+        300,
+      );
+      const followUpOneBody = draftText(
+        body.follow_up_1_body,
+        "follow_up_1_body",
+        20_000,
+      );
+      const followUpTwoSubject = draftText(
+        body.follow_up_2_subject,
+        "follow_up_2_subject",
+        300,
+      );
+      const followUpTwoBody = draftText(
+        body.follow_up_2_body,
+        "follow_up_2_body",
+        20_000,
+      );
       const campaign = await ensureLocalCampaign(context, workspaceId, client);
       const target = await requireCampaignTarget(
         context,
@@ -2427,7 +2654,14 @@ serve(async (req) => {
           "The pitch cannot be edited after outreach starts",
         );
       }
-      const status = target.contact_email && subject && pitchBody
+      const status = target.contact_email && completeTargetSequence({
+          pitch_subject: subject,
+          pitch_body: pitchBody,
+          follow_up_1_subject: followUpOneSubject,
+          follow_up_1_body: followUpOneBody,
+          follow_up_2_subject: followUpTwoSubject,
+          follow_up_2_body: followUpTwoBody,
+        })
         ? "ready"
         : "draft";
       const { data, error } = await context.admin
@@ -2435,6 +2669,10 @@ serve(async (req) => {
         .update({
           pitch_subject: subject,
           pitch_body: pitchBody,
+          follow_up_1_subject: followUpOneSubject,
+          follow_up_1_body: followUpOneBody,
+          follow_up_2_subject: followUpTwoSubject,
+          follow_up_2_body: followUpTwoBody,
           status,
           last_error: null,
           updated_by: context.user.id,
@@ -2475,16 +2713,40 @@ serve(async (req) => {
         "shortlist_podcast_id",
         "subject",
         "pitch_body",
+        "follow_up_1_subject",
+        "follow_up_1_body",
+        "follow_up_2_subject",
+        "follow_up_2_body",
       ]);
       requireCampaignManager(access);
       const shortlistPodcastId = requireUuid(
         body.shortlist_podcast_id,
         "shortlist_podcast_id",
       );
-      const subject = requireString(body.subject, "subject", { max: 300 });
-      const pitchBody = requireString(body.pitch_body, "pitch_body", {
-        max: 20_000,
-      });
+      const sequence: OutreachSequence = {
+        subject: requireString(body.subject, "subject", { max: 300 }),
+        body: requireString(body.pitch_body, "pitch_body", { max: 20_000 }),
+        followUpOneSubject: requireString(
+          body.follow_up_1_subject,
+          "follow_up_1_subject",
+          { max: 300 },
+        ),
+        followUpOneBody: requireString(
+          body.follow_up_1_body,
+          "follow_up_1_body",
+          { max: 20_000 },
+        ),
+        followUpTwoSubject: requireString(
+          body.follow_up_2_subject,
+          "follow_up_2_subject",
+          { max: 300 },
+        ),
+        followUpTwoBody: requireString(
+          body.follow_up_2_body,
+          "follow_up_2_body",
+          { max: 20_000 },
+        ),
+      };
       const connection = await readConnection(context.admin, workspaceId);
       if (!connection || connection.status !== "connected") {
         throw new HttpError(
@@ -2505,8 +2767,7 @@ serve(async (req) => {
         client,
         campaign,
         target,
-        subject,
-        pitchBody,
+        sequence,
       );
       const updatedCampaign = await readCampaign(
         context.admin,

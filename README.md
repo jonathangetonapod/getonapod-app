@@ -38,7 +38,7 @@ Each client command center includes an approval-dashboard editor. The agency can
 
 ### 4. Run outreach
 
-Client Campaigns gives each active client one ongoing podcast-outreach campaign. Operators choose the Instantly mailboxes assigned to the campaign, review each individual pitch before launch, then start, pause, resume, and manually synchronize the corresponding standard Instantly campaign. The workspace owner connects one Instantly V2 API key; authorized workspace managers can run campaigns without seeing the credential. Master Inbox and Mailboxes remain separate future integrations.
+Client Campaigns gives each active client one ongoing podcast-outreach campaign. From the client's Approval Dashboard, an operator can open an approved podcast, review the existing research, prepare the opening pitch and two follow-ups, and explicitly push that unsent package into the client's mapped campaign. Client Campaigns remains the final launch gate. The workspace owner connects one Instantly V2 API key; authorized workspace managers can run campaigns without seeing the credential. Master Inbox and Mailboxes remain separate future integrations.
 
 ### 5. Deliver a white-label client experience
 
@@ -54,7 +54,7 @@ Workspace branding controls the agency name, logo, primary color, and accent col
 | Onboarding | Available | Forms, invitations, autosave, review, revisions, files, and pitch approval |
 | Podcast Finder | Available | Client-selectable recurring discovery with history deduplication |
 | Clients | Available | Client records and command centers |
-| Client Campaigns | Available with Instantly V2 | Encrypted workspace connection, campaign index, weekly pitch queue, per-podcast launch, activity, analytics sync, and settings |
+| Client Campaigns | Available with Instantly V2 | Encrypted workspace connection, campaign index, per-podcast research and sequence preparation, explicit launch, activity, analytics sync, and settings |
 | Master Inbox | Layout preview | Future cross-campaign reply queue with client and thread context |
 | Mailboxes | Layout preview | Future sending-account health, capacity, and assignment surface |
 | Guest Resources | Available | Workspace-authored resources for all clients or selected clients |
@@ -76,13 +76,14 @@ The campaign experience is organized around one ongoing podcast-booking campaign
 - an operational index surfaces campaign status, sender accounts, progress, sent volume, replies, positive replies, and the next action;
 - a two-step creation flow chooses the client, one or more sending accounts, and the starting podcasts while saving the draft in GOAP;
 - client-positive podcasts are selected automatically, while an owner can deliberately include another shortlisted show;
-- the campaign workspace keeps every eligible podcast in one Leads view with focused status filters;
-- selecting a podcast opens a right-side workspace where managers confirm or correct the campaign-local host contact, review fit context and suggested angles, and write the individual pitch;
+- the campaign workspace keeps every eligible show in one Podcasts view with focused status filters;
+- an approved podcast's Approval Dashboard action opens a preparation modal with the show brief, fit evidence, talking-point angles, workspace-only research notes, host contact, opening pitch, and two follow-ups;
+- **Push to client campaign** saves that complete package but does not send it, while selecting the podcast later in Client Campaigns reopens the same contact, research, and three-email sequence;
 - saving a draft does not contact anyone; the explicit **Approve & start outreach** action creates or recovers the mapped provider campaign, adds that podcast contact, and activates sending;
 - activity and performance use sanitized workspace-scoped campaign and lead data returned by Instantly; and
 - settings update the campaign name, IANA timezone, daily limit, and active sending accounts.
 
-GOAP creates a standard three-email Instantly sequence and stops on reply. Workspace groups and subsequences are intentionally not used. A podcast host may be contacted for different GOAP clients, so provider duplicate-skipping is disabled while local client/campaign ownership remains exact.
+GOAP-created campaigns use a standard three-email Instantly sequence populated by per-podcast custom variables and stop on reply. Workspace groups and subsequences are intentionally not used. A podcast host may be contacted for different GOAP clients, so provider duplicate-skipping is disabled while local client/campaign ownership remains exact.
 
 The same campaign surfaces are available in My Workspace and in a platform-owner-selected workspace. Client command centers link directly to their campaign.
 
@@ -162,7 +163,7 @@ See [`docs/subagency-saas-architecture.md`](docs/subagency-saas-architecture.md)
 | `/app/clients` | Clients |
 | `/app/clients/:clientId` | Client command center |
 | `/app/client-campaigns` | Client campaign operations index |
-| `/app/client-campaigns/:clientId` | Weekly pitch queue and campaign workspace |
+| `/app/client-campaigns/:clientId` | Client podcast outreach and campaign workspace |
 | `/app/master-inbox` | Future Instantly inbox preview |
 | `/app/mailboxes` | Future Instantly mailbox preview |
 | `/app/guest-resources` | Workspace guest resources |

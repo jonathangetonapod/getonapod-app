@@ -181,6 +181,7 @@ const RELEASE_INPUT_PATHS = [
   'supabase/migrations/20260723000800_workspace_name_management.sql',
   'supabase/migrations/20260724000100_workspace_client_campaigns.sql',
   'supabase/migrations/20260724000200_client_dashboards_always_live.sql',
+  'supabase/migrations/20260724000300_workspace_campaign_sequence_copy.sql',
   'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
   'supabase/functions/account-context/index.ts',

@@ -647,7 +647,9 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 workspaceId={workspaceId}
                 clientId={client.id}
                 clientName={client.name}
+                clientBio={client.bio}
                 finderHref={finderHref}
+                campaignHref={campaignHref}
                 onChanged={() => void detailQuery.refetch()}
               />
             )}

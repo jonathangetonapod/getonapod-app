@@ -91,8 +91,13 @@ export interface WorkspaceCampaignTarget {
   contact_email: string | null
   selection_source: 'client_positive' | 'owner_override'
   wave_started_on: string
+  research_notes: string | null
   pitch_subject: string | null
   pitch_body: string | null
+  follow_up_1_subject: string | null
+  follow_up_1_body: string | null
+  follow_up_2_subject: string | null
+  follow_up_2_body: string | null
   status: WorkspaceCampaignTargetStatus
   instantly_lead_id: string | null
   instantly_lead_status: number | null
@@ -214,12 +219,47 @@ export async function addWorkspaceCampaignPodcasts(input: {
   }, 'The podcast could not be added to the client campaign.')
 }
 
+export async function prepareWorkspaceCampaignPodcast(input: {
+  workspaceId: string
+  clientId: string
+  shortlistPodcastId: string
+  researchNotes: string
+  hostName: string
+  contactEmail: string
+  subject: string
+  pitchBody: string
+  followUpOneSubject: string
+  followUpOneBody: string
+  followUpTwoSubject: string
+  followUpTwoBody: string
+}): Promise<{ added: boolean; campaign: WorkspaceClientCampaign; target: WorkspaceCampaignTarget }> {
+  return await invokeWorkspaceCampaigns({
+    action: 'prepare-podcast',
+    workspace_id: input.workspaceId,
+    client_id: input.clientId,
+    shortlist_podcast_id: input.shortlistPodcastId,
+    research_notes: input.researchNotes,
+    host_name: input.hostName,
+    contact_email: input.contactEmail,
+    subject: input.subject,
+    pitch_body: input.pitchBody,
+    follow_up_1_subject: input.followUpOneSubject,
+    follow_up_1_body: input.followUpOneBody,
+    follow_up_2_subject: input.followUpTwoSubject,
+    follow_up_2_body: input.followUpTwoBody,
+  }, 'The prepared outreach could not be pushed to the client campaign.')
+}
+
 export async function saveWorkspaceCampaignPitch(input: {
   workspaceId: string
   clientId: string
   shortlistPodcastId: string
   subject: string
   pitchBody: string
+  followUpOneSubject: string
+  followUpOneBody: string
+  followUpTwoSubject: string
+  followUpTwoBody: string
 }): Promise<WorkspaceCampaignTarget> {
   const response = await invokeWorkspaceCampaigns<{ target: WorkspaceCampaignTarget }>({
     action: 'save-pitch',
@@ -228,6 +268,10 @@ export async function saveWorkspaceCampaignPitch(input: {
     shortlist_podcast_id: input.shortlistPodcastId,
     subject: input.subject,
     pitch_body: input.pitchBody,
+    follow_up_1_subject: input.followUpOneSubject,
+    follow_up_1_body: input.followUpOneBody,
+    follow_up_2_subject: input.followUpTwoSubject,
+    follow_up_2_body: input.followUpTwoBody,
   }, 'The custom pitch could not be saved.')
   return response.target
 }
@@ -256,6 +300,10 @@ export async function launchWorkspaceCampaignPitch(input: {
   shortlistPodcastId: string
   subject: string
   pitchBody: string
+  followUpOneSubject: string
+  followUpOneBody: string
+  followUpTwoSubject: string
+  followUpTwoBody: string
 }): Promise<CampaignMutationResponse> {
   return await invokeWorkspaceCampaigns<CampaignMutationResponse>({
     action: 'launch-pitch',
@@ -264,6 +312,10 @@ export async function launchWorkspaceCampaignPitch(input: {
     shortlist_podcast_id: input.shortlistPodcastId,
     subject: input.subject,
     pitch_body: input.pitchBody,
+    follow_up_1_subject: input.followUpOneSubject,
+    follow_up_1_body: input.followUpOneBody,
+    follow_up_2_subject: input.followUpTwoSubject,
+    follow_up_2_body: input.followUpTwoBody,
   }, 'Outreach could not be started for this podcast.')
 }
 

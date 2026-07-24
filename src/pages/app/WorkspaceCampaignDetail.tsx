@@ -43,6 +43,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
+import { buildPodcastCampaignSequenceDraft } from '@/lib/campaignSequence'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
@@ -197,6 +198,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [selectedPodcastId, setSelectedPodcastId] = useState<string | null>(null)
   const [subjectDraft, setSubjectDraft] = useState('')
   const [pitchDraft, setPitchDraft] = useState('')
+  const [followUpOneSubjectDraft, setFollowUpOneSubjectDraft] = useState('')
+  const [followUpOneBodyDraft, setFollowUpOneBodyDraft] = useState('')
+  const [followUpTwoSubjectDraft, setFollowUpTwoSubjectDraft] = useState('')
+  const [followUpTwoBodyDraft, setFollowUpTwoBodyDraft] = useState('')
   const [hostNameDraft, setHostNameDraft] = useState('')
   const [contactEmailDraft, setContactEmailDraft] = useState('')
   const [settingsName, setSettingsName] = useState('')
@@ -215,14 +220,23 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     if (!selectedPodcast || !client) {
       setSubjectDraft('')
       setPitchDraft('')
+      setFollowUpOneSubjectDraft('')
+      setFollowUpOneBodyDraft('')
+      setFollowUpTwoSubjectDraft('')
+      setFollowUpTwoBodyDraft('')
       return
     }
-    const suggestedAngle = selectedPodcast.ai_pitch_angles?.[0]
-    const bioContext = client.bio?.trim()
-      ? ` ${client.bio.trim().slice(0, 420)}${client.bio.trim().length > 420 ? '…' : ''}`
-      : ''
-    setSubjectDraft(selectedTarget?.pitch_subject || `Guest idea for ${selectedPodcast.podcast_name}: ${client.name}`)
-    setPitchDraft(selectedTarget?.pitch_body || `Hi${selectedPodcast.publisher_name ? ` ${selectedPodcast.publisher_name.split(/\s+/)[0]}` : ''},\n\nI’m reaching out with a guest idea for ${selectedPodcast.podcast_name}. ${client.name} could bring a practical, audience-first conversation to the show.${bioContext}\n\n${suggestedAngle ? `A strong angle would be “${suggestedAngle.title}” — ${suggestedAngle.description}\n\n` : ''}Would you be open to taking a look at a few tailored talking points?\n\nBest,`)
+    const starter = buildPodcastCampaignSequenceDraft({
+      podcast: selectedPodcast,
+      clientName: client.name,
+      clientBio: client.bio,
+    })
+    setSubjectDraft(selectedTarget?.pitch_subject || starter.subject)
+    setPitchDraft(selectedTarget?.pitch_body || starter.pitchBody)
+    setFollowUpOneSubjectDraft(selectedTarget?.follow_up_1_subject || starter.followUpOneSubject)
+    setFollowUpOneBodyDraft(selectedTarget?.follow_up_1_body || starter.followUpOneBody)
+    setFollowUpTwoSubjectDraft(selectedTarget?.follow_up_2_subject || starter.followUpTwoSubject)
+    setFollowUpTwoBodyDraft(selectedTarget?.follow_up_2_body || starter.followUpTwoBody)
   }, [client, selectedPodcast, selectedTarget])
 
   useEffect(() => {
@@ -403,6 +417,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     && Boolean(campaign?.sender_accounts.length)
     && Boolean(subjectDraft.trim())
     && Boolean(pitchDraft.trim())
+    && Boolean(followUpOneSubjectDraft.trim())
+    && Boolean(followUpOneBodyDraft.trim())
+    && Boolean(followUpTwoSubjectDraft.trim())
+    && Boolean(followUpTwoBodyDraft.trim())
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
@@ -581,12 +599,12 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
           <TabsContent value="sequences" className="mt-0">
             <Card>
-              <CardHeader><CardTitle>Outreach sequence</CardTitle><CardDescription>The opening message is prepared for each show in Podcasts—written manually, generated with AI, or started from a template—then sent through this client’s associated Instantly campaign.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Outreach sequence</CardTitle><CardDescription>Research and all three messages are prepared for each show in Podcasts, then sent through this client’s associated Instantly campaign.</CardDescription></CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  { step: 'Email 1', timing: 'Send when approved', title: 'Approved podcast message', detail: 'Uses the AI, template, or manually written subject and message reviewed for this podcast.' },
-                  { step: 'Email 2', timing: 'Wait 3 days', title: 'Helpful follow-up', detail: 'Returns to the guest idea and offers tailored talking points for the show.' },
-                  { step: 'Email 3', timing: 'Wait 5 more days', title: 'Final follow-up', detail: 'Closes the loop without adding the contact to another sequence.' },
+                  { step: 'Email 1', timing: 'Send when approved', title: 'Reviewed opening pitch', detail: 'Uses the subject and message prepared for this individual podcast.' },
+                  { step: 'Email 2', timing: 'Wait 3 days', title: 'Reviewed follow-up', detail: 'Uses the first follow-up prepared for this individual podcast.' },
+                  { step: 'Email 3', timing: 'Wait 5 more days', title: 'Reviewed close', detail: 'Uses the final follow-up prepared for this individual podcast.' },
                 ].map((item, index) => (
                   <div key={item.step} className="grid gap-3 rounded-xl border p-4 sm:grid-cols-[7rem_minmax(0,1fr)_9rem] sm:items-center">
                     <div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</div><span className="text-sm font-semibold">{item.step}</span></div>
@@ -594,7 +612,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                     <Badge variant="outline" className="w-fit">{item.timing}</Badge>
                   </div>
                 ))}
-                <div className="flex items-start gap-3 rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground"><Settings2 className="mt-0.5 h-4 w-4 shrink-0" /><p>Message creation belongs in Podcasts. This section controls delivery cadence: text-only email, open tracking on, link tracking off, and stop on reply.</p></div>
+                <div className="flex items-start gap-3 rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground"><Settings2 className="mt-0.5 h-4 w-4 shrink-0" /><p>Message preparation belongs in Podcasts. This section controls delivery cadence: text-only email, open tracking on, link tracking off, and stop on reply.</p></div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -693,18 +711,32 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   )}
                 </section>
 
-                {(selectedPodcast.ai_fit_reasons?.length || selectedPodcast.ai_pitch_angles?.length) && (
+                {(selectedTarget?.research_notes || selectedPodcast.ai_fit_reasons?.length || selectedPodcast.ai_pitch_angles?.length) && (
                   <section className="rounded-xl border bg-muted/20 p-4">
                     <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h3 className="font-semibold">Pitch context</h3></div>
+                    {selectedTarget?.research_notes ? <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Research notes</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{selectedTarget.research_notes}</p></div> : null}
                     {selectedPodcast.ai_fit_reasons?.length ? <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why this show fits</p><ul className="mt-2 space-y-2 text-sm text-muted-foreground">{selectedPodcast.ai_fit_reasons.slice(0, 3).map((reason) => <li key={reason} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />{reason}</li>)}</ul></div> : null}
                     {selectedPodcast.ai_pitch_angles?.length ? <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested talking points</p><div className="mt-2 space-y-2">{selectedPodcast.ai_pitch_angles.slice(0, 3).map((angle) => <div key={angle.title} className="rounded-lg bg-background p-3"><p className="text-sm font-medium">{angle.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{angle.description}</p></div>)}</div></div> : null}
                   </section>
                 )}
 
                 <section className="space-y-4">
-                  <div><h3 className="font-semibold">Podcast message</h3><p className="mt-1 text-sm text-muted-foreground">Prepare the opening email with AI, a reusable template, or manual writing, then review it before sending.</p></div>
-                  <div className="space-y-2"><Label htmlFor="pitch-subject">Subject line</Label><Input id="pitch-subject" value={subjectDraft} onChange={(event) => setSubjectDraft(event.target.value)} placeholder={`Podcast guest idea for ${selectedPodcast.podcast_name}`} disabled={!canManageCampaign || selectedPitchLocked} /></div>
-                  <div className="space-y-2"><Label htmlFor="pitch-body">Email pitch</Label><Textarea id="pitch-body" value={pitchDraft} onChange={(event) => setPitchDraft(event.target.value)} placeholder="Write a custom pitch using the client profile and podcast context…" className="min-h-64 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                  <div><h3 className="font-semibold">Three-email sequence</h3><p className="mt-1 text-sm text-muted-foreground">Review the opening pitch and both podcast-specific follow-ups before outreach starts.</p></div>
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <Badge variant="secondary">Email 1 · Opening pitch</Badge>
+                    <div className="space-y-2"><Label htmlFor="pitch-subject">Subject line</Label><Input id="pitch-subject" value={subjectDraft} onChange={(event) => setSubjectDraft(event.target.value)} placeholder={`Podcast guest idea for ${selectedPodcast.podcast_name}`} disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                    <div className="space-y-2"><Label htmlFor="pitch-body">Opening email</Label><Textarea id="pitch-body" value={pitchDraft} onChange={(event) => setPitchDraft(event.target.value)} placeholder="Write a custom pitch using the client profile and podcast context…" className="min-h-52 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                  </div>
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days.</p></div>
+                    <div className="space-y-2"><Label htmlFor="follow-up-one-subject">Follow-up 1 subject</Label><Input id="follow-up-one-subject" value={followUpOneSubjectDraft} onChange={(event) => setFollowUpOneSubjectDraft(event.target.value)} disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                    <div className="space-y-2"><Label htmlFor="follow-up-one-body">Follow-up 1 email</Label><Textarea id="follow-up-one-body" value={followUpOneBodyDraft} onChange={(event) => setFollowUpOneBodyDraft(event.target.value)} className="min-h-40 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                  </div>
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days.</p></div>
+                    <div className="space-y-2"><Label htmlFor="follow-up-two-subject">Follow-up 2 subject</Label><Input id="follow-up-two-subject" value={followUpTwoSubjectDraft} onChange={(event) => setFollowUpTwoSubjectDraft(event.target.value)} disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                    <div className="space-y-2"><Label htmlFor="follow-up-two-body">Follow-up 2 email</Label><Textarea id="follow-up-two-body" value={followUpTwoBodyDraft} onChange={(event) => setFollowUpTwoBodyDraft(event.target.value)} className="min-h-40 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                  </div>
                   <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
                     {selectedPitchLocked
                       ? 'This approved pitch is locked because outreach has started. Sync the campaign to update reply activity.'
@@ -714,7 +746,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         ? 'You can save this draft now. The workspace owner must connect Instantly before launch.'
                         : !campaign?.sender_accounts.length
                           ? 'Save the draft, then choose an active sending account in Campaign Settings before launch.'
-                          : 'Approval adds this podcast contact to the client’s live Instantly campaign. Standard follow-ups stop automatically on reply.'}
+                          : 'Approval adds this podcast contact and its reviewed three-email sequence to the client’s live Instantly campaign. Follow-ups stop automatically on reply.'}
                   </div>
                 </section>
               </div>
@@ -725,13 +757,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <Button
                     variant="outline"
                     disabled={!canSaveSelectedPitch || savePitchMutation.isPending || saveContactMutation.isPending || launchPitchMutation.isPending}
-                    onClick={() => savePitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft })}
+                    onClick={() => savePitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: followUpOneSubjectDraft, followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: followUpTwoSubjectDraft, followUpTwoBody: followUpTwoBodyDraft })}
                   >
                     {savePitchMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save draft
                   </Button>
                   <Button
                     disabled={!canLaunchSelectedPitch || launchPitchMutation.isPending || savePitchMutation.isPending || saveContactMutation.isPending}
-                    onClick={() => launchPitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft })}
+                    onClick={() => launchPitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: followUpOneSubjectDraft, followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: followUpTwoSubjectDraft, followUpTwoBody: followUpTwoBodyDraft })}
                   >
                     {launchPitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Approve &amp; start outreach
                   </Button>
