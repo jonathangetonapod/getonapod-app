@@ -13,6 +13,7 @@ import {
   ListPlus,
   Loader2,
   MoreHorizontal,
+  PenLine,
   Radio,
   RotateCcw,
   Search,
@@ -21,7 +22,6 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
-  UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ClientCampaignPrepDialog } from '@/components/workspace/ClientCampaignPrepDialog'
@@ -460,6 +460,18 @@ export function ClientShortlistEditor({
                     <div>{visibilityBadge(podcast.visibility)}</div>
                   </div>
                   <div className="flex items-center justify-end gap-2 lg:shrink-0">
+                    {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={`Write Pitch for ${podcast.podcast_name}`}
+                        onClick={() => setCampaignPrepPodcast(podcast)}
+                      >
+                        <PenLine className="mr-2 h-4 w-4 text-primary" />
+                        Write Pitch
+                      </Button>
+                    )}
                     <PodcastExternalLink url={podcast.podcast_url} name={podcast.podcast_name} />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild><Button variant="outline" size="icon" disabled={pendingPodcastId === podcast.podcast_id}><span className="sr-only">Actions for {podcast.podcast_name}</span>{pendingPodcastId === podcast.podcast_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}</Button></DropdownMenuTrigger>
@@ -469,7 +481,6 @@ export function ClientShortlistEditor({
                         {podcast.feedback_status !== 'approved' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'approved' }, `${podcast.podcast_name} marked approved.`)}><ThumbsUp className="mr-2 h-4 w-4 text-emerald-600" />Mark approved</DropdownMenuItem>}
                         {podcast.feedback_status !== 'rejected' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'rejected' }, `${podcast.podcast_name} marked passed.`)}><ThumbsDown className="mr-2 h-4 w-4 text-rose-600" />Mark passed</DropdownMenuItem>}
                         <DropdownMenuSeparator />
-                        {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && <DropdownMenuItem onClick={() => setCampaignPrepPodcast(podcast)}><UserPlus className="mr-2 h-4 w-4 text-primary" />Add to client campaign</DropdownMenuItem>}
                         {podcast.visibility === 'visible' && <DropdownMenuItem onClick={() => void toggleFeatured(podcast)}><Star className="mr-2 h-4 w-4" />{podcast.is_featured ? 'Remove from featured' : 'Add to featured'}</DropdownMenuItem>}
                         {podcast.visibility === 'archived' ? (
                           <DropdownMenuItem onClick={() => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}><RotateCcw className="mr-2 h-4 w-4" />Restore to list</DropdownMenuItem>

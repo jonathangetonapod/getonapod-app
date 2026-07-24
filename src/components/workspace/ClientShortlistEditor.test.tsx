@@ -179,23 +179,24 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByRole('menuitem', { name: /Hide from client/i })).not.toBeInTheDocument()
   })
 
-  it('prepares research, the pitch, and both follow-ups before pushing an approved podcast to its campaign', async () => {
+  it('opens a Write Pitch workspace for research, contact finding, and outreach preparation', async () => {
     renderEditor()
-    const actions = await screen.findByRole('button', { name: 'Actions for Founder Stories' })
-    actions.focus()
-    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Add to client campaign/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
-    expect(await screen.findByRole('heading', { name: 'Prepare Founder Stories outreach' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '1. Research the podcast' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '2. Find the right contact' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '3. Prepare outreach' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Find email' })).toBeInTheDocument()
     expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
     expect(screen.getByLabelText('Opening email')).toBeInTheDocument()
     expect(screen.getByLabelText('Follow-up 1 email')).toBeInTheDocument()
     expect(screen.getByLabelText('Follow-up 2 email')).toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this modal/i)).toBeInTheDocument()
 
-    const pushButton = screen.getByRole('button', { name: 'Push to client campaign' })
-    await waitFor(() => expect(pushButton).toBeEnabled())
-    fireEvent.click(pushButton)
+    const saveButton = screen.getByRole('button', { name: 'Save pitch draft' })
+    await waitFor(() => expect(saveButton).toBeEnabled())
+    fireEvent.click(saveButton)
 
     await waitFor(() => expect(prepareWorkspaceCampaignPodcast).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId,
@@ -206,15 +207,12 @@ describe('ClientShortlistEditor', () => {
       followUpOneBody: expect.stringContaining('Just following up'),
       followUpTwoBody: expect.stringContaining('One last note'),
     })))
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Prepare Founder Stories outreach' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Write a pitch for Founder Stories' })).not.toBeInTheDocument())
 
-    const unapprovedActions = screen.getByRole('button', { name: 'Actions for Operator Weekly' })
-    unapprovedActions.focus()
-    fireEvent.keyDown(unapprovedActions, { key: 'Enter', code: 'Enter' })
-    expect(screen.queryByRole('menuitem', { name: /Add to client campaign/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Write Pitch for Operator Weekly' })).not.toBeInTheDocument()
   })
 
-  it('routes the owner to campaign setup when the client has no mapped Instantly campaign', async () => {
+  it('keeps the pitch design visible when campaign setup is not ready', async () => {
     vi.mocked(getWorkspaceCampaign).mockResolvedValueOnce({
       integration: {} as never,
       can_manage_campaigns: true,
@@ -222,13 +220,12 @@ describe('ClientShortlistEditor', () => {
       targets: [],
     })
     renderEditor()
-    const actions = await screen.findByRole('button', { name: 'Actions for Founder Stories' })
-    actions.focus()
-    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Add to client campaign/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
-    expect(await screen.findByRole('heading', { name: 'Create or assign the client campaign first' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
+    expect(screen.getByText('You can design the pitch now')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Campaign setup' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(screen.getByRole('button', { name: 'Save pitch draft' })).toBeDisabled()
     expect(prepareWorkspaceCampaignPodcast).not.toHaveBeenCalled()
   })
 
