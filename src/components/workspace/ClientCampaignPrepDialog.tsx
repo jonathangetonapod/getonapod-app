@@ -404,7 +404,7 @@ export function ClientCampaignPrepDialog({
                             <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
                               <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host</span>
                               <ArrowRight className="h-3 w-3 text-violet-400" />
-                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Match LinkedIn</span>
+                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity</span>
                               <ArrowRight className="h-3 w-3 text-violet-400" />
                               <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email</span>
                             </div>
@@ -455,7 +455,7 @@ export function ClientCampaignPrepDialog({
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex gap-3">
                               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-                              <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We will identify the host, match the right LinkedIn profile, and then verify the best available email. The public podcast inbox remains available as a fallback. No verified direct email means no credit is charged.</p></div>
+                              <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We will identify the host, confirm the right person, and then verify the best available email. The public podcast inbox remains available as a fallback. No verified direct email means no credit is charged.</p></div>
                             </div>
                             <Button asChild variant="outline" size="sm" className="shrink-0 border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to="/app/settings/billing" target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button>
                           </div>
@@ -512,7 +512,7 @@ export function ClientCampaignPrepDialog({
         </div>
 
         {podcast && !locked && !campaignQuery.isLoading && (
-          <DialogFooter className="border-t bg-background px-5 py-4 sm:items-center sm:justify-between sm:px-6">
+          <DialogFooter className="border-t bg-background px-5 pb-6 pt-4 sm:items-center sm:justify-between sm:px-6 sm:pb-6">
             <p className="max-w-xl text-xs leading-5 text-muted-foreground">
               {activeStep === 'email' && (emailReady
                 ? 'Email ready. Research is unlocked.'

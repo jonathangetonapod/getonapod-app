@@ -160,6 +160,21 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getAllByText('Archived', { exact: true }).length).toBeGreaterThan(0)
   })
 
+  it('hides the empty featured panel and keeps featuring in the actions menu', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValueOnce({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({ is_featured: false, featured_order: null })],
+    })
+    renderEditor()
+
+    expect(await screen.findByRole('heading', { name: 'All podcasts' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Featured recommendations' })).not.toBeInTheDocument()
+    const actions = screen.getByRole('button', { name: 'Actions for Founder Stories' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+    expect(await screen.findByRole('menuitem', { name: 'Add to featured' })).toBeInTheDocument()
+  })
+
   it('lets an owner mark a podcast approved or passed directly from its actions menu', async () => {
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast({
       podcast_id: 'podcast-two',
@@ -218,7 +233,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByLabelText('Waterfall enrichment plan')).toBeInTheDocument()
     expect(screen.getByText('Identify host')).toBeInTheDocument()
-    expect(screen.getByText('Match LinkedIn')).toBeInTheDocument()
+    expect(screen.getByText('Confirm identity')).toBeInTheDocument()
     expect(screen.getByText('Verify email')).toBeInTheDocument()
     expect(screen.getByText(/No verified direct email means no credit is charged/i)).toBeInTheDocument()
     const billingLink = screen.getByRole('link', { name: 'Buy credits in Billing' })

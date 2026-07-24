@@ -380,17 +380,15 @@ export function ClientShortlistEditor({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-amber-500" />Featured recommendations</CardTitle><CardDescription>Choose and order up to six shows that deserve the strongest first impression.</CardDescription></div>
-            <Badge variant="outline">{featured.length} featured</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {featured.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-6 text-center"><Star className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2 font-medium">No featured recommendations yet</p><p className="text-sm text-muted-foreground">Use a podcast’s action menu to feature your strongest matches.</p></div>
-          ) : (
+      {featured.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-amber-500" />Featured recommendations</CardTitle><CardDescription>Order up to six shows that deserve the strongest first impression.</CardDescription></div>
+              <Badge variant="outline">{featured.length} featured</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-2">
               {featured.map((podcast, index) => (
                 <div key={podcast.podcast_id} className="flex items-center gap-3 rounded-xl border bg-amber-50/40 p-3">
@@ -404,9 +402,9 @@ export function ClientShortlistEditor({
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="space-y-4">
