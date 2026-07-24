@@ -145,19 +145,26 @@ describe('WorkspaceCampaigns', () => {
   it('organizes real client outreach into an operational campaign table', async () => {
     renderCampaigns()
 
-    expect(await screen.findByRole('link', { name: client.name })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    const table = await screen.findByRole('table')
+    expect(within(table).getByRole('link', { name: `${client.name} Podcast Outreach` })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(screen.getByRole('combobox', { name: 'Filter campaigns by client' })).toHaveTextContent('All clients')
     expect(screen.getAllByText('Needs attention').length).toBeGreaterThan(0)
     expect((await screen.findAllByText('Review 2 pitches')).length).toBeGreaterThan(0)
-    const table = screen.getByRole('table')
-    expect(within(table).getByText('9')).toBeInTheDocument()
-    expect(within(table).getByText('1')).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Name' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Progress' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Sent' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Replies' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Opportunities' })).toBeInTheDocument()
+    expect(within(table).getByText('12')).toBeInTheDocument()
+    expect(within(table).getByText('No sender selected')).toBeInTheDocument()
     expect(screen.getByText('Available after Instantly sync')).toBeInTheDocument()
+    expect(screen.queryByText('Ready to launch')).not.toBeInTheDocument()
   })
 
   it('creates the campaign layout from a client and a selected first wave', async () => {
     renderCampaigns()
 
-    await screen.findByRole('link', { name: client.name })
+    await screen.findByRole('table')
     fireEvent.click(screen.getByRole('button', { name: 'New campaign' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Client' }))
     fireEvent.click(await screen.findByRole('option', { name: client.name }))
@@ -204,7 +211,7 @@ describe('WorkspaceCampaigns', () => {
 
     renderCampaigns()
 
-    expect(await screen.findByRole('link', { name: client.name })).toBeInTheDocument()
+    expect(await screen.findByRole('table')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'New campaign' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect Instantly' })).not.toBeInTheDocument()
   })

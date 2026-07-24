@@ -391,11 +391,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     )
   }
 
-  const newCampaignPodcasts = campaignPodcasts.filter((podcast) => !targetByShortlistId.has(podcast.id))
-  const missingContacts = campaign
-    ? campaign.target_counts.needs_contact
-      + newCampaignPodcasts.filter((podcast) => !podcast.podcast_email).length
-    : campaignPodcasts.filter((podcast) => !podcast.podcast_email).length
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const clientHref = `${baseHref}/clients/${client.id}`
   const bookedCount = detail.bookings.filter((booking) => ['booked', 'recorded', 'published'].includes(booking.status)).length
@@ -495,24 +490,18 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           </div>
         </header>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Metric label="Eligible podcasts" value={campaignPodcasts.length} detail="Client-positive or owner-selected" icon={Mic2} />
-          <Metric label="Needs contact" value={missingContacts} detail="Resolve before pitch approval" icon={Search} />
-          <Metric label="Ready to launch" value={campaign?.target_counts.ready ?? detail.outreach.pending_review_count} detail="Reviewed pitches awaiting launch" icon={AlertCircle} />
-          <Metric label="Contacted" value={campaign?.analytics.contacted_count ?? detail.outreach.podcasts_contacted} detail={`${bookedCount} booking${bookedCount === 1 ? '' : 's'} recorded`} icon={Send} />
-        </div>
-
-        <Tabs defaultValue="queue" className="space-y-4">
+        <Tabs defaultValue="analytics" className="space-y-4">
           <div className="overflow-x-auto pb-1">
             <TabsList className="h-auto min-w-max justify-start" aria-label="Campaign sections">
-              <TabsTrigger value="queue">Pitch Queue</TabsTrigger>
-              <TabsTrigger value="activity">Outreach Activity</TabsTrigger>
-              <TabsTrigger value="performance">Performance</TabsTrigger>
-              <TabsTrigger value="settings">Campaign Settings</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="leads">Leads</TabsTrigger>
+              <TabsTrigger value="sequences">Sequences</TabsTrigger>
+              <TabsTrigger value="schedule">Schedule</TabsTrigger>
+              <TabsTrigger value="options">Options</TabsTrigger>
             </TabsList>
           </div>
 
-          <TabsContent value="queue" className="mt-0 space-y-4">
+          <TabsContent value="leads" className="mt-0 space-y-4">
             <Card className="overflow-hidden">
               <div className="border-b border-border bg-muted/15 p-4">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -604,7 +593,19 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             </Card>
           </TabsContent>
 
-          <TabsContent value="activity" className="mt-0">
+          <TabsContent value="analytics" className="mt-0 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Sent" value={campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent} detail={`${contactedCount} unique podcast contacts`} icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Opportunities" value={positiveReplyCount} detail={`${positiveReplyRate}% positive reply rate`} icon={Inbox} /><Metric label="Bookings" value={bookedCount} detail="Booked, recorded, or published" icon={CalendarDays} /></div>
+            <Card>
+              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from outreach to replies, opportunities, and booked appearances.</CardDescription></CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-4">
+                {[['Contacted', contactedCount], ['Replied', replyCount], ['Opportunities', positiveReplyCount], ['Booked', bookedCount]].map(([label, value], index) => (
+                  <div key={String(label)} className="relative rounded-xl border bg-muted/15 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p>
+                    {index < 3 && <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-background text-muted-foreground sm:block" />}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.7fr)]">
               <Card>
                 <CardHeader><CardTitle>Outreach timeline</CardTitle><CardDescription>Launches and reply activity synced from this client’s Instantly campaign.</CardDescription></CardHeader>
@@ -638,43 +639,67 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Emails sent</span><strong>{campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{contactedCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Unique replies</span><strong>{replyCount}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Interested</span><strong>{positiveReplyCount}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Opportunities</span><strong>{positiveReplyCount}</strong></div>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          <TabsContent value="performance" className="mt-0 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Contacted" value={contactedCount} detail="Unique podcast contacts" icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Positive replies" value={positiveReplyCount} detail={`${positiveReplyRate}% positive reply rate`} icon={Inbox} /><Metric label="Bookings" value={bookedCount} detail="Booked, recorded, or published" icon={CalendarDays} /></div>
+          <TabsContent value="sequences" className="mt-0">
             <Card>
-              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from outreach to replies, interest, and booked appearances.</CardDescription></CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-4">
-                {[['Contacted', contactedCount], ['Replied', replyCount], ['Interested', positiveReplyCount], ['Booked', bookedCount]].map(([label, value], index) => (
-                  <div key={String(label)} className="relative rounded-xl border bg-muted/15 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p>
-                    {index < 3 && <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-background text-muted-foreground sm:block" />}
+              <CardHeader><CardTitle>Outreach sequence</CardTitle><CardDescription>Every lead receives one reviewed opening pitch and two consistent follow-ups. Sending stops immediately when the contact replies.</CardDescription></CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  { step: 'Email 1', timing: 'Send when approved', title: 'Custom podcast pitch', detail: 'Uses the subject and message reviewed for this individual podcast.' },
+                  { step: 'Email 2', timing: 'Wait 3 days', title: 'Helpful follow-up', detail: 'Returns to the guest idea and offers tailored talking points for the show.' },
+                  { step: 'Email 3', timing: 'Wait 5 more days', title: 'Final follow-up', detail: 'Closes the loop without adding the contact to another sequence.' },
+                ].map((item, index) => (
+                  <div key={item.step} className="grid gap-3 rounded-xl border p-4 sm:grid-cols-[7rem_minmax(0,1fr)_9rem] sm:items-center">
+                    <div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</div><span className="text-sm font-semibold">{item.step}</span></div>
+                    <div><p className="font-medium">{item.title}</p><p className="mt-1 text-sm text-muted-foreground">{item.detail}</p></div>
+                    <Badge variant="outline" className="w-fit">{item.timing}</Badge>
                   </div>
                 ))}
+                <div className="flex items-start gap-3 rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground"><Settings2 className="mt-0.5 h-4 w-4 shrink-0" /><p>Standard sequence · text-only email · open tracking on · link tracking off · stop on reply · no subsequences.</p></div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="settings" className="mt-0">
-            <div className="grid gap-4 lg:grid-cols-2">
+          <TabsContent value="schedule" className="mt-0">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
               <Card>
-                <CardHeader><CardTitle>Campaign settings</CardTitle><CardDescription>One ongoing campaign for this client, with new podcasts added in weekly waves.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Sending schedule</CardTitle><CardDescription>Control when this client campaign can contact new podcast leads.</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2"><Label htmlFor="campaign-detail-name">Campaign name</Label><Input id="campaign-detail-name" value={settingsName} onChange={(event) => setSettingsName(event.target.value)} disabled={!canManageCampaign} /></div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2"><Label htmlFor="campaign-detail-timezone">Sending timezone</Label><Input id="campaign-detail-timezone" value={settingsTimezone} onChange={(event) => setSettingsTimezone(event.target.value)} disabled={!canManageCampaign} /></div>
                     <div className="space-y-2"><Label htmlFor="campaign-detail-limit">Daily lead limit</Label><Input id="campaign-detail-limit" type="number" min={1} max={1000} value={settingsDailyLimit} onChange={(event) => setSettingsDailyLimit(Number(event.target.value) || 1)} disabled={!canManageCampaign} /></div>
                   </div>
-                  <div className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">Campaign status</p><p className="text-xs text-muted-foreground">Synced from Instantly after launch.</p></div><Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge></div>
-                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{campaign ? 'Save campaign settings' : 'Create campaign draft'}</Button>
+                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save schedule</Button>
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>Sending accounts &amp; sequence</CardTitle><CardDescription>Choose active Instantly senders. GOAP controls the reviewed opening pitch and a standard two-follow-up sequence.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Delivery window</CardTitle><CardDescription>The standard safe window applied to this campaign in Instantly.</CardDescription></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between rounded-xl border p-3"><span className="text-sm text-muted-foreground">Sending days</span><strong className="text-sm">Monday–Friday</strong></div>
+                  <div className="flex items-center justify-between rounded-xl border p-3"><span className="text-sm text-muted-foreground">Local window</span><strong className="text-sm">9:00 AM–5:00 PM</strong></div>
+                  <div className="flex items-center justify-between rounded-xl border p-3"><span className="text-sm text-muted-foreground">Gap between emails</span><strong className="text-sm">15+ minutes</strong></div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="options" className="mt-0">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader><CardTitle>Campaign options</CardTitle><CardDescription>Manage this campaign’s identity and provider status.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2"><Label htmlFor="campaign-detail-name">Campaign name</Label><Input id="campaign-detail-name" value={settingsName} onChange={(event) => setSettingsName(event.target.value)} disabled={!canManageCampaign} /></div>
+                  <div className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">Campaign status</p><p className="text-xs text-muted-foreground">Synced from Instantly after launch.</p></div><Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge></div>
+                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{campaign ? 'Save options' : 'Create campaign draft'}</Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Sending accounts</CardTitle><CardDescription>Choose which active Instantly mailboxes can send this client campaign.</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
                   {integration?.connected ? activeProviderAccounts.length > 0 ? (
                     <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border p-3">
@@ -683,7 +708,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       ))}
                     </div>
                   ) : <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">No active sending accounts are available in the connected Instantly workspace.</div> : <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-sm text-muted-foreground">The workspace owner must connect Instantly from the Client Campaigns page before launch.</div>}
-                  <div className="flex items-start gap-3 rounded-xl border p-3"><Settings2 className="mt-0.5 h-4 w-4 text-muted-foreground" /><div><p className="text-sm font-medium">Standard campaign sequence</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Custom approved opening · follow-up after 3 days · final follow-up after 5 more days · stop immediately on reply. No subsequences.</p></div></div>
+                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save sending accounts</Button>
                   {campaign?.instantly_campaign_id && canManageCampaign && (
                     <Button variant="outline" disabled={runningMutation.isPending} onClick={() => runningMutation.mutate(campaign.status !== 'active')}>
                       {campaign.status === 'active' ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaign.status === 'active' ? 'Pause campaign' : 'Resume campaign'}

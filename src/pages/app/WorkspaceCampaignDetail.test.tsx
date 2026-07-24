@@ -97,12 +97,18 @@ describe('WorkspaceCampaignDetail', () => {
     mockedUpdateContact.mockResolvedValue({ id: 'target-two' } as never)
   })
 
-  it('shows the weekly pitch queue and opens a custom podcast pitch drawer', async () => {
+  it('opens with campaign analytics and keeps the podcast pitch workflow under Leads', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Dallas Fontaine Podcast Outreach', level: 1 })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Pitch Queue' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Analytics' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Leads' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Sequences' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Options' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /add podcasts/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Leads' }), { button: 0 })
     expect(screen.getAllByText('Needs contact').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Needs pitch').length).toBeGreaterThan(0)
 
@@ -129,6 +135,7 @@ describe('WorkspaceCampaignDetail', () => {
   it('saves a missing host contact directly from the pitch drawer', async () => {
     renderPage()
 
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Leads' }), { button: 0 })
     const operatorRow = within(await screen.findByRole('table')).getByText('Operator Stories').closest('tr')
     expect(operatorRow).not.toBeNull()
     fireEvent.click(within(operatorRow as HTMLElement).getByRole('button', { name: /review pitch/i }))

@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Users,
 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -43,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clientShortlist'
@@ -219,6 +221,26 @@ function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
   return <Badge variant="outline" className={statusClasses[status]}>{status}</Badge>
 }
 
+function campaignListMetrics(summary: CampaignSummary) {
+  const campaign = summary.campaign
+  const contacted = campaign?.analytics.contacted_count ?? summary.detail?.outreach.podcasts_contacted ?? 0
+  const totalTargets = campaign?.target_counts.total || 0
+  const progress = campaign && totalTargets > 0
+    ? Math.min(100, Math.round((contacted / totalTargets) * 100))
+    : null
+  const senderAccounts = campaign?.sender_accounts || []
+  return {
+    progress: summary.status === 'Completed' ? 100 : progress,
+    sent: campaign?.analytics.emails_sent_count ?? summary.detail?.outreach.initial_emails_sent ?? 0,
+    replies: campaign ? campaign.analytics.reply_count_unique : null,
+    opportunities: campaign
+      ? campaign.analytics.total_interested + campaign.analytics.total_meeting_booked
+      : null,
+    sender: senderAccounts[0] || null,
+    additionalSenders: Math.max(0, senderAccounts.length - 1),
+  }
+}
+
 function SummaryMetric({
   label,
   value,
@@ -299,6 +321,7 @@ const WorkspaceCampaigns = ({
 
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<CampaignFilter>('all')
+  const [clientGroupFilter, setClientGroupFilter] = useState('all')
   const [createOpen, setCreateOpen] = useState(false)
   const [createStep, setCreateStep] = useState<1 | 2>(1)
   const [selectedClientId, setSelectedClientId] = useState('')
@@ -377,6 +400,7 @@ const WorkspaceCampaigns = ({
     const matchesSearch = !normalizedSearch
       || summary.client.name.toLowerCase().includes(normalizedSearch)
       || `${summary.client.name} podcast outreach`.toLowerCase().includes(normalizedSearch)
+    const matchesClient = clientGroupFilter === 'all' || summary.client.id === clientGroupFilter
     const matchesFilter = filter === 'all'
       || (filter === 'attention' && summary.status === 'Needs attention')
       || (filter === 'draft' && summary.status === 'Draft')
@@ -384,7 +408,7 @@ const WorkspaceCampaigns = ({
       || (filter === 'paused' && summary.status === 'Paused')
       || (filter === 'completed' && summary.status === 'Completed')
       || (filter === 'setup' && summary.status === 'Not started')
-    return matchesSearch && matchesFilter
+    return matchesSearch && matchesClient && matchesFilter
   }).sort((left, right) => {
     const priority: Record<CampaignStatus, number> = {
       'Needs attention': 0,
@@ -399,11 +423,6 @@ const WorkspaceCampaigns = ({
   })
 
   const activeCount = summaries.filter((summary) => summary.status === 'Active').length
-  const reviewCount = summaries.reduce((total, summary) => (
-    total + (summary.campaign
-      ? summary.campaign.target_counts.ready
-      : summary.detail?.outreach.pending_review_count || 0)
-  ), 0)
   const sentCount = summaries.reduce((total, summary) => (
     total + (summary.campaign?.analytics.emails_sent_count ?? summary.detail?.outreach.initial_emails_sent ?? 0)
   ), 0)
@@ -533,8 +552,8 @@ const WorkspaceCampaigns = ({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Campaign operations</h2>
-          <p className="mt-1 text-sm text-muted-foreground">One ongoing podcast outreach campaign for every active client.</p>
+          <h2 className="text-xl font-semibold">All campaigns</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Select a client or scan every podcast outreach campaign in one place.</p>
         </div>
         {canManageCampaigns && (
           <Button onClick={() => setCreateOpen(true)} disabled={clientsLoading || campaignOverviewQuery.isLoading || availableCampaignClients.length === 0}>
@@ -543,19 +562,27 @@ const WorkspaceCampaigns = ({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <SummaryMetric label="Active campaigns" value={activeCount} detail="Currently sending outreach" icon={CheckCircle2} />
-        <SummaryMetric label="Ready to launch" value={reviewCount} detail="Reviewed pitches ready for outreach" icon={AlertCircle} />
         <SummaryMetric label="Emails sent" value={sentCount} detail="Synced campaign outreach" icon={Mail} />
-        <SummaryMetric label="Positive replies" value={integration?.connected ? positiveReplyCount : '—'} detail={integration?.connected ? 'Marked interested in Instantly' : 'Available after Instantly sync'} icon={MessageSquare} />
+        <SummaryMetric label="Opportunities" value={integration?.connected ? positiveReplyCount : '—'} detail={integration?.connected ? 'Interested replies and meetings' : 'Available after Instantly sync'} icon={MessageSquare} />
       </div>
 
       <Card className="overflow-hidden">
         <div className="border-b border-border bg-muted/15 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative w-full lg:max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search clients or campaigns…" className="pl-9" />
+            <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-2xl">
+              <Select value={clientGroupFilter} onValueChange={setClientGroupFilter}>
+                <SelectTrigger aria-label="Filter campaigns by client" className="w-full sm:w-56"><Users className="mr-2 h-4 w-4 text-muted-foreground" /><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All clients</SelectItem>
+                  {activeClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns…" className="pl-9" />
+              </div>
             </div>
             <div className="flex max-w-full gap-2 overflow-x-auto pb-1 lg:pb-0" aria-label="Campaign status filters">
               {filterLabels.map((item) => (
@@ -592,59 +619,56 @@ const WorkspaceCampaigns = ({
         ) : (
           <>
             <div className="space-y-3 p-3 md:hidden">
-              {filteredSummaries.map((summary) => (
-                <Link key={summary.client.id} to={`${baseHref}/client-campaigns/${summary.client.id}`} className="block rounded-xl border p-4 transition-colors hover:bg-muted/30">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0"><p className="truncate font-semibold">{summary.client.name}</p><p className="truncate text-xs text-muted-foreground">{summary.client.name} Podcast Outreach</p></div>
-                    {summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CampaignStatusBadge status={summary.status} />}
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div><p className="text-xs text-muted-foreground">Current wave</p><p className="mt-1 font-medium">{summary.currentWaveLabel}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Approved podcasts</p><p className="mt-1 font-medium">{summary.approvedPodcasts}</p></div>
-                    <div className="col-span-2"><p className="text-xs text-muted-foreground">Next action</p><p className="mt-1 font-medium text-primary">{summary.error ? 'Campaign data unavailable' : summary.nextAction}</p></div>
-                  </div>
-                </Link>
-              ))}
+              {filteredSummaries.map((summary) => {
+                const metrics = campaignListMetrics(summary)
+                return (
+                  <Link key={summary.client.id} to={`${baseHref}/client-campaigns/${summary.client.id}`} className="block rounded-xl border p-4 transition-colors hover:bg-muted/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0"><p className="truncate font-semibold">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</p><p className="truncate text-xs text-muted-foreground">{summary.client.name}{metrics.sender ? ` · ${metrics.sender}` : ''}</p></div>
+                      {summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CampaignStatusBadge status={summary.status} />}
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div><p className="text-xs text-muted-foreground">Progress</p><p className="mt-1 font-medium">{metrics.progress === null ? '—' : `${metrics.progress}%`}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Sent</p><p className="mt-1 font-medium">{metrics.sent.toLocaleString()}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Replies</p><p className="mt-1 font-medium">{metrics.replies === null ? '—' : metrics.replies.toLocaleString()}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Opportunities</p><p className="mt-1 font-medium">{metrics.opportunities === null ? '—' : metrics.opportunities.toLocaleString()}</p></div>
+                      <div className="col-span-2"><p className="text-xs text-muted-foreground">Next step</p><p className="mt-1 font-medium text-primary">{summary.error ? 'Campaign data unavailable' : summary.nextAction}</p></div>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
 
             <div className="hidden overflow-x-auto md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-56">Client / campaign</TableHead>
+                    <TableHead className="min-w-64">Name</TableHead>
+                    <TableHead className="min-w-48">Sender</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="min-w-36">Current wave</TableHead>
-                    <TableHead>Pitch readiness</TableHead>
-                    <TableHead>Contacted</TableHead>
+                    <TableHead className="min-w-36">Progress</TableHead>
+                    <TableHead>Sent</TableHead>
                     <TableHead>Replies</TableHead>
-                    <TableHead>Bookings</TableHead>
-                    <TableHead className="min-w-44">Next action</TableHead>
+                    <TableHead>Opportunities</TableHead>
+                    <TableHead className="w-20 text-right">Open</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredSummaries.map((summary) => {
-                    const outreach = summary.detail?.outreach
-                    const campaign = summary.campaign
-                    const bookings = summary.detail?.bookings.filter((booking) => (
-                      ['booked', 'recorded', 'published'].includes(booking.status)
-                    )).length || 0
-                    const ready = campaign?.target_counts.ready ?? outreach?.approved_count ?? 0
-                    const reviewTotal = campaign
-                      ? campaign.target_counts.ready + campaign.target_counts.needs_pitch
-                      : ready + (outreach?.pending_review_count || 0)
+                    const metrics = campaignListMetrics(summary)
                     return (
                       <TableRow key={summary.client.id} className="group">
                         <TableCell>
-                          <Link to={`${baseHref}/client-campaigns/${summary.client.id}`} className="font-semibold hover:text-primary hover:underline">{summary.client.name}</Link>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{summary.client.name} Podcast Outreach</p>
+                          <Link to={`${baseHref}/client-campaigns/${summary.client.id}`} className="font-semibold hover:text-primary hover:underline">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</Link>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{summary.client.name} · {summary.currentWaveLabel}</p>
                         </TableCell>
+                        <TableCell><p className="max-w-48 truncate text-sm font-medium">{metrics.sender || 'No sender selected'}</p>{metrics.additionalSenders > 0 && <p className="text-xs text-muted-foreground">+{metrics.additionalSenders} more</p>}</TableCell>
                         <TableCell>{summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : summary.error ? <Badge variant="destructive">Unavailable</Badge> : <CampaignStatusBadge status={summary.status} />}</TableCell>
-                        <TableCell><p className="font-medium">{summary.currentWaveLabel}</p><p className="text-xs text-muted-foreground">{summary.currentWaveCount} podcast{summary.currentWaveCount === 1 ? '' : 's'}</p></TableCell>
-                        <TableCell><p className="font-medium">{reviewTotal > 0 ? `${ready}/${reviewTotal} ready` : `${summary.approvedPodcasts} eligible`}</p><p className="text-xs text-muted-foreground">{summary.missingContacts > 0 ? `${summary.missingContacts} missing contact` : 'Contact-ready'}</p></TableCell>
-                        <TableCell>{campaign?.analytics.contacted_count ?? outreach?.podcasts_contacted ?? '—'}</TableCell>
-                        <TableCell>{campaign?.analytics.reply_count_unique ?? <span className="text-muted-foreground">—</span>}</TableCell>
-                        <TableCell>{bookings}</TableCell>
-                        <TableCell><Button asChild variant="ghost" size="sm" className="-ml-3 justify-start text-primary"><Link to={`${baseHref}/client-campaigns/${summary.client.id}`}>{summary.error ? 'Try campaign workspace' : summary.nextAction}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Link></Button></TableCell>
+                        <TableCell>{metrics.progress === null ? <span className="text-muted-foreground">—</span> : <div className="flex items-center gap-2"><Progress value={metrics.progress} className="h-1.5 w-20" aria-label={`${summary.client.name} campaign progress`} /><span className="text-sm font-medium">{metrics.progress}%</span></div>}</TableCell>
+                        <TableCell>{metrics.sent.toLocaleString()}</TableCell>
+                        <TableCell>{metrics.replies === null ? <span className="text-muted-foreground">—</span> : metrics.replies.toLocaleString()}</TableCell>
+                        <TableCell>{metrics.opportunities === null ? <span className="text-muted-foreground">—</span> : metrics.opportunities.toLocaleString()}</TableCell>
+                        <TableCell className="text-right"><Button asChild variant="ghost" size="icon" className="text-primary"><Link to={`${baseHref}/client-campaigns/${summary.client.id}`} aria-label={`Open ${summary.client.name} campaign`}><ArrowRight className="h-4 w-4" /></Link></Button></TableCell>
                       </TableRow>
                     )
                   })}

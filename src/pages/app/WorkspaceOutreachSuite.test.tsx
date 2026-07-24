@@ -132,6 +132,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(await screen.findByRole('heading', { name: emptyState })).toBeInTheDocument()
     if (module === 'client-campaigns') {
       expect(await screen.findByTestId('instantly-connection-card')).toHaveTextContent('Connect Instantly')
+      expect(screen.queryByRole('navigation', { name: 'Outreach suite' })).not.toBeInTheDocument()
     } else {
       expect(screen.getByTestId('instantly-connection-state')).toHaveTextContent('not connected')
     }
@@ -158,7 +159,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(await screen.findByText('Acme Workspace')).toBeInTheDocument()
     const baseHref = `/app/workspaces/${selectedWorkspaceId}`
     expect(screen.getByTestId('workspace-layout')).toHaveAttribute('data-base-href', baseHref)
-    expect(screen.getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('href', `${baseHref}/master-inbox`)
+    expect(screen.queryByRole('navigation', { name: 'Outreach suite' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /open clients/i })).toHaveAttribute('href', `${baseHref}/clients`)
     expect(mockedView).toHaveBeenCalledWith(selectedWorkspaceId, expect.any(AbortSignal))
   })
