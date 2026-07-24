@@ -36,6 +36,7 @@ import WorkspaceClientDetail from "./pages/app/WorkspaceClientDetail";
 import WorkspaceGuestResources from "./pages/app/WorkspaceGuestResources";
 import WorkspaceOnboarding from "./pages/app/WorkspaceOnboarding";
 import MyWorkspaceSettings from "./pages/app/MyWorkspaceSettings";
+import WorkspaceBilling from "./pages/app/WorkspaceBilling";
 import WorkspaceOverview from "./pages/app/WorkspaceOverview";
 import WorkspaceCampaignDetail from "./pages/app/WorkspaceCampaignDetail";
 import WorkspaceOutreachSuite from "./pages/app/WorkspaceOutreachSuite";
@@ -120,6 +121,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <MyWorkspaceSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/settings/billing"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceBilling />
                 </ProtectedRoute>
               }
             />

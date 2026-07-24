@@ -33,6 +33,10 @@ describe('workspace routes', () => {
     )).toBe('client-campaigns')
   })
 
+  it('keeps nested billing inside Settings navigation', () => {
+    expect(workspaceModuleFromPath('/app/settings/billing')).toBe('settings')
+  })
+
   it('falls back to overview outside a workspace module', () => {
     expect(workspaceModuleFromPath('/app/manage-workspaces')).toBe('overview')
     expect(workspaceModuleFromPath('/admin/dashboard')).toBe('overview')

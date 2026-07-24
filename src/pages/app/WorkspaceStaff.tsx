@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Building2,
   Copy,
+  CreditCard,
   Crown,
   Eye,
   EyeOff,
@@ -21,6 +22,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   WORKSPACE_NAV_ORGANIZE_EVENT,
@@ -463,6 +465,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       : []),
     { href: '#client-branding', label: 'Client branding', description: 'Logo, name, and colors', icon: Palette },
     { href: '#workspace-access', label: 'Team & access', description: 'Users, roles, and passwords', icon: Users },
+    ...(!isPlatformWorkspace
+      ? [{ href: '/app/settings/billing', label: 'Billing', description: 'Plan and Waterfall credits', icon: CreditCard }]
+      : []),
   ]
 
   const body = !validWorkspaceId
@@ -513,12 +518,8 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   >
                     {settingsNavigation.map((item) => {
                       const Icon = item.icon
-                      return (
-                        <a
-                          key={item.href}
-                          href={item.href}
-                          className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3 py-3 text-left transition hover:border-primary/25 hover:bg-muted/60 lg:border-transparent lg:bg-transparent"
-                        >
+                      const content = (
+                        <>
                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition group-hover:bg-background group-hover:text-foreground">
                             <Icon className="h-4 w-4" />
                           </span>
@@ -526,8 +527,12 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             <span className="block truncate text-xs font-semibold sm:text-sm">{item.label}</span>
                             <span className="mt-0.5 hidden truncate text-xs text-muted-foreground lg:block">{item.description}</span>
                           </span>
-                        </a>
+                        </>
                       )
+                      const className = 'group flex min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3 py-3 text-left transition hover:border-primary/25 hover:bg-muted/60 lg:border-transparent lg:bg-transparent'
+                      return item.href.startsWith('#')
+                        ? <a key={item.href} href={item.href} className={className}>{content}</a>
+                        : <Link key={item.href} to={item.href} className={className}>{content}</Link>
                     })}
                   </nav>
                   <div className="mt-5 hidden rounded-xl border border-border/70 bg-muted/25 p-3 text-xs leading-5 text-muted-foreground lg:block">

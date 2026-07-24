@@ -233,6 +233,7 @@ describe('WorkspaceStaff', () => {
     expect(within(settingsNavigation).getByRole('link', { name: /Sidebar/ })).toHaveAttribute('href', '#sidebar-navigation')
     expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
     expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
+    expect(within(settingsNavigation).getByRole('link', { name: /Billing/ })).toHaveAttribute('href', '/app/settings/billing')
     expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Client-facing brand', level: 2 })).toBeInTheDocument()
