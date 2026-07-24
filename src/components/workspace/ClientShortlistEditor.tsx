@@ -571,6 +571,11 @@ export function ClientShortlistEditor({
         clientBio={clientBio}
         campaignHref={campaignHref}
         podcast={campaignPrepPodcast}
+        onArchive={() => {
+          if (!campaignPrepPodcast) return
+          setArchiveTarget(campaignPrepPodcast)
+          setCampaignPrepPodcast(null)
+        }}
       />
 
       <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(open) => !open && setArchiveTarget(null)}>

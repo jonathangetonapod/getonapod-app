@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
+  Archive,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
@@ -15,7 +16,7 @@ import {
   RefreshCw,
   Search,
   Send,
-  SkipForward,
+  PenLine,
   Sparkles,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -50,11 +51,12 @@ interface ClientCampaignPrepDialogProps {
   clientBio?: string | null
   campaignHref: string
   podcast: ClientShortlistPodcast | null
+  onArchive: () => void
   onPrepared?: () => void
 }
 
 type PitchStep = 'email' | 'research' | 'pitch'
-type EmailRoute = 'podcast' | 'waterfall' | 'skip'
+type EmailRoute = 'podcast' | 'waterfall' | 'manual'
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
   { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
@@ -104,6 +106,7 @@ export function ClientCampaignPrepDialog({
   clientBio,
   campaignHref,
   podcast,
+  onArchive,
   onPrepared,
 }: ClientCampaignPrepDialogProps) {
   const queryClient = useQueryClient()
@@ -183,6 +186,7 @@ export function ClientCampaignPrepDialog({
   }
 
   const normalizedEmail = contactEmail.trim().toLowerCase()
+  const emailReady = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
   const sequenceComplete = [
     draft.subject,
     draft.pitchBody,
@@ -321,17 +325,19 @@ export function ClientCampaignPrepDialog({
               <nav aria-label="Pitch workflow steps" className="grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6">
                 {pitchSteps.map((item) => {
                   const active = activeStep === item.id
+                  const lockedUntilEmail = item.id !== 'email' && !emailReady
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      aria-label={`Go to step ${item.step}: ${item.title}`}
+                      aria-label={lockedUntilEmail ? `Step ${item.step}: ${item.title} locked until an email is ready` : `Go to step ${item.step}: ${item.title}`}
                       aria-current={active ? 'step' : undefined}
-                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${active ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/30'}`}
+                      disabled={lockedUntilEmail}
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${active ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/30'}`}
                       onClick={() => setActiveStep(item.id)}
                     >
                       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{item.step}</span>
-                      <span className="min-w-0"><span className="block text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-muted-foreground">{item.detail}</span></span>
+                      <span className="min-w-0"><span className="block text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-muted-foreground">{lockedUntilEmail ? 'Email required first' : item.detail}</span></span>
                     </button>
                   )
                 })}
@@ -343,14 +349,14 @@ export function ClientCampaignPrepDialog({
                     <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
                       <div className="flex gap-3">
                         <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
-                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Use the free public inbox, try a deeper search for the host's direct email, or skip this step without using credits.</p></div>
+                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A valid email is required before research. Use the free public inbox, try a deeper search, or enter an address you already have.</p></div>
                       </div>
                     </div>
 
                     <div className="space-y-6 p-5 sm:p-6">
                       <div>
                         <p className="text-sm font-semibold">Choose an email path</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose the route you want. Contact discovery and verification happen automatically behind the scenes.</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose the route you want. Host identification and Waterfall verification happen automatically behind the scenes.</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <button
                             type="button"
@@ -411,18 +417,37 @@ export function ClientCampaignPrepDialog({
 
                         <button
                           type="button"
-                          aria-label="Skip email for now"
-                          aria-pressed={emailRoute === 'skip'}
-                          className={`mt-4 flex w-full flex-col gap-3 rounded-xl border p-4 text-left transition-all sm:flex-row sm:items-center ${emailRoute === 'skip' ? 'border-slate-500 bg-slate-50 shadow-sm ring-1 ring-slate-200' : 'bg-background hover:border-slate-300 hover:bg-muted/20'}`}
+                          aria-label="Enter email manually"
+                          aria-pressed={emailRoute === 'manual'}
+                          className={`mt-4 flex w-full flex-col gap-3 rounded-xl border p-4 text-left transition-all sm:flex-row sm:items-center ${emailRoute === 'manual' ? 'border-slate-500 bg-slate-50 shadow-sm ring-1 ring-slate-200' : 'bg-background hover:border-slate-300 hover:bg-muted/20'}`}
                           onClick={() => {
-                            setEmailRoute('skip')
-                            setContactEmail('')
+                            setEmailRoute('manual')
+                            if (contactEmail.trim().toLowerCase() === publicPodcastEmail.toLowerCase()) setContactEmail('')
                           }}
                         >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><SkipForward className="h-4 w-4" /></span>
-                          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Skip email for now</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Continue without searching or using credits. You can find the contact later.</span></span>
-                          <span className="flex shrink-0 items-center gap-2"><Badge variant="outline">0 credits</Badge>{emailRoute === 'skip' && <CheckCircle2 className="h-4 w-4 text-slate-700" />}</span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><PenLine className="h-4 w-4" /></span>
+                          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Enter an email manually</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Use a host or producer email you found yourself. No credits are used.</span></span>
+                          <span className="flex shrink-0 items-center gap-2"><Badge variant="outline">0 credits</Badge>{emailRoute === 'manual' && <CheckCircle2 className="h-4 w-4 text-slate-700" />}</span>
                         </button>
+
+                        {emailRoute === 'manual' && (
+                          <div className="mt-4 rounded-xl border bg-slate-50/70 p-4">
+                            <Label htmlFor="campaign-manual-email">Email address</Label>
+                            <Input
+                              id="campaign-manual-email"
+                              type="email"
+                              value={contactEmail}
+                              onChange={(event) => setContactEmail(event.target.value)}
+                              maxLength={254}
+                              placeholder="host@podcast.com"
+                              aria-invalid={Boolean(normalizedEmail) && !emailReady}
+                              aria-describedby="campaign-manual-email-help"
+                              required
+                              className="mt-2 bg-background"
+                            />
+                            <p id="campaign-manual-email-help" className={`mt-2 text-xs ${emailReady ? 'text-emerald-700' : normalizedEmail ? 'text-destructive' : 'text-muted-foreground'}`}>{emailReady ? 'Email ready. You can continue to Research.' : normalizedEmail ? 'Enter a valid email address.' : 'A valid email is required to unlock Research.'}</p>
+                          </div>
+                        )}
                       </div>
 
                       {emailRoute === 'waterfall' && (
@@ -435,6 +460,13 @@ export function ClientCampaignPrepDialog({
                             <Button asChild variant="outline" size="sm" className="shrink-0 border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to="/app/settings/billing" target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button>
                           </div>
                           <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium leading-5 text-violet-800">Credit top-ups are available on every paid plan, including Solo. Billing opens in a new tab so this pitch stays here.</p>
+                        </div>
+                      )}
+
+                      {!emailReady && (
+                        <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                          <div><p className="text-sm font-semibold">No usable email?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Archive this podcast instead of moving an incomplete contact into research.</p></div>
+                          <Button type="button" variant="outline" className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" onClick={onArchive}><Archive className="mr-2 h-4 w-4" />Archive podcast</Button>
                         </div>
                       )}
 
@@ -482,16 +514,16 @@ export function ClientCampaignPrepDialog({
         {podcast && !locked && !campaignQuery.isLoading && (
           <DialogFooter className="border-t bg-background px-5 py-4 sm:items-center sm:justify-between sm:px-6">
             <p className="max-w-xl text-xs leading-5 text-muted-foreground">
-              {activeStep === 'email' && (emailRoute === 'skip'
-                ? 'No email search will run and no credits will be used.'
-                : 'Contact discovery and verification are handled automatically.')}
+              {activeStep === 'email' && (emailReady
+                ? 'Email ready. Research is unlocked.'
+                : 'A valid email is required before you can continue to Research.')}
               {activeStep === 'research' && 'This step is only for understanding the podcast and choosing the strongest angle.'}
               {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
             </p>
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
-              {activeStep === 'email' && <Button type="button" onClick={() => setActiveStep('research')}>{emailRoute === 'skip' ? 'Skip email and continue' : 'Continue to research'}<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+              {activeStep === 'email' && <Button type="button" disabled={!emailReady} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
               {activeStep === 'research' && <Button type="button" onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
               {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
             </div>
