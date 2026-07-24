@@ -6,7 +6,6 @@ import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEdi
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
-  reorderClientShortlistFeatured,
   searchClientPodcastCatalog,
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
@@ -16,7 +15,6 @@ import { getWorkspaceCampaign, prepareWorkspaceCampaignPodcast } from '@/service
 vi.mock('@/services/clientShortlist', () => ({
   addClientShortlistPodcasts: vi.fn(),
   getClientShortlist: vi.fn(),
-  reorderClientShortlistFeatured: vi.fn(),
   searchClientPodcastCatalog: vi.fn(),
   updateClientShortlistPodcast: vi.fn(),
 }))
@@ -119,7 +117,6 @@ describe('ClientShortlistEditor', () => {
     vi.mocked(searchClientPodcastCatalog).mockResolvedValue([])
     vi.mocked(addClientShortlistPodcasts).mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['podcast-new'] })
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast())
-    vi.mocked(reorderClientShortlistFeatured).mockResolvedValue()
     vi.mocked(getWorkspaceCampaign).mockResolvedValue({
       integration: {} as never,
       can_manage_campaigns: true,
@@ -145,6 +142,8 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('Operator Weekly')).toBeInTheDocument()
     expect(screen.getByText('This one looks great.', { exact: false })).toBeInTheDocument()
     expect(screen.getAllByText('Approved').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('Founder Stories is featured')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Featured recommendations' })).not.toBeInTheDocument()
     expect(screen.getByText('/ 6', { exact: false })).toBeInTheDocument()
     expect(screen.queryByText('Archived Show')).not.toBeInTheDocument()
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()

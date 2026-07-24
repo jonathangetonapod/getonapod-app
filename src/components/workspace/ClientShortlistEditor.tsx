@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
-  ArrowDown,
-  ArrowUp,
   CheckCircle2,
   Eye,
   ExternalLink,
@@ -17,7 +15,6 @@ import {
   Radio,
   RotateCcw,
   Search,
-  Sparkles,
   Star,
   ThumbsDown,
   ThumbsUp,
@@ -54,7 +51,6 @@ import { cn } from '@/lib/utils'
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
-  reorderClientShortlistFeatured,
   searchClientPodcastCatalog,
   updateClientShortlistPodcast,
   type ClientShortlistCatalogPodcast,
@@ -159,7 +155,6 @@ export function ClientShortlistEditor({
   const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set())
   const [pendingPodcastId, setPendingPodcastId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
-  const [isReordering, setIsReordering] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<ClientShortlistPodcast | null>(null)
   const [detailPodcast, setDetailPodcast] = useState<ClientShortlistPodcast | null>(null)
   const [campaignPrepPodcast, setCampaignPrepPodcast] = useState<ClientShortlistPodcast | null>(null)
@@ -267,23 +262,6 @@ export function ClientShortlistEditor({
     )
   }
 
-  const moveFeatured = async (index: number, direction: -1 | 1) => {
-    const targetIndex = index + direction
-    if (targetIndex < 0 || targetIndex >= featured.length) return
-    const reordered = [...featured]
-    const [moved] = reordered.splice(index, 1)
-    reordered.splice(targetIndex, 0, moved)
-    setIsReordering(true)
-    try {
-      await reorderClientShortlistFeatured(workspaceId, clientId, reordered.map((podcast) => podcast.podcast_id))
-      await refresh()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Featured podcasts could not be reordered.')
-    } finally {
-      setIsReordering(false)
-    }
-  }
-
   const addSelectedCatalog = async () => {
     if (selectedCatalog.length === 0) return
     setIsAdding(true)
@@ -380,32 +358,6 @@ export function ClientShortlistEditor({
         </CardContent>
       </Card>
 
-      {featured.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-amber-500" />Featured recommendations</CardTitle><CardDescription>Order up to six shows that deserve the strongest first impression.</CardDescription></div>
-              <Badge variant="outline">{featured.length} featured</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {featured.map((podcast, index) => (
-                <div key={podcast.podcast_id} className="flex items-center gap-3 rounded-xl border bg-amber-50/40 p-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-semibold text-amber-900">{index + 1}</span>
-                  <PodcastArtwork podcast={podcast} />
-                  <div className="min-w-0 flex-1"><p className="truncate font-medium">{podcast.podcast_name}</p><p className="truncate text-xs text-muted-foreground">{compactNumber(podcast.audience_size)} estimated listeners · {podcast.publisher_name || 'Publisher unavailable'}</p></div>
-                  <div className="flex shrink-0 gap-1">
-                    <Button variant="ghost" size="icon" disabled={index === 0 || isReordering} onClick={() => void moveFeatured(index, -1)} aria-label={`Move ${podcast.podcast_name} up`}><ArrowUp className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" disabled={index === featured.length - 1 || isReordering} onClick={() => void moveFeatured(index, 1)} aria-label={`Move ${podcast.podcast_name} down`}><ArrowDown className="h-4 w-4" /></Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader className="space-y-4">
           <div><CardTitle>All podcasts</CardTitle><CardDescription>Search, filter, feature, hide, archive, or restore shows from one place.</CardDescription></div>
@@ -449,7 +401,7 @@ export function ClientShortlistEditor({
                 <div key={podcast.podcast_id} className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center">
                   <button type="button" className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={() => openPodcastDetails(podcast)} aria-label={`View details for ${podcast.podcast_name}`}>
                     <PodcastArtwork podcast={podcast} />
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
+                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge aria-label={`${podcast.podcast_name} is featured`} className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
                   </button>
                   <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 lg:w-[500px] lg:items-center">
                     <div><p className="text-xs text-muted-foreground">Audience</p><p className="font-medium">{compactNumber(podcast.audience_size)}</p></div>
