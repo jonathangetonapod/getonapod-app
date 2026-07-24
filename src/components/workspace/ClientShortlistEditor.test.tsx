@@ -214,6 +214,8 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('Match LinkedIn')).toBeInTheDocument()
     expect(screen.getByText('Verify email')).toBeInTheDocument()
     expect(screen.getByText(/No verified direct email means no credit is charged/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Buy more credits' })).toBeInTheDocument()
+    expect(screen.getByText(/available on every paid plan, including Solo/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Email')).toHaveValue('hello@founderstories.fm')
     expect(screen.queryByRole('heading', { name: 'Research the podcast' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Write the pitch' })).not.toBeInTheDocument()

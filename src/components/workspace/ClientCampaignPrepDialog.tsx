@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Coins,
   ExternalLink,
   FileSearch,
   Loader2,
@@ -389,10 +390,14 @@ export function ClientCampaignPrepDialog({
 
                       {emailRoute === 'waterfall' && (
                         <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                          <div className="flex gap-3">
-                            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-                            <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 text-xs leading-5 text-violet-900/75">We will identify the host, match the right LinkedIn profile, and then verify the best available email. The public podcast inbox remains available as a fallback. No verified direct email means no credit is charged.</p></div>
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex gap-3">
+                              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
+                              <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We will identify the host, match the right LinkedIn profile, and then verify the best available email. The public podcast inbox remains available as a fallback. No verified direct email means no credit is charged.</p></div>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" className="shrink-0 border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Coins className="mr-2 h-3.5 w-3.5" />Buy more credits</Button>
                           </div>
+                          <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium text-violet-800">Credit top-ups are available on every paid plan, including Solo. Upgrading is only necessary when you need more clients, campaigns, or seats.</p>
                         </div>
                       )}
 
