@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEditor'
@@ -43,7 +43,10 @@ function podcast(overrides: Partial<ClientShortlistPodcast> = {}): ClientShortli
     episode_count: 120,
     audience_size: 24_000,
     last_posted_at: '2026-07-20T00:00:00.000Z',
-    podcast_categories: null,
+    podcast_categories: [
+      { category_id: 'business', category_name: 'Business' },
+      { category_id: 'entrepreneurship', category_name: 'Entrepreneurship' },
+    ],
     ai_clean_description: null,
     ai_fit_reasons: null,
     ai_pitch_angles: null,
@@ -184,6 +187,17 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
     expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
+    const podcastContext = within(screen.getByRole('region', { name: 'Podcast context' }))
+    expect(podcastContext.getByRole('heading', { name: 'Founder Stories' })).toBeInTheDocument()
+    expect(podcastContext.getByText('Example Media')).toBeInTheDocument()
+    expect(podcastContext.getByText('Conversations with company builders.')).toBeInTheDocument()
+    expect(podcastContext.getByText('24K')).toBeInTheDocument()
+    expect(podcastContext.getByText('4.8')).toBeInTheDocument()
+    expect(podcastContext.getByText('120')).toBeInTheDocument()
+    expect(podcastContext.getByText('Jul 20, 2026')).toBeInTheDocument()
+    expect(podcastContext.getByText('Business')).toBeInTheDocument()
+    expect(podcastContext.getByText(/This one looks great/)).toBeInTheDocument()
+    expect(podcastContext.getByRole('link', { name: 'Open show' })).toHaveAttribute('href', 'https://example.com/founder-stories')
     expect(screen.getByRole('heading', { name: 'Find the email' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Find email' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Research the podcast' })).not.toBeInTheDocument()
@@ -194,6 +208,7 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
 
     expect(screen.getByRole('heading', { name: 'Research the podcast' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Find email' })).not.toBeInTheDocument()
@@ -202,6 +217,7 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue to write pitch' }))
 
     expect(screen.getByRole('heading', { name: 'Write the pitch' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.getByLabelText('Opening email')).toBeInTheDocument()
     expect(screen.getByLabelText('Follow-up 1 email')).toBeInTheDocument()
     expect(screen.getByLabelText('Follow-up 2 email')).toBeInTheDocument()

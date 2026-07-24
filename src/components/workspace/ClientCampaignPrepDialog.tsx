@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, FileSearch, Loader2, Mail, RefreshCw, Search, Send, Sparkles } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ExternalLink,
+  FileSearch,
+  Loader2,
+  Mail,
+  Radio,
+  RefreshCw,
+  Search,
+  Send,
+  Sparkles,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -60,6 +74,23 @@ function fieldComplete(value: string): boolean {
   return Boolean(value.trim())
 }
 
+function compactNumber(value: number | null | undefined): string {
+  if (!value) return '—'
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+}
+
+function formatPodcastDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)
+}
+
 export function ClientCampaignPrepDialog({
   open,
   onOpenChange,
@@ -93,6 +124,7 @@ export function ClientCampaignPrepDialog({
   ))
   const mappedCampaign = Boolean(campaign?.instantly_campaign_id)
   const podcastUrl = safeExternalUrl(podcast?.podcast_url)
+  const podcastImageUrl = safeExternalUrl(podcast?.podcast_image_url)
   const fitReasons = podcast?.ai_fit_reasons || []
   const pitchAngles = podcast?.ai_pitch_angles || []
 
@@ -209,6 +241,49 @@ export function ClientCampaignPrepDialog({
             </div>
           ) : podcast ? (
             <div>
+              <div className="border-b bg-muted/10 px-5 py-4 sm:px-6">
+                <section aria-labelledby="pitch-podcast-context-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                  <div className="flex flex-col gap-4 p-4 sm:flex-row sm:p-5">
+                    <div className="flex min-w-0 flex-1 gap-4">
+                      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted shadow-sm">
+                        {podcastImageUrl
+                          ? <img src={podcastImageUrl} alt="" className="h-full w-full object-cover" />
+                          : <Radio className="h-7 w-7 text-muted-foreground/60" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p id="pitch-podcast-context-heading" className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Podcast context</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <h3 className="text-lg font-semibold leading-tight">{podcast.podcast_name}</h3>
+                          <span className="text-muted-foreground" aria-hidden="true">·</span>
+                          <p className="text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>
+                        </div>
+                        <p className="mt-2 line-clamp-2 max-w-2xl text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No podcast description is available yet.'}</p>
+                        {podcast.podcast_categories && podcast.podcast_categories.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {podcast.podcast_categories.slice(0, 3).map((category) => <Badge key={category.category_id} variant="secondary" className="font-normal">{category.category_name}</Badge>)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {podcastUrl && <Button asChild variant="outline" size="sm" className="shrink-0"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
+                  </div>
+
+                  <div className="grid grid-cols-2 border-t bg-muted/15 sm:grid-cols-4">
+                    <div className="border-b border-r px-4 py-3 sm:border-b-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Est. audience</p><p className="mt-1 text-sm font-semibold">{compactNumber(podcast.audience_size)}</p></div>
+                    <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Apple rating</p><p className="mt-1 text-sm font-semibold">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
+                    <div className="border-r px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episodes</p><p className="mt-1 text-sm font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
+                    <div className="px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Latest episode</p><p className="mt-1 text-sm font-semibold">{formatPodcastDate(podcast.last_posted_at)}</p></div>
+                  </div>
+
+                  {podcast.feedback_notes && (
+                    <div className="flex gap-3 border-t border-emerald-100 bg-emerald-50/60 px-4 py-3 sm:px-5">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                      <p className="text-sm leading-5 text-emerald-950"><span className="font-semibold">Client note:</span> “{podcast.feedback_notes}”</p>
+                    </div>
+                  )}
+                </section>
+              </div>
+
               <nav aria-label="Pitch workflow steps" className="grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6">
                 {pitchSteps.map((item) => {
                   const active = activeStep === item.id
@@ -254,9 +329,8 @@ export function ClientCampaignPrepDialog({
 
               {activeStep === 'research' && (
                 <div className="p-5 sm:p-6">
-                  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="mb-5">
                     <div><Badge variant="secondary">Step 2</Badge><h3 className="mt-2 text-xl font-semibold">Research the podcast</h3><p className="mt-1 text-sm text-muted-foreground">Focus only on the show, its audience, recent episodes, and the strongest guest angle.</p></div>
-                    {podcastUrl && <Button asChild variant="outline"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
                   </div>
                   <div className="grid gap-5 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
                     <div className="space-y-5 rounded-2xl border bg-muted/15 p-5">
