@@ -250,7 +250,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Research this podcast' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Research and Pitch' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Review the pitch and follow-ups' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
@@ -272,7 +272,7 @@ describe('ClientShortlistEditor', () => {
     expect(continueButton).toBeEnabled()
     fireEvent.click(continueButton)
 
-    expect(screen.getByRole('heading', { name: 'Research this podcast' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
     expect(screen.getByText('Included with your plan')).toBeInTheDocument()
     expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument()
     const researchStepsButton = screen.getByRole('button', { name: 'View steps' })
@@ -310,7 +310,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByLabelText('Follow-up 1 subject')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Follow-up 2 subject')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Research this podcast' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Research and Pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this modal/i)).toBeInTheDocument()
 
@@ -416,7 +416,7 @@ describe('ClientShortlistEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate with prompts' }))
 
-    expect(screen.getByRole('heading', { name: 'Research this podcast' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
     expect(screen.getByText('Reading the podcast profile · 0 of 6 prompts complete')).toBeInTheDocument()
     expect(screen.getByText(/Running the saved workspace prompt for stage 1/i)).toBeInTheDocument()
     const researchProgress = within(screen.getByRole('list', { name: 'Podcast research progress' }))
