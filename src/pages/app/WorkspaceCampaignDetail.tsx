@@ -12,11 +12,8 @@ import {
   Mail,
   MessageSquare,
   Mic2,
-  Plus,
   Pause,
   Play,
-  RefreshCw,
-  Search,
   Send,
   Settings2,
   Sparkles,
@@ -51,11 +48,9 @@ import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clie
 import { getWorkspaceClientDetail } from '@/services/clients'
 import {
   getWorkspaceCampaign,
-  launchWorkspaceCampaignPitch,
   saveWorkspaceCampaign,
   saveWorkspaceCampaignPitch,
   setWorkspaceCampaignRunning,
-  syncWorkspaceCampaign,
   updateWorkspaceCampaignContact,
   updateWorkspaceCampaignSettings,
   type WorkspaceCampaignTarget,
@@ -63,21 +58,11 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-type PitchFilter = 'all' | 'ready' | 'in-outreach' | 'replied' | 'completed' | 'attention'
 type PitchStage = 'ready' | 'launching' | 'in-outreach' | 'replied' | 'failed' | 'completed'
 
 interface WorkspaceCampaignDetailProps {
   platformWorkspaceId?: string
 }
-
-const pitchFilters: Array<{ value: PitchFilter; label: string }> = [
-  { value: 'all', label: 'All podcasts' },
-  { value: 'ready', label: 'Ready to launch' },
-  { value: 'in-outreach', label: 'In outreach' },
-  { value: 'replied', label: 'Replied' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'attention', label: 'Needs attention' },
-]
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return 'Not yet'
@@ -103,7 +88,7 @@ function targetWasSentToCampaign(target: WorkspaceCampaignTarget): boolean {
 
 function stageLabel(stage: PitchStage): string {
   const labels: Record<PitchStage, string> = {
-    ready: 'Ready to launch',
+    ready: 'Ready for outreach',
     launching: 'Launching',
     'in-outreach': 'In outreach',
     replied: 'Replied',
@@ -199,7 +184,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     podcast.visibility === 'visible'
     && persistedPodcastIds.has(podcast.id)
   )), [data?.shortlist.podcasts, persistedPodcastIds])
-  const [pitchFilter, setPitchFilter] = useState<PitchFilter>('all')
   const [selectedPodcastId, setSelectedPodcastId] = useState<string | null>(null)
   const [subjectDraft, setSubjectDraft] = useState('')
   const [pitchDraft, setPitchDraft] = useState('')
@@ -268,22 +252,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The podcast contact could not be saved.'),
   })
-  const launchPitchMutation = useMutation({
-    mutationFn: launchWorkspaceCampaignPitch,
-    onSuccess: async () => {
-      await refreshCampaignData()
-      toast.success('Pitch approved and added to the live Instantly campaign.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Outreach could not be started.'),
-  })
-  const syncMutation = useMutation({
-    mutationFn: () => syncWorkspaceCampaign(workspaceId, clientId),
-    onSuccess: async () => {
-      await refreshCampaignData()
-      toast.success('Campaign activity synced from Instantly.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The campaign could not be synced.'),
-  })
   const runningMutation = useMutation({
     mutationFn: (running: boolean) => setWorkspaceCampaignRunning(workspaceId, clientId, running),
     onMutate: (running) => setCampaignRunningPreview(running),
@@ -320,21 +288,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Campaign settings could not be saved.'),
   })
-
-  const matchesPitchFilter = (podcast: ClientShortlistPodcast, filter: PitchFilter): boolean => {
-    const target = targetByShortlistId.get(podcast.id)
-    const stage = pitchStage(target)
-    if (filter === 'all') return true
-    if (filter === 'in-outreach') return stage === 'in-outreach' || stage === 'launching'
-    if (filter === 'attention') return stage === 'failed'
-    return stage === filter
-  }
-  const filteredPodcasts = campaignPodcasts.filter((podcast) => {
-    return matchesPitchFilter(podcast, pitchFilter)
-  })
-  const filterCount = (filter: PitchFilter): number => {
-    return campaignPodcasts.filter((podcast) => matchesPitchFilter(podcast, filter)).length
-  }
 
   if (!isPlatformWorkspace && !workspace) {
     return <WorkspaceLayout><Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>Your account does not have an active workspace.</CardDescription></CardHeader></Card></WorkspaceLayout>
@@ -421,15 +374,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     && contactDraftDirty
     && contactEmailValid
   const canSaveSelectedPitch = canManageCampaign && Boolean(selectedPodcast) && !selectedPitchLocked
-  const canLaunchSelectedPitch = canSaveSelectedPitch
-    && Boolean(integration?.connected)
-    && Boolean(selectedContactEmail)
-    && !contactDraftDirty
-    && Boolean(campaign?.sender_accounts.length)
-    && Boolean(subjectDraft.trim())
-    && Boolean(pitchDraft.trim())
-    && Boolean(followUpOneBodyDraft.trim())
-    && Boolean(followUpTwoBodyDraft.trim())
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
@@ -456,13 +400,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             <p className="mt-2 text-sm text-muted-foreground">Podcast outreach with a custom reviewed pitch for every show</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {campaign?.instantly_campaign_id && campaignState?.can_manage_campaigns && (
-              <Button variant="outline" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />Sync Instantly
-              </Button>
-            )}
             <Button asChild variant="outline"><Link to={clientHref}><UserRound className="mr-2 h-4 w-4" />Open client</Link></Button>
-            <Button asChild variant={canManageCampaign ? 'default' : 'outline'}><Link to={finderHref}>{canManageCampaign ? <Plus className="mr-2 h-4 w-4" /> : <Search className="mr-2 h-4 w-4" />}{canManageCampaign ? 'Write pitches' : 'Open podcasts'}</Link></Button>
           </div>
         </header>
 
@@ -479,23 +417,6 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
           <TabsContent value="leads" className="mt-0 space-y-4">
             <Card className="overflow-hidden">
-              <div className="border-b border-border bg-muted/15 p-4">
-                <div className="flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Campaign podcast filters">
-                    {pitchFilters.map((filter) => (
-                      <Button
-                        key={filter.value}
-                        type="button"
-                        size="sm"
-                        variant={pitchFilter === filter.value ? 'secondary' : 'ghost'}
-                        className="shrink-0"
-                        onClick={() => setPitchFilter(filter.value)}
-                      >
-                        {filter.label}<span className="ml-1.5 text-xs text-muted-foreground">{filterCount(filter.value)}</span>
-                      </Button>
-                    ))}
-                </div>
-              </div>
-
               {campaignPodcasts.length === 0 ? (
                 <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
                   <Mic2 className="h-9 w-9 text-muted-foreground/50" />
@@ -503,16 +424,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <p className="mt-1 max-w-md text-sm text-muted-foreground">A podcast appears here only after its finished sequence is sent from the Write Pitch modal.</p>
                   <Button asChild variant="outline" className="mt-4"><Link to={finderHref}>Open podcasts and write a pitch</Link></Button>
                 </div>
-              ) : filteredPodcasts.length === 0 ? (
-                <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
-                  <CheckCircle2 className="h-8 w-8 text-muted-foreground/50" />
-                  <h2 className="mt-3 font-semibold">Nothing needs this action</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Choose another pitch status.</p>
-                </div>
               ) : (
                 <>
                   <div className="space-y-2 p-3 md:hidden">
-                    {filteredPodcasts.map((podcast) => {
+                    {campaignPodcasts.map((podcast) => {
                       const target = targetByShortlistId.get(podcast.id)
                       const stage = pitchStage(target)
                       const contactEmail = target?.contact_email || podcast.podcast_email
@@ -520,7 +435,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         <button key={podcast.id} type="button" onClick={() => setSelectedPodcastId(podcast.id)} className="w-full rounded-xl border p-4 text-left hover:bg-muted/30">
                           <div className="flex items-start justify-between gap-3"><p className="font-semibold">{podcast.podcast_name}</p><Badge variant="outline" className={stageClass(stage)}>{stageLabel(stage)}</Badge></div>
                           <p className="mt-2 text-xs text-muted-foreground">{target?.host_name || podcast.publisher_name || 'Host not identified'} · {contactEmail || 'Contact needed'}</p>
-                          <p className="mt-3 text-sm font-medium text-primary">{stage === 'ready' ? 'Review & launch' : stage === 'failed' ? 'Review issue' : 'View outreach'}<ArrowRight className="ml-1 inline h-3.5 w-3.5" /></p>
+                          <p className="mt-3 text-sm font-medium text-primary">{stage === 'failed' ? 'View issue' : 'View sequence'}<ArrowRight className="ml-1 inline h-3.5 w-3.5" /></p>
                         </button>
                       )
                     })}
@@ -529,7 +444,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                     <Table>
                       <TableHeader><TableRow><TableHead className="min-w-64">Podcast</TableHead><TableHead className="min-w-48">Host / contact</TableHead><TableHead>Sequence</TableHead><TableHead>Outreach status</TableHead><TableHead>Last activity</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
                       <TableBody>
-                        {filteredPodcasts.map((podcast) => {
+                        {campaignPodcasts.map((podcast) => {
                           const target = targetByShortlistId.get(podcast.id)
                           const stage = pitchStage(target)
                           const contactEmail = target?.contact_email || podcast.podcast_email
@@ -541,7 +456,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                               <TableCell><Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">3 emails ready</Badge></TableCell>
                               <TableCell><Badge variant="outline" className={stageClass(stage)}>{stageLabel(stage)}</Badge></TableCell>
                               <TableCell><span className="text-sm text-muted-foreground">{formatDate(target?.last_activity_at || target?.updated_at || podcast.feedback_updated_at || podcast.updated_at)}</span></TableCell>
-                              <TableCell className="text-right"><Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => setSelectedPodcastId(podcast.id)}>{stage === 'ready' ? 'Review & launch' : stage === 'failed' ? 'Review issue' : 'View outreach'}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></TableCell>
+                              <TableCell className="text-right"><Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => setSelectedPodcastId(podcast.id)}>{stage === 'failed' ? 'View issue' : 'View sequence'}<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></TableCell>
                             </TableRow>
                           )
                         })}
@@ -594,7 +509,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>Synced activity</CardTitle><CardDescription>{campaign?.last_synced_at ? `Last synced ${formatDate(campaign.last_synced_at)}` : 'Sync after the first launch.'}</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Live activity</CardTitle><CardDescription>{campaign?.last_synced_at ? `Automatically synced · Updated ${formatDate(campaign.last_synced_at)}` : 'Automatically synced from Instantly after launch.'}</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Emails sent</span><strong>{campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{contactedCount}</strong></div>
@@ -696,13 +611,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               <SheetHeader className="border-b p-5 pr-12 sm:p-6 sm:pr-12">
                 <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={stageClass(pitchStage(selectedTarget || undefined))}>{stageLabel(pitchStage(selectedTarget || undefined))}</Badge><Badge variant="outline">{selectedPodcast.feedback_status === 'approved' ? 'Client positive' : 'Owner selected'}</Badge></div>
                 <SheetTitle className="text-2xl">{selectedPodcast.podcast_name}</SheetTitle>
-                <SheetDescription>Review the podcast context, confirm the contact, and prepare its custom pitch.</SheetDescription>
+                <SheetDescription>View or edit the saved contact and three-email outreach sequence.</SheetDescription>
               </SheetHeader>
 
               <div className="space-y-6 p-5 sm:p-6">
                 <section className="rounded-xl border p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Host contact</p><p className="mt-1 text-sm text-muted-foreground">Confirm who should receive this pitch before outreach starts.</p></div>
+                    <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Host contact</p><p className="mt-1 text-sm text-muted-foreground">The saved recipient for this campaign.</p></div>
                     {selectedContactEmail && !contactDraftDirty ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" /> : <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />}
                   </div>
                   {selectedPitchLocked || !canManageCampaign ? (
@@ -726,7 +641,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         {!contactEmailValid
                           ? <p className="text-xs text-destructive">Enter a valid email address.</p>
                           : contactDraftDirty
-                            ? <p className="text-xs text-amber-700">Save this contact before starting outreach.</p>
+                            ? <p className="text-xs text-amber-700">Save this contact to update the campaign.</p>
                             : <p className="text-xs text-muted-foreground">Contact details are saved only to this client campaign.</p>}
                       </div>
                     </div>
@@ -743,7 +658,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 )}
 
                 <section className="space-y-4">
-                  <div><h3 className="font-semibold">Three-email sequence</h3><p className="mt-1 text-sm text-muted-foreground">Review the opening pitch and both podcast-specific follow-ups before outreach starts.</p></div>
+                  <div><h3 className="font-semibold">Three-email sequence</h3><p className="mt-1 text-sm text-muted-foreground">The saved opening pitch and two podcast-specific follow-ups.</p></div>
                   <div className="space-y-3 rounded-xl border p-4">
                     <Badge variant="secondary">Email 1 · Opening pitch</Badge>
                     <div className="space-y-2"><Label htmlFor="pitch-subject">Subject line</Label><Input id="pitch-subject" value={subjectDraft} onChange={(event) => setSubjectDraft(event.target.value)} placeholder={`Podcast guest idea for ${selectedPodcast.podcast_name}`} disabled={!canManageCampaign || selectedPitchLocked} /></div>
@@ -759,33 +674,22 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   </div>
                   <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
                     {selectedPitchLocked
-                      ? 'This approved pitch is locked because outreach has started. Sync the campaign to update reply activity.'
+                      ? 'This sequence is locked because outreach has started. Reply activity updates automatically.'
                       : contactDraftDirty
-                        ? 'Save the host contact above before approving this pitch for outreach.'
-                      : !integration?.connected
-                        ? 'You can save this draft now. The workspace owner must connect Instantly before launch.'
-                        : !campaign?.sender_accounts.length
-                          ? 'Save the draft, then choose an active sending account in Campaign Settings before launch.'
-                          : 'Approval adds this podcast contact and its reviewed three-email sequence to the client’s live Instantly campaign. Follow-ups stop automatically on reply.'}
+                        ? 'Save the host contact above to update this campaign.'
+                        : 'This sequence is ready for outreach. Launch or pause delivery for the entire campaign from Options.'}
                   </div>
                 </section>
               </div>
 
               <div className="sticky bottom-0 flex flex-col gap-2 border-t bg-background/95 p-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">{selectedTarget?.last_error || (selectedPitchLocked ? `Outreach started ${formatDate(selectedTarget?.launched_at)}` : 'Saving a draft never sends email.')}</p>
+                <p className="text-xs text-muted-foreground">{selectedTarget?.last_error || (selectedPitchLocked ? `Outreach started ${formatDate(selectedTarget?.launched_at)}` : 'Changes are saved to this campaign. Nothing sends from this panel.')}</p>
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
-                    disabled={!canSaveSelectedPitch || savePitchMutation.isPending || saveContactMutation.isPending || launchPitchMutation.isPending}
+                    disabled={!canSaveSelectedPitch || savePitchMutation.isPending || saveContactMutation.isPending}
                     onClick={() => savePitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: buildThreadReplySubject(subjectDraft), followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: buildThreadReplySubject(subjectDraft), followUpTwoBody: followUpTwoBodyDraft })}
                   >
-                    {savePitchMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save draft
-                  </Button>
-                  <Button
-                    disabled={!canLaunchSelectedPitch || launchPitchMutation.isPending || savePitchMutation.isPending || saveContactMutation.isPending}
-                    onClick={() => launchPitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: buildThreadReplySubject(subjectDraft), followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: buildThreadReplySubject(subjectDraft), followUpTwoBody: followUpTwoBodyDraft })}
-                  >
-                    {launchPitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Approve &amp; start outreach
+                    {savePitchMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save changes
                   </Button>
                 </div>
               </div>

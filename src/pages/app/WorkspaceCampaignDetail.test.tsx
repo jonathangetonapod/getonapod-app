@@ -18,11 +18,9 @@ vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
 vi.mock('@/services/workspaceCampaigns', () => ({
   getWorkspaceCampaign: vi.fn(),
-  launchWorkspaceCampaignPitch: vi.fn(),
   saveWorkspaceCampaign: vi.fn(),
   saveWorkspaceCampaignPitch: vi.fn(),
   setWorkspaceCampaignRunning: vi.fn(),
-  syncWorkspaceCampaign: vi.fn(),
   updateWorkspaceCampaignContact: vi.fn(),
   updateWorkspaceCampaignSettings: vi.fn(),
 }))
@@ -111,7 +109,7 @@ describe('WorkspaceCampaignDetail', () => {
     mockedRunning.mockResolvedValue({ ...activeCampaign, status: 'paused' })
   })
 
-  it('opens with campaign analytics and keeps the message workflow under Podcasts', async () => {
+  it('opens with campaign analytics and keeps the saved sequence under Podcasts', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Dallas Fontaine Podcast Outreach', level: 1 })).toBeInTheDocument()
@@ -121,15 +119,12 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Options' })).toBeInTheDocument()
     expect(screen.queryByText('Bookings')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /write pitches/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+    expect(screen.queryByRole('link', { name: /write pitches/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sync instantly/i })).not.toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Podcasts' }), { button: 0 })
-    expect(screen.getByRole('button', { name: /All podcasts\s*1/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Ready to launch\s*1/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /In outreach\s*0/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Replied\s*0/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Completed\s*0/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Needs attention\s*0/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Campaign podcast filters')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /All podcasts/i })).not.toBeInTheDocument()
     expect(screen.queryByText('Needs contact')).not.toBeInTheDocument()
     expect(screen.queryByText('Needs pitch')).not.toBeInTheDocument()
     expect(screen.queryByText(/Current wave|podcasts in view/i)).not.toBeInTheDocument()
@@ -142,7 +137,8 @@ describe('WorkspaceCampaignDetail', () => {
     const founderRow = within(table).getByText('Founder Show').closest('tr')
     expect(founderRow).not.toBeNull()
     expect(within(founderRow as HTMLElement).getByText('3 emails ready')).toBeInTheDocument()
-    fireEvent.click(within(founderRow as HTMLElement).getByRole('button', { name: /review & launch/i }))
+    expect(within(founderRow as HTMLElement).getByText('Ready for outreach')).toBeInTheDocument()
+    fireEvent.click(within(founderRow as HTMLElement).getByRole('button', { name: /view sequence/i }))
     expect(await screen.findByRole('heading', { name: 'Founder Show' })).toBeInTheDocument()
     expect(screen.getByText('Dallas has direct founder experience.')).toBeInTheDocument()
     expect(screen.getByLabelText('Subject line')).toBeEnabled()
@@ -153,8 +149,8 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.queryByLabelText('Follow-up 2 subject')).not.toBeInTheDocument()
     expect(screen.getByText(/reply in the original thread/i)).toBeInTheDocument()
     expect(screen.getByText(/reply in the same thread/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save draft' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /approve & start outreach/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /approve & start outreach/i })).not.toBeInTheDocument()
   })
 
   it('shows only podcasts sent through the Write Pitch modal', async () => {
