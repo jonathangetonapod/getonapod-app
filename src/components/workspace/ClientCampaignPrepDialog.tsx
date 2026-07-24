@@ -51,6 +51,7 @@ interface ClientCampaignPrepDialogProps {
 }
 
 type PitchStep = 'email' | 'research' | 'pitch'
+type EmailRoute = 'podcast' | 'waterfall'
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
   { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
@@ -104,6 +105,7 @@ export function ClientCampaignPrepDialog({
 }: ClientCampaignPrepDialogProps) {
   const queryClient = useQueryClient()
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
+  const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -125,6 +127,7 @@ export function ClientCampaignPrepDialog({
   const mappedCampaign = Boolean(campaign?.instantly_campaign_id)
   const podcastUrl = safeExternalUrl(podcast?.podcast_url)
   const podcastImageUrl = safeExternalUrl(podcast?.podcast_image_url)
+  const publicPodcastEmail = podcast?.podcast_email?.trim() || ''
   const fitReasons = podcast?.ai_fit_reasons || []
   const pitchAngles = podcast?.ai_pitch_angles || []
 
@@ -135,6 +138,7 @@ export function ClientCampaignPrepDialog({
   useEffect(() => {
     if (!open) {
       setActiveStep('email')
+      setEmailRoute('podcast')
       setSelectedAngleIndex(0)
       setHostName('')
       setContactEmail('')
@@ -145,8 +149,15 @@ export function ClientCampaignPrepDialog({
   useEffect(() => {
     if (!open || !podcast || campaignQuery.isLoading) return
     const initial = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio })
+    const savedContactEmail = target?.contact_email?.trim() || ''
     setHostName(target?.host_name || podcast.publisher_name || '')
-    setContactEmail(target?.contact_email || podcast.podcast_email || '')
+    setContactEmail(savedContactEmail || publicPodcastEmail)
+    setEmailRoute(
+      publicPodcastEmail
+      && (!savedContactEmail || savedContactEmail.toLowerCase() === publicPodcastEmail.toLowerCase())
+        ? 'podcast'
+        : 'waterfall',
+    )
     setDraft({
       researchNotes: target?.research_notes || initial.researchNotes,
       subject: target?.pitch_subject || initial.subject,
@@ -156,7 +167,7 @@ export function ClientCampaignPrepDialog({
       followUpTwoSubject: target?.follow_up_2_subject || initial.followUpTwoSubject,
       followUpTwoBody: target?.follow_up_2_body || initial.followUpTwoBody,
     })
-  }, [campaignQuery.isLoading, clientBio, clientName, open, podcast, target])
+  }, [campaignQuery.isLoading, clientBio, clientName, open, podcast, publicPodcastEmail, target])
 
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -304,23 +315,95 @@ export function ClientCampaignPrepDialog({
               </nav>
 
               {activeStep === 'email' && (
-                <div className="mx-auto max-w-3xl p-5 sm:p-8">
+                <div className="mx-auto max-w-4xl p-5 sm:p-8">
                   <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
                     <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex gap-3">
-                          <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
-                          <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">Identify the host, producer, or booking contact who reviews guest ideas for {podcast.podcast_name}.</p></div>
-                        </div>
-                        <Button type="button" className="shrink-0"><Search className="mr-2 h-4 w-4" />Find email</Button>
+                      <div className="flex gap-3">
+                        <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
+                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Choose the free public inbox already on file, or try a deeper waterfall search for the host's direct email.</p></div>
                       </div>
                     </div>
-                    <div className="space-y-5 p-5 sm:p-6">
+
+                    <div className="space-y-6 p-5 sm:p-6">
+                      <div>
+                        <p className="text-sm font-semibold">Choose an email path</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">You can use the basic address immediately or look for a more personal route that is more likely to earn a response.</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <button
+                            type="button"
+                            aria-label="Use free podcast email"
+                            aria-pressed={emailRoute === 'podcast'}
+                            disabled={!publicPodcastEmail}
+                            className={`relative flex min-h-64 flex-col rounded-2xl border p-5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${emailRoute === 'podcast' ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
+                            onClick={() => {
+                              setEmailRoute('podcast')
+                              setContactEmail(publicPodcastEmail)
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700"><Mail className="h-5 w-5" /></div>
+                              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">0 credits · Basic</Badge>
+                            </div>
+                            <h4 className="mt-4 font-semibold">Use the podcast email</h4>
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">Use the public address already stored with this podcast. It is fast and free, but may route to a general show inbox.</p>
+                            <div className="mt-4 rounded-xl border bg-background px-3 py-2.5">
+                              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Address on file</p>
+                              <p className="mt-1 truncate text-sm font-medium">{publicPodcastEmail || 'No public email found'}</p>
+                            </div>
+                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-muted-foreground">
+                              {emailRoute === 'podcast' && publicPodcastEmail ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <span className="h-4 w-4 rounded-full border" />}
+                              {publicPodcastEmail ? (emailRoute === 'podcast' ? 'Selected' : 'Use this email') : 'Unavailable for this show'}
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            aria-label="Try waterfall enrichment"
+                            aria-pressed={emailRoute === 'waterfall'}
+                            className={`relative flex min-h-64 flex-col rounded-2xl border p-5 text-left transition-all ${emailRoute === 'waterfall' ? 'border-violet-500 bg-violet-50/50 shadow-sm ring-1 ring-violet-200' : 'bg-background hover:border-violet-300 hover:bg-violet-50/20'}`}
+                            onClick={() => setEmailRoute('waterfall')}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700"><Search className="h-5 w-5" /></div>
+                              <div className="flex flex-col items-end gap-1.5">
+                                <Badge className="border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100">Recommended</Badge>
+                                <span className="text-[11px] font-semibold text-violet-800">1 credit on success</span>
+                              </div>
+                            </div>
+                            <h4 className="mt-4 font-semibold">Find the host's direct email</h4>
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">Run a waterfall search to identify the host and verify a work or personal address—the stronger route for reply potential.</p>
+                            <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
+                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host</span>
+                              <ArrowRight className="h-3 w-3 text-violet-400" />
+                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Match LinkedIn</span>
+                              <ArrowRight className="h-3 w-3 text-violet-400" />
+                              <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email</span>
+                            </div>
+                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">
+                              {emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border border-violet-300" />}
+                              {emailRoute === 'waterfall' ? 'Selected' : 'Try for a better contact'}
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+
+                      {emailRoute === 'waterfall' && (
+                        <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                          <div className="flex gap-3">
+                            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
+                            <div><p className="text-sm font-semibold text-violet-950">Waterfall selected · 1 credit on success</p><p className="mt-1 text-xs leading-5 text-violet-900/75">We will identify the host, match the right LinkedIn profile, and then verify the best available email. The public podcast inbox remains available as a fallback. No verified direct email means no credit is charged.</p></div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="border-t pt-5">
+                        <p className="text-sm font-semibold">Contact record</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Confirm or edit the person and best email before moving to research.</p>
+                      </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2"><Label htmlFor="campaign-host-name">Host or producer</Label><Input id="campaign-host-name" value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={500} placeholder="Host or booking contact" /></div>
                         <div className="space-y-2"><Label htmlFor="campaign-contact-email">Email</Label><Input id="campaign-contact-email" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} maxLength={254} placeholder="host@podcast.com" aria-invalid={!emailValid} />{!emailValid && <p className="text-xs text-destructive">Enter a valid email address or leave it blank.</p>}</div>
                       </div>
-                      <div className="rounded-xl border border-dashed bg-muted/20 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Places to check</p><p className="mt-2 text-sm leading-6 text-muted-foreground">Podcast website · episode notes · host profile · booking page · publisher contact</p></div>
                       <p className="text-xs text-muted-foreground">Contact details stay private to your workspace.</p>
                     </div>
                   </section>

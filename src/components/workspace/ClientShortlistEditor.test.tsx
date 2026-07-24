@@ -47,6 +47,7 @@ function podcast(overrides: Partial<ClientShortlistPodcast> = {}): ClientShortli
       { category_id: 'business', category_name: 'Business' },
       { category_id: 'entrepreneurship', category_name: 'Entrepreneurship' },
     ],
+    podcast_email: 'hello@founderstories.fm',
     ai_clean_description: null,
     ai_fit_reasons: null,
     ai_pitch_angles: null,
@@ -199,7 +200,21 @@ describe('ClientShortlistEditor', () => {
     expect(podcastContext.getByText(/This one looks great/)).toBeInTheDocument()
     expect(podcastContext.getByRole('link', { name: 'Open show' })).toHaveAttribute('href', 'https://example.com/founder-stories')
     expect(screen.getByRole('heading', { name: 'Find the email' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Find email' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use free podcast email' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('hello@founderstories.fm')).toBeInTheDocument()
+    expect(screen.getByText('0 credits · Basic')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText('1 credit on success')).toBeInTheDocument()
+    expect(screen.getByText(/stronger route for reply potential/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Waterfall enrichment plan')).toBeInTheDocument()
+    expect(screen.getByText('Identify host')).toBeInTheDocument()
+    expect(screen.getByText('Match LinkedIn')).toBeInTheDocument()
+    expect(screen.getByText('Verify email')).toBeInTheDocument()
+    expect(screen.getByText(/No verified direct email means no credit is charged/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Email')).toHaveValue('hello@founderstories.fm')
     expect(screen.queryByRole('heading', { name: 'Research the podcast' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Write the pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
@@ -211,7 +226,8 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Find email' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use free podcast email' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try waterfall enrichment' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue to write pitch' }))
