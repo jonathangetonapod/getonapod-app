@@ -59,11 +59,28 @@ interface ClientCampaignPrepDialogProps {
 
 type PitchStep = 'email' | 'research' | 'pitch'
 type EmailRoute = 'podcast' | 'waterfall' | 'manual'
+type ResearchProgressStatus = 'complete' | 'active' | 'queued'
+
+interface ResearchProgressStep {
+  id: string
+  title: string
+  detail: string
+  status: ResearchProgressStatus
+}
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
   { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
   { id: 'research', step: '2', title: 'Research', detail: 'Understand the show and audience' },
   { id: 'pitch', step: '3', title: 'Write pitch', detail: 'Prepare the pitch and follow-ups' },
+]
+
+const researchProgressSteps: ResearchProgressStep[] = [
+  { id: 'podcast', title: 'Reading the podcast profile', detail: 'Show focus, format, and positioning', status: 'complete' },
+  { id: 'host', title: 'Confirming the host', detail: 'Background and interview approach', status: 'complete' },
+  { id: 'episodes', title: 'Reviewing recent episodes', detail: 'Themes, questions, and timely references', status: 'complete' },
+  { id: 'guests', title: 'Checking guest patterns', detail: 'Guest format and recent conversations', status: 'complete' },
+  { id: 'fit', title: 'Matching guest expertise', detail: 'Audience needs and credible fit', status: 'complete' },
+  { id: 'angles', title: 'Preparing pitch angles', detail: 'Primary topic and useful alternatives', status: 'complete' },
 ]
 
 function emptyDraft(): PodcastCampaignSequenceDraft {
@@ -115,6 +132,7 @@ export function ClientCampaignPrepDialog({
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
   const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
   const [showPodcastStats, setShowPodcastStats] = useState(false)
+  const [showResearchSteps, setShowResearchSteps] = useState(false)
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -149,6 +167,7 @@ export function ClientCampaignPrepDialog({
       setActiveStep('email')
       setEmailRoute('podcast')
       setShowPodcastStats(false)
+      setShowResearchSteps(false)
       setSelectedAngleIndex(0)
       setHostName('')
       setContactEmail('')
@@ -493,12 +512,44 @@ export function ClientCampaignPrepDialog({
                         </div>
                       </div>
 
-                      <div className="mt-5 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex gap-3">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-                          <div><p className="text-sm font-semibold text-emerald-950">Research ready</p><p className="mt-1 text-xs leading-5 text-emerald-900/75">The research is saved to this podcast and will still be here when you return.</p></div>
+                      <div className="mt-5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/70">
+                        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex gap-3">
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                            <div><p className="text-sm font-semibold text-emerald-950">Research ready · 6 of 6 steps complete</p><p className="mt-1 text-xs leading-5 text-emerald-900/75">The research is saved to this podcast and will still be here when you return.</p></div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+                            <p className="hidden text-xs font-medium text-emerald-800 lg:block">{podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'}</p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="border-emerald-200 bg-background text-emerald-900 hover:bg-emerald-100 hover:text-emerald-950"
+                              aria-expanded={showResearchSteps}
+                              aria-controls="campaign-research-progress-steps"
+                              onClick={() => setShowResearchSteps((current) => !current)}
+                            >
+                              {showResearchSteps ? 'Hide steps' : 'View steps'}
+                              <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showResearchSteps ? 'rotate-180' : ''}`} />
+                            </Button>
+                          </div>
                         </div>
-                        <p className="shrink-0 text-xs font-medium text-emerald-800">{podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'}</p>
+
+                        {showResearchSteps && (
+                          <div id="campaign-research-progress-steps" className="border-t border-emerald-200/80 bg-background/80">
+                            <ol aria-label="Podcast research progress" className="grid gap-px bg-emerald-100 sm:grid-cols-2 lg:grid-cols-3">
+                              {researchProgressSteps.map((step) => (
+                                <li key={step.id} className="flex gap-3 bg-background p-4">
+                                  {step.status === 'complete' && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}
+                                  {step.status === 'active' && <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />}
+                                  {step.status === 'queued' && <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-muted-foreground/25" />}
+                                  <div><p className="text-xs font-semibold text-foreground">{step.title}</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p></div>
+                                </li>
+                              ))}
+                            </ol>
+                            <div className="flex gap-2 border-t px-4 py-3 text-[11px] leading-4 text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" /><p>While research is running, you can safely close this window and return without losing progress.</p></div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
