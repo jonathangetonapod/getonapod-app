@@ -11,13 +11,16 @@ import {
   ExternalLink,
   FileSearch,
   Loader2,
+  Lightbulb,
   Mail,
+  Mic2,
   Radio,
   RefreshCw,
   Search,
   Send,
   PenLine,
   Sparkles,
+  Users,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -475,18 +478,79 @@ export function ClientCampaignPrepDialog({
               )}
 
               {activeStep === 'research' && (
-                <div className="p-5 sm:p-6">
-                  <div className="mb-5">
-                    <div><Badge variant="secondary">Step 2</Badge><h3 className="mt-2 text-xl font-semibold">Research the podcast</h3><p className="mt-1 text-sm text-muted-foreground">Focus only on the show, its audience, recent episodes, and the strongest guest angle.</p></div>
-                  </div>
-                  <div className="grid gap-5 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
-                    <div className="space-y-5 rounded-2xl border bg-muted/15 p-5">
-                      <section><div className="flex items-center gap-2"><FileSearch className="h-4 w-4 text-primary" /><h4 className="font-semibold">Show brief</h4></div><p className="mt-3 text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'Add what you learn about the show, host, audience, and recent episodes.'}</p></section>
-                      {fitReasons.length > 0 && <section><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why it fits</p><ul className="mt-2 space-y-2 text-sm">{fitReasons.slice(0, 4).map((reason) => <li key={reason} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>{reason}</span></li>)}</ul></section>}
-                      {pitchAngles.length > 0 && <section><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Choose the lead angle</p><div className="mt-2 space-y-2">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedAngleIndex === index ? 'border-primary bg-primary/5' : 'bg-background hover:border-primary/40'}`} onClick={() => setSelectedAngleIndex(index)}><p className="text-sm font-semibold">{angle.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{angle.description}</p></button>)}</div></section>}
+                <div className="mx-auto max-w-5xl p-5 sm:p-8">
+                  <section aria-labelledby="campaign-research-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                    <div className="border-b bg-gradient-to-br from-sky-50 via-primary/5 to-background p-5 sm:p-6">
+                      <div className="flex gap-3">
+                        <div className="h-fit rounded-xl bg-sky-100 p-2.5 text-sky-700"><FileSearch className="h-5 w-5" /></div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">Step 2</Badge>
+                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800"><CheckCircle2 className="mr-1 h-3 w-3" />Included with your plan</Badge>
+                          </div>
+                          <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Research this podcast</h3>
+                          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Review the show, its audience, and the strongest reasons to feature {clientName} before choosing the angle for the pitch.</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex gap-3">
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                          <div><p className="text-sm font-semibold text-emerald-950">Research ready</p><p className="mt-1 text-xs leading-5 text-emerald-900/75">The research is saved to this podcast and will still be here when you return.</p></div>
+                        </div>
+                        <p className="shrink-0 text-xs font-medium text-emerald-800">{podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'}</p>
+                      </div>
                     </div>
-                    <section className="rounded-2xl border bg-background p-5"><Label htmlFor="campaign-research-notes" className="text-base font-semibold">Research notes</Label><p className="mt-1 text-xs text-muted-foreground">Capture recent episodes, host preferences, audience details, useful proof points, and angles to avoid.</p><Textarea id="campaign-research-notes" value={draft.researchNotes} onChange={(event) => updateDraft('researchNotes', event.target.value)} className="mt-4 min-h-80 resize-y" maxLength={10_000} placeholder="Add focused podcast research here…" /></section>
-                  </div>
+
+                    <div className="space-y-5 p-5 sm:p-6">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,.75fr)]">
+                        <section className="rounded-2xl border bg-muted/10 p-5">
+                          <div className="flex items-center gap-2"><FileSearch className="h-4 w-4 text-primary" /><h4 className="font-semibold">Show overview</h4></div>
+                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No show overview has been saved yet.'}</p>
+                        </section>
+
+                        <section className="rounded-2xl border bg-muted/10 p-5">
+                          <div className="flex items-center gap-2"><Mic2 className="h-4 w-4 text-primary" /><h4 className="font-semibold">Host and show</h4></div>
+                          <dl className="mt-4 space-y-3 text-sm">
+                            <div><dt className="text-xs text-muted-foreground">Host or publisher on record</dt><dd className="mt-1 font-medium">{podcast.publisher_name || 'Not identified yet'}</dd></div>
+                            <div><dt className="text-xs text-muted-foreground">Latest activity</dt><dd className="mt-1 font-medium">{formatPodcastDate(podcast.last_posted_at)}</dd></div>
+                          </dl>
+                        </section>
+                      </div>
+
+                      <section className="overflow-hidden rounded-2xl border">
+                        <div className="flex items-center gap-2 border-b bg-muted/15 px-5 py-4"><Users className="h-4 w-4 text-primary" /><h4 className="font-semibold">Audience snapshot</h4></div>
+                        <div className="grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                          <div className="px-5 py-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Estimated audience</p><p className="mt-1 text-lg font-semibold">{compactNumber(podcast.audience_size)}</p></div>
+                          <div className="px-5 py-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episode library</p><p className="mt-1 text-lg font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
+                          <div className="px-5 py-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Primary themes</p><div className="mt-2 flex flex-wrap gap-1.5">{podcast.podcast_categories?.length ? podcast.podcast_categories.slice(0, 3).map((category) => <Badge key={category.category_id} variant="secondary" className="font-normal">{category.category_name}</Badge>) : <span className="text-sm font-medium">—</span>}</div></div>
+                        </div>
+                      </section>
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <section className="rounded-2xl border p-5">
+                          <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /><h4 className="font-semibold">Why {clientName} fits</h4></div>
+                          {fitReasons.length > 0
+                            ? <ul className="mt-4 space-y-3 text-sm">{fitReasons.slice(0, 4).map((reason) => <li key={reason} className="flex gap-2.5 leading-6"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>{reason}</span></li>)}</ul>
+                            : <p className="mt-3 text-sm leading-6 text-muted-foreground">Fit findings will appear here after the podcast has been analyzed for {clientName}.</p>}
+                        </section>
+
+                        <section className="rounded-2xl border p-5">
+                          <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">Select the direction that should lead the outreach.</p>
+                          {pitchAngles.length > 0
+                            ? <div className="mt-4 space-y-2">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-pressed={selectedAngleIndex === index} className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => setSelectedAngleIndex(index)}><div className="flex gap-2.5"><span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selectedAngleIndex === index ? 'border-primary' : 'border-muted-foreground/40'}`}>{selectedAngleIndex === index && <span className="h-2 w-2 rounded-full bg-primary" />}</span><span><span className="block text-sm font-semibold">{angle.title}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{angle.description}</span></span></div></button>)}</div>
+                            : <p className="mt-3 text-sm leading-6 text-muted-foreground">Recommended angles will appear here once the podcast research is ready.</p>}
+                        </section>
+                      </div>
+
+                      <section className="rounded-2xl border bg-background p-5">
+                        <Label htmlFor="campaign-research-notes" className="text-base font-semibold">Additional research notes</Label>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Add anything the research should carry into the pitch, such as a recent episode, a host preference, a useful proof point, or an angle to avoid.</p>
+                        <Textarea id="campaign-research-notes" aria-label="Research notes" value={draft.researchNotes} onChange={(event) => updateDraft('researchNotes', event.target.value)} className="mt-4 min-h-44 resize-y" maxLength={10_000} placeholder="Add focused podcast research here…" />
+                      </section>
+                    </div>
+                  </section>
                 </div>
               )}
 
@@ -517,7 +581,7 @@ export function ClientCampaignPrepDialog({
                 {activeStep === 'email' && (emailReady
                   ? 'Email ready. Research is unlocked.'
                   : 'A valid email is required before you can continue to Research.')}
-                {activeStep === 'research' && 'This step is only for understanding the podcast and choosing the strongest angle.'}
+                {activeStep === 'research' && 'Research is included with your plan, saved to this podcast, and used to shape the pitch.'}
                 {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
               </p>
               <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
