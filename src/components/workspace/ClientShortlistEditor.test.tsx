@@ -184,9 +184,9 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
     expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '1. Research the podcast' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '2. Find the right contact' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '3. Prepare outreach' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '1. Find the email' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '2. Research the podcast' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '3. Write the pitch' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Find email' })).toBeInTheDocument()
     expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
     expect(screen.getByLabelText('Opening email')).toBeInTheDocument()
