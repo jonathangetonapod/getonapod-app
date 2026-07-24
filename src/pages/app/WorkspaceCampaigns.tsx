@@ -185,14 +185,11 @@ function campaignListMetrics(summary: CampaignSummary) {
   const progress = campaign && totalTargets > 0
     ? Math.min(100, Math.round((contacted / totalTargets) * 100))
     : null
-  const senderAccounts = campaign?.sender_accounts || []
   return {
     progress: summary.status === 'Completed' ? 100 : progress,
     sent: campaign?.analytics.emails_sent_count ?? 0,
     replies: campaign ? campaign.analytics.reply_count_unique : null,
     positiveReplies: campaign ? campaign.analytics.total_interested : null,
-    sender: senderAccounts[0] || null,
-    additionalSenders: Math.max(0, senderAccounts.length - 1),
   }
 }
 
@@ -624,7 +621,7 @@ const WorkspaceCampaigns = ({
                 return (
                   <Link key={summary.client.id} to={`${baseHref}/client-campaigns/${summary.client.id}`} className="block rounded-xl border p-4 transition-colors hover:bg-muted/30">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0"><p className="truncate font-semibold">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</p><p className="truncate text-xs text-muted-foreground">{summary.client.name}{metrics.sender ? ` · ${metrics.sender}` : ''}</p></div>
+                      <div className="min-w-0"><p className="truncate font-semibold">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</p><p className="truncate text-xs text-muted-foreground">{summary.client.name}</p></div>
                       {summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CampaignStatusBadge status={summary.status} />}
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -645,7 +642,6 @@ const WorkspaceCampaigns = ({
                   <TableRow>
                     <TableHead className="min-w-64">Name</TableHead>
                     <TableHead className="min-w-44">Client</TableHead>
-                    <TableHead className="min-w-48">Sender</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="min-w-36">Progress</TableHead>
                     <TableHead>Sent</TableHead>
@@ -663,7 +659,6 @@ const WorkspaceCampaigns = ({
                           <Link to={`${baseHref}/client-campaigns/${summary.client.id}`} className="font-semibold hover:text-primary hover:underline">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</Link>
                         </TableCell>
                         <TableCell><Link to={`${baseHref}/clients/${summary.client.id}`} className="text-sm font-medium text-muted-foreground hover:text-primary hover:underline">{summary.client.name}</Link></TableCell>
-                        <TableCell><p className="max-w-48 truncate text-sm font-medium">{metrics.sender || 'No sender selected'}</p>{metrics.additionalSenders > 0 && <p className="text-xs text-muted-foreground">+{metrics.additionalSenders} more</p>}</TableCell>
                         <TableCell>{summary.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : summary.error ? <Badge variant="destructive">Unavailable</Badge> : <CampaignStatusBadge status={summary.status} />}</TableCell>
                         <TableCell>{metrics.progress === null ? <span className="text-muted-foreground">—</span> : <div className="flex items-center gap-2"><Progress value={metrics.progress} className="h-1.5 w-20" aria-label={`${summary.client.name} campaign progress`} /><span className="text-sm font-medium">{metrics.progress}%</span></div>}</TableCell>
                         <TableCell>{metrics.sent.toLocaleString()}</TableCell>
