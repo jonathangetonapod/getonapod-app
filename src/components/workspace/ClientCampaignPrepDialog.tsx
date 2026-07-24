@@ -162,6 +162,8 @@ export function ClientCampaignPrepDialog({
   const publicPodcastEmail = podcast?.podcast_email?.trim() || ''
   const fitReasons = podcast?.ai_fit_reasons || []
   const pitchAngles = podcast?.ai_pitch_angles || []
+  const selectedPitchAngle = pitchAngles[selectedAngleIndex] || null
+  const sequenceOptionCount = Math.max(Math.min(pitchAngles.length, 3), 1)
   const researchProgress = podcast?.research_progress || null
   const visibleResearchSteps = useMemo(() => {
     const completedStages = new Set(researchProgress?.completed_stages || [])
@@ -391,6 +393,15 @@ export function ClientCampaignPrepDialog({
                         <div className="border-r px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episodes</p><p className="mt-1 text-sm font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
                         <div className="px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Latest episode</p><p className="mt-1 text-sm font-semibold">{formatPodcastDate(podcast.last_posted_at)}</p></div>
                       </div>
+
+                      {fitReasons.length > 0 && (
+                        <section aria-labelledby="pitch-podcast-fit-heading" className="border-t px-4 py-4 sm:px-5">
+                          <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /><h4 id="pitch-podcast-fit-heading" className="font-semibold">Why {clientName} fits</h4></div>
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            {fitReasons.slice(0, 4).map((reason) => <p key={reason} className="rounded-xl border bg-muted/10 p-3 text-sm leading-6 text-muted-foreground">{reason}</p>)}
+                          </div>
+                        </section>
+                      )}
 
                       {podcast.feedback_notes && (
                         <div className="flex gap-3 border-t border-emerald-100 bg-emerald-50/60 px-4 py-3 sm:px-5">
@@ -666,22 +677,13 @@ export function ClientCampaignPrepDialog({
                         </div>
                       </section>
 
-                      <div className="grid gap-4 lg:grid-cols-2">
-                        <section className="rounded-2xl border p-5">
-                          <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /><h4 className="font-semibold">Why {clientName} fits</h4></div>
-                          {fitReasons.length > 0
-                            ? <ul className="mt-4 space-y-3 text-sm">{fitReasons.slice(0, 4).map((reason) => <li key={reason} className="flex gap-2.5 leading-6"><span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>{reason}</span></li>)}</ul>
-                            : <p className="mt-3 text-sm leading-6 text-muted-foreground">Fit findings will appear here after the podcast has been analyzed for {clientName}.</p>}
-                        </section>
-
-                        <section className="rounded-2xl border p-5">
-                          <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
-                          <p className="mt-1 text-xs leading-5 text-muted-foreground">Select the direction that should lead the outreach.</p>
-                          {pitchAngles.length > 0
-                            ? <div className="mt-4 space-y-2">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-pressed={selectedAngleIndex === index} className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex gap-2.5"><span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selectedAngleIndex === index ? 'border-primary' : 'border-muted-foreground/40'}`}>{selectedAngleIndex === index && <span className="h-2 w-2 rounded-full bg-primary" />}</span><span><span className="block text-sm font-semibold">{angle.title}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{angle.description}</span></span></div></button>)}</div>
-                            : <p className="mt-3 text-sm leading-6 text-muted-foreground">Recommended angles will appear here once the podcast research is ready.</p>}
-                        </section>
-                      </div>
+                      <section className="rounded-2xl border p-5">
+                        <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Each direction creates its own opening pitch and two follow-ups. Select an option to compare the complete sequence below.</p>
+                        {pitchAngles.length > 0
+                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={editingSequencePreview} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
+                          : <p className="mt-3 text-sm leading-6 text-muted-foreground">Three complete sequence options will appear here once the podcast research is ready.</p>}
+                      </section>
 
                       {researchComplete && (
                         <section aria-labelledby="campaign-sequence-preview-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
@@ -689,8 +691,9 @@ export function ClientCampaignPrepDialog({
                             <div className="flex gap-3">
                               <div className="h-fit rounded-xl bg-violet-100 p-2.5 text-violet-700"><Send className="h-5 w-5" /></div>
                               <div>
-                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">{editingSequencePreview ? 'Editing' : 'Ready to review'}</Badge></div>
-                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{editingSequencePreview ? 'Make changes to any subject or email below, then save the sequence.' : 'Built from the selected research angle. Workspace owners can edit and save the complete sequence here.'}</p>
+                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">{editingSequencePreview ? 'Editing selected option' : 'Selected sequence'}</Badge></div>
+                                {selectedPitchAngle && <p className="mt-2 text-sm font-medium text-foreground">{selectedPitchAngle.title}</p>}
+                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{editingSequencePreview ? 'Make changes to this option, then save it as the workspace sequence.' : 'Compare the options above, then edit and save the sequence the workspace owner prefers.'}</p>
                               </div>
                             </div>
                             {canManageCampaigns ? editingSequencePreview ? (
@@ -731,11 +734,6 @@ export function ClientCampaignPrepDialog({
                         </section>
                       )}
 
-                      <section className="rounded-2xl border bg-background p-5">
-                        <Label htmlFor="campaign-research-notes" className="text-base font-semibold">Additional research notes</Label>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Add anything the research should carry into the pitch, such as a recent episode, a host preference, a useful proof point, or an angle to avoid.</p>
-                        <Textarea id="campaign-research-notes" aria-label="Research notes" value={draft.researchNotes} onChange={(event) => updateDraft('researchNotes', event.target.value)} className="mt-4 min-h-44 resize-y" maxLength={10_000} placeholder="Add focused podcast research here…" />
-                      </section>
                     </div>
                   </section>
                 </div>

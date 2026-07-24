@@ -202,7 +202,7 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
     expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
-    const podcastContext = within(screen.getByRole('region', { name: 'Podcast context' }))
+    const podcastContext = within(await screen.findByRole('region', { name: 'Podcast context' }))
     expect(podcastContext.getByRole('heading', { name: 'Founder Stories' })).toBeInTheDocument()
     expect(podcastContext.getByText('Example Media')).toBeInTheDocument()
     expect(podcastContext.queryByText('Conversations with company builders.')).not.toBeInTheDocument()
@@ -282,7 +282,6 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByRole('heading', { name: 'Show overview' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Host and show' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Audience snapshot' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Why Taylor Client fits' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Recommended pitch angles' })).toBeInTheDocument()
     const sequencePreview = within(screen.getByRole('region', { name: 'Pitch and follow-ups' }))
     expect(sequencePreview.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Guest idea for Founder Stories: Taylor Client')
@@ -290,7 +289,7 @@ describe('ClientShortlistEditor', () => {
     expect(sequencePreview.getByRole('article', { name: 'Second follow-up preview' })).toHaveTextContent('One last note')
     expect(sequencePreview.getByRole('button', { name: 'Edit outputs' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Use free podcast email' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Try waterfall enrichment' })).not.toBeInTheDocument()
@@ -325,6 +324,47 @@ describe('ClientShortlistEditor', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Write a pitch for Founder Stories' })).not.toBeInTheDocument())
 
     expect(screen.queryByRole('button', { name: 'Write Pitch for Operator Weekly' })).not.toBeInTheDocument()
+  })
+
+  it('keeps client fit in podcast context and offers three complete sequence directions', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValueOnce({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        ai_fit_reasons: [
+          'Taylor gives the audience a practical operating framework.',
+          'The client has credible experience for the show topic.',
+        ],
+        ai_pitch_angles: [
+          { title: 'Build a durable growth system', description: 'A practical operating playbook for founders.' },
+          { title: 'Turn complexity into momentum', description: 'How leaders simplify difficult growth decisions.' },
+          { title: 'Scale without adding chaos', description: 'Systems that keep a growing company focused.' },
+        ],
+      })],
+    })
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+
+    const podcastContext = within(await screen.findByRole('region', { name: 'Podcast context' }))
+    fireEvent.click(podcastContext.getByRole('button', { name: 'Show podcast stats' }))
+    expect(podcastContext.getByRole('heading', { name: 'Why Taylor Client fits' })).toBeInTheDocument()
+    expect(podcastContext.getByText('Taylor gives the audience a practical operating framework.')).toBeInTheDocument()
+    fireEvent.click(podcastContext.getByRole('button', { name: 'Hide podcast stats' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    expect(screen.queryByRole('heading', { name: 'Why Taylor Client fits' })).not.toBeInTheDocument()
+    expect(screen.getByText('Option 1 of 3')).toBeInTheDocument()
+    const firstOption = screen.getByRole('button', { name: 'Select sequence 1: Build a durable growth system' })
+    const secondOption = screen.getByRole('button', { name: 'Select sequence 2: Turn complexity into momentum' })
+    const thirdOption = screen.getByRole('button', { name: 'Select sequence 3: Scale without adding chaos' })
+    expect(firstOption).toHaveAttribute('aria-pressed', 'true')
+    expect(secondOption).toHaveAttribute('aria-pressed', 'false')
+    expect(thirdOption).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Build a durable growth system')
+
+    fireEvent.click(secondOption)
+    expect(secondOption).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Option 2 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Turn complexity into momentum')
   })
 
   it('lets a workspace manager edit and save all three outputs from the research result', async () => {
