@@ -205,7 +205,7 @@ describe('WorkspaceCampaigns', () => {
     expect(screen.queryByText(/Feb 16–22|podcasts in view|Current wave/i)).not.toBeInTheDocument()
   })
 
-  it('creates a real Instantly campaign from a client, selected accounts, and starting podcasts', async () => {
+  it('creates an empty Instantly campaign that receives podcasts only from Write Pitch', async () => {
     mockedOverview.mockResolvedValueOnce({ ...campaignOverview, integration: connectedIntegration })
     renderCampaigns()
 
@@ -220,17 +220,16 @@ describe('WorkspaceCampaigns', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Use active@example.com' }))
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
-    expect(await screen.findByRole('checkbox', { name: 'Select Founder Show' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Select Operator Stories' })).not.toBeChecked()
-    expect(screen.getByText('Client positive')).toBeInTheDocument()
-    expect(screen.getByText('Owner override')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Confirm the campaign' })).toBeInTheDocument()
+    expect(screen.getByText(/only after its sequence is finalized and sent from the Write Pitch modal/i)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select Founder Show' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /save & open campaign/i }))
     await waitFor(() => expect(mockedSaveCampaign).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId,
       clientId,
       senderAccounts: ['active@example.com'],
-      shortlistPodcastIds: ['shortlist-one'],
+      shortlistPodcastIds: [],
       providerCampaignId: null,
     })))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
@@ -265,13 +264,14 @@ describe('WorkspaceCampaigns', () => {
     expect(screen.getByText(`This exact Instantly campaign will be assigned to ${client.name}.`)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
-    await screen.findByRole('checkbox', { name: 'Select Founder Show' })
+    expect(await screen.findByRole('heading', { name: 'Confirm the campaign' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /save & open campaign/i }))
     await waitFor(() => expect(mockedSaveCampaign).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId,
       clientId,
       providerCampaignId: providerCampaign.id,
       senderAccounts: ['active@example.com'],
+      shortlistPodcastIds: [],
     })))
   })
 

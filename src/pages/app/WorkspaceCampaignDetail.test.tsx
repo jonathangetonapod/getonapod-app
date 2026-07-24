@@ -8,8 +8,10 @@ import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clie
 import { getWorkspaceClientDetail, type WorkspaceClientDetail } from '@/services/clients'
 import {
   getWorkspaceCampaign,
+  setWorkspaceCampaignRunning,
   updateWorkspaceCampaignContact,
   type WorkspaceCampaignDetailResponse,
+  type WorkspaceClientCampaign,
 } from '@/services/workspaceCampaigns'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
@@ -33,6 +35,7 @@ const mockedUseAuth = vi.mocked(useAuth)
 const mockedShortlist = vi.mocked(getClientShortlist)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
 const mockedCampaign = vi.mocked(getWorkspaceCampaign)
+const mockedRunning = vi.mocked(setWorkspaceCampaignRunning)
 const mockedUpdateContact = vi.mocked(updateWorkspaceCampaignContact)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
@@ -55,6 +58,15 @@ const podcasts = [
   },
 ] as ClientShortlistPodcast[]
 
+const sentTargets = [
+  {
+    id: 'target-one', shortlist_podcast_id: 'shortlist-one', podcast_id: 'podcast-one', podcast_name: 'Founder Show', podcast_url: 'https://founder.example.com', host_name: 'Jamie Host', contact_email: 'host@founder.example', selection_source: 'client_positive', wave_started_on: '2026-07-22', research_notes: null, pitch_subject: null, pitch_body: null, follow_up_1_subject: null, follow_up_1_body: null, follow_up_2_subject: null, follow_up_2_body: null, status: 'draft', instantly_lead_id: null, instantly_lead_status: null, email_open_count: 0, email_reply_count: 0, approved_at: null, launched_at: null, last_activity_at: null, last_error: null, created_at: '2026-07-22T00:00:00Z', updated_at: '2026-07-22T00:00:00Z',
+  },
+  {
+    id: 'target-two', shortlist_podcast_id: 'shortlist-two', podcast_id: 'podcast-two', podcast_name: 'Operator Stories', podcast_url: null, host_name: null, contact_email: null, selection_source: 'client_positive', wave_started_on: '2026-07-22', research_notes: null, pitch_subject: null, pitch_body: null, follow_up_1_subject: null, follow_up_1_body: null, follow_up_2_subject: null, follow_up_2_body: null, status: 'draft', instantly_lead_id: null, instantly_lead_status: null, email_open_count: 0, email_reply_count: 0, approved_at: null, launched_at: null, last_activity_at: null, last_error: null, created_at: '2026-07-22T00:00:00Z', updated_at: '2026-07-22T00:00:00Z',
+  },
+] as WorkspaceCampaignDetailResponse['targets']
+
 const campaignState = {
   integration: {
     connected: false,
@@ -72,8 +84,12 @@ const campaignState = {
   },
   can_manage_campaigns: true,
   campaign: null,
-  targets: [],
+  targets: sentTargets,
 } as WorkspaceCampaignDetailResponse
+
+const activeCampaign = {
+  id: 'campaign-one', workspace_id: workspaceId, client_id: clientId, name: 'Dallas Fontaine Podcast Outreach', status: 'active', instantly_campaign_id: 'instantly-one', instantly_campaign_status: 1, sender_accounts: ['active@example.com'], timezone: 'America/New_York', daily_limit: 30, analytics: { emails_sent_count: 0, contacted_count: 0, open_count_unique: 0, reply_count_unique: 0, bounced_count: 0, unsubscribed_count: 0, total_interested: 0, total_meeting_booked: 0 }, target_counts: { total: 2, needs_contact: 1, needs_pitch: 1, ready: 0, in_outreach: 0, replied: 0, failed: 0 }, target_shortlist_podcast_ids: ['shortlist-one', 'shortlist-two'], last_synced_at: null, last_error: null, created_at: '2026-07-22T00:00:00Z', updated_at: '2026-07-22T00:00:00Z',
+} as WorkspaceClientCampaign
 
 function renderPage(platformWorkspaceId?: string) {
   const base = platformWorkspaceId ? `/app/workspaces/${workspaceId}` : '/app'
@@ -94,6 +110,7 @@ describe('WorkspaceCampaignDetail', () => {
     mockedDetail.mockResolvedValue(detail)
     mockedShortlist.mockResolvedValue({ client: { id: clientId, name: 'Dallas Fontaine' }, podcasts })
     mockedCampaign.mockResolvedValue(campaignState)
+    mockedRunning.mockResolvedValue({ ...activeCampaign, status: 'paused' })
     mockedUpdateContact.mockResolvedValue({ id: 'target-two' } as never)
   })
 
@@ -107,7 +124,7 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Options' })).toBeInTheDocument()
     expect(screen.queryByText('Bookings')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /add podcasts/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+    expect(screen.getByRole('link', { name: /write pitches/i })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Podcasts' }), { button: 0 })
     expect(screen.getAllByText('Needs contact').length).toBeGreaterThan(0)
@@ -129,6 +146,16 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.getByText(/reply in the same thread/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save draft' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /approve & start outreach/i })).toBeDisabled()
+  })
+
+  it('shows only podcasts sent through the Write Pitch modal', async () => {
+    mockedCampaign.mockResolvedValueOnce({ ...campaignState, targets: [sentTargets[0]] })
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Podcasts' }), { button: 0 })
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('Founder Show')).toBeInTheDocument()
+    expect(within(table).queryByText('Operator Stories')).not.toBeInTheDocument()
   })
 
   it('uses the identical campaign workspace in a platform-selected workspace', async () => {
@@ -184,6 +211,38 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.getByText('paused@example.com')).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'Use active@example.com' })).toBeEnabled()
     expect(screen.getByRole('checkbox', { name: 'Use paused@example.com' })).toBeDisabled()
+  })
+
+  it('places campaign controls at the top and bottom of Options and swaps pause to resume', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+    mockedRunning.mockResolvedValueOnce({ ...activeCampaign, status: 'paused' })
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Options' }), { button: 0 })
+    const pauseButtons = screen.getAllByRole('button', { name: 'Pause Campaign' })
+    expect(pauseButtons).toHaveLength(2)
+    expect(pauseButtons[0]).toHaveClass('bg-destructive')
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeInTheDocument()
+
+    fireEvent.click(pauseButtons[0])
+    await waitFor(() => expect(mockedRunning).toHaveBeenCalledWith(workspaceId, clientId, false))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Resume Campaign' })).toHaveLength(2))
+  })
+
+  it('turns a draft campaign launch action into a red pause action', async () => {
+    const draftCampaign = { ...activeCampaign, status: 'draft' as const, instantly_campaign_status: 0 }
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: draftCampaign })
+    mockedRunning.mockResolvedValueOnce({ ...activeCampaign, status: 'active' })
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Options' }), { button: 0 })
+    const launchButtons = screen.getAllByRole('button', { name: 'Launch Campaign' })
+    expect(launchButtons).toHaveLength(1)
+    fireEvent.click(launchButtons[0])
+
+    await waitFor(() => expect(mockedRunning).toHaveBeenCalledWith(workspaceId, clientId, true))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Pause Campaign' })).toHaveLength(2))
+    expect(screen.getAllByRole('button', { name: 'Pause Campaign' })[0]).toHaveClass('bg-destructive')
   })
 
   it('explains that every podcast has a reviewed three-email sequence before Instantly sends it', async () => {

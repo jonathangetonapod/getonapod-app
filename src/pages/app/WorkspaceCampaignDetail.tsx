@@ -22,7 +22,7 @@ import {
   Sparkles,
   UserRound,
 } from 'lucide-react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
@@ -129,7 +129,6 @@ function Metric({ label, value, detail, icon: Icon }: { label: string; value: nu
 
 const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetailProps) => {
   const { clientId: routeClientId = '' } = useParams<{ clientId: string }>()
-  const [searchParams] = useSearchParams()
   const { user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const isPlatformWorkspace = platformWorkspaceId !== undefined
@@ -184,16 +183,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
       }
     : undefined
 
-  const queryPodcastIds = useMemo(() => new Set(
-    (searchParams.get('podcasts') || '').split(',').map((value) => value.trim()).filter(Boolean),
-  ), [searchParams])
   const persistedPodcastIds = useMemo(() => new Set(
     campaignTargets.map((target) => target.shortlist_podcast_id),
   ), [campaignTargets])
   const campaignPodcasts = useMemo(() => (data?.shortlist.podcasts || []).filter((podcast) => (
     podcast.visibility === 'visible'
-    && (podcast.feedback_status === 'approved' || queryPodcastIds.has(podcast.id) || persistedPodcastIds.has(podcast.id))
-  )), [data?.shortlist.podcasts, persistedPodcastIds, queryPodcastIds])
+    && persistedPodcastIds.has(podcast.id)
+  )), [data?.shortlist.podcasts, persistedPodcastIds])
   const [pitchFilter, setPitchFilter] = useState<PitchFilter>('all')
   const [selectedPodcastId, setSelectedPodcastId] = useState<string | null>(null)
   const [subjectDraft, setSubjectDraft] = useState('')
@@ -206,6 +202,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [settingsTimezone, setSettingsTimezone] = useState('America/New_York')
   const [settingsDailyLimit, setSettingsDailyLimit] = useState(30)
   const [settingsSenders, setSettingsSenders] = useState<Set<string>>(new Set())
+  const [campaignRunningPreview, setCampaignRunningPreview] = useState<boolean | null>(null)
 
   const selectedPodcast = campaignPodcasts.find((podcast) => podcast.id === selectedPodcastId) || null
   const selectedTarget = selectedPodcast ? targetByShortlistId.get(selectedPodcast.id) || null : null
@@ -280,11 +277,16 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   })
   const runningMutation = useMutation({
     mutationFn: (running: boolean) => setWorkspaceCampaignRunning(workspaceId, clientId, running),
-    onSuccess: async (_result, running) => {
+    onMutate: (running) => setCampaignRunningPreview(running),
+    onSuccess: async (result, running) => {
+      setCampaignRunningPreview(result.status === 'active')
       await refreshCampaignData()
-      toast.success(running ? 'Campaign resumed.' : 'Campaign paused.')
+      toast.success(running ? campaign?.status === 'draft' ? 'Campaign launched.' : 'Campaign resumed.' : 'Campaign paused.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Campaign status could not be changed.'),
+    onError: (error) => {
+      setCampaignRunningPreview(null)
+      toast.error(error instanceof Error ? error.message : 'Campaign status could not be changed.')
+    },
   })
   const settingsMutation = useMutation({
     mutationFn: async () => {
@@ -352,7 +354,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const clientHref = `${baseHref}/clients/${client.id}`
-  const campaignStatus = campaign?.status === 'attention'
+  const persistedCampaignStatus = campaign?.status === 'attention'
     ? 'Needs attention'
     : campaign?.status === 'active'
       ? 'Active'
@@ -369,6 +371,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 : campaignPodcasts.length > 0
                   ? 'Draft'
                   : 'Not started'
+  const campaignIsRunning = campaignRunningPreview ?? persistedCampaignStatus === 'Active'
+  const campaignStatus = campaignRunningPreview === null
+    ? persistedCampaignStatus
+    : campaignIsRunning ? 'Active' : 'Paused'
+  const campaignRunningAction = campaignIsRunning
+    ? 'Pause Campaign'
+    : persistedCampaignStatus === 'Draft' ? 'Launch Campaign' : 'Resume Campaign'
   const campaignStatusClass = campaignStatus === 'Active'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
     : campaignStatus === 'Needs attention'
@@ -445,7 +454,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               </Button>
             )}
             <Button asChild variant="outline"><Link to={clientHref}><UserRound className="mr-2 h-4 w-4" />Open client</Link></Button>
-            <Button asChild variant={canManageCampaign ? 'default' : 'outline'}><Link to={finderHref}>{canManageCampaign ? <Plus className="mr-2 h-4 w-4" /> : <Search className="mr-2 h-4 w-4" />}{canManageCampaign ? 'Add podcasts' : 'Open podcasts'}</Link></Button>
+            <Button asChild variant={canManageCampaign ? 'default' : 'outline'}><Link to={finderHref}>{canManageCampaign ? <Plus className="mr-2 h-4 w-4" /> : <Search className="mr-2 h-4 w-4" />}{canManageCampaign ? 'Write pitches' : 'Open podcasts'}</Link></Button>
           </div>
         </header>
 
@@ -483,8 +492,8 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
                   <Mic2 className="h-9 w-9 text-muted-foreground/50" />
                   <h2 className="mt-3 font-semibold">No podcasts in this campaign</h2>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">Add podcasts through Podcast Finder, then collect a positive client decision or explicitly select an owner override.</p>
-                  <Button asChild variant="outline" className="mt-4"><Link to={finderHref}>Open Podcast Finder</Link></Button>
+                  <p className="mt-1 max-w-md text-sm text-muted-foreground">A podcast appears here only after its finished sequence is sent from the Write Pitch modal.</p>
+                  <Button asChild variant="outline" className="mt-4"><Link to={finderHref}>Open podcasts and write a pitch</Link></Button>
                 </div>
               ) : filteredPodcasts.length === 0 ? (
                 <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
@@ -633,27 +642,41 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           </TabsContent>
 
           <TabsContent value="options" className="mt-0">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader><CardTitle>Campaign options</CardTitle><CardDescription>Manage this campaign’s identity and provider status.</CardDescription></CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2"><Label htmlFor="campaign-detail-name">Campaign name</Label><Input id="campaign-detail-name" value={settingsName} onChange={(event) => setSettingsName(event.target.value)} disabled={!canManageCampaign} /></div>
-                  <div className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">Campaign status</p><p className="text-xs text-muted-foreground">Synced from Instantly after launch.</p></div><Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge></div>
-                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{campaign ? 'Save options' : 'Create campaign draft'}</Button>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader><CardTitle>Accounts to use</CardTitle><CardDescription>Select the Instantly mailboxes assigned to this client campaign.</CardDescription></CardHeader>
-                <CardContent className="space-y-4">
-                  <InstantlyAccountPicker accounts={providerAccounts} connected={Boolean(integration?.connected)} selected={settingsSenders} onChange={setSettingsSenders} disabled={!canManageCampaign} />
-                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save accounts</Button>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div><h2 className="text-lg font-semibold">Campaign options</h2><p className="mt-1 text-sm text-muted-foreground">Update the campaign identity, sending accounts, and live status.</p></div>
+                {campaign?.instantly_campaign_id && canManageCampaign && (persistedCampaignStatus !== 'Draft' || campaignIsRunning) && (
+                  <Button variant={campaignIsRunning ? 'destructive' : 'default'} disabled={runningMutation.isPending} onClick={() => runningMutation.mutate(!campaignIsRunning)}>
+                    {runningMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : campaignIsRunning ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaignRunningAction}
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader><CardTitle>Campaign identity</CardTitle><CardDescription>Manage this campaign’s name and provider status.</CardDescription></CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2"><Label htmlFor="campaign-detail-name">Campaign name</Label><Input id="campaign-detail-name" value={settingsName} onChange={(event) => setSettingsName(event.target.value)} disabled={!canManageCampaign} /></div>
+                    <div className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">Campaign status</p><p className="text-xs text-muted-foreground">Updates immediately when the campaign is launched, paused, or resumed.</p></div><Badge variant="outline" className={campaignStatusClass}>{campaignStatus}</Badge></div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle>Accounts to use</CardTitle><CardDescription>Select the Instantly mailboxes assigned to this client campaign.</CardDescription></CardHeader>
+                  <CardContent><InstantlyAccountPicker accounts={providerAccounts} connected={Boolean(integration?.connected)} selected={settingsSenders} onChange={setSettingsSenders} disabled={!canManageCampaign} /></CardContent>
+                </Card>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border bg-muted/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="max-w-xl text-xs leading-5 text-muted-foreground">Save name and mailbox changes before changing campaign status. Pausing stops new sends; resuming continues the existing campaign.</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button variant="outline" disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save settings</Button>
                   {campaign?.instantly_campaign_id && canManageCampaign && (
-                    <Button variant="outline" disabled={runningMutation.isPending} onClick={() => runningMutation.mutate(campaign.status !== 'active')}>
-                      {campaign.status === 'active' ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaign.status === 'active' ? 'Pause campaign' : 'Resume campaign'}
+                    <Button variant={campaignIsRunning ? 'destructive' : 'default'} disabled={runningMutation.isPending} onClick={() => runningMutation.mutate(!campaignIsRunning)}>
+                      {runningMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : campaignIsRunning ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaignRunningAction}
                     </Button>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

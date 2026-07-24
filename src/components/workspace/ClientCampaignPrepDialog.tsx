@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -16,6 +16,7 @@ import {
   Mic2,
   Radio,
   RefreshCw,
+  Save,
   Search,
   Send,
   PenLine,
@@ -64,6 +65,7 @@ interface ClientCampaignPrepDialogProps {
 
 type PitchStep = 'email' | 'research' | 'pitch'
 type EmailRoute = 'podcast' | 'waterfall' | 'manual'
+type SequenceEmailStep = 'opening' | 'follow_up_one' | 'follow_up_two'
 type ResearchProgressStatus = 'complete' | 'active' | 'queued' | 'failed'
 type EmailUnlockVisualStatus = 'available' | 'queued' | 'running' | 'unlocked' | 'not_found' | 'failed'
 
@@ -85,8 +87,14 @@ interface ResearchRegenerationPreview {
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
   { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
-  { id: 'research', step: '2', title: 'Research', detail: 'Understand the show and audience' },
-  { id: 'pitch', step: '3', title: 'Write pitch', detail: 'Prepare the pitch and follow-ups' },
+  { id: 'research', step: '2', title: 'Research & pitch', detail: 'Generate and compare three sequences' },
+  { id: 'pitch', step: '3', title: 'Finalize pitch', detail: 'Edit and save the selected sequence' },
+]
+
+const sequenceEmailSteps: Array<{ id: SequenceEmailStep; email: string; title: string; timing: string; detail: string }> = [
+  { id: 'opening', email: 'Email 1', title: 'Opening pitch', timing: 'Day 0', detail: 'Starts the outreach' },
+  { id: 'follow_up_one', email: 'Email 2', title: 'Follow-up', timing: 'Day 3', detail: 'Replies in the same thread' },
+  { id: 'follow_up_two', email: 'Email 3', title: 'Close the loop', timing: 'Day 8', detail: 'Final same-thread reply' },
 ]
 
 const researchProgressSteps: ResearchProgressStep[] = [
@@ -174,12 +182,12 @@ export function ClientCampaignPrepDialog({
   const [selectedPromptStageId, setSelectedPromptStageId] = useState<ClientShortlistResearchStageId>('podcast_profile')
   const [researchPrompts, setResearchPrompts] = useState<Record<ClientShortlistResearchStageId, string>>({ ...defaultResearchPrompts })
   const [promptDraft, setPromptDraft] = useState(defaultResearchPrompts.podcast_profile)
-  const [editingSequencePreview, setEditingSequencePreview] = useState(false)
-  const [sequenceEditSnapshot, setSequenceEditSnapshot] = useState<PodcastCampaignSequenceDraft | null>(null)
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
+  const [activeSequenceEmail, setActiveSequenceEmail] = useState<SequenceEmailStep>('opening')
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [draft, setDraft] = useState<PodcastCampaignSequenceDraft>(emptyDraft)
+  const [savedDraft, setSavedDraft] = useState<PodcastCampaignSequenceDraft>(emptyDraft)
 
   const campaignQueryKey = ['client-campaign-preparation', workspaceId, clientId] as const
   const campaignQuery = useQuery({
@@ -291,12 +299,12 @@ export function ClientCampaignPrepDialog({
       setShowPodcastDetails(false)
       setShowResearchSteps(false)
       setShowPromptSettings(false)
-      setEditingSequencePreview(false)
-      setSequenceEditSnapshot(null)
       setSelectedAngleIndex(0)
+      setActiveSequenceEmail('opening')
       setHostName('')
       setContactEmail('')
       setDraft(emptyDraft())
+      setSavedDraft(emptyDraft())
     }
   }, [open])
 
@@ -320,7 +328,7 @@ export function ClientCampaignPrepDialog({
           : 'waterfall',
       )
     }
-    setDraft({
+    const nextDraft = {
       researchNotes: target?.research_notes || initial.researchNotes,
       subject: target?.pitch_subject || initial.subject,
       pitchBody: target?.pitch_body || initial.pitchBody,
@@ -328,7 +336,9 @@ export function ClientCampaignPrepDialog({
       followUpOneBody: target?.follow_up_1_body || initial.followUpOneBody,
       followUpTwoSubject: target?.follow_up_2_subject || initial.followUpTwoSubject,
       followUpTwoBody: target?.follow_up_2_body || initial.followUpTwoBody,
-    })
+    }
+    setDraft(nextDraft)
+    setSavedDraft(nextDraft)
   }, [campaignQuery.isLoading, clientBio, clientName, emailAlreadyUnlocked, emailSearchRunning, open, podcast, publicPodcastEmail, storedEmailUnlock?.host_name, target, unlockedEmail])
 
   useEffect(() => {
@@ -386,8 +396,6 @@ export function ClientCampaignPrepDialog({
       setShowPromptSettings(true)
       return
     }
-    setEditingSequencePreview(false)
-    setSequenceEditSnapshot(null)
     setShowPromptSettings(false)
     setShowResearchSteps(true)
     setActiveStep('research')
@@ -398,21 +406,13 @@ export function ClientCampaignPrepDialog({
     setSelectedAngleIndex(angleIndex)
     if (!podcast) return
     const nextDraft = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio, angleIndex })
-    setDraft((current) => ({
+    const selectedDraft = {
       ...nextDraft,
-      researchNotes: current.researchNotes || nextDraft.researchNotes,
-    }))
+      researchNotes: draft.researchNotes || nextDraft.researchNotes,
+    }
+    setDraft(selectedDraft)
+    setSavedDraft(selectedDraft)
   }
-  const beginSequencePreviewEdit = () => {
-    setSequenceEditSnapshot(draft)
-    setEditingSequencePreview(true)
-  }
-  const cancelSequencePreviewEdit = () => {
-    if (sequenceEditSnapshot) setDraft(sequenceEditSnapshot)
-    setSequenceEditSnapshot(null)
-    setEditingSequencePreview(false)
-  }
-
   const normalizedEmail = contactEmail.trim().toLowerCase()
   const emailReady = validEmail(normalizedEmail)
   const sequenceComplete = [
@@ -421,6 +421,18 @@ export function ClientCampaignPrepDialog({
     draft.followUpOneBody,
     draft.followUpTwoBody,
   ].every(fieldComplete)
+  const sequenceEmailReady: Record<SequenceEmailStep, boolean> = {
+    opening: fieldComplete(draft.subject) && fieldComplete(draft.pitchBody),
+    follow_up_one: fieldComplete(draft.followUpOneBody),
+    follow_up_two: fieldComplete(draft.followUpTwoBody),
+  }
+  const activeSequenceEmailStep = sequenceEmailSteps.find((step) => step.id === activeSequenceEmail) || sequenceEmailSteps[0]
+  const draftHasUnsavedEdits = (Object.keys(draft) as Array<keyof PodcastCampaignSequenceDraft>)
+    .some((field) => draft[field] !== savedDraft[field])
+  const saveDraftEdits = () => {
+    setSavedDraft({ ...draft })
+    toast.success('Pitch edits saved in this workspace.')
+  }
 
   const prepareMutation = useMutation({
     mutationFn: () => {
@@ -446,20 +458,19 @@ export function ClientCampaignPrepDialog({
         queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
       ])
       toast.success(result.added
-        ? `${podcast?.podcast_name || 'Podcast'} pitch draft is ready for outreach review.`
-        : `${podcast?.podcast_name || 'Podcast'} pitch draft was updated.`)
-      setEditingSequencePreview(false)
-      setSequenceEditSnapshot(null)
+        ? `${podcast?.podcast_name || 'Podcast'} was sent to Client Campaign.`
+        : `${podcast?.podcast_name || 'Podcast'} was updated in Client Campaign.`)
       onPrepared?.()
       onOpenChange(false)
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The pitch draft could not be saved.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The pitch could not be sent to Client Campaign.'),
   })
 
   const submitDisabled = !podcast
     || !mappedCampaign
     || locked
     || !sequenceComplete
+    || draftHasUnsavedEdits
     || prepareMutation.isPending
 
   return (
@@ -939,7 +950,7 @@ export function ClientCampaignPrepDialog({
                           </div>
                         )}
                         {pitchAngles.length > 0
-                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={editingSequencePreview || researchWorking} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{researchWorking ? 'Refreshing this sequence' : selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
+                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={researchWorking} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{researchWorking ? 'Refreshing this sequence' : selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
                           : <p className="mt-3 text-sm leading-6 text-muted-foreground">Three complete sequence options will appear here once the podcast research is ready.</p>}
                       </section>
 
@@ -949,43 +960,28 @@ export function ClientCampaignPrepDialog({
                             <div className="flex gap-3">
                               <div className="h-fit rounded-xl bg-violet-100 p-2.5 text-violet-700"><Send className="h-5 w-5" /></div>
                               <div>
-                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">{editingSequencePreview ? 'Editing selected option' : 'Selected sequence'}</Badge></div>
+                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">Selected sequence</Badge></div>
                                 {selectedPitchAngle && <p className="mt-2 text-sm font-medium text-foreground">{selectedPitchAngle.title}</p>}
-                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{editingSequencePreview ? 'Make changes to this option, then save it as the workspace sequence.' : 'Compare the options above, then edit and save the sequence the workspace owner prefers.'}</p>
+                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Read-only preview. Compare the options above, then continue to Finalize Pitch to edit and save the sequence you prefer.</p>
                               </div>
                             </div>
-                            {canManageCampaigns ? editingSequencePreview ? (
-                              <div className="flex shrink-0 flex-wrap gap-2">
-                                <Button type="button" variant="outline" size="sm" onClick={cancelSequencePreviewEdit}>Cancel edits</Button>
-                                <Button type="button" size="sm" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-2 h-3.5 w-3.5" />}Save changes</Button>
-                              </div>
-                            ) : (
-                              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={beginSequencePreviewEdit}><PenLine className="mr-2 h-3.5 w-3.5" />Edit outputs</Button>
-                            ) : <Badge variant="secondary">Read only</Badge>}
                           </div>
-
-                          {editingSequencePreview && !mappedCampaign && (
-                            <div className="flex flex-col gap-3 border-b border-amber-200 bg-amber-50/70 px-5 py-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
-                              <p className="text-xs leading-5">You can edit the sequence now. Assign the client campaign before saving it for outreach.</p>
-                              <Button asChild variant="outline" size="sm" className="shrink-0 bg-background"><Link to={campaignHref}>Campaign setup</Link></Button>
-                            </div>
-                          )}
 
                           <div className="space-y-4 p-5">
                             <article aria-label="Opening pitch preview" className="rounded-xl border bg-muted/10 p-4">
                               <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 1 · Opening pitch</Badge><span className="text-[11px] font-medium text-muted-foreground">Sends first</span></div>
-                              {editingSequencePreview ? <div className="mt-4 space-y-3"><div className="space-y-2"><Label htmlFor="campaign-preview-pitch-subject">Subject</Label><Input id="campaign-preview-pitch-subject" aria-label="Opening pitch subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-preview-pitch-body">Email</Label><Textarea id="campaign-preview-pitch-body" aria-label="Opening pitch email" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y bg-background" maxLength={20_000} /></div></div> : <><p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p></>}
+                              <p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p>
                             </article>
 
                             <div className="grid gap-4 lg:grid-cols-2">
                               <article aria-label="First follow-up preview" className="rounded-xl border p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">3 days later · Same thread</span></div>
-                                {editingSequencePreview ? <div className="mt-4 space-y-2"><Label htmlFor="campaign-preview-follow-up-one-body">Reply</Label><Textarea id="campaign-preview-follow-up-one-body" aria-label="First follow-up email" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>}
+                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>
                               </article>
 
                               <article aria-label="Second follow-up preview" className="rounded-xl border p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">5 days later · Same thread</span></div>
-                                {editingSequencePreview ? <div className="mt-4 space-y-2"><Label htmlFor="campaign-preview-follow-up-two-body">Reply</Label><Textarea id="campaign-preview-follow-up-two-body" aria-label="Final follow-up email" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>}
+                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>
                               </article>
                             </div>
                           </div>
@@ -1001,16 +997,65 @@ export function ClientCampaignPrepDialog({
                 <div className="space-y-5 p-5 sm:p-6">
                   {(campaignQuery.error || !mappedCampaign) && (
                     <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold">You can design the pitch now</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Connect or assign the client campaign before saving this draft for outreach.</p></div></div>
+                      <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold">You can finalize the pitch now</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Connect or assign the client campaign before sending this finished sequence to it.</p></div></div>
                       <div className="flex shrink-0 gap-2">{campaignQuery.error && <Button type="button" variant="outline" size="sm" onClick={() => void campaignQuery.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>}<Button asChild variant="outline" size="sm"><Link to={campaignHref}>Campaign setup</Link></Button></div>
                     </div>
                   )}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Review the pitch and follow-ups</h3><p className="mt-1 text-sm text-muted-foreground">Edit the opening pitch and two follow-ups before saving the sequence for outreach.</p></div><Button type="button" variant="outline" disabled={researchWorking} title="Returns to Research and reruns all six saved stage prompts" onClick={beginResearchRegeneration}>{researchWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{researchWorking ? 'Research running' : 'Regenerate with prompts'}</Button></div>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <section className="space-y-3 rounded-2xl border p-5 lg:col-span-2"><div><Badge variant="secondary">Email 1 · Opening pitch</Badge><p className="mt-2 text-xs text-muted-foreground">Your personalized first note to the host or producer.</p></div><div className="space-y-2"><Label htmlFor="campaign-pitch-subject">Subject</Label><Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-pitch-body">Opening email</Label><Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y" maxLength={20_000} /></div></section>
-                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days and reply in the original thread. Stop when the host replies.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 reply</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
-                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days and reply in the same thread, then close respectfully.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-body">Follow-up 2 reply</Label><Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Finalize the selected pitch</h3><p className="mt-1 text-sm text-muted-foreground">Edit the chosen opening pitch and two follow-ups, then save the finished sequence for outreach.</p></div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="outline" className={draftHasUnsavedEdits ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}>{draftHasUnsavedEdits ? 'Unsaved edits' : 'All edits saved'}</Badge>
+                      <Button type="button" variant="outline" disabled={!draftHasUnsavedEdits} onClick={saveDraftEdits}><Save className="mr-2 h-4 w-4" />Save edits</Button>
+                    </div>
                   </div>
+
+                  <section aria-labelledby="campaign-outreach-sequence-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                    <div className="border-b bg-muted/20 px-5 py-4">
+                      <h4 id="campaign-outreach-sequence-heading" className="font-semibold">Outreach sequence</h4>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">Follow the timeline, then choose an email to review or edit its contents.</p>
+                    </div>
+                    <nav aria-label="Sequence emails" className="grid items-stretch gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] sm:p-5">
+                      {sequenceEmailSteps.map((step, index) => {
+                        const selected = activeSequenceEmail === step.id
+                        const ready = sequenceEmailReady[step.id]
+                        return (
+                          <Fragment key={step.id}>
+                            <button
+                              type="button"
+                              aria-label={`Edit ${step.email}: ${step.title}`}
+                              aria-pressed={selected}
+                              className={`rounded-xl border p-4 text-left transition-colors ${selected ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
+                              onClick={() => setActiveSequenceEmail(step.id)}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{index + 1}</span>
+                                <div className="flex items-center gap-1.5"><Badge variant="secondary">{step.timing}</Badge>{ready && <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-label={`${step.email} ready`} />}</div>
+                              </div>
+                              <p className="mt-3 text-xs font-medium text-muted-foreground">{step.email}</p>
+                              <p className="mt-1 text-sm font-semibold">{step.title}</p>
+                              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p>
+                            </button>
+                            {index < sequenceEmailSteps.length - 1 && <div className="flex items-center justify-center text-muted-foreground/50"><ArrowRight className="h-4 w-4 rotate-90 sm:rotate-0" aria-hidden="true" /></div>}
+                          </Fragment>
+                        )
+                      })}
+                    </nav>
+                  </section>
+
+                  <section aria-labelledby="campaign-active-email-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                    <div className="flex flex-col gap-3 border-b bg-gradient-to-br from-primary/5 to-background px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{activeSequenceEmailStep.email}</Badge><Badge variant="outline">{activeSequenceEmailStep.timing}</Badge><h4 id="campaign-active-email-heading" className="font-semibold">{activeSequenceEmailStep.title}</h4></div>
+                        <p className="mt-2 text-xs leading-5 text-muted-foreground">{activeSequenceEmail === 'opening' ? 'Your personalized first note to the host or producer.' : activeSequenceEmail === 'follow_up_one' ? 'Wait 3 days, then reply in the original thread. Stop when the host replies.' : 'Wait 5 more days, reply in the same thread, and close respectfully.'}</p>
+                      </div>
+                      <Badge variant="outline" className={`w-fit ${sequenceEmailReady[activeSequenceEmail] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{sequenceEmailReady[activeSequenceEmail] ? 'Ready' : 'Needs copy'}</Badge>
+                    </div>
+                    <div className="space-y-4 p-5">
+                      {activeSequenceEmail === 'opening' && <><div className="space-y-2"><Label htmlFor="campaign-pitch-subject">Subject</Label><Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-pitch-body">Opening email</Label><Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-72 resize-y" maxLength={20_000} /></div></>}
+                      {activeSequenceEmail === 'follow_up_one' && <div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 reply</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-64 resize-y" maxLength={20_000} /></div>}
+                      {activeSequenceEmail === 'follow_up_two' && <div className="space-y-2"><Label htmlFor="campaign-follow-up-two-body">Follow-up 2 reply</Label><Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-64 resize-y" maxLength={20_000} /></div>}
+                    </div>
+                  </section>
                 </div>
               )}
             </div>
@@ -1035,14 +1080,16 @@ export function ClientCampaignPrepDialog({
                   : researchFailed
                     ? 'Research paused before the pitch could be prepared. Completed stages are saved.'
                     : 'Research is included with your plan, saved to this podcast, and used to shape the pitch.')}
-                {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
+                {activeStep === 'pitch' && (draftHasUnsavedEdits
+                  ? 'You have unsaved edits. Save them before sending this sequence to Client Campaign.'
+                  : 'All edits are saved. Nothing moves to Client Campaign until you choose Send to Client Campaign.')}
               </p>
               <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                 {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
                 {activeStep === 'email' && <Button type="button" disabled={!emailReady} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
-                {activeStep === 'research' && <Button type="button" disabled={!researchComplete} onClick={() => setActiveStep('pitch')}>Review and edit emails<ArrowRight className="ml-2 h-4 w-4" /></Button>}
-                {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
+                {activeStep === 'research' && <Button type="button" disabled={!researchComplete} onClick={() => { setActiveSequenceEmail('opening'); setActiveStep('pitch') }}>Finalize selected pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+                {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Send to Client Campaign</Button>}
               </div>
             </div>
           </footer>

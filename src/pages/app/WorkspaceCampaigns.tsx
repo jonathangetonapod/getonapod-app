@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   ArrowRight,
-  CalendarDays,
   CheckCircle2,
   KeyRound,
   Loader2,
@@ -33,7 +32,6 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { InstantlyAccountPicker } from '@/components/workspace/InstantlyAccountPicker'
 import {
   Dialog,
@@ -122,17 +120,7 @@ function summarizeCampaign(
   error: boolean,
 ): CampaignSummary {
   const shortlist = data?.podcasts || []
-  const approved = shortlist.filter((podcast) => (
-    podcast.visibility === 'visible' && podcast.feedback_status === 'approved'
-  ))
-  const targetedShortlistIds = new Set(campaign?.target_shortlist_podcast_ids || [])
-  const newlyApproved = campaign
-    ? approved.filter((podcast) => !targetedShortlistIds.has(podcast.id))
-    : []
-  const missingContacts = campaign
-    ? campaign.target_counts.needs_contact
-      + newlyApproved.filter((podcast) => !podcast.podcast_email).length
-    : approved.filter((podcast) => !podcast.podcast_email).length
+  const missingContacts = campaign?.target_counts.needs_contact || 0
   const status: CampaignStatus = campaign?.status === 'attention'
     ? 'Needs attention'
     : campaign?.status === 'active'
@@ -146,17 +134,15 @@ function summarizeCampaign(
   const needsPitchCount = campaign?.target_counts.needs_pitch || 0
   const nextAction = campaign?.last_error
     ? 'Resolve campaign issue'
-    : newlyApproved.length > 0
-      ? `Review ${newlyApproved.length} new podcast${newlyApproved.length === 1 ? '' : 's'}`
-      : readyCount > 0
+    : readyCount > 0
       ? `Launch ${readyCount} approved pitch${readyCount === 1 ? '' : 'es'}`
       : needsPitchCount > 0
         ? `Write ${needsPitchCount} pitch${needsPitchCount === 1 ? '' : 'es'}`
         : missingContacts > 0
       ? `Find ${missingContacts} contact${missingContacts === 1 ? '' : 's'}`
-      : (campaign?.target_counts.total || approved.length) > 0
+      : (campaign?.target_counts.total || 0) > 0
         ? 'Review custom pitches'
-        : 'Add approved podcasts'
+        : 'Send a finished pitch'
 
   return {
     client,
@@ -166,9 +152,7 @@ function summarizeCampaign(
     error,
     campaign,
     status,
-    approvedPodcasts: campaign
-      ? campaign.target_counts.total + newlyApproved.length
-      : approved.length,
+    approvedPodcasts: campaign?.target_counts.total || 0,
     missingContacts,
     nextAction,
   }
@@ -292,8 +276,6 @@ const WorkspaceCampaigns = ({
   ))
   const [campaignDailyLimit, setCampaignDailyLimit] = useState(30)
   const [selectedSenderAccounts, setSelectedSenderAccounts] = useState<Set<string>>(new Set())
-  const [selectedPodcastIds, setSelectedPodcastIds] = useState<Set<string>>(new Set())
-  const [initializedClientId, setInitializedClientId] = useState('')
   const [connectionOpen, setConnectionOpen] = useState(false)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [connectionSaving, setConnectionSaving] = useState(false)
@@ -334,30 +316,6 @@ const WorkspaceCampaigns = ({
   })
 
   const selectedClient = activeClients.find((client) => client.id === selectedClientId) || null
-  const creationShortlistQuery = useQuery({
-    queryKey: ['workspace-campaign-create', workspaceId, selectedClientId, 'shortlist'],
-    queryFn: () => getClientShortlist(workspaceId, selectedClientId),
-    enabled: createOpen && createStep === 2 && Boolean(selectedClientId),
-    retry: false,
-  })
-  const creationPodcasts = (creationShortlistQuery.data?.podcasts || [])
-    .filter((podcast) => podcast.visibility === 'visible')
-    .sort((left, right) => {
-      const leftApproved = left.feedback_status === 'approved' ? 1 : 0
-      const rightApproved = right.feedback_status === 'approved' ? 1 : 0
-      return rightApproved - leftApproved || left.display_order - right.display_order
-    })
-
-  useEffect(() => {
-    if (!creationShortlistQuery.data || initializedClientId === selectedClientId) return
-    setSelectedPodcastIds(new Set(
-      creationShortlistQuery.data.podcasts
-        .filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'approved')
-        .map((podcast) => podcast.id),
-    ))
-    setInitializedClientId(selectedClientId)
-  }, [creationShortlistQuery.data, initializedClientId, selectedClientId])
-
   const normalizedSearch = search.trim().toLowerCase()
   const filteredSummaries = summaries.filter((summary) => {
     const matchesSearch = !normalizedSearch
@@ -423,8 +381,6 @@ const WorkspaceCampaigns = ({
     setCampaignTimezoneDraft(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York')
     setCampaignDailyLimit(30)
     setSelectedSenderAccounts(new Set())
-    setSelectedPodcastIds(new Set())
-    setInitializedClientId('')
   }
 
   const selectClient = (clientId: string) => {
@@ -433,8 +389,6 @@ const WorkspaceCampaigns = ({
     setSelectedProviderCampaignId('new')
     setCampaignName(client ? `${client.name} Podcast Outreach` : '')
     setSelectedSenderAccounts(new Set())
-    setSelectedPodcastIds(new Set())
-    setInitializedClientId('')
   }
 
   const selectProviderCampaign = (providerCampaignId: string) => {
@@ -463,7 +417,7 @@ const WorkspaceCampaigns = ({
       timezone: campaignTimezoneDraft,
       dailyLimit: campaignDailyLimit,
       senderAccounts: Array.from(selectedSenderAccounts),
-      shortlistPodcastIds: Array.from(selectedPodcastIds),
+      shortlistPodcastIds: [],
       providerCampaignId: selectedProviderCampaign?.id || null,
     })
   }
@@ -682,11 +636,11 @@ const WorkspaceCampaigns = ({
               <span>Step {createStep} of 2</span>
               <span className="text-muted-foreground">Create client campaign</span>
             </div>
-            <DialogTitle>{createStep === 1 ? 'Choose the client' : 'Choose the starting podcasts'}</DialogTitle>
+            <DialogTitle>{createStep === 1 ? 'Choose the client' : 'Confirm the campaign'}</DialogTitle>
             <DialogDescription>
               {createStep === 1
                 ? 'Each active client has one ongoing podcast outreach campaign.'
-                : 'Client-positive podcasts are selected automatically. Add an owner-approved exception when needed.'}
+                : 'The campaign starts empty. Finished pitches are added only through Send to Client Campaign.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -759,43 +713,14 @@ const WorkspaceCampaigns = ({
               />
               </>}
             </div>
-          ) : creationShortlistQuery.isLoading ? (
-            <div className="flex min-h-52 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-          ) : creationShortlistQuery.error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">The client’s podcast list could not be loaded.</div>
-          ) : creationPodcasts.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center">
-              <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground/50" />
-              <p className="mt-3 font-semibold">No shortlisted podcasts yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">You can open the campaign workspace now and add podcasts through Podcast Finder.</p>
-            </div>
           ) : (
-            <div className="space-y-3 py-1">
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-4 py-3 text-sm">
-                <span><strong>{selectedPodcastIds.size}</strong> podcast{selectedPodcastIds.size === 1 ? '' : 's'} selected</span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedPodcastIds(new Set())}>Start empty</Button>
+            <div className="space-y-4 py-1">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+                <div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-semibold text-emerald-950">Campaign ready to create</p><p className="mt-1 text-sm leading-6 text-emerald-900/80">This creates the client’s campaign shell without adding any podcasts. A podcast appears in Client Campaigns only after its sequence is finalized and sent from the Write Pitch modal.</p></div></div>
               </div>
-              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                {creationPodcasts.map((podcast) => {
-                  const approved = podcast.feedback_status === 'approved'
-                  const checked = selectedPodcastIds.has(podcast.id)
-                  return (
-                    <label key={podcast.id} className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 hover:bg-muted/30">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(value) => setSelectedPodcastIds((current) => {
-                          const next = new Set(current)
-                          if (value) next.add(podcast.id)
-                          else next.delete(podcast.id)
-                          return next
-                        })}
-                        aria-label={`Select ${podcast.podcast_name}`}
-                      />
-                      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{podcast.podcast_name}</p><p className="truncate text-xs text-muted-foreground">{podcast.podcast_email || 'Contact needed'}</p></div>
-                      <Badge variant="outline" className={approved ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{approved ? 'Client positive' : 'Owner override'}</Badge>
-                    </label>
-                  )
-                })}
+              <div className="grid gap-3 rounded-xl border bg-muted/15 p-4 text-sm sm:grid-cols-2">
+                <div><p className="text-xs text-muted-foreground">Client</p><p className="mt-1 font-medium">{selectedClient?.name}</p></div>
+                <div><p className="text-xs text-muted-foreground">Instantly campaign</p><p className="mt-1 font-medium">{selectedProviderCampaign?.name || campaignName}</p></div>
               </div>
             </div>
           )}
@@ -809,7 +734,7 @@ const WorkspaceCampaigns = ({
             {createStep === 1 ? (
               <Button type="button" disabled={!selectedClientId || !campaignName.trim() || (selectedProviderCampaignId === 'new' ? selectedSenderAccounts.size === 0 : !selectedProviderCampaign)} onClick={() => setCreateStep(2)}>Continue<ArrowRight className="ml-2 h-4 w-4" /></Button>
             ) : (
-              <Button type="button" disabled={creationShortlistQuery.isLoading || saveCampaignMutation.isPending} onClick={openDraftWorkspace}>
+              <Button type="button" disabled={saveCampaignMutation.isPending} onClick={openDraftWorkspace}>
                 {saveCampaignMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save &amp; open campaign<ArrowRight className="ml-2 h-4 w-4" />
               </Button>

@@ -251,7 +251,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Research and Pitch' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Review the pitch and follow-ups' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Finalize the selected pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
@@ -264,7 +264,7 @@ describe('ClientShortlistEditor', () => {
     expect(pitchActions).toHaveClass('pb-5', 'sm:pb-6')
     expect(pitchActions.firstElementChild).toHaveClass('rounded-2xl', 'p-4')
     expect(continueButton).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Step 2: Research locked until an email is ready' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Step 2: Research & pitch locked until an email is ready' })).toBeDisabled()
     fireEvent.change(manualEmail, { target: { value: 'not-an-email' } })
     expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument()
     expect(continueButton).toBeDisabled()
@@ -292,7 +292,8 @@ describe('ClientShortlistEditor', () => {
     expect(sequencePreview.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Guest idea for Founder Stories: Taylor Client')
     expect(sequencePreview.getByRole('article', { name: 'First follow-up preview' })).toHaveTextContent('Just following up')
     expect(sequencePreview.getByRole('article', { name: 'Second follow-up preview' })).toHaveTextContent('One last note')
-    expect(sequencePreview.getByRole('button', { name: 'Edit outputs' })).toBeInTheDocument()
+    expect(sequencePreview.queryByRole('button', { name: 'Edit outputs' })).not.toBeInTheDocument()
+    expect(sequencePreview.getByText(/Read-only preview/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
@@ -300,12 +301,17 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByRole('button', { name: 'Try waterfall enrichment' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Review and edit emails' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
 
-    expect(screen.getByRole('heading', { name: 'Review the pitch and follow-ups' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Finalize the selected pitch' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Sequence emails' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Email 1: Opening pitch' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByLabelText('Opening email')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Follow-up 1 reply')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Email 2: Follow-up' }))
     expect(screen.getByLabelText('Follow-up 1 reply')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Email 3: Close the loop' }))
     expect(screen.getByLabelText('Follow-up 2 reply')).toBeInTheDocument()
     expect(screen.queryByLabelText('Follow-up 1 subject')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Follow-up 2 subject')).not.toBeInTheDocument()
@@ -314,7 +320,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this modal/i)).toBeInTheDocument()
 
-    const saveButton = screen.getByRole('button', { name: 'Save pitch draft' })
+    const saveButton = screen.getByRole('button', { name: 'Send to Client Campaign' })
     await waitFor(() => expect(saveButton).toBeEnabled())
     fireEvent.click(saveButton)
 
@@ -402,7 +408,7 @@ describe('ClientShortlistEditor', () => {
     expect((promptSettings.getByLabelText('Prompt for Confirming the host') as HTMLTextAreaElement).value).toContain('Identify every host')
   })
 
-  it('routes regeneration through every saved research prompt before replacing the sequence', async () => {
+  it('runs regeneration only from Research and Pitch through every saved prompt', async () => {
     renderEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
@@ -411,10 +417,7 @@ describe('ClientShortlistEditor', () => {
       'title',
       'Reruns all six research stages using the saved prompt for each stage',
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Review and edit emails' }))
-    expect(screen.getByRole('heading', { name: 'Review the pitch and follow-ups' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate with prompts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
 
     expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
     expect(screen.getByText('Reading the podcast profile · 0 of 6 prompts complete')).toBeInTheDocument()
@@ -424,7 +427,7 @@ describe('ClientShortlistEditor', () => {
     expect(researchProgress.getAllByText('Waiting')).toHaveLength(5)
     expect(screen.getByRole('button', { name: 'Regenerating' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Edit stage prompts' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Review and edit emails' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Finalize selected pitch' })).toBeDisabled()
     expect(screen.getAllByText(/all six saved workspace prompts run in order/i).length).toBeGreaterThan(0)
   })
 
@@ -534,25 +537,28 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
   })
 
-  it('lets a workspace manager edit and save all three outputs from the research result', async () => {
+  it('keeps research read-only and saves edits only from Finalize Pitch', async () => {
     renderEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit outputs' }))
+    expect(screen.queryByRole('button', { name: 'Edit outputs' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
-    expect(screen.getByLabelText('Opening pitch subject')).toBeInTheDocument()
-    expect(screen.getByLabelText('Opening pitch email')).toBeInTheDocument()
-    expect(screen.getByLabelText('First follow-up email')).toBeInTheDocument()
-    expect(screen.getByLabelText('Final follow-up email')).toBeInTheDocument()
-    expect(screen.queryByLabelText('First follow-up subject')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Final follow-up subject')).not.toBeInTheDocument()
-    expect(screen.getAllByText(/Same thread/)).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    expect(screen.queryByRole('button', { name: /Regenerate/ })).not.toBeInTheDocument()
+    expect(screen.getByText('All edits saved')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save edits' })).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Opening pitch subject'), { target: { value: 'A tailored Founder Stories idea' } })
-    fireEvent.change(screen.getByLabelText('Opening pitch email'), { target: { value: 'Hey Example,\n\nHere is the revised opening pitch.' } })
-    const saveChanges = screen.getByRole('button', { name: 'Save changes' })
-    await waitFor(() => expect(saveChanges).toBeEnabled())
-    fireEvent.click(saveChanges)
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'A tailored Founder Stories idea' } })
+    fireEvent.change(screen.getByLabelText('Opening email'), { target: { value: 'Hey Example,\n\nHere is the revised opening pitch.' } })
+    expect(screen.getByText('Unsaved edits')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send to Client Campaign' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Save edits' }))
+    expect(screen.getByText('All edits saved')).toBeInTheDocument()
+
+    const sendToCampaign = screen.getByRole('button', { name: 'Send to Client Campaign' })
+    await waitFor(() => expect(sendToCampaign).toBeEnabled())
+    fireEvent.click(sendToCampaign)
 
     await waitFor(() => expect(prepareWorkspaceCampaignPodcast).toHaveBeenCalledWith(expect.objectContaining({
       workspaceId,
@@ -607,12 +613,12 @@ describe('ClientShortlistEditor', () => {
     expect(researchProgress.getAllByText('Waiting')).toHaveLength(3)
     expect(screen.queryByRole('button', { name: 'View steps' })).not.toBeInTheDocument()
     expect(screen.getByText(/research continues in the background/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Review and edit emails' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Step 3: Write pitch locked until research is complete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Finalize selected pitch' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Step 3: Finalize pitch locked until research is complete' })).toBeDisabled()
 
     await waitFor(() => expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument(), { timeout: 4_000 })
-    expect(screen.getByRole('button', { name: 'Review and edit emails' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Go to step 3: Write pitch' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Finalize selected pitch' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Go to step 3: Finalize pitch' })).toBeEnabled()
   })
 
   it('requires a valid manually entered email when no public podcast email is available', async () => {
@@ -627,7 +633,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByRole('button', { name: 'Use free podcast email' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Step 2: Research locked until an email is ready' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Step 2: Research & pitch locked until an email is ready' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Archive podcast' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter email manually' }))
@@ -670,10 +676,10 @@ describe('ClientShortlistEditor', () => {
     const continueToResearch = screen.getByRole('button', { name: 'Continue to research' })
     await waitFor(() => expect(continueToResearch).toBeEnabled())
     fireEvent.click(continueToResearch)
-    fireEvent.click(screen.getByRole('button', { name: 'Review and edit emails' }))
-    expect(screen.getByText('You can design the pitch now')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    expect(screen.getByText('You can finalize the pitch now')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Campaign setup' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
-    expect(screen.getByRole('button', { name: 'Save pitch draft' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Send to Client Campaign' })).toBeDisabled()
     expect(prepareWorkspaceCampaignPodcast).not.toHaveBeenCalled()
   })
 
