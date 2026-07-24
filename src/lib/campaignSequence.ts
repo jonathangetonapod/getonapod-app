@@ -23,6 +23,11 @@ function sentence(value: string | null | undefined, max: number): string {
   return `${clean.slice(0, max - 1).trimEnd()}…`
 }
 
+export function buildThreadReplySubject(subject: string): string {
+  const clean = subject.trim().replace(/^(?:re:\s*)+/iu, '')
+  return clean ? `Re: ${clean}` : ''
+}
+
 export function buildPodcastCampaignSequenceDraft({
   podcast,
   clientName,
@@ -61,7 +66,7 @@ export function buildPodcastCampaignSequenceDraft({
       `Would you be open to exploring ${clientName} as a guest? I’m happy to send a few tailored talking points for your audience.`,
       'Best,',
     ].filter(Boolean).join('\n\n'),
-    followUpOneSubject: `Re: ${subject}`,
+    followUpOneSubject: buildThreadReplySubject(subject),
     followUpOneBody: [
       greeting,
       `Just following up on the guest idea for ${podcast.podcast_name}.`,
@@ -71,7 +76,7 @@ export function buildPodcastCampaignSequenceDraft({
       'Would it be helpful if I sent over a short set of possible talking points?',
       'Best,',
     ].join('\n\n'),
-    followUpTwoSubject: `Re: ${subject}`,
+    followUpTwoSubject: buildThreadReplySubject(subject),
     followUpTwoBody: [
       greeting,
       `One last note on the guest idea for ${podcast.podcast_name}.`,

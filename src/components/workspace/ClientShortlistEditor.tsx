@@ -66,6 +66,7 @@ interface ClientShortlistEditorProps {
   clientId: string
   clientName: string
   clientBio?: string | null
+  viewerRole?: 'owner' | 'admin' | 'member' | 'platform_admin'
   finderHref: string
   campaignHref: string
   onChanged?: () => void
@@ -140,6 +141,7 @@ export function ClientShortlistEditor({
   clientId,
   clientName,
   clientBio,
+  viewerRole,
   finderHref,
   campaignHref,
   onChanged,
@@ -531,6 +533,7 @@ export function ClientShortlistEditor({
         clientId={clientId}
         clientName={clientName}
         clientBio={clientBio}
+        viewerRole={viewerRole}
         campaignHref={campaignHref}
         podcast={activeCampaignPrepPodcast}
         onArchive={() => {

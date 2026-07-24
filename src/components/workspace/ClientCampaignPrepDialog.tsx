@@ -36,7 +36,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { buildPodcastCampaignSequenceDraft, type PodcastCampaignSequenceDraft } from '@/lib/campaignSequence'
+import { buildPodcastCampaignSequenceDraft, buildThreadReplySubject, type PodcastCampaignSequenceDraft } from '@/lib/campaignSequence'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type {
   ClientShortlistPodcast,
@@ -54,6 +54,7 @@ interface ClientCampaignPrepDialogProps {
   clientId: string
   clientName: string
   clientBio?: string | null
+  viewerRole?: 'owner' | 'admin' | 'member' | 'platform_admin'
   campaignHref: string
   podcast: ClientShortlistPodcast | null
   onArchive: () => void
@@ -84,6 +85,15 @@ const researchProgressSteps: ResearchProgressStep[] = [
   { id: 'guest_fit', title: 'Matching guest expertise', detail: 'Audience needs and credible fit' },
   { id: 'pitch_angles', title: 'Preparing pitch angles', detail: 'Primary topic and useful alternatives' },
 ]
+
+const defaultResearchPrompts: Record<ClientShortlistResearchStageId, string> = {
+  podcast_profile: 'Analyze {{podcast_name}} using the saved podcast profile. Summarize the show positioning, core themes, audience, and episode format. Explain the evidence behind every conclusion and clearly mark any missing information.',
+  host_profile: 'Identify every host of {{podcast_name}} and confirm the primary booking contact. Summarize each host’s professional background, expertise, and interview approach. Never guess a host identity or contact detail.',
+  recent_episodes: 'Review the recent episode titles, descriptions, and available transcripts for {{podcast_name}}. Identify recurring themes, timely references, typical questions, and useful details that prove the outreach is familiar with the show.',
+  guest_patterns: 'Determine how {{podcast_name}} uses guests. Verify whether recent episodes are guest interviews or solo episodes, identify the kinds of guests featured, and summarize the subjects and credentials the host tends to prioritize.',
+  guest_fit: 'Compare {{client_name}} and {{client_bio}} with the audience and recent content of {{podcast_name}}. Explain the strongest credible reasons this guest would be useful to listeners. Avoid generic claims and do not invent expertise.',
+  pitch_angles: 'Create three distinct, highly specific podcast guest angles for {{client_name}} on {{podcast_name}}. Each angle should match the client’s proven expertise, serve the show’s audience, reference the research, and support a complete opening pitch plus two follow-ups.',
+}
 
 function emptyDraft(): PodcastCampaignSequenceDraft {
   return {
@@ -125,6 +135,7 @@ export function ClientCampaignPrepDialog({
   clientId,
   clientName,
   clientBio,
+  viewerRole,
   campaignHref,
   podcast,
   onArchive,
@@ -133,8 +144,12 @@ export function ClientCampaignPrepDialog({
   const queryClient = useQueryClient()
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
   const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
-  const [showPodcastStats, setShowPodcastStats] = useState(false)
+  const [showPodcastDetails, setShowPodcastDetails] = useState(false)
   const [showResearchSteps, setShowResearchSteps] = useState(false)
+  const [showPromptSettings, setShowPromptSettings] = useState(false)
+  const [selectedPromptStageId, setSelectedPromptStageId] = useState<ClientShortlistResearchStageId>('podcast_profile')
+  const [researchPrompts, setResearchPrompts] = useState<Record<ClientShortlistResearchStageId, string>>({ ...defaultResearchPrompts })
+  const [promptDraft, setPromptDraft] = useState(defaultResearchPrompts.podcast_profile)
   const [editingSequencePreview, setEditingSequencePreview] = useState(false)
   const [sequenceEditSnapshot, setSequenceEditSnapshot] = useState<PodcastCampaignSequenceDraft | null>(null)
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
@@ -151,6 +166,7 @@ export function ClientCampaignPrepDialog({
   })
   const campaign = campaignQuery.data?.campaign || null
   const canManageCampaigns = Boolean(campaignQuery.data?.can_manage_campaigns)
+  const canCustomizePrompts = viewerRole === 'owner' || viewerRole === 'platform_admin'
   const target = campaignQuery.data?.targets.find((item) => item.shortlist_podcast_id === podcast?.id) || null
   const locked = Boolean(target && (
     target.instantly_lead_id
@@ -197,6 +213,9 @@ export function ClientCampaignPrepDialog({
       : activeResearchStep
         ? activeResearchStep.detail
         : 'Your research will begin as soon as the workspace is ready.'
+  const selectedPromptStage = researchProgressSteps.find((step) => step.id === selectedPromptStageId) || researchProgressSteps[0]
+  const promptDirty = promptDraft !== researchPrompts[selectedPromptStageId]
+  const customPromptCount = researchProgressSteps.filter((step) => researchPrompts[step.id] !== defaultResearchPrompts[step.id]).length
 
   const starterDraft = useMemo(() => podcast
     ? buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio, angleIndex: selectedAngleIndex })
@@ -206,8 +225,9 @@ export function ClientCampaignPrepDialog({
     if (!open) {
       setActiveStep('email')
       setEmailRoute('podcast')
-      setShowPodcastStats(false)
+      setShowPodcastDetails(false)
       setShowResearchSteps(false)
+      setShowPromptSettings(false)
       setEditingSequencePreview(false)
       setSequenceEditSnapshot(null)
       setSelectedAngleIndex(0)
@@ -243,6 +263,29 @@ export function ClientCampaignPrepDialog({
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
   }
+  const selectPromptStage = (stageId: ClientShortlistResearchStageId) => {
+    if (promptDirty) {
+      toast.info('Save or discard the current prompt changes before switching stages.')
+      return
+    }
+    setSelectedPromptStageId(stageId)
+    setPromptDraft(researchPrompts[stageId])
+  }
+  const togglePromptSettings = () => {
+    if (showPromptSettings && promptDirty) {
+      toast.info('Save or discard the current prompt changes before closing the editor.')
+      return
+    }
+    setShowPromptSettings((current) => !current)
+  }
+  const discardPromptChanges = () => setPromptDraft(researchPrompts[selectedPromptStageId])
+  const savePromptChanges = () => {
+    const prompt = promptDraft.trim()
+    if (!prompt) return
+    setResearchPrompts((current) => ({ ...current, [selectedPromptStageId]: prompt }))
+    setPromptDraft(prompt)
+    toast.success(`${selectedPromptStage.title} prompt saved for this workspace.`)
+  }
   const choosePitchAngle = (angleIndex: number) => {
     setSelectedAngleIndex(angleIndex)
     if (!podcast) return
@@ -271,9 +314,7 @@ export function ClientCampaignPrepDialog({
   const sequenceComplete = [
     draft.subject,
     draft.pitchBody,
-    draft.followUpOneSubject,
     draft.followUpOneBody,
-    draft.followUpTwoSubject,
     draft.followUpTwoBody,
   ].every(fieldComplete)
 
@@ -289,9 +330,9 @@ export function ClientCampaignPrepDialog({
         contactEmail: normalizedEmail,
         subject: draft.subject,
         pitchBody: draft.pitchBody,
-        followUpOneSubject: draft.followUpOneSubject,
+        followUpOneSubject: buildThreadReplySubject(draft.subject),
         followUpOneBody: draft.followUpOneBody,
-        followUpTwoSubject: draft.followUpTwoSubject,
+        followUpTwoSubject: buildThreadReplySubject(draft.subject),
         followUpTwoBody: draft.followUpTwoBody,
       })
     },
@@ -365,33 +406,42 @@ export function ClientCampaignPrepDialog({
                         type="button"
                         variant="outline"
                         size="sm"
-                        aria-expanded={showPodcastStats}
-                        aria-controls="pitch-podcast-stats"
-                        onClick={() => setShowPodcastStats((current) => !current)}
+                        aria-expanded={showPodcastDetails}
+                        aria-controls="pitch-podcast-details"
+                        onClick={() => setShowPodcastDetails((current) => !current)}
                       >
-                        {showPodcastStats ? 'Hide podcast stats' : 'Show podcast stats'}
-                        <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showPodcastStats ? 'rotate-180' : ''}`} />
+                        {showPodcastDetails ? 'Hide details' : 'Show details'}
+                        <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showPodcastDetails ? 'rotate-180' : ''}`} />
                       </Button>
                       {podcastUrl && <Button asChild variant="outline" size="sm"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
                     </div>
                   </div>
 
-                  {showPodcastStats && (
-                    <div id="pitch-podcast-stats">
-                      <div className="border-t px-4 py-4 sm:px-5">
-                        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No podcast description is available yet.'}</p>
-                        {podcast.podcast_categories && podcast.podcast_categories.length > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {podcast.podcast_categories.slice(0, 3).map((category) => <Badge key={category.category_id} variant="secondary" className="font-normal">{category.category_name}</Badge>)}
-                          </div>
-                        )}
-                      </div>
+                  {showPodcastDetails && (
+                    <div id="pitch-podcast-details" className="border-t">
+                      <section aria-labelledby="pitch-show-overview-heading" className="px-4 py-4 sm:px-5">
+                        <div className="flex items-center gap-2"><FileSearch className="h-4 w-4 text-primary" /><h4 id="pitch-show-overview-heading" className="font-semibold">Show overview</h4></div>
+                        <p className="mt-3 max-w-4xl text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No show overview has been saved yet.'}</p>
+                      </section>
 
-                      <div className="grid grid-cols-2 border-t bg-muted/15 sm:grid-cols-4">
-                        <div className="border-b border-r px-4 py-3 sm:border-b-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Est. audience</p><p className="mt-1 text-sm font-semibold">{compactNumber(podcast.audience_size)}</p></div>
-                        <div className="border-b px-4 py-3 sm:border-b-0 sm:border-r"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Apple rating</p><p className="mt-1 text-sm font-semibold">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
-                        <div className="border-r px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episodes</p><p className="mt-1 text-sm font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
-                        <div className="px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Latest episode</p><p className="mt-1 text-sm font-semibold">{formatPodcastDate(podcast.last_posted_at)}</p></div>
+                      <div className="grid border-t lg:grid-cols-[minmax(0,.85fr)_minmax(0,1.15fr)]">
+                        <section aria-labelledby="pitch-host-and-show-heading" className="border-b px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r">
+                          <div className="flex items-center gap-2"><Mic2 className="h-4 w-4 text-primary" /><h4 id="pitch-host-and-show-heading" className="font-semibold">Host and show</h4></div>
+                          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-1">
+                            <div><dt className="text-xs text-muted-foreground">Host or publisher on record</dt><dd className="mt-1 font-medium">{podcast.publisher_name || 'Not identified yet'}</dd></div>
+                            <div><dt className="text-xs text-muted-foreground">Latest activity</dt><dd className="mt-1 font-medium">{formatPodcastDate(podcast.last_posted_at)}</dd></div>
+                          </dl>
+                        </section>
+
+                        <section aria-labelledby="pitch-audience-snapshot-heading" className="px-4 py-4 sm:px-5">
+                          <div className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /><h4 id="pitch-audience-snapshot-heading" className="font-semibold">Audience snapshot</h4></div>
+                          <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-4 lg:grid-cols-2">
+                            <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Estimated audience</p><p className="mt-1 text-base font-semibold">{compactNumber(podcast.audience_size)}</p></div>
+                            <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Apple rating</p><p className="mt-1 text-base font-semibold">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
+                            <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episode library</p><p className="mt-1 text-base font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
+                            <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Primary themes</p><div className="mt-1.5 flex flex-wrap gap-1.5">{podcast.podcast_categories?.length ? podcast.podcast_categories.slice(0, 3).map((category) => <Badge key={category.category_id} variant="secondary" className="font-normal">{category.category_name}</Badge>) : <span className="text-sm font-medium">—</span>}</div></div>
+                          </div>
+                        </section>
                       </div>
 
                       {fitReasons.length > 0 && (
@@ -606,6 +656,20 @@ export function ClientCampaignPrepDialog({
                                 ? podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'
                                 : researchFailed ? 'Completed work saved' : 'Working in the background'}
                             </p>
+                            {canCustomizePrompts && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="bg-background"
+                                aria-expanded={showPromptSettings}
+                                aria-controls="campaign-research-prompt-settings"
+                                onClick={togglePromptSettings}
+                              >
+                                <PenLine className="mr-2 h-3.5 w-3.5" />
+                                {showPromptSettings ? 'Close prompt editor' : 'Edit stage prompts'}
+                              </Button>
+                            )}
                             {researchComplete && (
                               <Button
                                 type="button"
@@ -650,33 +714,64 @@ export function ClientCampaignPrepDialog({
                           </div>
                         )}
                       </div>
+
+                      {showPromptSettings && canCustomizePrompts && (
+                        <section id="campaign-research-prompt-settings" aria-labelledby="campaign-research-prompt-heading" className="mt-4 overflow-hidden rounded-xl border bg-background shadow-sm">
+                          <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-research-prompt-heading" className="text-sm font-semibold">Workspace research prompts</h4><Badge variant="secondary">Owner controls</Badge>{customPromptCount > 0 && <Badge variant="outline">{customPromptCount} customized</Badge>}</div>
+                              <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Choose a stage and adjust the instructions used the next time research runs. Changes apply across this workspace and do not interrupt research already in progress.</p>
+                            </div>
+                          </div>
+
+                          <div className="grid lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+                            <nav aria-label="Research prompt stages" className="grid gap-1 border-b bg-muted/10 p-3 sm:grid-cols-2 lg:grid-cols-1 lg:border-b-0 lg:border-r">
+                              {researchProgressSteps.map((stage) => {
+                                const selected = stage.id === selectedPromptStageId
+                                const customized = researchPrompts[stage.id] !== defaultResearchPrompts[stage.id]
+                                return (
+                                  <button
+                                    key={stage.id}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border hover:bg-background'}`}
+                                    onClick={() => selectPromptStage(stage.id)}
+                                  >
+                                    <span className="block text-xs font-semibold">{stage.title}</span>
+                                    <span className={`mt-1 block text-[10px] font-medium ${customized ? 'text-primary' : 'text-muted-foreground'}`}>{customized ? 'Customized' : 'Workspace default'}</span>
+                                  </button>
+                                )
+                              })}
+                            </nav>
+
+                            <div className="p-4 sm:p-5">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div><p className="text-sm font-semibold">{selectedPromptStage.title}</p><p className="mt-1 text-xs text-muted-foreground">{selectedPromptStage.detail}</p></div>
+                                <Badge variant={researchPrompts[selectedPromptStageId] === defaultResearchPrompts[selectedPromptStageId] ? 'secondary' : 'outline'} className="w-fit">{researchPrompts[selectedPromptStageId] === defaultResearchPrompts[selectedPromptStageId] ? 'Default prompt' : 'Custom prompt'}</Badge>
+                              </div>
+                              <div className="mt-4 space-y-2">
+                                <Label htmlFor="campaign-research-stage-prompt">Prompt instructions</Label>
+                                <Textarea
+                                  id="campaign-research-stage-prompt"
+                                  aria-label={`Prompt for ${selectedPromptStage.title}`}
+                                  value={promptDraft}
+                                  onChange={(event) => setPromptDraft(event.target.value)}
+                                  className="min-h-48 resize-y bg-background font-mono text-xs leading-5"
+                                  maxLength={20_000}
+                                />
+                                <p className="text-[11px] leading-5 text-muted-foreground">Available variables include <code>{'{{podcast_name}}'}</code>, <code>{'{{podcast_description}}'}</code>, <code>{'{{client_name}}'}</code>, <code>{'{{client_bio}}'}</code>, and <code>{'{{episode_transcript}}'}</code>.</p>
+                              </div>
+                              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <Button type="button" variant="ghost" size="sm" onClick={() => setPromptDraft(defaultResearchPrompts[selectedPromptStageId])}><RefreshCw className="mr-2 h-3.5 w-3.5" />Restore default</Button>
+                                <div className="flex justify-end gap-2"><Button type="button" variant="outline" size="sm" disabled={!promptDirty} onClick={discardPromptChanges}>Discard changes</Button><Button type="button" size="sm" disabled={!promptDirty || !promptDraft.trim()} onClick={savePromptChanges}>Save prompt</Button></div>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+                      )}
                     </div>
 
                     <div className="space-y-5 p-5 sm:p-6">
-                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,.75fr)]">
-                        <section className="rounded-2xl border bg-muted/10 p-5">
-                          <div className="flex items-center gap-2"><FileSearch className="h-4 w-4 text-primary" /><h4 className="font-semibold">Show overview</h4></div>
-                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'No show overview has been saved yet.'}</p>
-                        </section>
-
-                        <section className="rounded-2xl border bg-muted/10 p-5">
-                          <div className="flex items-center gap-2"><Mic2 className="h-4 w-4 text-primary" /><h4 className="font-semibold">Host and show</h4></div>
-                          <dl className="mt-4 space-y-3 text-sm">
-                            <div><dt className="text-xs text-muted-foreground">Host or publisher on record</dt><dd className="mt-1 font-medium">{podcast.publisher_name || 'Not identified yet'}</dd></div>
-                            <div><dt className="text-xs text-muted-foreground">Latest activity</dt><dd className="mt-1 font-medium">{formatPodcastDate(podcast.last_posted_at)}</dd></div>
-                          </dl>
-                        </section>
-                      </div>
-
-                      <section className="overflow-hidden rounded-2xl border">
-                        <div className="flex items-center gap-2 border-b bg-muted/15 px-5 py-4"><Users className="h-4 w-4 text-primary" /><h4 className="font-semibold">Audience snapshot</h4></div>
-                        <div className="grid grid-cols-1 divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-                          <div className="px-5 py-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Estimated audience</p><p className="mt-1 text-lg font-semibold">{compactNumber(podcast.audience_size)}</p></div>
-                          <div className="px-5 py-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Episode library</p><p className="mt-1 text-lg font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
-                          <div className="px-5 py-4"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Primary themes</p><div className="mt-2 flex flex-wrap gap-1.5">{podcast.podcast_categories?.length ? podcast.podcast_categories.slice(0, 3).map((category) => <Badge key={category.category_id} variant="secondary" className="font-normal">{category.category_name}</Badge>) : <span className="text-sm font-medium">—</span>}</div></div>
-                        </div>
-                      </section>
-
                       <section className="rounded-2xl border p-5">
                         <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">Each direction creates its own opening pitch and two follow-ups. Select an option to compare the complete sequence below.</p>
@@ -721,13 +816,13 @@ export function ClientCampaignPrepDialog({
 
                             <div className="grid gap-4 lg:grid-cols-2">
                               <article aria-label="First follow-up preview" className="rounded-xl border p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">3 days later</span></div>
-                                {editingSequencePreview ? <div className="mt-4 space-y-3"><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-one-subject">Subject</Label><Input id="campaign-preview-follow-up-one-subject" aria-label="First follow-up subject" value={draft.followUpOneSubject} onChange={(event) => updateDraft('followUpOneSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-one-body">Email</Label><Textarea id="campaign-preview-follow-up-one-body" aria-label="First follow-up email" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div></div> : <><p className="mt-3 text-sm font-semibold">{draft.followUpOneSubject || 'First follow-up subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p></>}
+                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">3 days later · Same thread</span></div>
+                                {editingSequencePreview ? <div className="mt-4 space-y-2"><Label htmlFor="campaign-preview-follow-up-one-body">Reply</Label><Textarea id="campaign-preview-follow-up-one-body" aria-label="First follow-up email" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>}
                               </article>
 
                               <article aria-label="Second follow-up preview" className="rounded-xl border p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">5 days later</span></div>
-                                {editingSequencePreview ? <div className="mt-4 space-y-3"><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-two-subject">Subject</Label><Input id="campaign-preview-follow-up-two-subject" aria-label="Final follow-up subject" value={draft.followUpTwoSubject} onChange={(event) => updateDraft('followUpTwoSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-preview-follow-up-two-body">Email</Label><Textarea id="campaign-preview-follow-up-two-body" aria-label="Final follow-up email" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div></div> : <><p className="mt-3 text-sm font-semibold">{draft.followUpTwoSubject || 'Final follow-up subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p></>}
+                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">5 days later · Same thread</span></div>
+                                {editingSequencePreview ? <div className="mt-4 space-y-2"><Label htmlFor="campaign-preview-follow-up-two-body">Reply</Label><Textarea id="campaign-preview-follow-up-two-body" aria-label="Final follow-up email" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-44 resize-y" maxLength={20_000} /></div> : <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>}
                               </article>
                             </div>
                           </div>
@@ -750,8 +845,8 @@ export function ClientCampaignPrepDialog({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Review the pitch and follow-ups</h3><p className="mt-1 text-sm text-muted-foreground">Edit the opening pitch and two follow-ups before saving the sequence for outreach.</p></div><Button type="button" variant="outline" onClick={applyResearchDraft}><Sparkles className="mr-2 h-4 w-4" />Rebuild from selected angle</Button></div>
                   <div className="grid gap-4 lg:grid-cols-2">
                     <section className="space-y-3 rounded-2xl border p-5 lg:col-span-2"><div><Badge variant="secondary">Email 1 · Opening pitch</Badge><p className="mt-2 text-xs text-muted-foreground">Your personalized first note to the host or producer.</p></div><div className="space-y-2"><Label htmlFor="campaign-pitch-subject">Subject</Label><Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-pitch-body">Opening email</Label><Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y" maxLength={20_000} /></div></section>
-                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days. Stop when the host replies.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-subject">Follow-up 1 subject</Label><Input id="campaign-follow-up-one-subject" value={draft.followUpOneSubject} onChange={(event) => updateDraft('followUpOneSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 email</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
-                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days, then close respectfully.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-subject">Follow-up 2 subject</Label><Input id="campaign-follow-up-two-subject" value={draft.followUpTwoSubject} onChange={(event) => updateDraft('followUpTwoSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-body">Follow-up 2 email</Label><Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
+                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days and reply in the original thread. Stop when the host replies.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 reply</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
+                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days and reply in the same thread, then close respectfully.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-body">Follow-up 2 reply</Label><Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
                   </div>
                 </div>
               )}

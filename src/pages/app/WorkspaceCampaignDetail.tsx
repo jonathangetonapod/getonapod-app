@@ -43,7 +43,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
-import { buildPodcastCampaignSequenceDraft } from '@/lib/campaignSequence'
+import { buildPodcastCampaignSequenceDraft, buildThreadReplySubject } from '@/lib/campaignSequence'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
@@ -198,9 +198,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [selectedPodcastId, setSelectedPodcastId] = useState<string | null>(null)
   const [subjectDraft, setSubjectDraft] = useState('')
   const [pitchDraft, setPitchDraft] = useState('')
-  const [followUpOneSubjectDraft, setFollowUpOneSubjectDraft] = useState('')
   const [followUpOneBodyDraft, setFollowUpOneBodyDraft] = useState('')
-  const [followUpTwoSubjectDraft, setFollowUpTwoSubjectDraft] = useState('')
   const [followUpTwoBodyDraft, setFollowUpTwoBodyDraft] = useState('')
   const [hostNameDraft, setHostNameDraft] = useState('')
   const [contactEmailDraft, setContactEmailDraft] = useState('')
@@ -220,9 +218,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     if (!selectedPodcast || !client) {
       setSubjectDraft('')
       setPitchDraft('')
-      setFollowUpOneSubjectDraft('')
       setFollowUpOneBodyDraft('')
-      setFollowUpTwoSubjectDraft('')
       setFollowUpTwoBodyDraft('')
       return
     }
@@ -233,9 +229,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     })
     setSubjectDraft(selectedTarget?.pitch_subject || starter.subject)
     setPitchDraft(selectedTarget?.pitch_body || starter.pitchBody)
-    setFollowUpOneSubjectDraft(selectedTarget?.follow_up_1_subject || starter.followUpOneSubject)
     setFollowUpOneBodyDraft(selectedTarget?.follow_up_1_body || starter.followUpOneBody)
-    setFollowUpTwoSubjectDraft(selectedTarget?.follow_up_2_subject || starter.followUpTwoSubject)
     setFollowUpTwoBodyDraft(selectedTarget?.follow_up_2_body || starter.followUpTwoBody)
   }, [client, selectedPodcast, selectedTarget])
 
@@ -417,9 +411,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     && Boolean(campaign?.sender_accounts.length)
     && Boolean(subjectDraft.trim())
     && Boolean(pitchDraft.trim())
-    && Boolean(followUpOneSubjectDraft.trim())
     && Boolean(followUpOneBodyDraft.trim())
-    && Boolean(followUpTwoSubjectDraft.trim())
     && Boolean(followUpTwoBodyDraft.trim())
 
   return (
@@ -728,14 +720,12 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                     <div className="space-y-2"><Label htmlFor="pitch-body">Opening email</Label><Textarea id="pitch-body" value={pitchDraft} onChange={(event) => setPitchDraft(event.target.value)} placeholder="Write a custom pitch using the client profile and podcast context…" className="min-h-52 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
                   </div>
                   <div className="space-y-3 rounded-xl border p-4">
-                    <div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days.</p></div>
-                    <div className="space-y-2"><Label htmlFor="follow-up-one-subject">Follow-up 1 subject</Label><Input id="follow-up-one-subject" value={followUpOneSubjectDraft} onChange={(event) => setFollowUpOneSubjectDraft(event.target.value)} disabled={!canManageCampaign || selectedPitchLocked} /></div>
-                    <div className="space-y-2"><Label htmlFor="follow-up-one-body">Follow-up 1 email</Label><Textarea id="follow-up-one-body" value={followUpOneBodyDraft} onChange={(event) => setFollowUpOneBodyDraft(event.target.value)} className="min-h-40 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                    <div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days and reply in the original thread.</p></div>
+                    <div className="space-y-2"><Label htmlFor="follow-up-one-body">Follow-up 1 reply</Label><Textarea id="follow-up-one-body" value={followUpOneBodyDraft} onChange={(event) => setFollowUpOneBodyDraft(event.target.value)} className="min-h-40 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
                   </div>
                   <div className="space-y-3 rounded-xl border p-4">
-                    <div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days.</p></div>
-                    <div className="space-y-2"><Label htmlFor="follow-up-two-subject">Follow-up 2 subject</Label><Input id="follow-up-two-subject" value={followUpTwoSubjectDraft} onChange={(event) => setFollowUpTwoSubjectDraft(event.target.value)} disabled={!canManageCampaign || selectedPitchLocked} /></div>
-                    <div className="space-y-2"><Label htmlFor="follow-up-two-body">Follow-up 2 email</Label><Textarea id="follow-up-two-body" value={followUpTwoBodyDraft} onChange={(event) => setFollowUpTwoBodyDraft(event.target.value)} className="min-h-40 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
+                    <div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days and reply in the same thread.</p></div>
+                    <div className="space-y-2"><Label htmlFor="follow-up-two-body">Follow-up 2 reply</Label><Textarea id="follow-up-two-body" value={followUpTwoBodyDraft} onChange={(event) => setFollowUpTwoBodyDraft(event.target.value)} className="min-h-40 resize-y" disabled={!canManageCampaign || selectedPitchLocked} /></div>
                   </div>
                   <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
                     {selectedPitchLocked
@@ -757,13 +747,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <Button
                     variant="outline"
                     disabled={!canSaveSelectedPitch || savePitchMutation.isPending || saveContactMutation.isPending || launchPitchMutation.isPending}
-                    onClick={() => savePitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: followUpOneSubjectDraft, followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: followUpTwoSubjectDraft, followUpTwoBody: followUpTwoBodyDraft })}
+                    onClick={() => savePitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: buildThreadReplySubject(subjectDraft), followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: buildThreadReplySubject(subjectDraft), followUpTwoBody: followUpTwoBodyDraft })}
                   >
                     {savePitchMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save draft
                   </Button>
                   <Button
                     disabled={!canLaunchSelectedPitch || launchPitchMutation.isPending || savePitchMutation.isPending || saveContactMutation.isPending}
-                    onClick={() => launchPitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: followUpOneSubjectDraft, followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: followUpTwoSubjectDraft, followUpTwoBody: followUpTwoBodyDraft })}
+                    onClick={() => launchPitchMutation.mutate({ workspaceId, clientId, shortlistPodcastId: selectedPodcast.id, subject: subjectDraft, pitchBody: pitchDraft, followUpOneSubject: buildThreadReplySubject(subjectDraft), followUpOneBody: followUpOneBodyDraft, followUpTwoSubject: buildThreadReplySubject(subjectDraft), followUpTwoBody: followUpTwoBodyDraft })}
                   >
                     {launchPitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Approve &amp; start outreach
                   </Button>
