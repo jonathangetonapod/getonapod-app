@@ -27,7 +27,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -236,7 +235,7 @@ export function ClientCampaignPrepDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-5xl">
+      <DialogContent className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
         <DialogHeader className="border-b px-5 py-5 pr-12 text-left sm:px-6 sm:pr-12">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="mr-1 h-3 w-3" />Approved podcast</Badge>
@@ -247,7 +246,7 @@ export function ClientCampaignPrepDialog({
           <DialogDescription>Find the right contact, research the show, and then write a thoughtful outreach sequence for {clientName}. Nothing sends from this modal.</DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[calc(92vh-13rem)] overflow-y-auto">
+        <div className="min-h-0 overflow-y-auto overscroll-contain">
           {campaignQuery.isLoading ? (
             <div className="flex min-h-96 flex-col items-center justify-center gap-3"><Loader2 className="h-7 w-7 animate-spin text-primary" /><p className="text-sm text-muted-foreground">Loading the pitch workspace…</p></div>
           ) : locked ? (
@@ -512,22 +511,24 @@ export function ClientCampaignPrepDialog({
         </div>
 
         {podcast && !locked && !campaignQuery.isLoading && (
-          <DialogFooter className="border-t bg-background px-5 pb-6 pt-4 sm:items-center sm:justify-between sm:px-6 sm:pb-6">
-            <p className="max-w-xl text-xs leading-5 text-muted-foreground">
-              {activeStep === 'email' && (emailReady
-                ? 'Email ready. Research is unlocked.'
-                : 'A valid email is required before you can continue to Research.')}
-              {activeStep === 'research' && 'This step is only for understanding the podcast and choosing the strongest angle.'}
-              {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
-            </p>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
-              {activeStep === 'email' && <Button type="button" disabled={!emailReady} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
-              {activeStep === 'research' && <Button type="button" onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
-              {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
+          <footer aria-label="Pitch actions" className="shrink-0 border-t bg-muted/20 px-4 pb-5 pt-4 sm:px-6 sm:pb-6">
+            <div className="flex flex-col gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-xl text-xs leading-5 text-muted-foreground">
+                {activeStep === 'email' && (emailReady
+                  ? 'Email ready. Research is unlocked.'
+                  : 'A valid email is required before you can continue to Research.')}
+                {activeStep === 'research' && 'This step is only for understanding the podcast and choosing the strongest angle.'}
+                {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
+              </p>
+              <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
+                {activeStep === 'email' && <Button type="button" disabled={!emailReady} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+                {activeStep === 'research' && <Button type="button" onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+                {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
+              </div>
             </div>
-          </DialogFooter>
+          </footer>
         )}
       </DialogContent>
     </Dialog>
