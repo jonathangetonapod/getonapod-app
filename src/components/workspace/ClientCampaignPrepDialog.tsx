@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, ExternalLink, FileSearch, Loader2, Mail, RefreshCw, Search, Send, Sparkles } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, FileSearch, Loader2, Mail, RefreshCw, Search, Send, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +36,14 @@ interface ClientCampaignPrepDialogProps {
   onPrepared?: () => void
 }
 
+type PitchStep = 'email' | 'research' | 'pitch'
+
+const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
+  { id: 'email', step: '1', title: 'Find email', detail: 'Identify the host or producer' },
+  { id: 'research', step: '2', title: 'Research', detail: 'Understand the show and audience' },
+  { id: 'pitch', step: '3', title: 'Write pitch', detail: 'Prepare the pitch and follow-ups' },
+]
+
 function emptyDraft(): PodcastCampaignSequenceDraft {
   return {
     researchNotes: '',
@@ -64,6 +72,7 @@ export function ClientCampaignPrepDialog({
   onPrepared,
 }: ClientCampaignPrepDialogProps) {
   const queryClient = useQueryClient()
+  const [activeStep, setActiveStep] = useState<PitchStep>('email')
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -93,6 +102,7 @@ export function ClientCampaignPrepDialog({
 
   useEffect(() => {
     if (!open) {
+      setActiveStep('email')
       setSelectedAngleIndex(0)
       setHostName('')
       setContactEmail('')
@@ -199,60 +209,100 @@ export function ClientCampaignPrepDialog({
             </div>
           ) : podcast ? (
             <div>
-              <div className="grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6">
-                {[
-                  { step: '1', title: 'Find email', detail: 'Identify the host or producer' },
-                  { step: '2', title: 'Research', detail: 'Understand the show and audience' },
-                  { step: '3', title: 'Write pitch', detail: 'Prepare the pitch and follow-ups' },
-                ].map((item) => (
-                  <div key={item.step} className="flex items-center gap-3 rounded-xl border bg-background px-3 py-2.5">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{item.step}</span>
-                    <div className="min-w-0"><p className="text-sm font-semibold">{item.title}</p><p className="truncate text-xs text-muted-foreground">{item.detail}</p></div>
-                  </div>
-                ))}
-              </div>
+              <nav aria-label="Pitch workflow steps" className="grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6">
+                {pitchSteps.map((item) => {
+                  const active = activeStep === item.id
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-label={`Go to step ${item.step}: ${item.title}`}
+                      aria-current={active ? 'step' : undefined}
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${active ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/30'}`}
+                      onClick={() => setActiveStep(item.id)}
+                    >
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{item.step}</span>
+                      <span className="min-w-0"><span className="block text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-muted-foreground">{item.detail}</span></span>
+                    </button>
+                  )
+                })}
+              </nav>
 
-              {(campaignQuery.error || !mappedCampaign) && (
-                <div className="mx-5 mt-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950 sm:mx-6 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold">You can design the pitch now</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Connect or assign the client campaign before saving this draft for outreach.</p></div></div>
-                  <div className="flex shrink-0 gap-2">{campaignQuery.error && <Button type="button" variant="outline" size="sm" onClick={() => void campaignQuery.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>}<Button asChild variant="outline" size="sm"><Link to={campaignHref}>Campaign setup</Link></Button></div>
+              {activeStep === 'email' && (
+                <div className="mx-auto max-w-3xl p-5 sm:p-8">
+                  <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                    <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex gap-3">
+                          <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
+                          <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">Identify the host, producer, or booking contact who reviews guest ideas for {podcast.podcast_name}.</p></div>
+                        </div>
+                        <Button type="button" className="shrink-0"><Search className="mr-2 h-4 w-4" />Find email</Button>
+                      </div>
+                    </div>
+                    <div className="space-y-5 p-5 sm:p-6">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2"><Label htmlFor="campaign-host-name">Host or producer</Label><Input id="campaign-host-name" value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={500} placeholder="Host or booking contact" /></div>
+                        <div className="space-y-2"><Label htmlFor="campaign-contact-email">Email</Label><Input id="campaign-contact-email" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} maxLength={254} placeholder="host@podcast.com" aria-invalid={!emailValid} />{!emailValid && <p className="text-xs text-destructive">Enter a valid email address or leave it blank.</p>}</div>
+                      </div>
+                      <div className="rounded-xl border border-dashed bg-muted/20 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Places to check</p><p className="mt-2 text-sm leading-6 text-muted-foreground">Podcast website · episode notes · host profile · booking page · publisher contact</p></div>
+                      <p className="text-xs text-muted-foreground">Contact details stay private to your workspace.</p>
+                    </div>
+                  </section>
                 </div>
               )}
 
-              <div className="grid lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
-              <div className="space-y-5 border-b bg-muted/15 p-5 lg:border-b-0 lg:border-r sm:p-6">
-                <section className="rounded-xl border bg-background p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><Mail className="h-4 w-4 text-primary" /><h3 className="font-semibold">1. Find the email</h3></div><p className="mt-1 text-xs text-muted-foreground">Start with the host, producer, or booking contact most likely to review guest ideas.</p></div><Button type="button" variant="outline" size="sm"><Search className="mr-2 h-3.5 w-3.5" />Find email</Button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2"><div className="space-y-2"><Label htmlFor="campaign-host-name">Host or producer</Label><Input id="campaign-host-name" value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={500} placeholder="Host or booking contact" /></div><div className="space-y-2"><Label htmlFor="campaign-contact-email">Email</Label><Input id="campaign-contact-email" type="email" value={contactEmail} onChange={(event) => setContactEmail(event.target.value)} maxLength={254} placeholder="host@podcast.com" aria-invalid={!emailValid} /></div></div>{!emailValid && <p className="mt-2 text-xs text-destructive">Enter a valid email address or leave it blank for later research.</p>}<p className="mt-3 text-xs text-muted-foreground">Contact details stay private to your workspace.</p></section>
+              {activeStep === 'research' && (
+                <div className="p-5 sm:p-6">
+                  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div><Badge variant="secondary">Step 2</Badge><h3 className="mt-2 text-xl font-semibold">Research the podcast</h3><p className="mt-1 text-sm text-muted-foreground">Focus only on the show, its audience, recent episodes, and the strongest guest angle.</p></div>
+                    {podcastUrl && <Button asChild variant="outline"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
+                  </div>
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
+                    <div className="space-y-5 rounded-2xl border bg-muted/15 p-5">
+                      <section><div className="flex items-center gap-2"><FileSearch className="h-4 w-4 text-primary" /><h4 className="font-semibold">Show brief</h4></div><p className="mt-3 text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'Add what you learn about the show, host, audience, and recent episodes.'}</p></section>
+                      {fitReasons.length > 0 && <section><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why it fits</p><ul className="mt-2 space-y-2 text-sm">{fitReasons.slice(0, 4).map((reason) => <li key={reason} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>{reason}</span></li>)}</ul></section>}
+                      {pitchAngles.length > 0 && <section><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Choose the lead angle</p><div className="mt-2 space-y-2">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedAngleIndex === index ? 'border-primary bg-primary/5' : 'bg-background hover:border-primary/40'}`} onClick={() => setSelectedAngleIndex(index)}><p className="text-sm font-semibold">{angle.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{angle.description}</p></button>)}</div></section>}
+                    </div>
+                    <section className="rounded-2xl border bg-background p-5"><Label htmlFor="campaign-research-notes" className="text-base font-semibold">Research notes</Label><p className="mt-1 text-xs text-muted-foreground">Capture recent episodes, host preferences, audience details, useful proof points, and angles to avoid.</p><Textarea id="campaign-research-notes" value={draft.researchNotes} onChange={(event) => updateDraft('researchNotes', event.target.value)} className="mt-4 min-h-80 resize-y" maxLength={10_000} placeholder="Add focused podcast research here…" /></section>
+                  </div>
+                </div>
+              )}
 
-                <section>
-                  <div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2"><FileSearch className="h-4 w-4 text-primary" /><h3 className="font-semibold">2. Research the podcast</h3></div><p className="mt-1 text-xs text-muted-foreground">Look for recent episodes, recurring themes, and a genuine reason this guest belongs.</p></div>{podcastUrl && <Button asChild variant="outline" size="sm"><a href={podcastUrl} target="_blank" rel="noreferrer">Open show<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}</div>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description || podcast.podcast_description || 'Add what you learn about the show, host, audience, and recent episodes below.'}</p>
-                  {fitReasons.length > 0 && <div className="mt-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why it fits</p><ul className="mt-2 space-y-2 text-sm">{fitReasons.slice(0, 4).map((reason) => <li key={reason} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>{reason}</span></li>)}</ul></div>}
-                </section>
-
-                {pitchAngles.length > 0 && <section><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Choose the lead angle</p><div className="mt-2 space-y-2">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedAngleIndex === index ? 'border-primary bg-primary/5' : 'hover:bg-background'}`} onClick={() => setSelectedAngleIndex(index)}><p className="text-sm font-semibold">{angle.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{angle.description}</p></button>)}</div></section>}
-
-                <div className="space-y-2"><Label htmlFor="campaign-research-notes">Research notes</Label><Textarea id="campaign-research-notes" value={draft.researchNotes} onChange={(event) => updateDraft('researchNotes', event.target.value)} rows={7} maxLength={10_000} placeholder="Recent episodes, host preferences, audience details, proof points, and angles to avoid…" /></div>
-
-              </div>
-
-              <div className="space-y-5 p-5 sm:p-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h3 className="font-semibold">3. Write the pitch</h3></div><p className="mt-1 text-sm text-muted-foreground">Turn the research into one personal pitch and two respectful follow-ups.</p></div><Button type="button" variant="outline" size="sm" onClick={applyResearchDraft}><Sparkles className="mr-2 h-4 w-4" />Build draft from research</Button></div>
-
-                <section className="space-y-3 rounded-xl border p-4"><div><Badge variant="secondary">Email 1 · Opening pitch</Badge><p className="mt-2 text-xs text-muted-foreground">Your personalized first note to the host or producer.</p></div><div className="space-y-2"><Label htmlFor="campaign-pitch-subject">Subject</Label><Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-pitch-body">Opening email</Label><Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y" maxLength={20_000} /></div></section>
-
-                <section className="space-y-3 rounded-xl border p-4"><div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days. Instantly stops the sequence when the host replies.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-subject">Follow-up 1 subject</Label><Input id="campaign-follow-up-one-subject" value={draft.followUpOneSubject} onChange={(event) => updateDraft('followUpOneSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 email</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
-
-                <section className="space-y-3 rounded-xl border p-4"><div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days, then close the conversation respectfully.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-subject">Follow-up 2 subject</Label><Input id="campaign-follow-up-two-subject" value={draft.followUpTwoSubject} onChange={(event) => updateDraft('followUpTwoSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-body">Follow-up 2 email</Label><Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
-              </div>
-              </div>
+              {activeStep === 'pitch' && (
+                <div className="space-y-5 p-5 sm:p-6">
+                  {(campaignQuery.error || !mappedCampaign) && (
+                    <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold">You can design the pitch now</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Connect or assign the client campaign before saving this draft for outreach.</p></div></div>
+                      <div className="flex shrink-0 gap-2">{campaignQuery.error && <Button type="button" variant="outline" size="sm" onClick={() => void campaignQuery.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>}<Button asChild variant="outline" size="sm"><Link to={campaignHref}>Campaign setup</Link></Button></div>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Write the pitch</h3><p className="mt-1 text-sm text-muted-foreground">Write one personal opening pitch and two respectful follow-ups.</p></div><Button type="button" variant="outline" onClick={applyResearchDraft}><Sparkles className="mr-2 h-4 w-4" />Build draft from research</Button></div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <section className="space-y-3 rounded-2xl border p-5 lg:col-span-2"><div><Badge variant="secondary">Email 1 · Opening pitch</Badge><p className="mt-2 text-xs text-muted-foreground">Your personalized first note to the host or producer.</p></div><div className="space-y-2"><Label htmlFor="campaign-pitch-subject">Subject</Label><Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-pitch-body">Opening email</Label><Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-52 resize-y" maxLength={20_000} /></div></section>
+                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 2 · Follow-up</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 3 days. Stop when the host replies.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-subject">Follow-up 1 subject</Label><Input id="campaign-follow-up-one-subject" value={draft.followUpOneSubject} onChange={(event) => updateDraft('followUpOneSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-one-body">Follow-up 1 email</Label><Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
+                    <section className="space-y-3 rounded-2xl border p-5"><div><Badge variant="secondary">Email 3 · Close the loop</Badge><p className="mt-2 text-xs text-muted-foreground">Wait 5 more days, then close respectfully.</p></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-subject">Follow-up 2 subject</Label><Input id="campaign-follow-up-two-subject" value={draft.followUpTwoSubject} onChange={(event) => updateDraft('followUpTwoSubject', event.target.value)} maxLength={300} /></div><div className="space-y-2"><Label htmlFor="campaign-follow-up-two-body">Follow-up 2 email</Label><Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-40 resize-y" maxLength={20_000} /></div></section>
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
         </div>
 
         {podcast && !locked && !campaignQuery.isLoading && (
           <DialogFooter className="border-t bg-background px-5 py-4 sm:items-center sm:justify-between sm:px-6">
-            <p className="max-w-xl text-xs leading-5 text-muted-foreground">Saving keeps the research, contact, pitch, and both follow-ups together as one outreach draft. Nothing is sent yet.</p>
-            <div className="flex gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button></div>
+            <p className="max-w-xl text-xs leading-5 text-muted-foreground">
+              {activeStep === 'email' && 'This step is only for identifying and confirming the right contact.'}
+              {activeStep === 'research' && 'This step is only for understanding the podcast and choosing the strongest angle.'}
+              {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
+              {activeStep === 'email' && <Button type="button" onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+              {activeStep === 'research' && <Button type="button" onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+              {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
+            </div>
           </DialogFooter>
         )}
       </DialogContent>

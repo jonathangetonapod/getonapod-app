@@ -184,14 +184,30 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
     expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '1. Find the email' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '2. Research the podcast' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '3. Write the pitch' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Find the email' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Find email' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Research the podcast' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Write the pitch' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+
+    expect(screen.getByRole('heading', { name: 'Research the podcast' })).toBeInTheDocument()
     expect(screen.getByLabelText('Research notes')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Find email' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to write pitch' }))
+
+    expect(screen.getByRole('heading', { name: 'Write the pitch' })).toBeInTheDocument()
     expect(screen.getByLabelText('Opening email')).toBeInTheDocument()
     expect(screen.getByLabelText('Follow-up 1 email')).toBeInTheDocument()
     expect(screen.getByLabelText('Follow-up 2 email')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Research the podcast' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this modal/i)).toBeInTheDocument()
 
     const saveButton = screen.getByRole('button', { name: 'Save pitch draft' })
@@ -223,6 +239,8 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
 
     expect(await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to write pitch' }))
     expect(screen.getByText('You can design the pitch now')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Campaign setup' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     expect(screen.getByRole('button', { name: 'Save pitch draft' })).toBeDisabled()
