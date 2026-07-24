@@ -38,7 +38,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { buildPodcastCampaignSequenceDraft, type PodcastCampaignSequenceDraft } from '@/lib/campaignSequence'
 import { safeExternalUrl } from '@/lib/externalUrl'
-import type { ClientShortlistPodcast } from '@/services/clientShortlist'
+import type {
+  ClientShortlistPodcast,
+  ClientShortlistResearchStageId,
+} from '@/services/clientShortlist'
 import {
   getWorkspaceCampaign,
   prepareWorkspaceCampaignPodcast,
@@ -59,13 +62,12 @@ interface ClientCampaignPrepDialogProps {
 
 type PitchStep = 'email' | 'research' | 'pitch'
 type EmailRoute = 'podcast' | 'waterfall' | 'manual'
-type ResearchProgressStatus = 'complete' | 'active' | 'queued'
+type ResearchProgressStatus = 'complete' | 'active' | 'queued' | 'failed'
 
 interface ResearchProgressStep {
-  id: string
+  id: ClientShortlistResearchStageId
   title: string
   detail: string
-  status: ResearchProgressStatus
 }
 
 const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: string }> = [
@@ -75,12 +77,12 @@ const pitchSteps: Array<{ id: PitchStep; step: string; title: string; detail: st
 ]
 
 const researchProgressSteps: ResearchProgressStep[] = [
-  { id: 'podcast', title: 'Reading the podcast profile', detail: 'Show focus, format, and positioning', status: 'complete' },
-  { id: 'host', title: 'Confirming the host', detail: 'Background and interview approach', status: 'complete' },
-  { id: 'episodes', title: 'Reviewing recent episodes', detail: 'Themes, questions, and timely references', status: 'complete' },
-  { id: 'guests', title: 'Checking guest patterns', detail: 'Guest format and recent conversations', status: 'complete' },
-  { id: 'fit', title: 'Matching guest expertise', detail: 'Audience needs and credible fit', status: 'complete' },
-  { id: 'angles', title: 'Preparing pitch angles', detail: 'Primary topic and useful alternatives', status: 'complete' },
+  { id: 'podcast_profile', title: 'Reading the podcast profile', detail: 'Show focus, format, and positioning' },
+  { id: 'host_profile', title: 'Confirming the host', detail: 'Background and interview approach' },
+  { id: 'recent_episodes', title: 'Reviewing recent episodes', detail: 'Themes, questions, and timely references' },
+  { id: 'guest_patterns', title: 'Checking guest patterns', detail: 'Guest format and recent conversations' },
+  { id: 'guest_fit', title: 'Matching guest expertise', detail: 'Audience needs and credible fit' },
+  { id: 'pitch_angles', title: 'Preparing pitch angles', detail: 'Primary topic and useful alternatives' },
 ]
 
 function emptyDraft(): PodcastCampaignSequenceDraft {
@@ -157,6 +159,39 @@ export function ClientCampaignPrepDialog({
   const publicPodcastEmail = podcast?.podcast_email?.trim() || ''
   const fitReasons = podcast?.ai_fit_reasons || []
   const pitchAngles = podcast?.ai_pitch_angles || []
+  const researchProgress = podcast?.research_progress || null
+  const visibleResearchSteps = useMemo(() => {
+    const completedStages = new Set(researchProgress?.completed_stages || [])
+    return researchProgressSteps.map((step): ResearchProgressStep & { status: ResearchProgressStatus } => {
+      if (!researchProgress || researchProgress.status === 'completed') return { ...step, status: 'complete' }
+      if (completedStages.has(step.id)) return { ...step, status: 'complete' }
+      if (researchProgress.current_stage === step.id) {
+        return { ...step, status: researchProgress.status === 'failed' ? 'failed' : 'active' }
+      }
+      return { ...step, status: 'queued' }
+    })
+  }, [researchProgress])
+  const completedResearchStepCount = visibleResearchSteps.filter((step) => step.status === 'complete').length
+  const activeResearchStep = visibleResearchSteps.find((step) => step.status === 'active') || null
+  const failedResearchStep = visibleResearchSteps.find((step) => step.status === 'failed') || null
+  const researchComplete = !researchProgress || researchProgress.status === 'completed'
+  const researchFailed = researchProgress?.status === 'failed'
+  const researchWorking = researchProgress?.status === 'queued' || researchProgress?.status === 'running'
+  const researchStepsExpanded = !researchComplete || showResearchSteps
+  const researchStatusTitle = researchComplete
+    ? `Research ready · ${researchProgressSteps.length} of ${researchProgressSteps.length} steps complete`
+    : researchFailed
+      ? `Research paused · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
+      : activeResearchStep
+        ? `${activeResearchStep.title} · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
+        : `Research queued · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
+  const researchStatusDetail = researchComplete
+    ? 'The research is saved to this podcast and will still be here when you return.'
+    : researchFailed
+      ? researchProgress?.message || `We could not finish ${failedResearchStep?.title.toLowerCase() || 'this research stage'}. Your completed work is saved.`
+      : activeResearchStep
+        ? activeResearchStep.detail
+        : 'Your research will begin as soon as the workspace is ready.'
 
   const starterDraft = useMemo(() => podcast
     ? buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio, angleIndex: selectedAngleIndex })
@@ -347,18 +382,24 @@ export function ClientCampaignPrepDialog({
                 {pitchSteps.map((item) => {
                   const active = activeStep === item.id
                   const lockedUntilEmail = item.id !== 'email' && !emailReady
+                  const lockedUntilResearch = item.id === 'pitch' && !researchComplete
+                  const lockedStepLabel = lockedUntilEmail
+                    ? `Step ${item.step}: ${item.title} locked until an email is ready`
+                    : lockedUntilResearch
+                      ? `Step ${item.step}: ${item.title} locked until research is complete`
+                      : `Go to step ${item.step}: ${item.title}`
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      aria-label={lockedUntilEmail ? `Step ${item.step}: ${item.title} locked until an email is ready` : `Go to step ${item.step}: ${item.title}`}
+                      aria-label={lockedStepLabel}
                       aria-current={active ? 'step' : undefined}
-                      disabled={lockedUntilEmail}
+                      disabled={lockedUntilEmail || lockedUntilResearch}
                       className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${active ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/30'}`}
                       onClick={() => setActiveStep(item.id)}
                     >
                       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{item.step}</span>
-                      <span className="min-w-0"><span className="block text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-muted-foreground">{lockedUntilEmail ? 'Email required first' : item.detail}</span></span>
+                      <span className="min-w-0"><span className="block text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-muted-foreground">{lockedUntilEmail ? 'Email required first' : lockedUntilResearch ? 'Research must finish first' : item.detail}</span></span>
                     </button>
                   )
                 })}
@@ -512,42 +553,64 @@ export function ClientCampaignPrepDialog({
                         </div>
                       </div>
 
-                      <div className="mt-5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/70">
+                      <div className={`mt-5 overflow-hidden rounded-xl border ${researchComplete ? 'border-emerald-200 bg-emerald-50/70' : researchFailed ? 'border-destructive/25 bg-destructive/5' : 'border-sky-200 bg-sky-50/70'}`}>
                         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex gap-3">
-                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-                            <div><p className="text-sm font-semibold text-emerald-950">Research ready · 6 of 6 steps complete</p><p className="mt-1 text-xs leading-5 text-emerald-900/75">The research is saved to this podcast and will still be here when you return.</p></div>
+                            {researchComplete && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />}
+                            {researchWorking && <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-700" />}
+                            {researchFailed && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />}
+                            <div aria-live="polite">
+                              <p className={`text-sm font-semibold ${researchComplete ? 'text-emerald-950' : researchFailed ? 'text-destructive' : 'text-sky-950'}`}>{researchStatusTitle}</p>
+                              <p className={`mt-1 text-xs leading-5 ${researchComplete ? 'text-emerald-900/75' : researchFailed ? 'text-destructive/80' : 'text-sky-900/75'}`}>{researchStatusDetail}</p>
+                            </div>
                           </div>
                           <div className="flex shrink-0 items-center gap-2 sm:justify-end">
-                            <p className="hidden text-xs font-medium text-emerald-800 lg:block">{podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'}</p>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="border-emerald-200 bg-background text-emerald-900 hover:bg-emerald-100 hover:text-emerald-950"
-                              aria-expanded={showResearchSteps}
-                              aria-controls="campaign-research-progress-steps"
-                              onClick={() => setShowResearchSteps((current) => !current)}
-                            >
-                              {showResearchSteps ? 'Hide steps' : 'View steps'}
-                              <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showResearchSteps ? 'rotate-180' : ''}`} />
-                            </Button>
+                            <p className={`hidden text-xs font-medium lg:block ${researchComplete ? 'text-emerald-800' : researchFailed ? 'text-destructive' : 'text-sky-800'}`}>
+                              {researchComplete
+                                ? podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'
+                                : researchFailed ? 'Completed work saved' : 'Working in the background'}
+                            </p>
+                            {researchComplete && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="border-emerald-200 bg-background text-emerald-900 hover:bg-emerald-100 hover:text-emerald-950"
+                                aria-expanded={researchStepsExpanded}
+                                aria-controls="campaign-research-progress-steps"
+                                onClick={() => setShowResearchSteps((current) => !current)}
+                              >
+                                {showResearchSteps ? 'Hide steps' : 'View steps'}
+                                <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showResearchSteps ? 'rotate-180' : ''}`} />
+                              </Button>
+                            )}
                           </div>
                         </div>
 
-                        {showResearchSteps && (
-                          <div id="campaign-research-progress-steps" className="border-t border-emerald-200/80 bg-background/80">
-                            <ol aria-label="Podcast research progress" className="grid gap-px bg-emerald-100 sm:grid-cols-2 lg:grid-cols-3">
-                              {researchProgressSteps.map((step) => (
+                        {researchStepsExpanded && (
+                          <div id="campaign-research-progress-steps" className="border-t bg-background/80">
+                            <ol aria-label="Podcast research progress" className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-3">
+                              {visibleResearchSteps.map((step) => (
                                 <li key={step.id} className="flex gap-3 bg-background p-4">
                                   {step.status === 'complete' && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />}
                                   {step.status === 'active' && <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />}
                                   {step.status === 'queued' && <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-muted-foreground/25" />}
-                                  <div><p className="text-xs font-semibold text-foreground">{step.title}</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p></div>
+                                  {step.status === 'failed' && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />}
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-1.5"><p className="text-xs font-semibold text-foreground">{step.title}</p><span className={`text-[10px] font-semibold ${step.status === 'complete' ? 'text-emerald-700' : step.status === 'active' ? 'text-primary' : step.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>{step.status === 'complete' ? 'Done' : step.status === 'active' ? 'In progress' : step.status === 'failed' ? 'Needs attention' : 'Waiting'}</span></div>
+                                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p>
+                                  </div>
                                 </li>
                               ))}
                             </ol>
-                            <div className="flex gap-2 border-t px-4 py-3 text-[11px] leading-4 text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" /><p>While research is running, you can safely close this window and return without losing progress.</p></div>
+                            <div className="flex gap-2 border-t px-4 py-3 text-[11px] leading-4 text-muted-foreground">
+                              {researchWorking ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" /> : researchFailed ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
+                              <p>{researchWorking
+                                ? 'Research continues in the background. You can safely close this window and return without losing progress.'
+                                : researchFailed
+                                  ? 'Completed stages are saved. Retrying can continue from the stage that needs attention.'
+                                  : 'Every stage is saved with this podcast, so the research does not need to run again when you return.'}</p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -632,14 +695,18 @@ export function ClientCampaignPrepDialog({
                 {activeStep === 'email' && (emailReady
                   ? 'Email ready. Research is unlocked.'
                   : 'A valid email is required before you can continue to Research.')}
-                {activeStep === 'research' && 'Research is included with your plan, saved to this podcast, and used to shape the pitch.'}
+                {activeStep === 'research' && (researchWorking
+                  ? 'Research is running in the background. You can close this window and return without losing progress.'
+                  : researchFailed
+                    ? 'Research paused before the pitch could be prepared. Completed stages are saved.'
+                    : 'Research is included with your plan, saved to this podcast, and used to shape the pitch.')}
                 {activeStep === 'pitch' && 'This step is only for writing the opening pitch and follow-ups. Nothing is sent yet.'}
               </p>
               <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                 {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
                 {activeStep === 'email' && <Button type="button" disabled={!emailReady} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
-                {activeStep === 'research' && <Button type="button" onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+                {activeStep === 'research' && <Button type="button" disabled={!researchComplete} onClick={() => setActiveStep('pitch')}>Continue to write pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
                 {activeStep === 'pitch' && <Button type="button" disabled={submitDisabled} onClick={() => prepareMutation.mutate()}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{target ? 'Update pitch draft' : 'Save pitch draft'}</Button>}
               </div>
             </div>

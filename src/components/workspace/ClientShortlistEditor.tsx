@@ -166,6 +166,14 @@ export function ClientShortlistEditor({
     queryKey: shortlistQueryKey,
     queryFn: () => getClientShortlist(workspaceId, clientId),
     retry: false,
+    refetchInterval: (query) => {
+      if (!campaignPrepPodcast) return false
+      const currentPodcast = query.state.data?.podcasts.find((item) => item.id === campaignPrepPodcast.id)
+      return currentPodcast?.research_progress?.status === 'queued'
+        || currentPodcast?.research_progress?.status === 'running'
+        ? 2_000
+        : false
+    },
   })
   const catalogSearchQuery = useQuery({
     queryKey: ['client-shortlist-catalog', workspaceId, clientId, debouncedCatalogQuery],
@@ -182,6 +190,10 @@ export function ClientShortlistEditor({
   useEffect(() => setPage(1), [filter, searchQuery, sort])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
+  const activeCampaignPrepPodcast = useMemo(() => {
+    if (!campaignPrepPodcast) return null
+    return podcasts.find((podcast) => podcast.id === campaignPrepPodcast.id) || campaignPrepPodcast
+  }, [campaignPrepPodcast, podcasts])
   const featured = useMemo(() => podcasts
     .filter((podcast) => podcast.visibility === 'visible' && podcast.is_featured)
     .sort((left, right) => (left.featured_order ?? 99) - (right.featured_order ?? 99)), [podcasts])
@@ -513,17 +525,17 @@ export function ClientShortlistEditor({
       </Sheet>
 
       <ClientCampaignPrepDialog
-        open={Boolean(campaignPrepPodcast)}
+        open={Boolean(activeCampaignPrepPodcast)}
         onOpenChange={(open) => { if (!open) setCampaignPrepPodcast(null) }}
         workspaceId={workspaceId}
         clientId={clientId}
         clientName={clientName}
         clientBio={clientBio}
         campaignHref={campaignHref}
-        podcast={campaignPrepPodcast}
+        podcast={activeCampaignPrepPodcast}
         onArchive={() => {
-          if (!campaignPrepPodcast) return
-          setArchiveTarget(campaignPrepPodcast)
+          if (!activeCampaignPrepPodcast) return
+          setArchiveTarget(activeCampaignPrepPodcast)
           setCampaignPrepPodcast(null)
         }}
       />

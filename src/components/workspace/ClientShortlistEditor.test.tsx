@@ -278,7 +278,7 @@ describe('ClientShortlistEditor', () => {
     expect(researchProgress.getByText('Checking guest patterns')).toBeInTheDocument()
     expect(researchProgress.getByText('Matching guest expertise')).toBeInTheDocument()
     expect(researchProgress.getByText('Preparing pitch angles')).toBeInTheDocument()
-    expect(screen.getByText(/safely close this window and return without losing progress/i)).toBeInTheDocument()
+    expect(screen.getByText(/every stage is saved with this podcast/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Show overview' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Host and show' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Audience snapshot' })).toBeInTheDocument()
@@ -320,6 +320,54 @@ describe('ClientShortlistEditor', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Write a pitch for Founder Stories' })).not.toBeInTheDocument())
 
     expect(screen.queryByRole('button', { name: 'Write Pitch for Operator Weekly' })).not.toBeInTheDocument()
+  })
+
+  it('shows live backend research progress and holds the pitch until every stage finishes', async () => {
+    const runningPodcast = podcast({
+      research_progress: {
+        status: 'running',
+        current_stage: 'recent_episodes',
+        completed_stages: ['podcast_profile', 'host_profile'],
+        started_at: '2026-07-24T12:00:00.000Z',
+        updated_at: '2026-07-24T12:01:00.000Z',
+      },
+    })
+    const completedPodcast = podcast({
+      research_progress: {
+        status: 'completed',
+        current_stage: null,
+        completed_stages: ['podcast_profile', 'host_profile', 'recent_episodes', 'guest_patterns', 'guest_fit', 'pitch_angles'],
+        started_at: '2026-07-24T12:00:00.000Z',
+        updated_at: '2026-07-24T12:02:00.000Z',
+      },
+      ai_analyzed_at: '2026-07-24T12:02:00.000Z',
+    })
+    vi.mocked(getClientShortlist)
+      .mockResolvedValueOnce({
+        client: { id: clientId, name: 'Taylor Client' },
+        podcasts: [runningPodcast],
+      })
+      .mockResolvedValueOnce({
+        client: { id: clientId, name: 'Taylor Client' },
+        podcasts: [completedPodcast],
+      })
+    renderEditor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+
+    expect(screen.getByText('Reviewing recent episodes · 2 of 6 steps complete')).toBeInTheDocument()
+    const researchProgress = within(screen.getByRole('list', { name: 'Podcast research progress' }))
+    expect(researchProgress.getAllByText('Done')).toHaveLength(2)
+    expect(researchProgress.getByText('In progress')).toBeInTheDocument()
+    expect(researchProgress.getAllByText('Waiting')).toHaveLength(3)
+    expect(screen.queryByRole('button', { name: 'View steps' })).not.toBeInTheDocument()
+    expect(screen.getByText(/research continues in the background/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to write pitch' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Step 3: Write pitch locked until research is complete' })).toBeDisabled()
+
+    await waitFor(() => expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument(), { timeout: 4_000 })
+    expect(screen.getByRole('button', { name: 'Continue to write pitch' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Go to step 3: Write pitch' })).toBeEnabled()
   })
 
   it('requires a valid manually entered email when no public podcast email is available', async () => {

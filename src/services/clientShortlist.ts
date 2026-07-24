@@ -3,6 +3,17 @@ import { toFunctionError } from '@/lib/functionErrors'
 
 export type ClientShortlistVisibility = 'visible' | 'archived'
 export type ClientShortlistFeedbackStatus = 'approved' | 'rejected' | null
+export type ClientShortlistResearchStageId = 'podcast_profile' | 'host_profile' | 'recent_episodes' | 'guest_patterns' | 'guest_fit' | 'pitch_angles'
+export type ClientShortlistResearchStatus = 'queued' | 'running' | 'completed' | 'failed'
+
+export interface ClientShortlistResearchProgress {
+  status: ClientShortlistResearchStatus
+  current_stage: ClientShortlistResearchStageId | null
+  completed_stages: ClientShortlistResearchStageId[]
+  message?: string | null
+  started_at?: string | null
+  updated_at?: string | null
+}
 
 export interface ClientShortlistCategory {
   category_id: string
@@ -46,6 +57,7 @@ export interface ClientShortlistPodcast extends ClientShortlistPodcastInput {
   ai_fit_reasons: string[] | null
   ai_pitch_angles: Array<{ title: string; description: string }> | null
   ai_analyzed_at: string | null
+  research_progress?: ClientShortlistResearchProgress | null
   visibility: ClientShortlistVisibility
   display_order: number
   is_featured: boolean
