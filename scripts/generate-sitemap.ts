@@ -70,6 +70,7 @@ async function generateSitemap() {
   // Static pages
   const staticPages = [
     { url: '', priority: '1.0', changefreq: 'daily' },
+    { url: '/platform', priority: '0.9', changefreq: 'weekly' },
     { url: '/blog', priority: '0.9', changefreq: 'daily' },
     { url: '/resources', priority: '0.8', changefreq: 'weekly' },
     { url: '/course', priority: '0.8', changefreq: 'monthly' },

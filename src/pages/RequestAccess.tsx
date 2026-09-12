@@ -11,8 +11,9 @@ import { AuthShell } from '@/components/landing/AuthShell'
  * link "Sign up" and then not signing anyone up is the one thing this page must
  * not do.
  *
- * The same form is on the landing page at #start. This exists so the sign-in
- * page has somewhere to send people, and so the link survives being shared.
+ * The same form is on the agency page at /platform#start. This exists so the
+ * sign-in page has somewhere to send people, and so the link survives being
+ * shared.
  */
 const RequestAccess = () => (
   <AuthShell

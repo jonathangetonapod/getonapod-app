@@ -144,23 +144,30 @@ assert.doesNotMatch(serviceCode, /\.insert\(/u)
 // not a landing-page one — `section { padding-block: ... }` here put 8rem of
 // padding on every <section> in the product. Everything must stay under
 // .gp-page.
+// The done-for-you homepage stylesheet has the same shape under .dfy-.
 const css = readFileSync('src/styles/agencyLanding.css', 'utf8')
-const withoutComments = css.replace(/\/\*[\s\S]*?\*\//gu, '')
-const escaped = []
-for (const block of withoutComments.split('}')) {
-  const selector = block.split('{')[0].trim()
-  if (!selector || selector.startsWith('@') || selector.startsWith('/')) continue
-  for (const part of selector.split(',')) {
-    const one = part.trim()
-    if (!one) continue
-    // `:root[data-theme="dark"] .gp-page` is the app's theme attribute reaching
-    // in to retint the page. Its subject is still .gp-page, so it cannot select
-    // anything outside; everything else must lead with .gp-.
-    const rooted = one.replace(/^:root\[data-theme="(?:dark|light)"\]\s+/u, '')
-    if (!/^\.gp-/u.test(rooted)) escaped.push(one)
+for (const [file, prefix] of [['src/styles/agencyLanding.css', 'gp'], ['src/styles/landing.css', 'dfy']]) {
+  const sheet = readFileSync(file, 'utf8')
+  const withoutComments = sheet.replace(/\/\*[\s\S]*?\*\//gu, '')
+  const lead = new RegExp(`^\\.${prefix}-`, 'u')
+  const escaped = []
+  for (const block of withoutComments.split('}')) {
+    const selector = block.split('{')[0].trim()
+    if (!selector || selector.startsWith('@') || selector.startsWith('/')) continue
+    // Steps inside an @keyframes block select nothing.
+    if (/^(?:from|to|\d+%)$/u.test(selector)) continue
+    for (const part of selector.split(',')) {
+      const one = part.trim()
+      if (!one) continue
+      // `:root[data-theme="dark"] .gp-page` is the app's theme attribute reaching
+      // in to retint the page. Its subject is still .gp-page, so it cannot select
+      // anything outside; everything else must lead with the page's prefix.
+      const rooted = one.replace(/^:root\[data-theme="(?:dark|light)"\]\s+/u, '')
+      if (!lead.test(rooted)) escaped.push(one)
+    }
   }
+  assert.deepEqual(escaped, [], `${file} selectors must start with .${prefix}-; these escape the page: ${escaped.join(' | ')}`)
 }
-assert.deepEqual(escaped, [], `agencyLanding.css selectors must start with .gp-; these escape the page: ${escaped.join(' | ')}`)
 
 // The page's screenshots are files dropped into public/shots. The markup must
 // name each one and carry an alt, so a missing file degrades to a placeholder

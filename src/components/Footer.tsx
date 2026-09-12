@@ -26,7 +26,7 @@ const Footer = () => {
             <div>
               <h4 className="text-sm font-semibold text-[#0d1b2a]">Navigate</h4>
               <nav className="mt-3 flex flex-col gap-2">
-                <a href="/#tour" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Product</a>
+                <a href="/#how" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">How It Works</a>
                 <a href="/#pricing" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Pricing</a>
                 <a href="/#faq" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">FAQ</a>
                 <Link to="/what-to-expect" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">What to Expect</Link>
@@ -36,7 +36,8 @@ const Footer = () => {
             <div>
               <h4 className="text-sm font-semibold text-[#0d1b2a]">Access</h4>
               <nav className="mt-3 flex flex-col gap-2">
-                <a href="/#portal" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Client Portal</a>
+                <a href="/#shows" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">The Shows</a>
+                <Link to="/platform" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">For Agencies</Link>
                 <Link to="/resources" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Resources</Link>
                 <Link to="/blog" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Blog</Link>
                 <Link to="/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Workspace Login</Link>

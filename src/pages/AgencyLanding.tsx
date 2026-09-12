@@ -176,6 +176,7 @@ const AgencyLanding = () => {
       <PageSEO
         title="Podcast booking software for agencies | Get On A Pod"
         description="Book your clients on more podcasts in less time: find shows, get the client's approval, pitch, and land the booking — with a client portal under your own name."
+        path="/platform"
       />
       <a className="gp-skip" href="#main">Skip to content</a>
 

@@ -11,12 +11,13 @@ import { PlatformAdminRoute, ProtectedRoute } from "@/components/ProtectedRoute"
 import { queryClient } from "@/lib/queryClient";
 import { lazyRoute } from "@/lib/lazyRoute";
 import { ClientProtectedRoute } from "@/components/ClientProtectedRoute";
-import AgencyLanding from "./pages/AgencyLanding";
+import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
 import { selectedWorkspaceBaseHref, workspaceModuleHref, type WorkspaceModule } from "@/lib/workspaceRoutes";
 
-// The booking service page is no longer the entry, so its thirteen marketing
-// sections should not ride along on every visit to the app.
+// The agency pitch keeps its own page at /platform, so its screenshot tour and
+// request form should not ride along on every visit to the app.
+const AgencyLanding = lazyRoute(() => import("./pages/AgencyLanding"));
 const RequestAccess = lazyRoute(() => import("./pages/RequestAccess"));
 const Resources = lazyRoute(() => import("./pages/Resources"));
 const Blog = lazyRoute(() => import("./pages/Blog"));
@@ -119,11 +120,12 @@ const App = () => (
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Suspense fallback={<RouteFallback />}>
             <Routes>
-            <Route path="/" element={<AgencyLanding />} />
-            {/* The done-for-you booking service keeps its own page; it sells to
-                founders, not to the agencies who run placement themselves. */}
-            {/* Done-for-you page retired: the invite-only MVP leads with the
-                SaaS landing. Old inbound links land there. */}
+            <Route path="/" element={<Landing />} />
+            {/* The agency pitch sells the platform to the agencies who run
+                placement themselves, not to the founders who buy the booking
+                service at "/". It keeps its own page. */}
+            <Route path="/platform" element={<AgencyLanding />} />
+            {/* The booking service is back at the root; its old path leads there. */}
             <Route path="/podcast-booking" element={<Navigate to="/" replace />} />
             <Route path="/docs" element={<Navigate to="/" replace />} />
             <Route path="/resources" element={<Resources />} />

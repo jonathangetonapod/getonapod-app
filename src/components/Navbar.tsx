@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Menu, X } from 'lucide-react';
 
-// These sections live on the booking service page, which moved off "/" when the
-// agency landing page took the root. Pointing them at "/" sent the reader to a
-// page that has none of them.
+// These anchors are sections of the homepage. Every href here must match an
+// id that page actually renders, or the reader lands on nothing.
 const navLinks = [
-  { href: '/#tour', label: 'Product' },
-  { href: '/#portal', label: 'Client Portal' },
+  { href: '/#how', label: 'How It Works' },
+  { href: '/#shows', label: 'The Shows' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/#faq', label: 'FAQ' },
+  { href: '/platform', label: 'For Agencies' },
   { href: '/resources', label: 'Resources' },
   { href: '/login', label: 'Workspace Login' },
 ];
