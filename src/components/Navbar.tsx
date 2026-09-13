@@ -6,13 +6,13 @@ import { Menu, X } from 'lucide-react';
 // These anchors are sections of the homepage. Every href here must match an
 // id that page actually renders, or the reader lands on nothing.
 const navLinks = [
-  { href: '/#how', label: 'How It Works' },
-  { href: '/#shows', label: 'The Shows' },
+  { href: '/#how', label: 'How it works' },
+  { href: '/#shows', label: 'The shows' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/#faq', label: 'FAQ' },
-  { href: '/platform', label: 'For Agencies' },
+  { href: '/platform', label: 'For agencies' },
   { href: '/resources', label: 'Resources' },
-  { href: '/login', label: 'Workspace Login' },
+  { href: '/login', label: 'Sign in' },
 ];
 
 const Navbar = () => {
@@ -32,8 +32,8 @@ const Navbar = () => {
     <nav className="fixed left-0 right-0 top-0 z-50">
       <div className="border-b border-[#0d1b2a]/8 bg-[#f4ede4]/88 px-4 py-2 backdrop-blur-sm">
         <div className="container flex items-center justify-center gap-4 text-center text-[10px] uppercase leading-5 tracking-[0.18em] text-[#7a6554] sm:justify-between sm:text-left sm:text-[11px] sm:tracking-[0.22em]">
-          <span className="font-mono">Podcast placement system for trust-led sales</span>
-          <span className="hidden font-mono sm:block">Audience-fit targeting, outreach, approvals, and tracking</span>
+          <span className="font-mono">Done-for-you podcast guesting · $500 a month</span>
+          <span className="hidden font-mono sm:block">You approve every show · about 15 minutes a week</span>
         </div>
       </div>
 
@@ -52,7 +52,7 @@ const Navbar = () => {
                   Get On A Pod
                 </div>
                 <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.22em] text-[#7a6554]">
-                  Buyer trust through podcast placement
+                  Booked by hand, not by blast
                 </div>
               </Link>
 
@@ -78,7 +78,7 @@ const Navbar = () => {
                 )}
                 <Button variant="hero" size="default" className="rounded-full px-6" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book My Shortlist Call
+                    Book a 30-minute call
                   </a>
                 </Button>
               </div>
@@ -123,7 +123,7 @@ const Navbar = () => {
                   <div className="pt-3">
                     <Button variant="hero" size="default" className="w-full rounded-full" asChild>
                       <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                        Book My Shortlist Call
+                        Book a 30-minute call
                       </a>
                     </Button>
                   </div>

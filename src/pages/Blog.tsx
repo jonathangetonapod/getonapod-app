@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { Filter, Search, Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { SocialProofNotifications } from '@/components/SocialProofNotifications';
 import { BlogCard } from '@/components/blog/BlogCard';
 import { getAllPosts, getAllCategories, type BlogPost, type BlogCategory } from '@/services/blog';
 import { useToast } from '@/hooks/use-toast';
@@ -44,8 +43,8 @@ const Blog = () => {
     } catch (error) {
       console.error('Failed to load blog posts:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to load blog posts',
+        title: 'Articles did not load',
+        description: 'Refresh the page to try again.',
         variant: 'destructive',
       });
     } finally {
@@ -56,8 +55,8 @@ const Blog = () => {
   return (
     <main className="min-h-screen bg-background">
       <PageSEO
-        title="Blog — Podcast Booking Tips & Strategy | Get On A Pod"
-        description="Expert guides on podcast guesting, pitching, interview prep, and building authority through strategic podcast appearances."
+        title="How to get booked on podcasts: guides and tactics | Get On A Pod"
+        description="Practical guides on pitching podcast hosts, preparing for interviews and turning guest appearances into customers."
         path="/blog"
       />
       <Navbar />
@@ -68,10 +67,10 @@ const Blog = () => {
           <div className="max-w-3xl mx-auto text-center">
             <Badge className="mb-4">The Get On A Pod Blog</Badge>
             <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-foreground mb-6 leading-tight px-2">
-              Podcast Marketing Insights
+              How to get booked on podcasts, and what to do once you are
             </h1>
             <p className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed px-4">
-              Expert strategies, data-driven insights, and practical tactics for podcast guesting and building your authority.
+              Guides on pitching hosts, preparing for interviews and turning episodes into customers, from the team that books its clients on podcasts every week.
             </p>
           </div>
         </div>
@@ -200,7 +199,6 @@ const Blog = () => {
       </section>
 
       <Footer />
-      <SocialProofNotifications />
     </main>
   );
 };

@@ -5,10 +5,12 @@
  * booking — and most sections change wholesale between them. Keeping the words
  * here and the markup in the page keeps a copy edit from being a layout edit.
  *
- * The copy is the "GetOnAPod Landing v2 copy" design, verbatim, with three
- * exceptions: the design's placeholder client list is empty until there are
- * real names, its "$[X]" is written out, and its "Starting in September" line
- * is computed so it stays true after September.
+ * The copy began as the "Landing v2" design and has since been edited for
+ * selling: one promise per offer, stated in the headline, and proven with
+ * the facts the FAQ already commits to (price, time asked of the client,
+ * booking rates, timelines). Two rules still hold from the design: the
+ * placeholder client list stays empty until there are real names, and the
+ * "Starting in September" line is computed so it stays true.
  */
 
 export type Mode = 'podcasts' | 'stages'
@@ -108,13 +110,13 @@ export interface Hero {
 export const HERO: Record<Mode, Hero> = {
   podcasts: {
     kicker: 'Done-for-you podcast guesting for founders, executives, authors and coaches',
-    title: ['We craft your story.', 'Podcasts come calling.'],
-    lead: 'GetOnAPod is a done-for-you podcast guesting service. We turn your expertise into a story hosts want on tape, pitch the shows your customers already listen to, and put confirmed recordings on your calendar. You show up and talk.',
+    title: ['Get booked on the podcasts', 'your customers already listen to.'],
+    lead: 'Get On A Pod pitches you to active shows in your niche, puts confirmed recordings on your calendar and sends a prep brief before each one. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
   },
   stages: {
     kicker: 'Done-for-you stage booking for founders, executives, authors and coaches',
     title: ['Get in front of rooms', 'full of your ideal clients.'],
-    lead: 'We find the conferences, associations and events your buyers attend, pitch you at real volume, and generate the interest. When an organizer replies, the conversation is yours — you take it from there.',
+    lead: 'Get On A Pod finds the conferences, associations and events your buyers attend, pitches you to the people who choose the speakers, and hands you every organizer who replies interested. You take the conversation and close the booking.',
   },
 }
 
@@ -205,7 +207,7 @@ export interface Deliverable {
 export const DELIVERABLES: Deliverable[] = [
   { title: 'Outreach volume you can audit.', copy: 'Targeted pitches at volume, reported with sends, replies, and stage-by-stage pipeline.' },
   { title: 'Call-for-proposals coverage.', copy: 'We track open calls for speakers in your niche and submit on your behalf before the window closes.' },
-  { title: 'A speaker kit that gets a yes.', copy: 'One-sheet, bio, talk titles, headshot direction. Optional reel.' },
+  { title: 'A speaker kit organizers can say yes to.', copy: 'One-sheet, bio, talk titles, headshot direction. Optional reel.' },
   { title: 'Warm handoffs.', copy: 'Every interested reply lands in your inbox with context — you take the conversation from there.' },
   { title: 'Weekly report.', copy: "What went out, who replied, what's booked, what's next. No guessing." },
   { title: 'Monthly strategy call.', copy: 'Refine angles, reprioritize industries, plan around seasonal cycles.' },
@@ -258,7 +260,7 @@ export const PODCAST_PLAN_INCLUDES = [
   'Speaker one-sheet, positioning, and pitch angles written for you',
   'You approve every show before we confirm the booking',
   'Prep brief and talking points before every recording',
-  'No setup fees, no pay-to-play placements — 3-month minimum, then month to month',
+  'No setup fees and no paid placements — 3-month minimum, then month to month',
 ]
 
 export const STAGE_PLAN_INCLUDES = [

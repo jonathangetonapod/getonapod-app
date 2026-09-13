@@ -32,7 +32,7 @@ function renderPage(path = '/') {
 describe('Landing', () => {
   it('opens on the podcast offer and books calls where the rest of the site does', () => {
     renderPage()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/podcasts come calling/iu)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/get booked on the podcasts\s*your customers already listen to/iu)
     expect(screen.getByRole('link', { name: /skip to content/iu })).toHaveAttribute('href', '#main')
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: 'For agencies' })).toHaveAttribute('href', '/platform')

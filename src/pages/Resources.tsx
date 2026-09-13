@@ -229,7 +229,7 @@ export default function Resources() {
     <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
       <PageSEO
         title="Podcast Guest Resources | Get On A Pod"
-        description="Browse podcast guest resources, templates, examples, and preparation guides from Get On A Pod."
+        description="Free podcast guest resources from Get On A Pod: preparation guides, setup checklists, promotion templates and examples we give our own clients."
         path="/resources"
       />
 
@@ -254,7 +254,7 @@ export default function Resources() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg leading-8 text-[#4c5d73] md:text-xl">
-                Browse preparation guides, setup checklists, promotion templates, and examples we use to help founders and operators show up sharper on every interview.
+                The preparation guides, setup checklists, promotion templates and examples we give our own clients before they record. Free to read, no sign-up.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -263,7 +263,7 @@ export default function Resources() {
                 </Button>
                 <Button variant="heroOutline" size="xl" className="rounded-full px-8 text-base" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book My Shortlist Call
+                    Book a 30-minute call
                   </a>
                 </Button>
               </div>
@@ -422,12 +422,12 @@ export default function Resources() {
                 No resources match that search.
               </h2>
               <p className="mx-auto mt-4 max-w-xl text-base leading-8 text-[#4c5d73]">
-                Try a different keyword or switch categories. If you want tailored guidance right now, book a shortlist call and we will map the right next step with you.
+                Try a different keyword or switch categories. Or book a 30-minute call and ask us directly.
               </p>
               <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
                 <Button variant="hero" className="rounded-full px-7" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book My Shortlist Call
+                    Book a 30-minute call
                   </a>
                 </Button>
                 <Button variant="outline" className="rounded-full border-[#0d1b2a]/10 bg-white text-[#0d1b2a]" asChild>
@@ -442,10 +442,10 @@ export default function Resources() {
                   <div className="max-w-2xl">
                     <p className="section-kicker">Featured</p>
                     <h2 className="mt-3 font-editorial text-4xl leading-[0.94] tracking-[-0.05em] text-[#0d1b2a] sm:text-5xl">
-                      Start with the strongest resources first.
+                      Start here.
                     </h2>
                     <p className="mt-4 text-base leading-8 text-[#4c5d73]">
-                      These are the pieces most likely to help you tighten your positioning, prep faster, or get more value out of each appearance.
+                      The pieces our clients use most: to tighten their positioning, prepare faster and get more out of each appearance.
                     </p>
                   </div>
 
@@ -489,14 +489,14 @@ export default function Resources() {
                   If you want the bookings, not just the homework, we handle that too.
                 </h2>
                 <p className="mt-4 text-base leading-8 text-[#d6e5f5] md:text-lg">
-                  Use the free resources if you want to sharpen your process. If you want a team to build the shortlist, pitch the shows, and manage the follow-up, book a call.
+                  Use the free resources to sharpen your own process. Or have Get On A Pod build the shortlist, pitch the shows and handle the follow-up for $500 a month — most clients have 2–4 bookings a month once outreach ramps up.
                 </p>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <Button variant="heroOutline" size="xl" className="rounded-full bg-[#f7fafc] px-8 text-[#0d1b2a]" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book My Shortlist Call
+                    Book a 30-minute call
                   </a>
                 </Button>
                 <Button variant="ghost" size="xl" className="rounded-full border border-white/12 text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc]" asChild>

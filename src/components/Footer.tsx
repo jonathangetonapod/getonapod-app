@@ -10,7 +10,7 @@ const Footer = () => {
               GET ON A POD
             </div>
             <p className="mt-3 max-w-xl text-sm leading-7 text-[#4c5d73]">
-              Done-for-you podcast booking for founders, financial professionals, and experts who need buyer trust before they sell.
+              Get On A Pod books founders, executives, authors and coaches on the podcasts their customers already listen to. $500 a month, 3-month minimum, then month to month.
             </p>
             <a
               href="https://calendly.com/getonapodjg/30min"
@@ -18,7 +18,7 @@ const Footer = () => {
               rel="noopener noreferrer"
               className="mt-5 inline-flex items-center rounded-full border border-[#0d1b2a]/10 bg-[#f3f7fc] px-4 py-2 text-sm font-medium text-[#0d1b2a] transition hover:-translate-y-0.5 hover:bg-[#ffffff]"
             >
-              Book My Shortlist Call
+              Book a 30-minute call
             </a>
           </div>
 
@@ -26,22 +26,22 @@ const Footer = () => {
             <div>
               <h4 className="text-sm font-semibold text-[#0d1b2a]">Navigate</h4>
               <nav className="mt-3 flex flex-col gap-2">
-                <a href="/#how" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">How It Works</a>
+                <a href="/#how" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">How it works</a>
                 <a href="/#pricing" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Pricing</a>
                 <a href="/#faq" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">FAQ</a>
-                <Link to="/what-to-expect" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">What to Expect</Link>
+                <Link to="/what-to-expect" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">What to expect</Link>
               </nav>
             </div>
 
             <div>
               <h4 className="text-sm font-semibold text-[#0d1b2a]">Access</h4>
               <nav className="mt-3 flex flex-col gap-2">
-                <a href="/#shows" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">The Shows</a>
-                <Link to="/platform" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">For Agencies</Link>
+                <a href="/#shows" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">The shows</a>
+                <Link to="/platform" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">For agencies</Link>
                 <Link to="/resources" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Resources</Link>
                 <Link to="/blog" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Blog</Link>
-                <Link to="/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Workspace Login</Link>
-                <Link to="/portal/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Client Portal Login</Link>
+                <Link to="/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Workspace sign-in</Link>
+                <Link to="/portal/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Client portal sign-in</Link>
               </nav>
             </div>
           </div>
@@ -52,7 +52,7 @@ const Footer = () => {
             &copy; {new Date().getFullYear()} Get On A Pod. All rights reserved.
           </p>
           <p className="text-sm text-[#5d7188]">
-            Audience-fit podcast outreach, managed inside a live client portal.
+            Booked by hand, not by blast.
           </p>
         </div>
       </div>

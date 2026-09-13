@@ -22,23 +22,23 @@ import PageSEO from '@/components/seo/PageSEO';
 const steps = [
   {
     number: "01",
-    title: "Shortlist Strategy Call",
+    title: "Positioning interview",
     duration: "Day 1",
     icon: Calendar,
-    description: "We start with a short call to align on your expertise, buyer, goals, and the kinds of shows worth targeting.",
+    description: "About an hour. We get clear on your expertise, the buyer you want to reach, and the kinds of shows worth their attention.",
     details: [
       "Clarify your expertise and strongest angles",
       "Define the buyer you want to reach",
       "Set goals for guest appearances",
-      "Pressure-test fit before anything starts"
+      "An honest read on fit before anything starts"
     ]
   },
   {
     number: "02",
-    title: "Portal Access",
+    title: "Portal access",
     duration: "Day 1",
     icon: LayoutDashboard,
-    description: "You get access to your client portal right away so you can review approvals, statuses, resources, and campaign updates in one place.",
+    description: "Your client portal opens the same day, so approvals, statuses, guest resources and campaign updates are in one place from the start.",
     details: [
       "Review targets and campaign status live",
       "Track every podcast opportunity in one place",
@@ -48,10 +48,10 @@ const steps = [
   },
   {
     number: "03",
-    title: "Guest Profile Creation",
+    title: "Your guest profile",
     duration: "Day 2-3",
     icon: FileText,
-    description: "We build a clear guest profile with the background, topics, and positioning a host needs to quickly understand why you are worth booking.",
+    description: "We write the profile a host reads before saying yes: your background, your topics, and the reason their listeners should hear from you.",
     details: [
       "Your background and credentials",
       "Core talking points and topics",
@@ -61,12 +61,12 @@ const steps = [
   },
   {
     number: "04",
-    title: "Target Show Shortlist",
+    title: "Your show shortlist",
     duration: "Week 1",
     icon: ThumbsUp,
     description: "We research a shortlist of podcasts that fit your expertise and buyer. You approve or reject each show before any outreach starts.",
     details: [
-      "Hand-picked shows based on fit, not vanity",
+      "Shows picked for audience fit, not download counts",
       "You approve every podcast target",
       "Reject anything that feels off-brand",
       "Nothing gets pitched without your OK"
@@ -74,7 +74,7 @@ const steps = [
   },
   {
     number: "05",
-    title: "Outreach Approval",
+    title: "Pitch approval",
     duration: "Week 1-2",
     icon: MessageSquare,
     description: "We write outreach around your angle and the show, then you review it before anything is sent on your behalf.",
@@ -87,8 +87,8 @@ const steps = [
   },
   {
     number: "06",
-    title: "Host Outreach Starts",
-    duration: "After Approvals",
+    title: "Outreach starts",
+    duration: "After approvals",
     icon: Send,
     description: "Once targets and messaging are approved, we start outreach and follow-up. Your portal updates as conversations move forward.",
     details: [
@@ -100,8 +100,8 @@ const steps = [
   },
   {
     number: "07",
-    title: "Booking Confirmed",
-    duration: "As They Come In",
+    title: "Booking confirmed",
+    duration: "As they come in",
     icon: Mic,
     description: "As soon as a host confirms, you are notified. We handle the scheduling details and keep the booking moving.",
     details: [
@@ -113,22 +113,21 @@ const steps = [
   },
   {
     number: "08",
-    title: "Guest Prep Kit",
-    duration: "Before Recording",
+    title: "Prep brief",
+    duration: "Before each recording",
     icon: Headphones,
-    description: "Pro clients receive a prep kit before each recording so you can show up informed, sharp, and ready to lead a strong conversation.",
+    description: "Before every recording you get a prep brief: who the host is, who listens, the angle to lead with, and the one thing to plug.",
     details: [
       "Podcast background research",
       "Notes on the host's interview style",
       "Suggested talking points",
       "Common questions to expect"
-    ],
-    proBadge: true
+    ]
   },
   {
     number: "09",
-    title: "Recording Reminders",
-    duration: "Recording Day",
+    title: "Recording reminders",
+    duration: "Recording day",
     icon: Bell,
     description: "We remind you when a recording is coming up so you are prepared and not scrambling at the last minute.",
     details: [
@@ -140,8 +139,8 @@ const steps = [
   },
   {
     number: "10",
-    title: "Episode Goes Live",
-    duration: "When Published",
+    title: "Episode goes live",
+    duration: "Usually 2–8 weeks later",
     icon: PlayCircle,
     description: "When your episode publishes, we notify you and share the links so you can amplify the appearance quickly.",
     details: [
@@ -153,8 +152,8 @@ const steps = [
   },
   {
     number: "11",
-    title: "Ongoing Reporting",
-    duration: "Always Available",
+    title: "Ongoing reporting",
+    duration: "Always available",
     icon: BarChart3,
     description: "Your portal keeps the full record of what was approved, pitched, booked, recorded, and published so you can see campaign momentum over time.",
     details: [
@@ -187,8 +186,8 @@ const heroSignals = [
 const summaryCards = [
   {
     label: 'Day 1',
-    title: 'Strategy call and portal access',
-    description: 'We align on your angle, then open the portal so visibility starts immediately.',
+    title: 'Positioning interview and portal access',
+    description: 'An hour on your angle, then the portal opens so you can see the work from the start.',
   },
   {
     label: 'Week 1',
@@ -202,8 +201,8 @@ const summaryCards = [
   },
   {
     label: 'Ongoing',
-    title: 'Bookings, prep, and publish tracking',
-    description: 'The campaign keeps moving through recording and live episode delivery.',
+    title: 'Bookings, prep briefs and published episodes',
+    description: 'Most clients record their first episode within 3–5 weeks, and it usually goes live 2–8 weeks after that.',
   },
 ];
 
@@ -220,7 +219,7 @@ const protectionPrinciples = [
   },
   {
     icon: BookOpen,
-    title: 'Prep resources included',
+    title: 'A prep brief for every recording',
     description: 'You get practical guidance on prep, equipment, and how to show up well when the recording date arrives.',
   },
 ];
@@ -229,8 +228,8 @@ const WhatToExpect = () => {
   return (
     <div className="homepage-shell min-h-screen bg-transparent">
       <PageSEO
-        title="What to Expect After You Sign Up | Get On A Pod"
-        description="See exactly how Get On A Pod runs a podcast booking campaign, from shortlist call to published episode."
+        title="What happens after you sign up, week by week | Get On A Pod"
+        description="How Get On A Pod runs a podcast guesting campaign, from the positioning interview to the published episode: what you approve, when pitches go out and when you record."
         path="/what-to-expect"
       />
       <Navbar />
@@ -251,27 +250,27 @@ const WhatToExpect = () => {
               </div>
 
               <h1 className="mt-6 max-w-4xl font-editorial text-[clamp(3rem,10vw,6rem)] leading-[0.92] tracking-[-0.045em] text-[#0d1b2a] text-balance">
-                What happens after you sign up.
+                What happens after you sign up, week by week.
               </h1>
 
               <p className="mt-6 max-w-2xl text-base leading-8 text-[#54473d] sm:text-lg md:text-xl">
-                You approve targets and messaging before outreach starts, and you can see the campaign live in your portal from day one.
+                You approve every show and every pitch before anything goes out. Outreach starts within the first two weeks, most clients record their first episode within 3–5 weeks, and your portal shows where everything stands the whole time.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button variant="hero" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book My Shortlist Call
+                    Book a 30-minute call
                     <ArrowRight className="h-4 w-4" />
                   </a>
                 </Button>
                 <Button variant="heroOutline" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
-                  <a href="/#pricing">View Pricing</a>
+                  <a href="/#pricing">See pricing: $500 a month</a>
                 </Button>
               </div>
 
               <p className="mt-4 text-sm leading-6 text-[#76665a]">
-                The call is where we pressure-test fit and show the kinds of podcasts worth targeting.
+                On the call we show you the kinds of shows we would pitch you to, and tell you honestly whether we are a fit.
               </p>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -303,7 +302,7 @@ const WhatToExpect = () => {
                       The process is visible from day one.
                     </h2>
                     <p className="mt-3 text-sm leading-7 text-[#54473d] sm:text-base">
-                      Nothing disappears into a black box. The work moves through clear approval points, active outreach, bookings, and publish tracking.
+                      Eleven checkpoints, from your first approval to your published episode, each one shown in your portal as it happens.
                     </p>
                   </div>
                   <div className="rounded-full border border-[#0d1b2a]/10 bg-[#f6efe7] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-[#7a6554]">
@@ -374,7 +373,7 @@ const WhatToExpect = () => {
                 A visible process from shortlist to published episode.
               </h2>
               <p className="mt-5 max-w-lg text-base leading-8 text-[#54473d] sm:text-lg">
-                The core point of this page is simple: you can see what stage the campaign is in, what needs approval, and what is already moving.
+                At every step you can see what stage the campaign is in, what needs your approval and what is already moving.
               </p>
 
               <div className="mt-8 rounded-[28px] border border-[#0d1b2a]/8 bg-[#fffaf4]/92 p-5 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
@@ -383,7 +382,7 @@ const WhatToExpect = () => {
                   {[
                     'No outreach starts until targets and direction are approved.',
                     'The portal stays current as replies, bookings, and publish dates come in.',
-                    'Prep and reminder support kick in before each recording.',
+                    'A prep brief and a reminder arrive before every recording.',
                   ].map((item) => (
                     <div key={item} className="flex items-start gap-3 rounded-[18px] border border-[#0d1b2a]/8 bg-white px-4 py-3">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#b46a3c]" />
@@ -407,11 +406,6 @@ const WhatToExpect = () => {
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#7a6554]">
                       {step.duration}
                     </span>
-                    {step.proBadge && (
-                      <span className="rounded-full border border-[#d4b08f]/30 bg-[#0d1b2a] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[#f0ddc8]">
-                        Pro
-                      </span>
-                    )}
                   </div>
 
                   <div className="mt-5 flex items-start gap-4">
@@ -453,11 +447,11 @@ const WhatToExpect = () => {
               <div className="max-w-2xl">
                 <p className="section-kicker">Built to protect</p>
                 <h2 className="mt-4 font-editorial text-4xl leading-[0.94] tracking-[-0.045em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-                  The process is built to keep control, visibility, and prep intact.
+                  You stay in control, you can see the work, and you walk in prepared.
                 </h2>
               </div>
               <p className="max-w-xl text-base leading-8 text-[#54473d] sm:text-lg">
-                This is why the campaign is organized around approvals, portal visibility, and prep support instead of vague agency updates.
+                That is why the campaign runs on your approvals, a live portal and a prep brief for every recording, rather than a monthly agency update.
               </p>
             </div>
 
@@ -491,21 +485,21 @@ const WhatToExpect = () => {
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="section-kicker text-[#d4b08f]">Next step</p>
                   <span className="rounded-full border border-[#d4b08f]/25 bg-[#d4b08f]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f0ddc8]">
-                    Pressure-test fit first
+                    30 minutes, no commitment
                   </span>
                 </div>
                 <h2 className="mt-4 font-editorial text-4xl leading-[0.94] tracking-[-0.045em] text-[#f7fafc] sm:text-5xl md:text-6xl">
-                  Want to see what this would look like for your market?
+                  See the shows we would pitch you to.
                 </h2>
                 <p className="mt-5 max-w-xl text-base leading-8 text-[#d8c8b5] sm:text-lg">
-                  Book a shortlist call. We will pressure-test fit and show you the kinds of podcasts worth targeting.
+                  In 30 minutes we show you the kinds of shows we would target for you, and tell you honestly how many bookings to expect in your niche.
                 </p>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <Button variant="hero" size="xl" className="w-full rounded-full px-8 sm:w-auto" asChild>
                   <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                    Book My Shortlist Call
+                    Book a 30-minute call
                     <ArrowRight className="h-4 w-4" />
                   </a>
                 </Button>
@@ -515,7 +509,7 @@ const WhatToExpect = () => {
                   className="w-full rounded-full border-white/15 bg-white/5 px-8 text-[#f7fafc] shadow-none hover:border-[#d4b08f]/35 hover:bg-white/10 sm:w-auto"
                   asChild
                 >
-                  <a href="/#pricing">View Pricing</a>
+                  <a href="/#pricing">See pricing: $500 a month</a>
                 </Button>
               </div>
             </div>

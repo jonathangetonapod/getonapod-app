@@ -84,13 +84,13 @@ const StagesCase = () => (
       <p className="dfy-copy dfy-copy-after">Across professional speaking businesses, the working ratio is roughly 150 targeted contacts to get 15 real conversations, 3 strong fits, and 1 confirmed booking.</p>
       <p className="dfy-copy dfy-copy-lead-out">Most speakers send 15 emails, hear nothing, and decide outreach doesn't work. What doesn't work is the sample size.</p>
       <table className="dfy-table">
-        <thead><tr><th>You, doing it yourself</th><th>A VA with a database</th><th>GetOnAPod</th></tr></thead>
+        <thead><tr><th>You, doing it yourself</th><th>A VA with a database</th><th>Get On A Pod</th></tr></thead>
         <tbody>
           {MATH_ROWS.map(([you, va, us]) => (
             <tr key={you}>
               <td data-label="You, doing it yourself">{you}</td>
               <td data-label="A VA with a database">{va}</td>
-              <td data-label="GetOnAPod">{us}</td>
+              <td data-label="Get On A Pod">{us}</td>
             </tr>
           ))}
         </tbody>
@@ -180,8 +180,8 @@ const StagesCase = () => (
     <section className="dfy-section">
       <span className="dfy-kicker">ROI from one client</span>
       <h2 className="dfy-h2">One room can pay for the year.</h2>
-      <p className="dfy-copy dfy-copy-after">Planners typically allocate 15% of their event budget to speakers, and 87% of clients report ROI from equal to 5x the speaker fee. That's the planner's math.</p>
-      <p className="dfy-copy">Yours is simpler: if your average client is worth $10,000 and one stage of 150 of your buyers produces two conversations, the program has paid for itself. Everything after that is upside.</p>
+      <p className="dfy-copy dfy-copy-after">A year of the plan is ${(MONTHLY_PRICE * 12).toLocaleString('en-US')}. If your average client is worth $10,000, one client won from one room of 150 of your buyers covers the year with room to spare.</p>
+      <p className="dfy-copy">Every stage after that is working for you, not paying off the program.</p>
     </section>
     <hr className="dfy-rule" />
 
@@ -209,17 +209,17 @@ const PodcastsHow = () => (
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">01</p>
       <h2 className="dfy-how-title">We craft your story</h2>
-      <p className="dfy-how-copy">In week one we turn your expertise into a story worth booking: your positioning, a speaker one-sheet, and three angles hosts actually want to put in front of their audience.</p>
+      <p className="dfy-how-copy">A one-hour positioning interview in week one. From it we write your positioning, a speaker one-sheet and three angles a host can put in front of their audience.</p>
     </div>
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">02</p>
-      <h2 className="dfy-how-title">We get shows interested</h2>
-      <p className="dfy-how-copy">We pitch vetted podcasts in your niche — real audiences, active feeds, hosts who prep. You approve every show before we confirm. No pay-to-play, no 12-listener feeds.</p>
+      <h2 className="dfy-how-title">We pitch the right shows</h2>
+      <p className="dfy-how-copy">Pitches go out in week one, each written for that show, with researched follow-ups. We pitch active podcasts with real audiences in your niche, never paid placements, and you approve every show before we confirm.</p>
     </div>
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">03</p>
       <h2 className="dfy-how-title">You show up and talk</h2>
-      <p className="dfy-how-copy">Every booking lands on your calendar with a prep brief: the host, the audience, the angle, and the one thing to plug. You walk in prepared, every time.</p>
+      <p className="dfy-how-copy">Most clients record their first episode within 3–5 weeks. Every booking lands on your calendar with a prep brief: the host, the audience, the angle and the one thing to plug.</p>
     </div>
   </section>
 )
@@ -369,7 +369,7 @@ const Quotes = () => {
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false) }}
       >
         <div className="dfy-carousel-head">
-          <span className="dfy-kicker">From our clients</span>
+          <span className="dfy-kicker">Six founders, in their own words</span>
           {count > 1 ? (
             <div className="dfy-carousel-controls">
               <span className="dfy-carousel-count dfy-tnum" aria-hidden="true">{twoDigits(index + 1)} / {twoDigits(count)}</span>
@@ -464,7 +464,7 @@ const Pricing = ({ mode }: { mode: Mode }) => {
           <p className="dfy-price-note">
             {stages
               ? 'One plan. 3-month minimum, then month to month — a fraction of what building this in-house costs.'
-              : 'One plan. 3-month minimum, then month to month — most agencies charge four times this and lock you in for a year.'}
+              : 'One plan. 3-month minimum, then month to month. PR agencies typically charge $2,000–5,000 a month for a service spread across press, awards and everything else.'}
           </p>
           <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
         </div>
@@ -518,7 +518,7 @@ const Landing = () => {
   return (
     <div className="dfy-page">
       <PageSEO
-        title={stages ? 'Done-for-you stage booking | Get On A Pod' : 'Done-for-you podcast guesting | Get On A Pod'}
+        title={stages ? 'Done-for-you stage booking | Get On A Pod' : 'Get booked on podcasts your customers listen to | Get On A Pod'}
         description={HERO[mode].lead}
       />
       <a className="dfy-skip" href="#main">Skip to content</a>
@@ -566,10 +566,14 @@ const Landing = () => {
         <div className="dfy-book-in">
           <h2>
             {stages
-              ? <><span>Consultants who speak get</span><span>trusted faster and paid more.</span></>
+              ? <><span>Next year’s stages are</span><span>choosing their speakers now.</span></>
               : <><span>Your next customer</span><span>is listening right now.</span></>}
           </h2>
-          {stages ? <p className="dfy-book-copy">Let’s build the pipeline that puts you on the right stages, on a schedule you can plan around.</p> : null}
+          <p className="dfy-book-copy">
+            {stages
+              ? 'In 30 minutes we show you the events we would pitch you to and what a realistic first quarter looks like.'
+              : 'In 30 minutes we show you the kinds of shows we would pitch you to, and tell you honestly how many bookings to expect in your niche — including if the number is lower than you hoped.'}
+          </p>
           <div className="dfy-cta-row">
             <a className="dfy-btn dfy-btn-ghost" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
           </div>
@@ -597,7 +601,7 @@ const Landing = () => {
           </div>
         </div>
         <div className="dfy-footer-foot">
-          <span>© {new Date().getFullYear()} GetOnAPod</span>
+          <span>© {new Date().getFullYear()} Get On A Pod</span>
           <span className="dfy-copy-italic">Booked by hand, not by blast.</span>
         </div>
       </footer>

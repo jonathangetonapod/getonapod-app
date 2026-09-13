@@ -202,10 +202,10 @@ export default function BlogPost() {
                 {/* CTA Section */}
                 <div className="mt-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-8 text-white">
                   <h2 className="text-2xl md:text-3xl font-bold mb-4">
-                    Ready to Get Booked on Top Podcasts?
+                    Get booked on the podcasts your customers already listen to
                   </h2>
                   <p className="text-lg mb-6 text-blue-50">
-                    We handle the entire process - from research to booking. Get featured on premium podcasts in your industry.
+                    Get On A Pod pitches the shows, books the recordings and sends you a prep brief before each one, for $500 a month. Most clients have 2–4 bookings a month once outreach ramps up.
                   </p>
                   <Button
                     size="lg"
@@ -214,7 +214,7 @@ export default function BlogPost() {
                     asChild
                   >
                     <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
-                      Book a Shortlist Call →
+                      Book a 30-minute call →
                     </a>
                   </Button>
                 </div>
@@ -238,7 +238,7 @@ export default function BlogPost() {
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Helping entrepreneurs and thought leaders get booked on top podcasts to build authority and grow their businesses.
+                      Get On A Pod books founders, executives, authors and coaches on podcasts their customers already listen to.
                     </p>
                   </div>
 
@@ -256,7 +256,7 @@ export default function BlogPost() {
                         to="/resources"
                         className="block text-sm text-blue-600 hover:underline"
                       >
-                        → Free Resources
+                        → Free guest resources
                       </Link>
                       <Link
                         to="/blog"

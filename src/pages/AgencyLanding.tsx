@@ -134,7 +134,7 @@ const FAQ = [
   },
   {
     q: 'Can clients tell it is not ours?',
-    a: 'Not from what they see: the portal, the links and the emails are on your domain, with your logo and colours.',
+    a: 'Not from what they see: the portal, the links and the emails are on your domain, with your logo and colors.',
   },
   {
     q: 'What if a host asks us to stop?',
@@ -142,7 +142,7 @@ const FAQ = [
   },
   {
     q: 'I am just starting out. Too early?',
-    a: 'Delivery is the hard part, not the pitch, and delivery is what you get on day one.',
+    a: 'No. Founding member is $39 a month with one client included, and the finder, pitches, replies and portal are all there from your first day.',
   },
 ]
 
@@ -151,8 +151,7 @@ const FAQ = [
  *
  * This sells the platform to the people who run placement — agencies, PR firms,
  * freelancers, and anyone looking for an offer to sell. It is a different buyer
- * from the done-for-you booking service, which keeps its own page at
- * /podcast-booking.
+ * from the done-for-you booking service, which is the homepage at /.
  */
 const AgencyLanding = () => {
   const { hash, key } = useLocation()
@@ -205,8 +204,8 @@ const AgencyLanding = () => {
             <div>
               <h1>Book your clients on more podcasts, in less time.</h1>
               <p className="gp-deck">
-                One place to find shows, pitch them and land the booking — with a portal your clients
-                log into, under your name.
+                Get On A Pod finds the shows, drafts a three-email pitch for each one, sorts the replies
+                and puts every booking on a calendar — with a client portal on your own domain.
               </p>
               <div className="gp-cta-row">
                 <a className="gp-btn gp-btn-primary" href="#start">Request to join</a>
@@ -239,15 +238,15 @@ const AgencyLanding = () => {
             <h2 className="sr-only">What it changes</h2>
             <div className="gp-card">
               <h3>More bookings</h3>
-              <p>Better shows, better pitches, faster follow-up.</p>
+              <p>A pitch for every show, written from what that show actually covers, and the interested replies sorted to the top.</p>
             </div>
             <div className="gp-card">
               <h3>More clients, same team</h3>
-              <p>The admin is handled, so you can take on the next client without hiring.</p>
+              <p>Finding shows, drafting pitches and sorting replies is done for you, so the next client does not need the next hire.</p>
             </div>
             <div className="gp-card">
               <h3>Clients who stay</h3>
-              <p>They can see what is happening, so there are fewer status emails.</p>
+              <p>They approve shows and watch bookings land in their own portal, so you write fewer status emails.</p>
             </div>
           </div>
         </section>
@@ -324,7 +323,7 @@ const AgencyLanding = () => {
           <div className="gp-wrap">
             <div className="gp-sec-head">
               <span className="gp-eyebrow">Pricing</span>
-              <h2>What it costs.</h2>
+              <h2>From $39 a month.</h2>
               <p>Two plans, the same platform. You pay for the clients you actually run.</p>
             </div>
 
