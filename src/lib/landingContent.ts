@@ -26,6 +26,60 @@ export const MONTHLY_PRICE = 500
  */
 export const CLIENT_NAMES: string[] = []
 
+export interface ClientQuote {
+  quote: string
+  name: string
+  role: string
+  /** The recording the quote is taken from, when it is public. */
+  videoUrl?: string
+}
+
+/**
+ * Written testimonials, from what clients said on camera. Each is cut down to
+ * its strongest lines with the fillers trimmed, and nothing is added; the
+ * design's placeholder pull-quote is not one of them.
+ */
+export const CLIENT_QUOTES: ClientQuote[] = [
+  {
+    quote: 'Jonathan is a really cool, approachable guy, and his team is just more of that. They really helped us identify what podcasts would be great for us, and made setting up, scheduling and recording just a breeze.',
+    name: 'Miles Mufuka Martin',
+    role: 'Co-founder and CEO, Relai',
+    videoUrl: 'https://www.youtube.com/watch?v=7mjznMHEeg0',
+  },
+  {
+    quote: 'True to their name, Get On A Pod, they were booking me on podcasts almost immediately. Super easy, super straightforward and super streamlined. I definitely recommend them for any founder, entrepreneur or business owner interested in being a thought leader. It really works.',
+    name: 'Tom Conlon',
+    role: 'Founder and CEO, North Street Creative',
+    videoUrl: 'https://www.youtube.com/watch?v=MG4KENHrge0',
+  },
+  {
+    quote: 'They really took time to understand my brand, my areas of expertise and the topics that I not only enjoy speaking about but that will resonate with my core audience. Within my first week of becoming a client, I landed a spot as a guest on a very desirable podcast.',
+    name: 'Kate Pozeznik',
+    role: 'Founder and CEO, Quirk',
+    videoUrl: 'https://www.youtube.com/watch?v=hFcbqL0vrn4',
+  },
+  {
+    quote: 'We’ve had four podcasts scheduled in the first 10 days, and there’s more coming in. They put them on my calendar, I get the prep work, and we debrief afterwards on what went well, what didn’t go so well and how to improve the pitch.',
+    name: 'Frank Rohde',
+    role: 'Founder and CEO, Ownify',
+    videoUrl: 'https://www.youtube.com/watch?v=dJwV94ymqz8',
+  },
+  {
+    // His video also praises short-form clips, which the offer above does not
+    // include, so the quote keeps to podcasts.
+    quote: 'Our whole goal was to use podcasts as a general exercise for marketing. I can’t recommend working with them more. They were great and easy to work with, and they were able to get us on various media channels and podcasts.',
+    name: 'Sam Hollander',
+    role: 'Co-founder and CEO, ShareClub',
+    videoUrl: 'https://www.youtube.com/watch?v=3PYDap_jSUQ',
+  },
+  {
+    quote: 'The experience has been amazing so far. I had two episodes booked in the first month, and it’s really a delight to work with. Jonathan is super nice and super easy to work with.',
+    name: 'Mike Dias',
+    role: 'Founder and CEO, ScaleUp Valley',
+    videoUrl: 'https://www.youtube.com/watch?v=IP6HW42oztc',
+  },
+]
+
 export interface Hero {
   kicker: string
   title: [string, string]

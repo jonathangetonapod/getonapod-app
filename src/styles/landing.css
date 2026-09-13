@@ -298,6 +298,24 @@
   .dfy-show-about { font-size: 13px; line-height: 19px; }
 }
 
+/* — written testimonials — */
+/* Pairs on a wide page; on a narrow one the quotes are too long to pair, so they stack. */
+.dfy-quotes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 56px clamp(28px, 5vw, 80px); }
+.dfy-quote { margin: 0; padding-left: clamp(18px, 2.2vw, 30px); border-left: 1px solid var(--accent); display: flex; flex-direction: column; }
+.dfy-quote-text { margin: 0; font-family: var(--heading); font-weight: 400; font-size: clamp(22px, 2.3vw, 27px); line-height: 1.28; }
+/* An odd one out takes the whole row rather than sitting beside a gap. */
+.dfy-quote:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.dfy-quote:last-child:nth-child(odd) .dfy-quote-text { max-width: 52ch; }
+@media (max-width: 880px) {
+  .dfy-quotes { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+  .dfy-quote-text { font-size: clamp(21px, 3.4vw, 26px); max-width: 44ch; }
+}
+.dfy-quote figcaption { margin-top: auto; padding-top: 20px; }
+.dfy-quote-name { display: block; font-family: var(--heading); font-weight: var(--heading-weight); font-size: 18px; }
+.dfy-quote-role { display: block; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-700); margin-top: 2px; }
+.dfy-quote-watch { width: fit-content; margin-top: 16px; text-decoration: none; }
+.dfy-quote-watch:hover span { color: var(--accent-700); }
+
 /* — video testimonials — */
 .dfy-stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
 .dfy-story { margin: 0; }

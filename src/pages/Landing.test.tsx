@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { HelmetProvider } from 'react-helmet-async'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -83,6 +83,38 @@ describe('Landing', () => {
     fireEvent.error(screen.getByRole('img', { name: 'The SaaS Podcast artwork' }))
     expect(screen.queryByRole('img', { name: 'The SaaS Podcast artwork' })).not.toBeInTheDocument()
     expect(screen.getByText('SP')).toBeInTheDocument()
+  })
+
+  it('quotes real clients, by name and with their videos, on the podcast page only', () => {
+    renderPage()
+    const quotes = screen.getByRole('region', { name: 'Testimonials' })
+    expect(quotes).toHaveTextContent(/made setting up, scheduling and recording just a breeze/u)
+    expect(quotes).toHaveTextContent('Co-founder and CEO, Relai')
+    expect(quotes).toHaveTextContent(/booking me on podcasts almost immediately/u)
+    expect(quotes).toHaveTextContent('Founder and CEO, North Street Creative')
+    expect(quotes).toHaveTextContent(/Within my first week of becoming a client, I landed a spot/u)
+    expect(quotes).toHaveTextContent('Founder and CEO, Quirk')
+    expect(quotes).toHaveTextContent(/four podcasts scheduled in the first 10 days/u)
+    expect(quotes).toHaveTextContent('Founder and CEO, Ownify')
+    expect(quotes).toHaveTextContent(/get us on various media channels and podcasts/u)
+    expect(quotes).toHaveTextContent('Co-founder and CEO, ShareClub')
+    expect(quotes).toHaveTextContent(/I had two episodes booked in the first month/u)
+    expect(quotes).toHaveTextContent('Founder and CEO, ScaleUp Valley')
+    for (const [name, href] of [
+      ['Mike Dias', 'https://www.youtube.com/watch?v=IP6HW42oztc'],
+      ['Sam Hollander', 'https://www.youtube.com/watch?v=3PYDap_jSUQ'],
+      ['Frank Rohde', 'https://www.youtube.com/watch?v=dJwV94ymqz8'],
+      ['Miles Mufuka Martin', 'https://www.youtube.com/watch?v=7mjznMHEeg0'],
+      ['Tom Conlon', 'https://www.youtube.com/watch?v=MG4KENHrge0'],
+      ['Kate Pozeznik', 'https://www.youtube.com/watch?v=hFcbqL0vrn4'],
+    ]) {
+      const video = within(quotes).getByRole('link', { name: `Watch on YouTube: ${name}` })
+      expect(video).toHaveAttribute('href', href)
+      expect(video).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    }
+    cleanup()
+    renderPage('/?mode=stages')
+    expect(screen.queryByRole('region', { name: 'Testimonials' })).not.toBeInTheDocument()
   })
 
   it('shows no client stories, and no placeholder ones, until a real one is featured', async () => {

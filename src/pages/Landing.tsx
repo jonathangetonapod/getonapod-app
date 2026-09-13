@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import PageSEO from '@/components/seo/PageSEO'
 import { getEmbedUrl, getFeaturedTestimonials, type Testimonial } from '@/services/testimonials'
 import {
-  CALL_URL, CATALOG, CHANNEL_ROWS, CLIENT_NAMES, CLOSE_CTA, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
+  CALL_URL, CATALOG, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CLOSE_CTA, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
   FAQ, HERO, HERO_CTA, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_PLAN_INCLUDES,
   STAGE_PLAN_INCLUDES, STAGE_STEPS, TIMELINE, WHY_NOT_BOOKED, initials, startingLine, type Mode,
 } from '@/lib/landingContent'
@@ -268,6 +268,40 @@ const Shows = ({ mode }: { mode: Mode }) => {
 /** "Watch on YouTube", or wherever the story is hosted. */
 const watchLabel = (url: string) => (/vimeo\.com/iu.test(url) ? 'Watch on Vimeo' : 'Watch on YouTube')
 
+const Quotes = () => {
+  if (CLIENT_QUOTES.length === 0) return null
+  return (
+    <>
+      <section className="dfy-section-tight" aria-label="Testimonials">
+        <span className="dfy-kicker dfy-kicker-mid">From our clients</span>
+        <div className="dfy-quotes">
+          {CLIENT_QUOTES.map((q) => (
+            <figure key={q.name} className="dfy-quote">
+              <blockquote className="dfy-quote-text">“{q.quote}”</blockquote>
+              <figcaption>
+                <span className="dfy-quote-name">{q.name}</span>
+                <span className="dfy-quote-role">{q.role}</span>
+                {q.videoUrl ? (
+                  <a
+                    className="dfy-story-watch dfy-quote-watch"
+                    href={q.videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${watchLabel(q.videoUrl)}: ${q.name}`}
+                  >
+                    <span className="dfy-story-play" aria-hidden="true" /><span>{watchLabel(q.videoUrl)}</span>
+                  </a>
+                ) : null}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+      <hr className="dfy-rule" />
+    </>
+  )
+}
+
 const Story = ({ t }: { t: Testimonial }) => {
   const role = [t.client_title, t.client_company].filter(Boolean).join(', ')
   return (
@@ -412,7 +446,12 @@ const Landing = () => {
         <hr className="dfy-rule" />
         <Shows mode={mode} />
         <hr className="dfy-rule" />
-        {stages ? null : <Stories />}
+        {stages ? null : (
+          <>
+            <Quotes />
+            <Stories />
+          </>
+        )}
         <Pricing mode={mode} />
         <hr className="dfy-rule" />
         <Faq mode={mode} />
