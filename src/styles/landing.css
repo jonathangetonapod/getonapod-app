@@ -60,12 +60,12 @@
 
 /* Every state change eases; nothing snaps. Off for reduced motion. No
    double-tap-to-zoom wait on anything tappable. */
-.dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-story-link, .dfy-faq summary {
+.dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-story-link, .dfy-faq summary, .dfy-carousel-toggle, .dfy-carousel-arrow {
   transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
   touch-action: manipulation;
 }
 @media (prefers-reduced-motion: reduce) {
-  .dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-story-link { transition: none; }
+  .dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-story-link, .dfy-carousel-toggle, .dfy-carousel-arrow { transition: none; }
 }
 
 /* Visually hidden, read by screen readers. */
@@ -315,23 +315,87 @@
   .dfy-show-about { font-size: 13px; line-height: 19px; }
 }
 
-/* — written testimonials — */
-/* Pairs on a wide page; on a narrow one the quotes are too long to pair, so they stack. */
-.dfy-quotes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 56px clamp(28px, 5vw, 80px); }
-.dfy-quote { margin: 0; padding-left: clamp(18px, 2.2vw, 30px); border-left: 1px solid var(--accent); display: flex; flex-direction: column; }
-.dfy-quote-text { margin: 0; font-family: var(--heading); font-weight: 400; font-size: clamp(22px, 2.3vw, 27px); line-height: 1.28; }
-/* An odd one out takes the whole row rather than sitting beside a gap. */
-.dfy-quote:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.dfy-quote:last-child:nth-child(odd) .dfy-quote-text { max-width: 52ch; }
-@media (max-width: 880px) {
-  .dfy-quotes { grid-template-columns: minmax(0, 1fr); gap: 48px; }
-  .dfy-quote-text { font-size: clamp(21px, 3.4vw, 26px); max-width: 44ch; }
+/* — written testimonials: a carousel — */
+.dfy-carousel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.dfy-carousel-head .dfy-kicker { margin: 0; }
+.dfy-carousel-controls { display: flex; align-items: center; gap: 10px; }
+.dfy-carousel-count { font-size: 13px; letter-spacing: 0.08em; color: var(--neutral-700); margin-right: 6px; }
+.dfy-carousel-toggle {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px;
+  font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--neutral-700);
 }
-.dfy-quote figcaption { margin-top: auto; padding-top: 20px; }
+.dfy-carousel-toggle:hover { color: var(--accent-700); }
+.dfy-carousel-arrow {
+  all: unset; box-sizing: border-box; cursor: pointer; width: 44px; height: 44px;
+  display: grid; place-items: center; border: 1px solid var(--accent); border-radius: 50%;
+  font-family: var(--heading); font-size: 20px; line-height: 1; color: var(--accent-700);
+}
+.dfy-carousel-arrow:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.dfy-carousel-arrow:active { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.dfy-carousel-toggle:focus-visible, .dfy-carousel-arrow:focus-visible, .dfy-carousel-pick:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+
+/* Every slide shares one cell; only the active one is seen. */
+.dfy-carousel-stage { display: grid; touch-action: pan-y; }
+.dfy-slide {
+  grid-area: 1 / 1; margin: 0; display: grid; align-items: center;
+  grid-template-columns: clamp(140px, 17vw, 212px) minmax(0, 1fr); gap: var(--col-gap);
+  opacity: 0; visibility: hidden; transform: translateY(10px);
+  transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s linear 0.6s;
+}
+.dfy-slide[data-active='true'] { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.dfy-slide-portrait { display: block; padding: 8px; border: 1px solid var(--accent); border-radius: 50%; }
+.dfy-portrait { display: block; aspect-ratio: 1 / 1; border-radius: 50%; overflow: hidden; background: var(--surface); }
+.dfy-portrait img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+  filter: sepia(0.22) saturate(0.82) contrast(1.05);
+}
+.dfy-portrait-initials {
+  display: grid; place-items: center; border: 1px solid var(--divider);
+  font-family: var(--heading); font-size: clamp(32px, 4vw, 52px); letter-spacing: 0.04em; color: var(--accent-700);
+}
+.dfy-slide-mark { display: block; height: 34px; font-family: var(--heading); font-size: 92px; line-height: 0.8; color: var(--accent); }
+.dfy-slide-quote { margin: 0; max-width: 38ch; font-family: var(--heading); font-weight: 400; font-size: clamp(24px, 2.8vw, 35px); line-height: 1.22; }
+.dfy-slide-caption { margin-top: 24px; }
+
+/* The hairline fills while a slide holds; it is only drawn while the carousel moves. */
+.dfy-carousel-progress { display: block; height: 1px; margin-top: 48px; background: var(--divider); overflow: hidden; }
+.dfy-carousel-progress-fill { display: block; height: 100%; background: var(--accent); transform-origin: left; animation: dfy-progress linear both; }
+@keyframes dfy-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.dfy-carousel-picker { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.dfy-carousel-pick {
+  all: unset; box-sizing: border-box; cursor: pointer; width: 54px; height: 54px; padding: 3px;
+  border: 1px solid transparent; border-radius: 50%; opacity: 0.55; transition: opacity 0.2s ease, border-color 0.2s ease;
+  touch-action: manipulation;
+}
+.dfy-carousel-pick .dfy-portrait-initials { font-size: 15px; }
+.dfy-carousel-pick .dfy-portrait img { filter: grayscale(1) contrast(1.05); transition: filter 0.2s ease; }
+.dfy-carousel-pick:hover { opacity: 0.85; }
+.dfy-carousel-pick[aria-current='true'] { opacity: 1; border-color: var(--accent); }
+.dfy-carousel-pick[aria-current='true'] .dfy-portrait img { filter: sepia(0.22) saturate(0.82) contrast(1.05); }
+
+@media (max-width: 720px) {
+  .dfy-slide { grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; align-content: start; }
+  .dfy-slide-portrait { width: 112px; padding: 6px; }
+  .dfy-slide-mark { height: 26px; font-size: 68px; }
+  .dfy-slide-quote { font-size: clamp(21px, 5.6vw, 26px); }
+  .dfy-carousel-progress { margin-top: 36px; }
+  .dfy-carousel-pick { width: 46px; height: 46px; }
+}
+@media (max-width: 420px) {
+  .dfy-carousel-count { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dfy-slide, .dfy-carousel-pick, .dfy-carousel-pick .dfy-portrait img { transition: none; }
+  .dfy-slide { transform: none; }
+  .dfy-carousel-progress-fill { animation: none; }
+}
 .dfy-quote-name { display: block; font-family: var(--heading); font-weight: var(--heading-weight); font-size: 18px; }
 .dfy-quote-role { display: block; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-700); margin-top: 2px; }
-.dfy-quote-watch { width: fit-content; margin-top: 16px; text-decoration: none; }
-.dfy-quote-watch:hover span { color: var(--accent-700); }
+.dfy-quote-watch { width: fit-content; min-height: 44px; margin-top: 4px; text-decoration: none; }
+.dfy-quote-watch:hover span { color: var(--accent-800); }
 
 /* — video testimonials — */
 .dfy-stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }

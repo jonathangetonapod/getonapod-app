@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { HelmetProvider } from 'react-helmet-async'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Landing from './Landing'
 import { getFeaturedTestimonials } from '@/services/testimonials'
@@ -14,6 +14,21 @@ vi.mock('@/services/testimonials', async (importOriginal) => ({
 }))
 
 const featured = vi.mocked(getFeaturedTestimonials)
+
+/** Whose video a testimonial's watch link opens, read from its accessible name. */
+const watching = (link: HTMLElement) => link.textContent.replace(/^Watch on YouTube — | \(opens in a new tab\)$/gu, '')
+
+// jsdom has no PointerEvent, and without one fireEvent drops clientX and pointerType.
+if (!('PointerEvent' in window)) {
+  class PointerEventPolyfill extends MouseEvent {
+    pointerType: string
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init)
+      this.pointerType = init.pointerType ?? ''
+    }
+  }
+  Object.defineProperty(window, 'PointerEvent', { configurable: true, value: PointerEventPolyfill })
+}
 
 function renderPage(path = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -108,36 +123,117 @@ describe('Landing', () => {
     expect(screen.getByText('SP')).toBeInTheDocument()
   })
 
-  it('quotes real clients, by name and with their videos, on the podcast page only', () => {
+  it('quotes real clients, by name, with their faces and videos, on the podcast page only', () => {
     renderPage()
     const quotes = screen.getByRole('region', { name: 'Testimonials' })
-    expect(quotes).toHaveTextContent(/made setting up, scheduling and recording just a breeze/u)
-    expect(quotes).toHaveTextContent('Co-founder and CEO, Relai')
-    expect(quotes).toHaveTextContent(/booking me on podcasts almost immediately/u)
-    expect(quotes).toHaveTextContent('Founder and CEO, North Street Creative')
-    expect(quotes).toHaveTextContent(/Within my first week of becoming a client, I landed a spot/u)
-    expect(quotes).toHaveTextContent('Founder and CEO, Quirk')
-    expect(quotes).toHaveTextContent(/four podcasts scheduled in the first 10 days/u)
-    expect(quotes).toHaveTextContent('Founder and CEO, Ownify')
-    expect(quotes).toHaveTextContent(/get us on various media channels and podcasts/u)
-    expect(quotes).toHaveTextContent('Co-founder and CEO, ShareClub')
-    expect(quotes).toHaveTextContent(/I had two episodes booked in the first month/u)
-    expect(quotes).toHaveTextContent('Founder and CEO, ScaleUp Valley')
-    for (const [name, href] of [
-      ['Mike Dias', 'https://www.youtube.com/watch?v=IP6HW42oztc'],
-      ['Sam Hollander', 'https://www.youtube.com/watch?v=3PYDap_jSUQ'],
-      ['Frank Rohde', 'https://www.youtube.com/watch?v=dJwV94ymqz8'],
-      ['Miles Mufuka Martin', 'https://www.youtube.com/watch?v=7mjznMHEeg0'],
-      ['Tom Conlon', 'https://www.youtube.com/watch?v=MG4KENHrge0'],
-      ['Kate Pozeznik', 'https://www.youtube.com/watch?v=hFcbqL0vrn4'],
+    // Every quote is on the page; the carousel shows one at a time.
+    for (const text of [
+      /made setting up, scheduling and recording just a breeze/u, 'Co-founder and CEO, Relai',
+      /booking me on podcasts almost immediately/u, 'Founder and CEO, North Street Creative',
+      /Within my first week of becoming a client, I landed a spot/u, 'Founder and CEO, Quirk',
+      /four podcasts scheduled in the first 10 days/u, 'Founder and CEO, Ownify',
+      /get us on various media channels and podcasts/u, 'Co-founder and CEO, ShareClub',
+      /I had two episodes booked in the first month/u, 'Founder and CEO, ScaleUp Valley',
     ]) {
-      const video = within(quotes).getByRole('link', { name: `Watch on YouTube: ${name}` })
+      expect(quotes).toHaveTextContent(text)
+    }
+    const picker = within(quotes).getByRole('group', { name: 'Choose a client' })
+    for (const [name, href, portrait] of [
+      ['Miles Mufuka Martin', 'https://www.youtube.com/watch?v=7mjznMHEeg0', '/testimonials/miles-mufuka-martin.webp'],
+      ['Tom Conlon', 'https://www.youtube.com/watch?v=MG4KENHrge0', '/testimonials/tom-conlon.webp'],
+      ['Kate Pozeznik', 'https://www.youtube.com/watch?v=hFcbqL0vrn4', '/testimonials/kate-pozeznik.webp'],
+      ['Frank Rohde', 'https://www.youtube.com/watch?v=dJwV94ymqz8', '/testimonials/frank-rohde.webp'],
+      ['Sam Hollander', 'https://www.youtube.com/watch?v=3PYDap_jSUQ', '/testimonials/sam-hollander.webp'],
+      ['Mike Dias', 'https://www.youtube.com/watch?v=IP6HW42oztc', '/testimonials/mike-dias.webp'],
+    ]) {
+      const pick = within(picker).getByRole('button', { name })
+      expect(pick.querySelector('img')).toHaveAttribute('src', portrait)
+      fireEvent.click(pick)
+      expect(pick).toHaveAttribute('aria-current', 'true')
+      const video = within(quotes).getByRole('link', { name: `Watch on YouTube — ${name} (opens in a new tab)` })
       expect(video).toHaveAttribute('href', href)
       expect(video).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
     cleanup()
     renderPage('/?mode=stages')
     expect(screen.queryByRole('region', { name: 'Testimonials' })).not.toBeInTheDocument()
+  })
+
+  it('shows one testimonial at a time and moves between them from every control', () => {
+    renderPage()
+    const quotes = screen.getByRole('region', { name: 'Testimonials' })
+    const showing = () => within(quotes).getAllByRole('link', { name: /^Watch on YouTube — /u }).map(watching)
+    expect(showing()).toEqual(['Miles Mufuka Martin'])
+    const hidden = within(quotes).getByText('Tom Conlon', { selector: '.dfy-quote-name' }).closest('figure')
+    expect(hidden).toHaveAttribute('inert')
+    expect(hidden).toHaveAttribute('aria-hidden', 'true')
+
+    fireEvent.click(within(quotes).getByRole('button', { name: 'Next testimonial' }))
+    expect(showing()).toEqual(['Tom Conlon'])
+    fireEvent.click(within(quotes).getByRole('button', { name: 'Previous testimonial' }))
+    fireEvent.click(within(quotes).getByRole('button', { name: 'Previous testimonial' }))
+    expect(showing()).toEqual(['Mike Dias'])
+
+    fireEvent.keyDown(quotes, { key: 'ArrowRight' })
+    expect(showing()).toEqual(['Miles Mufuka Martin'])
+
+    const stage = within(quotes).getByRole('group', { name: '1 of 6' }).parentElement
+    fireEvent.pointerDown(stage, { pointerType: 'touch', clientX: 300, clientY: 100 })
+    fireEvent.pointerUp(stage, { pointerType: 'touch', clientX: 200, clientY: 110 })
+    expect(showing()).toEqual(['Tom Conlon'])
+    // A mouse drag is someone selecting the quote, not a swipe.
+    fireEvent.pointerDown(stage, { pointerType: 'mouse', clientX: 300, clientY: 100 })
+    fireEvent.pointerUp(stage, { pointerType: 'mouse', clientX: 100, clientY: 100 })
+    expect(showing()).toEqual(['Tom Conlon'])
+  })
+
+  describe('moving on by itself', () => {
+    const HOLD_MS = 9000
+    const showing = () => within(screen.getByRole('region', { name: 'Testimonials' }))
+      .getAllByRole('link', { name: /^Watch on YouTube — /u }).map(watching)[0]
+
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => {
+      vi.useRealTimers()
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({ matches: false, media: query }) as MediaQueryList)
+    })
+
+    it('advances, holds while pointed at, and stops once the reader takes over', () => {
+      renderPage()
+      const quotes = screen.getByRole('region', { name: 'Testimonials' })
+      act(() => { vi.advanceTimersByTime(HOLD_MS) })
+      expect(showing()).toBe('Tom Conlon')
+
+      fireEvent.mouseEnter(quotes)
+      act(() => { vi.advanceTimersByTime(HOLD_MS * 2) })
+      expect(showing()).toBe('Tom Conlon')
+      fireEvent.mouseLeave(quotes)
+      act(() => { vi.advanceTimersByTime(HOLD_MS) })
+      expect(showing()).toBe('Kate Pozeznik')
+
+      fireEvent.click(within(quotes).getByRole('button', { name: 'Next testimonial' }))
+      fireEvent.blur(within(quotes).getByRole('button', { name: 'Next testimonial' }))
+      expect(within(quotes).getByRole('button', { name: 'Play' })).toBeInTheDocument()
+      act(() => { vi.advanceTimersByTime(HOLD_MS * 3) })
+      expect(showing()).toBe('Frank Rohde')
+    })
+
+    it('can be paused', () => {
+      renderPage()
+      const quotes = screen.getByRole('region', { name: 'Testimonials' })
+      fireEvent.click(within(quotes).getByRole('button', { name: 'Pause' }))
+      fireEvent.blur(within(quotes).getByRole('button', { name: 'Play' }))
+      act(() => { vi.advanceTimersByTime(HOLD_MS * 3) })
+      expect(showing()).toBe('Miles Mufuka Martin')
+    })
+
+    it('holds still for a reader who asked for less motion', () => {
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({ matches: query.includes('reduce'), media: query }) as MediaQueryList)
+      renderPage()
+      act(() => { vi.advanceTimersByTime(HOLD_MS * 3) })
+      expect(showing()).toBe('Miles Mufuka Martin')
+      expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    })
   })
 
   it('shows no client stories, and no placeholder ones, until a real one is featured', async () => {

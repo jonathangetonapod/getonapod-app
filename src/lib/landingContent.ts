@@ -32,6 +32,8 @@ export interface ClientQuote {
   role: string
   /** The recording the quote is taken from, when it is public. */
   videoUrl?: string
+  /** Their face, cropped from that recording and self-hosted under public/testimonials. */
+  portrait?: string
 }
 
 /**
@@ -45,24 +47,28 @@ export const CLIENT_QUOTES: ClientQuote[] = [
     name: 'Miles Mufuka Martin',
     role: 'Co-founder and CEO, Relai',
     videoUrl: 'https://www.youtube.com/watch?v=7mjznMHEeg0',
+    portrait: '/testimonials/miles-mufuka-martin.webp',
   },
   {
     quote: 'True to their name, Get On A Pod, they were booking me on podcasts almost immediately. Super easy, super straightforward and super streamlined. I definitely recommend them for any founder, entrepreneur or business owner interested in being a thought leader. It really works.',
     name: 'Tom Conlon',
     role: 'Founder and CEO, North Street Creative',
     videoUrl: 'https://www.youtube.com/watch?v=MG4KENHrge0',
+    portrait: '/testimonials/tom-conlon.webp',
   },
   {
     quote: 'They really took time to understand my brand, my areas of expertise and the topics that I not only enjoy speaking about but that will resonate with my core audience. Within my first week of becoming a client, I landed a spot as a guest on a very desirable podcast.',
     name: 'Kate Pozeznik',
     role: 'Founder and CEO, Quirk',
     videoUrl: 'https://www.youtube.com/watch?v=hFcbqL0vrn4',
+    portrait: '/testimonials/kate-pozeznik.webp',
   },
   {
     quote: 'We’ve had four podcasts scheduled in the first 10 days, and there’s more coming in. They put them on my calendar, I get the prep work, and we debrief afterwards on what went well, what didn’t go so well and how to improve the pitch.',
     name: 'Frank Rohde',
     role: 'Founder and CEO, Ownify',
     videoUrl: 'https://www.youtube.com/watch?v=dJwV94ymqz8',
+    portrait: '/testimonials/frank-rohde.webp',
   },
   {
     // His video also praises short-form clips, which the offer above does not
@@ -71,12 +77,14 @@ export const CLIENT_QUOTES: ClientQuote[] = [
     name: 'Sam Hollander',
     role: 'Co-founder and CEO, ShareClub',
     videoUrl: 'https://www.youtube.com/watch?v=3PYDap_jSUQ',
+    portrait: '/testimonials/sam-hollander.webp',
   },
   {
     quote: 'The experience has been amazing so far. I had two episodes booked in the first month, and it’s really a delight to work with. Jonathan is super nice and super easy to work with.',
     name: 'Mike Dias',
     role: 'Founder and CEO, ScaleUp Valley',
     videoUrl: 'https://www.youtube.com/watch?v=IP6HW42oztc',
+    portrait: '/testimonials/mike-dias.webp',
   },
 ]
 

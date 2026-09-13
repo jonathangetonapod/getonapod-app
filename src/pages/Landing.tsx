@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
@@ -289,34 +289,163 @@ const Shows = ({ mode }: { mode: Mode }) => {
 /** "Watch on YouTube", or wherever the story is hosted. */
 const watchLabel = (url: string) => (/vimeo\.com/iu.test(url) ? 'Watch on Vimeo' : 'Watch on YouTube')
 
+/** How long a testimonial holds before the carousel moves on by itself. */
+const QUOTE_HOLD_MS = 9000
+
+const twoDigits = (n: number) => String(n).padStart(2, '0')
+
+/** A client's face, cut from their video; their initials if there is none or it fails to load. */
+const Portrait = ({ name, src }: { name: string; src?: string }) => {
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) return <span className="dfy-portrait dfy-portrait-initials" aria-hidden="true">{initials(name)}</span>
+  return (
+    <span className="dfy-portrait">
+      <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+    </span>
+  )
+}
+
+/**
+ * One client at a time, their face beside their words. It moves on by itself —
+ * never for a reader who asked for less motion — holds while pointed at or
+ * focused, and stops for good once the reader takes the controls. Every slide
+ * stays mounted in one grid cell, so the section is as tall as the longest
+ * quote and nothing below it jumps as they change.
+ */
 const Quotes = () => {
-  if (CLIENT_QUOTES.length === 0) return null
+  const count = CLIENT_QUOTES.length
+  const [index, setIndex] = useState(0)
+  const [playing, setPlaying] = useState(() => count > 1 && !prefersReducedMotion())
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const swipe = useRef<{ x: number; y: number } | null>(null)
+  const moving = playing && !hovered && !focused
+
+  useEffect(() => {
+    if (!moving) return
+    const timer = window.setTimeout(() => setIndex((i) => (i + 1) % count), QUOTE_HOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [moving, index, count])
+
+  if (count === 0) return null
+
+  const go = (next: number) => {
+    setPlaying(false)
+    setIndex((next + count) % count)
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+    event.preventDefault()
+    go(index + (event.key === 'ArrowRight' ? 1 : -1))
+  }
+
+  // Touch and pen only: a mouse drag across a quote is someone selecting it.
+  const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+    swipe.current = event.pointerType === 'mouse' ? null : { x: event.clientX, y: event.clientY }
+  }
+  const onPointerUp = (event: PointerEvent<HTMLElement>) => {
+    const start = swipe.current
+    swipe.current = null
+    if (!start) return
+    const dx = event.clientX - start.x
+    // Written so that a missing coordinate (NaN) fails it: no swipe, not a step back.
+    const swiped = Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(event.clientY - start.y)
+    if (!swiped) return
+    go(index + (dx < 0 ? 1 : -1))
+  }
+
   return (
     <>
-      <section className="dfy-section-tight" aria-label="Testimonials">
-        <span className="dfy-kicker dfy-kicker-mid">From our clients</span>
-        <div className="dfy-quotes">
-          {CLIENT_QUOTES.map((q) => (
-            <figure key={q.name} className="dfy-quote">
-              <blockquote className="dfy-quote-text">“{q.quote}”</blockquote>
-              <figcaption>
-                <span className="dfy-quote-name">{q.name}</span>
-                <span className="dfy-quote-role">{q.role}</span>
-                {q.videoUrl ? (
-                  <a
-                    className="dfy-story-watch dfy-quote-watch"
-                    href={q.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`${watchLabel(q.videoUrl)}: ${q.name}`}
-                  >
-                    <span className="dfy-story-play" aria-hidden="true" /><span>{watchLabel(q.videoUrl)}</span>
-                  </a>
-                ) : null}
-              </figcaption>
-            </figure>
-          ))}
+      <section
+        className="dfy-section-tight"
+        aria-roledescription="carousel"
+        aria-label="Testimonials"
+        onKeyDown={onKeyDown}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false) }}
+      >
+        <div className="dfy-carousel-head">
+          <span className="dfy-kicker">From our clients</span>
+          {count > 1 ? (
+            <div className="dfy-carousel-controls">
+              <span className="dfy-carousel-count dfy-tnum" aria-hidden="true">{twoDigits(index + 1)} / {twoDigits(count)}</span>
+              <button type="button" className="dfy-carousel-toggle" onClick={() => setPlaying((p) => !p)}>{playing ? 'Pause' : 'Play'}</button>
+              <button type="button" className="dfy-carousel-arrow" aria-label="Previous testimonial" onClick={() => go(index - 1)}>←</button>
+              <button type="button" className="dfy-carousel-arrow" aria-label="Next testimonial" onClick={() => go(index + 1)}>→</button>
+            </div>
+          ) : null}
         </div>
+
+        <div
+          className="dfy-carousel-stage"
+          aria-live={moving ? 'off' : 'polite'}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => { swipe.current = null }}
+        >
+          {CLIENT_QUOTES.map((q, i) => {
+            const active = i === index
+            return (
+              <figure
+                key={q.name}
+                className="dfy-slide"
+                role="group"
+                aria-roledescription="slide"
+                aria-label={`${i + 1} of ${count}`}
+                aria-hidden={!active}
+                data-active={active}
+                // React 18 has no `inert` prop; the empty string is the attribute being present.
+                {...(active ? {} : { inert: '' })}
+              >
+                <span className="dfy-slide-portrait"><Portrait name={q.name} src={q.portrait} /></span>
+                <div>
+                  <span className="dfy-slide-mark" aria-hidden="true">“</span>
+                  <blockquote className="dfy-slide-quote">{q.quote}</blockquote>
+                  <figcaption className="dfy-slide-caption">
+                    <span className="dfy-quote-name">{q.name}</span>
+                    <span className="dfy-quote-role">{q.role}</span>
+                    {q.videoUrl ? (
+                      <a
+                        className="dfy-story-watch dfy-quote-watch"
+                        href={q.videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <span className="dfy-story-play" aria-hidden="true" />
+                        <span>{watchLabel(q.videoUrl)}<span className="dfy-sr"> — {q.name}</span><NewTab /></span>
+                      </a>
+                    ) : null}
+                  </figcaption>
+                </div>
+              </figure>
+            )
+          })}
+        </div>
+
+        {count > 1 ? (
+          <>
+            <span className="dfy-carousel-progress" aria-hidden="true">
+              {moving ? <span key={index} className="dfy-carousel-progress-fill" style={{ animationDuration: `${QUOTE_HOLD_MS}ms` }} /> : null}
+            </span>
+            <div className="dfy-carousel-picker" role="group" aria-label="Choose a client">
+              {CLIENT_QUOTES.map((q, i) => (
+                <button
+                  key={q.name}
+                  type="button"
+                  className="dfy-carousel-pick"
+                  aria-label={q.name}
+                  aria-current={i === index ? 'true' : undefined}
+                  onClick={() => go(i)}
+                >
+                  <Portrait name={q.name} src={q.portrait} />
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
       </section>
       <hr className="dfy-rule" />
     </>
