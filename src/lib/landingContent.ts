@@ -160,41 +160,6 @@ export const PODCAST_CATALOG: ShowCategory[] = [
   ] },
 ]
 
-export const STAGE_CATALOG: ShowCategory[] = [
-  { name: 'SaaS & Tech', shows: [
-    { name: 'SaaStock', about: 'Annual SaaS founder conference, Dublin', reach: '5,000 attendees' },
-    { name: 'Web Summit stages', about: 'Growth and product tracks', reach: '70,000 attendees' },
-    { name: 'MicroConf', about: 'Bootstrapped software founders', reach: '800 attendees' },
-    { name: 'Regional tech summits', about: 'Keynotes and panels in your metro', reach: '300–2,000' },
-  ] },
-  { name: 'Marketing', shows: [
-    { name: 'Content Marketing World', about: 'The largest content marketing event', reach: '4,000 attendees' },
-    { name: 'MozCon', about: 'SEO and digital marketing', reach: '1,500 attendees' },
-    { name: 'Marketing association chapters', about: 'AMA and local chapter talks', reach: '100–400' },
-    { name: 'Brand & demand summits', about: 'Virtual and hybrid stages', reach: '1,000+ live' },
-  ] },
-  { name: 'Finance', shows: [
-    { name: 'Future Proof', about: 'Wealth management festival', reach: '3,000 attendees' },
-    { name: 'FinCon', about: 'Money media creators and advisors', reach: '2,500 attendees' },
-    { name: 'CFA society events', about: 'Chapter lunches and panels', reach: '100–500' },
-    { name: 'Fintech meetups', about: 'Demo days and founder panels', reach: '150–600' },
-  ] },
-  { name: 'Health & Wellness', shows: [
-    { name: 'Health Optimisation Summit', about: 'Practitioners and performance', reach: '2,000 attendees' },
-    { name: 'MindBodyGreen events', about: 'Wellness brand stages', reach: '1,000+ live' },
-    { name: 'Hospital grand rounds', about: 'Clinical speaking slots', reach: '50–300' },
-    { name: 'Fitness industry expos', about: 'Educator tracks', reach: '5,000+ attendees' },
-  ] },
-  { name: 'Leadership', shows: [
-    { name: 'TEDx stages', about: 'Independently organized TED events', reach: '100–2,000' },
-    { name: 'Chief events', about: "Executive women's network", reach: 'By invitation' },
-    { name: 'Industry association keynotes', about: 'Annual meetings in your vertical', reach: '500–5,000' },
-    { name: 'Corporate offsites', about: 'Paid internal speaking', reach: '50–500' },
-  ] },
-]
-
-export const CATALOG: Record<Mode, ShowCategory[]> = { podcasts: PODCAST_CATALOG, stages: STAGE_CATALOG }
-
 /** The eleven things booking one stage in-house takes. */
 export const DIY_STEPS = [
   'Search for conferences in your industry',

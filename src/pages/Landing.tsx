@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import PageSEO from '@/components/seo/PageSEO'
 import { getEmbedUrl, getFeaturedTestimonials, type Testimonial } from '@/services/testimonials'
 import {
-  CALL_URL, CATALOG, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CLOSE_CTA, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
-  FAQ, HERO, HERO_CTA, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_PLAN_INCLUDES,
+  CALL_URL, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CLOSE_CTA, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
+  FAQ, HERO, HERO_CTA, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_CATALOG, PODCAST_PLAN_INCLUDES,
   STAGE_PLAN_INCLUDES, STAGE_STEPS, TIMELINE, WHY_NOT_BOOKED, initials, startingLine, type Mode,
 } from '@/lib/landingContent'
 import '@/styles/landing.css'
@@ -226,12 +226,15 @@ const PodcastsHow = () => (
   </section>
 )
 
-const Shows = ({ mode }: { mode: Mode }) => {
-  const catalog = CATALOG[mode]
+/**
+ * Sample podcasts by niche. The stage offer has no counterpart: events do not
+ * publish artwork the way shows do, and a grid of initials said nothing.
+ */
+const Shows = () => {
+  const catalog = PODCAST_CATALOG
   const [category, setCategory] = useState(0)
   const index = Math.min(category, catalog.length - 1)
   const active = catalog[index]
-  const stages = mode === 'stages'
   const tabs = useRef<Array<HTMLButtonElement | null>>([])
 
   // One tab stop for the strip; the arrow keys walk the niches and the
@@ -247,8 +250,8 @@ const Shows = ({ mode }: { mode: Mode }) => {
 
   return (
     <section id="shows" className="dfy-section">
-      <span className="dfy-kicker">{stages ? 'The stages' : 'The shows'}</span>
-      <h2 className="dfy-shows-title">{stages ? 'We put you in rooms like these' : 'We pitch you to shows like these'}</h2>
+      <span className="dfy-kicker">The shows</span>
+      <h2 className="dfy-shows-title">We pitch you to shows like these</h2>
       <div className="dfy-tabs" role="tablist" aria-label="Niche" onKeyDown={onKey}>
         {catalog.map((cat, i) => (
           <button
@@ -594,10 +597,10 @@ const Landing = () => {
           </>
         )}
         <hr className="dfy-rule" />
-        <Shows mode={mode} />
-        <hr className="dfy-rule" />
         {stages ? null : (
           <>
+            <Shows />
+            <hr className="dfy-rule" />
             <Quotes />
             <Stories />
           </>
@@ -630,7 +633,7 @@ const Landing = () => {
           <div className="dfy-footer-col">
             <span className="dfy-footer-head">Explore</span>
             <a href="#how">How it works</a>
-            <a href="#shows">{stages ? 'The stages' : 'The shows'}</a>
+            {stages ? null : <a href="#shows">The shows</a>}
             <a href="#pricing">Pricing</a>
             <a href="#faq">Questions</a>
           </div>

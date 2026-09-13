@@ -67,7 +67,9 @@ describe('Landing', () => {
     expect(screen.getByRole('button', { name: 'Stages' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/full of your ideal clients/iu)
     expect(screen.getByRole('heading', { name: /one system\. four steps/iu })).toBeInTheDocument()
-    expect(screen.getByText('We put you in rooms like these')).toBeInTheDocument()
+    // Events publish no artwork, so the stage offer carries no sample grid.
+    expect(screen.queryByRole('tablist', { name: 'Niche' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/rooms like these/u)).not.toBeInTheDocument()
     expect(screen.getByText(/we're not a bureau/iu)).toBeInTheDocument()
     expect(screen.getByText('What exactly am I paying for?')).toBeInTheDocument()
     expect(screen.queryByText('How is this different from a PR agency?')).not.toBeInTheDocument()
