@@ -60,12 +60,12 @@
 
 /* Every state change eases; nothing snaps. Off for reduced motion. No
    double-tap-to-zoom wait on anything tappable. */
-.dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-story-link, .dfy-faq summary, .dfy-carousel-toggle, .dfy-carousel-arrow {
+.dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-faq summary, .dfy-carousel-toggle, .dfy-carousel-arrow {
   transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
   touch-action: manipulation;
 }
 @media (prefers-reduced-motion: reduce) {
-  .dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-story-link, .dfy-carousel-toggle, .dfy-carousel-arrow { transition: none; }
+  .dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-carousel-toggle, .dfy-carousel-arrow { transition: none; }
 }
 
 /* Visually hidden, read by screen readers. */
@@ -394,41 +394,16 @@
 }
 .dfy-quote-name { display: block; font-family: var(--heading); font-weight: var(--heading-weight); font-size: 18px; }
 .dfy-quote-role { display: block; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-700); margin-top: 2px; }
-.dfy-quote-watch { width: fit-content; min-height: 44px; margin-top: 4px; text-decoration: none; }
+.dfy-quote-watch { display: flex; align-items: center; gap: 8px; width: fit-content; min-height: 44px; margin-top: 4px; text-decoration: none; }
+.dfy-quote-watch span { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--neutral-700); }
 .dfy-quote-watch:hover span { color: var(--accent-800); }
-
-/* — video testimonials — */
-.dfy-stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
-.dfy-story { margin: 0; }
-.dfy-story-link {
-  display: grid; grid-template-columns: 42% 1fr; aspect-ratio: 16 / 9; overflow: hidden;
-  background: var(--bg); border: 1px solid var(--divider); color: inherit; text-decoration: none;
-}
-.dfy-story-link:hover { color: inherit; border-color: var(--accent); }
-.dfy-story-mat { margin: 10px 0 10px 10px; border: 1px solid var(--divider); padding: 4px; background: var(--surface); min-height: 0; }
-.dfy-story-mat img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.dfy-story-mat .dfy-plate { aspect-ratio: auto; height: 100%; font-size: clamp(28px, 3vw, 44px); }
-.dfy-story-body { display: flex; flex-direction: column; justify-content: center; padding: 18px 22px; min-width: 0; }
-.dfy-story-kicker { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-700); }
-.dfy-story-rule { width: 32px; height: 1px; border: 0; background: var(--accent); margin: 8px 0 12px; }
-.dfy-story-quote { font-family: var(--heading); font-weight: 400; font-size: 22px; line-height: 1.1; }
-.dfy-story-name { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 15px; margin-top: 12px; }
-.dfy-story-role { font-size: 12px; line-height: 18px; color: var(--neutral-700); }
-.dfy-story-watch { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.dfy-story-play {
+.dfy-quote-play {
   width: 22px; height: 22px; border: 1px solid var(--accent); border-radius: 50%;
   display: grid; place-items: center; flex: none;
 }
-.dfy-story-play::after {
+.dfy-quote-play::after {
   content: ""; width: 0; height: 0; margin-left: 2px;
   border-left: 6px solid var(--accent-700); border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-}
-.dfy-story-watch span { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--neutral-700); }
-@media (max-width: 600px) {
-  .dfy-stories { grid-template-columns: 1fr; gap: 20px; }
-  .dfy-story-link { grid-template-columns: 1fr; aspect-ratio: auto; }
-  .dfy-story-mat { margin: 10px 10px 0; aspect-ratio: 16 / 10; }
-  .dfy-story-body { padding: 16px 18px 20px; }
 }
 
 /* — pricing — */

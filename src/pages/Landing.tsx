@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 
 import PageSEO from '@/components/seo/PageSEO'
-import { getEmbedUrl, getFeaturedTestimonials, type Testimonial } from '@/services/testimonials'
 import {
   CALL_URL, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CLOSE_CTA, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
   FAQ, HERO, HERO_CTA, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_CATALOG, PODCAST_PLAN_INCLUDES,
@@ -289,7 +287,7 @@ const Shows = () => {
   )
 }
 
-/** "Watch on YouTube", or wherever the story is hosted. */
+/** "Watch on YouTube", or wherever the testimonial is hosted. */
 const watchLabel = (url: string) => (/vimeo\.com/iu.test(url) ? 'Watch on Vimeo' : 'Watch on YouTube')
 
 /** How long a testimonial holds before the carousel moves on by itself. */
@@ -412,12 +410,12 @@ const Quotes = () => {
                     <span className="dfy-quote-role">{q.role}</span>
                     {q.videoUrl ? (
                       <a
-                        className="dfy-story-watch dfy-quote-watch"
+                        className="dfy-quote-watch"
                         href={q.videoUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        <span className="dfy-story-play" aria-hidden="true" />
+                        <span className="dfy-quote-play" aria-hidden="true" />
                         <span>{watchLabel(q.videoUrl)}<span className="dfy-sr"> — {q.name}</span><NewTab /></span>
                       </a>
                     ) : null}
@@ -449,51 +447,6 @@ const Quotes = () => {
             </div>
           </>
         ) : null}
-      </section>
-      <hr className="dfy-rule" />
-    </>
-  )
-}
-
-const Story = ({ t }: { t: Testimonial }) => {
-  const role = [t.client_title, t.client_company].filter(Boolean).join(', ')
-  return (
-    <figure className="dfy-story">
-      <a className="dfy-story-link" href={t.video_url} target="_blank" rel="noopener noreferrer">
-        <div className="dfy-story-mat">
-          {t.client_photo_url
-            ? <img src={t.client_photo_url} alt="" loading="lazy" decoding="async" />
-            : <div className="dfy-plate" aria-hidden="true">{initials(t.client_name)}</div>}
-        </div>
-        <div className="dfy-story-body">
-          <span className="dfy-story-kicker">Client story</span>
-          <hr className="dfy-story-rule" />
-          {t.quote ? <span className="dfy-story-quote">“{t.quote}”</span> : null}
-          <span className="dfy-story-name">{t.client_name}</span>
-          {role ? <span className="dfy-story-role">{role}</span> : null}
-          <span className="dfy-story-watch"><span className="dfy-story-play" aria-hidden="true" /><span>{watchLabel(t.video_url)}<NewTab /></span></span>
-        </div>
-      </a>
-    </figure>
-  )
-}
-
-/**
- * Real clients, from the testimonials table the admin already manages. The
- * design drew three placeholder cards; a placeholder on a live page is a claim,
- * so with nothing featured the section is not there.
- */
-const Stories = () => {
-  const { data = [] } = useQuery({ queryKey: ['featured-testimonials'], queryFn: getFeaturedTestimonials })
-  const stories = data.filter((t) => getEmbedUrl(t.video_url) !== null)
-  if (stories.length === 0) return null
-  return (
-    <>
-      <section className="dfy-section-tight" aria-label="Video testimonials">
-        <span className="dfy-kicker dfy-kicker-mid">In their words</span>
-        <div className="dfy-stories">
-          {stories.map((t) => <Story key={t.id} t={t} />)}
-        </div>
       </section>
       <hr className="dfy-rule" />
     </>
@@ -602,7 +555,6 @@ const Landing = () => {
             <Shows />
             <hr className="dfy-rule" />
             <Quotes />
-            <Stories />
           </>
         )}
         <Pricing mode={mode} />

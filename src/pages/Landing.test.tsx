@@ -1,19 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { HelmetProvider } from 'react-helmet-async'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Landing from './Landing'
-import { getFeaturedTestimonials } from '@/services/testimonials'
 import { CALL_URL } from '@/lib/landingContent'
-
-vi.mock('@/services/testimonials', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/testimonials')>()),
-  getFeaturedTestimonials: vi.fn(),
-}))
-
-const featured = vi.mocked(getFeaturedTestimonials)
 
 /** Whose video a testimonial's watch link opens, read from its accessible name. */
 const watching = (link: HTMLElement) => link.textContent.replace(/^Watch on YouTube — | \(opens in a new tab\)$/gu, '')
@@ -31,22 +22,14 @@ if (!('PointerEvent' in window)) {
 }
 
 function renderPage(path = '/') {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <HelmetProvider>
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={[path]}><Landing /></MemoryRouter>
-      </QueryClientProvider>
+      <MemoryRouter initialEntries={[path]}><Landing /></MemoryRouter>
     </HelmetProvider>,
   )
 }
 
 describe('Landing', () => {
-  beforeEach(() => {
-    featured.mockReset()
-    featured.mockResolvedValue([])
-  })
-
   it('opens on the podcast offer and books calls where the rest of the site does', () => {
     renderPage()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/podcasts come calling/iu)
@@ -156,6 +139,9 @@ describe('Landing', () => {
       expect(video).toHaveAttribute('href', href)
       expect(video).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
+    // The carousel replaced the grid of video cards from the testimonials table.
+    expect(screen.queryByText('In their words')).not.toBeInTheDocument()
+    expect(screen.queryByText('Client story')).not.toBeInTheDocument()
     cleanup()
     renderPage('/?mode=stages')
     expect(screen.queryByRole('region', { name: 'Testimonials' })).not.toBeInTheDocument()
@@ -236,49 +222,5 @@ describe('Landing', () => {
       expect(showing()).toBe('Miles Mufuka Martin')
       expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
     })
-  })
-
-  it('shows no client stories, and no placeholder ones, until a real one is featured', async () => {
-    renderPage()
-    await screen.findByText('The SaaS Podcast')
-    expect(screen.queryByText('In their words')).not.toBeInTheDocument()
-    expect(screen.queryByText(/Client name/u)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Hartwell/u)).not.toBeInTheDocument()
-  })
-
-  it('shows a featured client story as a link to their video', async () => {
-    featured.mockResolvedValue([
-      {
-        id: 't1',
-        video_url: 'https://www.youtube.com/watch?v=abc12345678',
-        client_name: 'Dana Reyes',
-        client_title: 'Founder',
-        client_company: 'Northwind',
-        quote: 'Eleven shows in four months.',
-        is_featured: true,
-        display_order: 1,
-        is_active: true,
-        created_at: '',
-        updated_at: '',
-      },
-      {
-        // Not embeddable, so not a story the page can show.
-        id: 't2',
-        video_url: 'https://www.loom.com/share/xyz',
-        client_name: 'Nobody',
-        is_featured: true,
-        display_order: 2,
-        is_active: true,
-        created_at: '',
-        updated_at: '',
-      },
-    ])
-    renderPage()
-    expect(await screen.findByText('In their words')).toBeInTheDocument()
-    const story = screen.getByRole('link', { name: /Dana Reyes/u })
-    expect(story).toHaveAttribute('href', 'https://www.youtube.com/watch?v=abc12345678')
-    expect(story).toHaveTextContent('Founder, Northwind')
-    expect(story).toHaveTextContent('Watch on YouTube')
-    expect(screen.queryByText('Nobody')).not.toBeInTheDocument()
   })
 })
