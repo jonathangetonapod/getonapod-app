@@ -36,14 +36,15 @@ describe('Landing', () => {
     expect(screen.getByRole('link', { name: /skip to content/iu })).toHaveAttribute('href', '#main')
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: 'For agencies' })).toHaveAttribute('href', '/platform')
-    // The podcast offer books its own 15-minute call; every button agrees.
-    const podcastLinks = screen.getAllByRole('link', { name: /book a (15-minute )?call/iu })
+    // The podcast offer books a 30-minute call; every button agrees.
+    expect(CALL_URLS.podcasts).toMatch(/\/30min$/u)
+    const podcastLinks = screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })
     expect(podcastLinks.length).toBeGreaterThanOrEqual(4)
     for (const link of podcastLinks) {
       expect(link).toHaveAttribute('href', CALL_URLS.podcasts)
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
-    expect(screen.queryByRole('link', { name: /30-minute/iu })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /15-minute/iu })).not.toBeInTheDocument()
     expect(screen.getByText('$500')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Podcasts' })).toHaveAttribute('aria-pressed', 'true')
   })
@@ -60,7 +61,8 @@ describe('Landing', () => {
     expect(screen.getByText(/we're not a bureau/iu)).toBeInTheDocument()
     expect(screen.getByText('What exactly am I paying for?')).toBeInTheDocument()
     expect(screen.queryByText('How is this different from a PR agency?')).not.toBeInTheDocument()
-    // The stage offer books on its own calendar, a 30-minute call.
+    // The stage offer books a 30-minute call too.
+    expect(CALL_URLS.stages).toMatch(/\/30min$/u)
     for (const link of screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })) {
       expect(link).toHaveAttribute('href', CALL_URLS.stages)
     }
@@ -105,7 +107,7 @@ describe('Landing', () => {
 
   it('tells a screen reader when a link leaves for a new tab', () => {
     renderPage()
-    for (const link of screen.getAllByRole('link', { name: /book a (15-minute )?call/iu })) {
+    for (const link of screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })) {
       expect(link).toHaveAccessibleName(/opens in a new tab/iu)
     }
   })

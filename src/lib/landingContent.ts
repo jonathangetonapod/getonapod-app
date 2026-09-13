@@ -14,15 +14,16 @@
 export type Mode = 'podcasts' | 'stages'
 
 /**
- * Where "book a call" goes. Each offer books on its own calendar, and the
- * buttons name the call's length, so the label follows the link.
+ * Where "book a call" goes. Each offer can book on its own calendar; both are
+ * 30-minute calls for now. The buttons name the call's length, so the label
+ * follows the link — change them together.
  */
 export const CALL_URLS: Record<Mode, string> = {
-  podcasts: 'https://cal.com/jonathan-garces-x5v8tl/15min',
+  podcasts: 'https://cal.com/jonathan-garces-x5v8tl/30min',
   stages: 'https://cal.com/jonathan-garces-x5v8tl/30min',
 }
 export const CALL_LABEL: Record<Mode, string> = {
-  podcasts: 'Book a 15-minute call',
+  podcasts: 'Book a 30-minute call',
   stages: 'Book a 30-minute call',
 }
 export const CONTACT_EMAIL = 'jonathan@getonapod.com'
