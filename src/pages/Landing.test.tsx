@@ -78,6 +78,29 @@ describe('Landing', () => {
     expect(screen.queryByText('The SaaS Podcast')).not.toBeInTheDocument()
   })
 
+  it('walks the niches with the arrow keys, one tab stop for the strip', () => {
+    renderPage()
+    const tabs = screen.getByRole('tablist', { name: 'Niche' })
+    const first = within(tabs).getByRole('tab', { name: 'SaaS & Tech' })
+    expect(first).toHaveAttribute('tabindex', '0')
+    expect(within(tabs).getByRole('tab', { name: 'Marketing' })).toHaveAttribute('tabindex', '-1')
+    fireEvent.keyDown(tabs, { key: 'ArrowRight' })
+    expect(within(tabs).getByRole('tab', { name: 'Marketing' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Marketing School')).toBeInTheDocument()
+    fireEvent.keyDown(tabs, { key: 'End' })
+    expect(within(tabs).getByRole('tab', { name: 'Leadership' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(tabs, { key: 'ArrowRight' })
+    expect(first).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', first.id)
+  })
+
+  it('tells a screen reader when a link leaves for a new tab', () => {
+    renderPage()
+    for (const link of screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })) {
+      expect(link).toHaveAccessibleName(/opens in a new tab/iu)
+    }
+  })
+
   it('falls back to initials when artwork fails to load', () => {
     renderPage()
     fireEvent.error(screen.getByRole('img', { name: 'The SaaS Podcast artwork' }))
