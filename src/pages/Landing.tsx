@@ -23,6 +23,21 @@ const Brand = () => (
 
 const Mark = () => <span className="dfy-list-mark" aria-hidden="true" />
 
+/**
+ * The square in a show's mat: its artwork when there is one, its initials
+ * otherwise — and its initials again if the artwork fails to load, so a bad
+ * file never shows a broken-image icon on the homepage.
+ */
+const Plate = ({ name, art }: { name: string; art?: string }) => {
+  const [failed, setFailed] = useState(false)
+  if (!art || failed) return <div className="dfy-plate" aria-hidden="true">{initials(name)}</div>
+  return (
+    <div className="dfy-plate dfy-plate-art">
+      <img src={art} alt={`${name} artwork`} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+    </div>
+  )
+}
+
 const Hero = ({ mode }: { mode: Mode }) => {
   const hero = HERO[mode]
   return (
@@ -235,7 +250,7 @@ const Shows = ({ mode }: { mode: Mode }) => {
         {active.shows.map((show) => (
           <figure className="dfy-show" key={show.name}>
             <div className="dfy-mat">
-              <div className="dfy-plate" aria-hidden="true">{initials(show.name)}</div>
+              <Plate name={show.name} art={show.art} />
             </div>
             <figcaption>
               <span className="dfy-show-name">{show.name}</span>

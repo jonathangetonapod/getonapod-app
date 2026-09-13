@@ -53,6 +53,8 @@ export interface Show {
   name: string
   about: string
   reach: string
+  /** Artwork under public/shows; without one the mat shows the show's initials. */
+  art?: string
 }
 
 export interface ShowCategory {
@@ -62,19 +64,19 @@ export interface ShowCategory {
 
 export const PODCAST_CATALOG: ShowCategory[] = [
   { name: 'SaaS & Tech', shows: [
-    { name: 'The SaaS Podcast', about: 'Founder interviews on growth and funding', reach: '40k listeners' },
-    { name: 'Indie Hackers', about: 'Bootstrappers and small bets', reach: '60k listeners' },
+    { name: 'The SaaS Podcast', about: 'Founder interviews on growth and funding', reach: '40k listeners', art: '/shows/the-saas-podcast.webp' },
+    { name: 'Indie Hackers', about: 'Bootstrappers and small bets', reach: '60k listeners', art: '/shows/indie-hackers.webp' },
     { name: 'Product-led shows', about: 'PLG, onboarding, and retention', reach: '10–30k' },
     { name: 'Dev-tools pods', about: 'Technical founder audiences', reach: '5–20k' },
   ] },
   { name: 'Marketing', shows: [
-    { name: 'Marketing School', about: 'Daily tactics, huge back catalog', reach: '1M+ downloads/mo' },
-    { name: 'Everyone Hates Marketers', about: 'No-BS positioning conversations', reach: '30k listeners' },
+    { name: 'Marketing School', about: 'Daily tactics, huge back catalog', reach: '1M+ downloads/mo', art: '/shows/marketing-school.webp' },
+    { name: 'Everyone Hates Marketers', about: 'No-BS positioning conversations', reach: '30k listeners', art: '/shows/everyone-hates-marketers.webp' },
     { name: 'Demand-gen shows', about: 'B2B pipeline and ABM', reach: '5–25k' },
     { name: 'Brand & creative pods', about: 'CMO and agency audiences', reach: '10–40k' },
   ] },
   { name: 'Finance', shows: [
-    { name: 'Animal Spirits', about: 'Markets with a practitioner audience', reach: '100k+ listeners' },
+    { name: 'Animal Spirits', about: 'Markets with a practitioner audience', reach: '100k+ listeners', art: '/shows/animal-spirits.webp' },
     { name: 'Advisor-focused shows', about: 'RIA growth and practice management', reach: '10–30k' },
     { name: 'Fintech pods', about: 'Operators and investors', reach: '15–50k' },
     { name: 'Personal finance shows', about: 'Consumer money audiences', reach: '50k+' },
@@ -86,7 +88,7 @@ export const PODCAST_CATALOG: ShowCategory[] = [
     { name: 'Mental health shows', about: 'Therapists and coaches', reach: '20–60k' },
   ] },
   { name: 'Leadership', shows: [
-    { name: 'Coaching for Leaders', about: 'Management practice, loyal audience', reach: '80k listeners' },
+    { name: 'Coaching for Leaders', about: 'Management practice, loyal audience', reach: '80k listeners', art: '/shows/coaching-for-leaders.webp' },
     { name: 'HR & people pods', about: 'CHRO and people-ops listeners', reach: '10–30k' },
     { name: 'Executive interview shows', about: 'C-suite storytelling', reach: '20–50k' },
     { name: 'Author tour shows', about: 'Book-launch circuits', reach: 'Varies' },

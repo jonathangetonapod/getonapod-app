@@ -70,9 +70,19 @@ describe('Landing', () => {
     const tabs = screen.getByRole('tablist', { name: 'Niche' })
     expect(within(tabs).getByRole('tab', { name: 'SaaS & Tech' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('The SaaS Podcast')).toBeInTheDocument()
+    // A show with artwork shows it; a category entry without art shows initials.
+    expect(screen.getByRole('img', { name: 'The SaaS Podcast artwork' })).toHaveAttribute('src', '/shows/the-saas-podcast.webp')
+    expect(screen.getByText('PS')).toBeInTheDocument()
     fireEvent.click(within(tabs).getByRole('tab', { name: 'Finance' }))
     expect(screen.getByText('Animal Spirits')).toBeInTheDocument()
     expect(screen.queryByText('The SaaS Podcast')).not.toBeInTheDocument()
+  })
+
+  it('falls back to initials when artwork fails to load', () => {
+    renderPage()
+    fireEvent.error(screen.getByRole('img', { name: 'The SaaS Podcast artwork' }))
+    expect(screen.queryByRole('img', { name: 'The SaaS Podcast artwork' })).not.toBeInTheDocument()
+    expect(screen.getByText('SP')).toBeInTheDocument()
   })
 
   it('shows no client stories, and no placeholder ones, until a real one is featured', async () => {

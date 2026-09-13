@@ -276,6 +276,13 @@
   font-family: var(--heading); font-weight: 400; font-size: clamp(40px, 5vw, 64px);
   letter-spacing: 0.04em; color: var(--accent-700);
 }
+/* Artwork fills the plate. The filter is the Classical system's plate grade —
+   a warm archival cast every content image on the page is meant to share. */
+.dfy-plate-art { padding: 0; overflow: hidden; }
+.dfy-plate-art img {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+  filter: sepia(0.22) saturate(0.82) contrast(1.05);
+}
 .dfy-show figcaption { padding-top: 14px; }
 .dfy-show-name { display: block; font-family: var(--heading); font-weight: var(--heading-weight); font-size: 21px; line-height: 1.2; }
 .dfy-show-about { display: block; font-size: 13.5px; line-height: 21px; color: var(--neutral-700); margin-top: 4px; }
