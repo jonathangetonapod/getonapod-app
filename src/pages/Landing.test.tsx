@@ -53,7 +53,7 @@ describe('Landing', () => {
     renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Stages' }))
     expect(screen.getByRole('button', { name: 'Stages' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/full of your ideal clients/iu)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/speak where your buyers sit\.\s*we find rooms and pitch you/iu)
     expect(screen.getByRole('heading', { name: /one system\. four steps/iu })).toBeInTheDocument()
     // Events publish no artwork, so the stage offer carries no sample grid.
     expect(screen.queryByRole('tablist', { name: 'Niche' })).not.toBeInTheDocument()
@@ -71,7 +71,7 @@ describe('Landing', () => {
 
   it('reads the offer from the address so the stage page can be linked to', () => {
     renderPage('/?mode=stages')
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/full of your ideal clients/iu)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/speak where your buyers sit\.\s*we find rooms and pitch you/iu)
     // The design's "Starting in September" line is computed, never stale.
     expect(screen.getByText(/^Starting in [A-Z][a-z]+ means your Q[1-4]/u)).toBeInTheDocument()
   })

@@ -76,12 +76,18 @@ const Wordmarks = () => {
   )
 }
 
+/**
+ * The stage offer's argument, in the order a sceptical buyer needs it: the
+ * problem and why it defeats most speakers, what fixing it in-house costs, who
+ * this is for, how we fix it, what arrives each month and when, and finally
+ * what one room is worth — which is the lead-in to the price.
+ */
 const StagesCase = () => (
   <>
     <section className="dfy-section">
       <span className="dfy-kicker">The math nobody tells you</span>
       <h2 className="dfy-h2 dfy-measure">Getting booked is a numbers problem before it's a talent problem.</h2>
-      <p className="dfy-copy dfy-copy-after">Across professional speaking businesses, the working ratio is roughly 150 targeted contacts to get 15 real conversations, 3 strong fits, and 1 confirmed booking.</p>
+      <p className="dfy-copy dfy-copy-after">The rule of thumb we plan around: roughly 150 targeted contacts for 15 real conversations, 3 strong fits and 1 confirmed booking.</p>
       <p className="dfy-copy dfy-copy-lead-out">Most speakers send 15 emails, hear nothing, and decide outreach doesn't work. What doesn't work is the sample size.</p>
       <table className="dfy-table">
         <thead><tr><th>You, doing it yourself</th><th>A VA with a database</th><th>Get On A Pod</th></tr></thead>
@@ -95,6 +101,16 @@ const StagesCase = () => (
           ))}
         </tbody>
       </table>
+    </section>
+    <hr className="dfy-rule" />
+
+    <section className="dfy-section">
+      <span className="dfy-kicker">Why most speakers don't get booked</span>
+      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Five reasons good speakers stay off the program.</h2>
+      <ul className="dfy-list dfy-list-mid">
+        {WHY_NOT_BOOKED.map((text) => <li key={text}><Mark /><span>{text}</span></li>)}
+      </ul>
+      <p className="dfy-statement dfy-statement-far">We answer each one with a process: association lists alongside the big conferences, a session the organizer needs, hundreds of pitches from our domains, every proposal window tracked, and fresh lists each month.</p>
     </section>
     <hr className="dfy-rule" />
 
@@ -117,7 +133,7 @@ const StagesCase = () => (
     <section className="dfy-section">
       <span className="dfy-kicker">Who this is for</span>
       <h2 className="dfy-h2">Built for people who sell expertise, not tickets.</h2>
-      <p className="dfy-copy dfy-copy-after">If you're a consultant, advisor, coach, agency owner or founder selling high-ticket services, and you already know a stage full of your buyers is worth more than any ad, this is for you.</p>
+      <p className="dfy-copy dfy-copy-after">You're a consultant, advisor, coach, agency owner or founder. A single new client is worth thousands to you, and you already know a stage full of your buyers is worth more than any ad.</p>
       <p className="dfy-copy dfy-copy-after dfy-copy-intro">It is not for:</p>
       <ul className="dfy-list dfy-list-narrow">
         {NOT_FOR.map((text) => <li key={text}><Mark /><span>{text}</span></li>)}
@@ -139,7 +155,8 @@ const StagesCase = () => (
     <hr className="dfy-rule" />
 
     <section className="dfy-section">
-      <span className="dfy-kicker dfy-kicker-loose">What you get every month</span>
+      <span className="dfy-kicker">What you get every month</span>
+      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Six things every month, and you can check each one.</h2>
       <div className="dfy-deliverables">
         {DELIVERABLES.map((d) => (
           <div className="dfy-deliverable" key={d.title}>
@@ -154,7 +171,7 @@ const StagesCase = () => (
     <section id="timeline" className="dfy-section">
       <span className="dfy-kicker">Timeline</span>
       <h2 className="dfy-h2 dfy-measure-wide">Honest timeline, because stages don't book next week.</h2>
-      <p className="dfy-copy dfy-copy-after dfy-copy-lead-out">Over half of organizers book speakers 2 to 6 months in advance. Major conferences pick speakers 6 to 12 months out. Anyone promising you a keynote in 30 days is selling something else.</p>
+      <p className="dfy-copy dfy-copy-after dfy-copy-lead-out">Organizers typically book speakers 2 to 6 months ahead, and major conferences choose theirs 6 to 12 months out. Anyone promising you a keynote in 30 days is selling something else.</p>
       {TIMELINE.map((t) => (
         <div className="dfy-timeline-row" key={t.when}>
           <p className="dfy-timeline-when">{t.when}</p>
@@ -169,24 +186,8 @@ const StagesCase = () => (
     <hr className="dfy-rule" />
 
     <section className="dfy-section">
-      <span className="dfy-kicker">Why most speakers don't get booked</span>
-      <ul className="dfy-list dfy-list-mid">
-        {WHY_NOT_BOOKED.map((text) => <li key={text}><Mark /><span>{text}</span></li>)}
-      </ul>
-      <p className="dfy-statement dfy-statement-far">We fixed each one with a process, not a pep talk.</p>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">ROI from one client</span>
-      <h2 className="dfy-h2">One room can pay for the year.</h2>
-      <p className="dfy-copy dfy-copy-after">A year of the plan is ${(MONTHLY_PRICE * 12).toLocaleString('en-US')}. If your average client is worth $10,000, one client won from one room of 150 of your buyers covers the year with room to spare.</p>
-      <p className="dfy-copy">Every stage after that is working for you, not paying off the program.</p>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker dfy-kicker-loose">What each channel does in our system</span>
+      <span className="dfy-kicker">Where we pitch you</span>
+      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Four channels, and a job for each.</h2>
       <table className="dfy-table">
         <thead><tr><th>Channel</th><th>What most people use it for</th><th>How we use it</th></tr></thead>
         <tbody>
@@ -199,6 +200,14 @@ const StagesCase = () => (
           ))}
         </tbody>
       </table>
+    </section>
+    <hr className="dfy-rule" />
+
+    <section className="dfy-section">
+      <span className="dfy-kicker">ROI from one client</span>
+      <h2 className="dfy-h2">One room can pay for the year.</h2>
+      <p className="dfy-copy dfy-copy-after">A year of the plan is ${(MONTHLY_PRICE * 12).toLocaleString('en-US')}. If your average client is worth $10,000, one client won from one room of 150 of your buyers covers the year with room to spare.</p>
+      <p className="dfy-copy">Every stage after that is working for you, not paying off the program.</p>
     </section>
   </>
 )
@@ -463,7 +472,7 @@ const Pricing = ({ mode }: { mode: Mode }) => {
           <p className="dfy-price">${MONTHLY_PRICE}<small>/month</small></p>
           <p className="dfy-price-note">
             {stages
-              ? 'One plan. 3-month minimum, then month to month — a fraction of what building this in-house costs.'
+              ? 'One plan. 3-month minimum, then month to month. Building the same thing in-house runs about $5,600 a month.'
               : 'One plan. 3-month minimum, then month to month. PR agencies typically charge $2,000–5,000 a month for a service spread across press, awards and everything else.'}
           </p>
           <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
@@ -476,7 +485,7 @@ const Pricing = ({ mode }: { mode: Mode }) => {
       </div>
       {stages ? (
         <>
-          <p className="dfy-price-aside">We're not a bureau. We don't take a cut of your speaking fees. Flat monthly rate, that's it.</p>
+          <p className="dfy-price-aside">We're not a bureau. We don't take a cut of your speaking fees — a flat monthly rate, and every fee you earn is yours.</p>
           <p className="dfy-price-fine">Building this yourself: a research VA (~$3,000/mo), cold email infrastructure (~$300), scraping and enrichment (~$400), deliverability monitoring (~$100), a pitch copywriter (~$600), and someone managing replies and logistics (~$1,200) — about $5,600/mo, and you're the one managing all of it.</p>
         </>
       ) : null}
@@ -518,7 +527,7 @@ const Landing = () => {
   return (
     <div className="dfy-page">
       <PageSEO
-        title={stages ? 'Done-for-you stage booking | Get On A Pod' : 'Get booked on podcasts your customers listen to | Get On A Pod'}
+        title={stages ? 'Speak where your buyers sit: done-for-you stage booking | Get On A Pod' : 'Get booked on podcasts your customers listen to | Get On A Pod'}
         description={HERO[mode].lead}
       />
       <a className="dfy-skip" href="#main">Skip to content</a>

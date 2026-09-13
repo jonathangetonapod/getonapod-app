@@ -114,9 +114,9 @@ export const HERO: Record<Mode, Hero> = {
     lead: 'Get On A Pod pitches you to active shows in your niche, puts confirmed recordings on your calendar and sends a prep brief before each one. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
   },
   stages: {
-    kicker: 'Done-for-you stage booking for founders, executives, authors and coaches',
-    title: ['Get in front of rooms', 'full of your ideal clients.'],
-    lead: 'Get On A Pod finds the conferences, associations and events your buyers attend, pitches you to the people who choose the speakers, and hands you every organizer who replies interested. You take the conversation and close the booking.',
+    kicker: 'Done-for-you stage booking for consultants, coaches and founders who sell expertise',
+    title: ['Speak where your buyers sit.', 'We find rooms and pitch you.'],
+    lead: 'Get On A Pod finds the conferences, association meetings and events your buyers attend, and pitches you to the person who picks the speakers — hundreds of targeted pitches a month. Every organizer who replies interested lands in your inbox with context. The first replies usually come in the first several weeks, from associations and virtual events.',
   },
 }
 
@@ -193,10 +193,10 @@ export interface Step {
 }
 
 export const STAGE_STEPS: Step[] = [
-  { n: '01', title: 'Build', copy: "We scrape the events your buyers attend: conference speaker rosters, association calendars, call-for-proposals platforms, last year's agendas. Then we enrich for the person who actually picks speakers, not the info@ inbox." },
-  { n: '02', title: 'Position', copy: 'A messaging workshop produces 3-5 talk angles tied to a problem planners are trying to fill a slot for right now. Specificity gets booked. "Leadership" does not.' },
-  { n: '03', title: 'Pitch', copy: 'Daily outreach from our dedicated, warmed sending domains — we pitch you as our client. Personalized at the event level, sequenced, monitored for deliverability. Call-for-proposals submissions in parallel for events that use them.' },
-  { n: '04', title: 'Connect', copy: 'When an organizer replies interested, we hand the conversation to you with full context and your kit. You take it from there — the dates, the talk, the relationship.' },
+  { n: '01', title: 'Build', copy: "We list the events your buyers attend from conference speaker rosters, association calendars, call-for-proposals sites and last year's agendas. Then we find the person who actually picks the speakers, not the info@ inbox." },
+  { n: '02', title: 'Position', copy: 'In a positioning workshop we write 3–5 talk angles, each tied to a problem an organizer needs a session on this season. Specific talks get booked. "Leadership" does not.' },
+  { n: '03', title: 'Pitch', copy: 'Pitches go out daily from our own warmed sending domains, with you as our client. Each one is written for the event and followed by up to three researched follow-ups. Where an event takes proposals, we submit one before the window closes.' },
+  { n: '04', title: 'Connect', copy: 'When an organizer replies interested, the conversation comes to you with full context and your speaker kit. You agree the dates, give the talk and keep the relationship.' },
 ]
 
 export interface Deliverable {
@@ -205,12 +205,12 @@ export interface Deliverable {
 }
 
 export const DELIVERABLES: Deliverable[] = [
-  { title: 'Outreach volume you can audit.', copy: 'Targeted pitches at volume, reported with sends, replies, and stage-by-stage pipeline.' },
+  { title: 'Outreach volume you can audit.', copy: 'Hundreds of targeted pitches a month, reported as sends, replies and where each conversation stands.' },
   { title: 'Call-for-proposals coverage.', copy: 'We track open calls for speakers in your niche and submit on your behalf before the window closes.' },
   { title: 'A speaker kit organizers can say yes to.', copy: 'One-sheet, bio, talk titles, headshot direction. Optional reel.' },
-  { title: 'Warm handoffs.', copy: 'Every interested reply lands in your inbox with context — you take the conversation from there.' },
+  { title: 'Interested organizers, handed to you.', copy: 'Every interested reply lands in your inbox with the event, the angle pitched and the thread so far.' },
   { title: 'Weekly report.', copy: "What went out, who replied, what's booked, what's next. No guessing." },
-  { title: 'Monthly strategy call.', copy: 'Refine angles, reprioritize industries, plan around seasonal cycles.' },
+  { title: 'Monthly strategy call.', copy: 'We sharpen the angles that get replies, shift effort toward the industries that answer, and plan around the booking seasons.' },
 ]
 
 export interface TimelineEntry {
@@ -220,15 +220,15 @@ export interface TimelineEntry {
 }
 
 export const TIMELINE: TimelineEntry[] = [
-  { when: 'Week 1', title: 'Launch', copy: 'Strategy kickoff, positioning workshop, kit built, lists scraped and enriched, domains warmed, pitches approved.' },
-  { when: 'Weeks 2–12', title: 'Pipeline', copy: 'Daily outreach live. First replies and conversations. Early wins are usually associations, virtual events and smaller stages that book on shorter cycles.' },
-  { when: 'Month 3 onward', title: 'Bookings compound', copy: 'Conferences confirm for the following two quarters. The calendar fills while outreach keeps running.' },
+  { when: 'Week 1', title: 'Launch', copy: 'Kickoff call, positioning workshop, speaker kit written, event lists built, and pitches approved by you.' },
+  { when: 'Weeks 2–12', title: 'Pipeline', copy: 'Daily outreach is live and the first replies arrive. Early conversations are usually associations, virtual events and smaller stages, which book on shorter cycles.' },
+  { when: 'Month 3 onward', title: 'Bookings compound', copy: 'Conference conversations turn into dates for the following two quarters, while outreach keeps filling the pipeline behind them.' },
 ]
 
 export const NOT_FOR = [
   'People who want to be paid $25K to speak and nothing else (a bureau will serve you better)',
   'Anyone selling a $15 book',
-  "Anyone who needs a stage next month (see timeline below, we won't lie to you)",
+  'Anyone who needs a stage next month (the timeline below explains why)',
 ]
 
 export const WHY_NOT_BOOKED = [
@@ -244,12 +244,12 @@ export const MATH_ROWS: Array<[string, string, string]> = [
   ['10–20 pitches a month, when you have time', '5–10 pitches a day from one inbox', 'Hundreds of targeted pitches a month from dedicated sending domains'],
   ['Lists built by Googling', 'Static database, last updated who knows when', "Lists scraped from live agendas, call-for-proposals pages and last year's speaker rosters, refreshed monthly"],
   ['No follow-up', 'Manual follow-up', '4-touch sequences with every follow-up individually researched and personalized — interested replies go straight to you'],
-  ['One inbox, one reputation', 'One inbox, one reputation', 'Our warmed infrastructure and our name — we pitch you as our client, with zero risk to your main domain'],
+  ['One inbox, one reputation', 'One inbox, one reputation', 'Our warmed domains and our name — we pitch you as our client, and nothing is sent from your own domain'],
 ]
 
 /** Three columns: channel, what most people use it for, how we use it. */
 export const CHANNEL_ROWS: Array<[string, string, string]> = [
-  ['Podcasts', 'Low-effort visibility', 'Trust and warm pipeline, plus proof planners watch before saying yes'],
+  ['Podcasts', 'Low-effort visibility', 'Proof: organizers listen to your episodes before they say yes (podcast guesting is its own plan)'],
   ['Associations', 'Ignored', "Consistent, recurring stages full of one industry's buyers"],
   ['Conferences', 'Prestige', 'Highest-value rooms, booked 6–12 months out via calls for proposals and direct pitch'],
   ['Virtual events', 'Afterthought', 'Shortest booking cycle, fastest early wins'],
@@ -264,10 +264,10 @@ export const PODCAST_PLAN_INCLUDES = [
 ]
 
 export const STAGE_PLAN_INCLUDES = [
-  'Targeted pitches to conferences, associations and events, every week',
+  'Hundreds of targeted pitches a month to conferences, associations and events',
   'Call-for-proposals submissions before the windows close',
   'Speaker kit, positioning and talk angles written for you',
-  'Warm handoffs — interested organizers land in your inbox with context',
+  'Every interested organizer handed to you, with the thread and the context',
   'Weekly report and monthly strategy call',
 ]
 
@@ -288,14 +288,14 @@ export const PODCAST_FAQ: Faq[] = [
 
 export const STAGE_FAQ: Faq[] = [
   { q: 'What exactly am I paying for?', a: 'The pipeline, not the placement. We research the events, build the lists, write and send the pitches, submit to calls for proposals, and hand you every organizer who replies interested — with full context. You take the conversation from there and close the booking.' },
-  { q: 'How many conversations will I get?', a: "We don't guarantee a number, and anyone who does is guessing. We guarantee the work: the pitch volume, the call-for-proposals coverage, the personalized follow-up, and a report you can audit. Put in front of enough of the right organizers, positioned correctly, the math works." },
+  { q: 'How many conversations will I get?', a: "We don't guarantee a number, and anyone who does is guessing. We guarantee the work: the pitch volume, the call-for-proposals coverage, the personalized follow-up, and a report you can audit. When enough of the right organizers see a well-positioned talk, the math works." },
   { q: 'How long until something lands?', a: "Organizers book speakers 2 to 6 months out; major conferences 6 to 12. Expect first interested replies within the first several weeks — usually associations and virtual events — and conference conversations to compound from month 3. That's why the plan has a 3-month minimum." },
   { q: 'How is this different from a speakers bureau?', a: 'Bureaus represent established names to planners who already have budget, and take a commission from the fee. We work the other direction: proactive outreach to get you into rooms, a flat monthly rate, and no cut of anything you earn.' },
   { q: 'How is this different from a VA with a database?', a: 'Volume and infrastructure. A VA sends a handful of templated emails a day from one inbox off a stale database. We pitch from dedicated warmed domains, off lists scraped from live event data, with every follow-up researched and personalized — and you get a report showing exactly what went out.' },
   { q: 'Do I need to be an experienced speaker?', a: 'No. You need a point of view on a specific problem and the willingness to deliver it. Positioning matters more than credits — we start with associations and virtual events to build the reel and the proof, then move up.' },
   { q: 'Are these paid stages?', a: 'Some. Corporate and larger conference stages usually pay; associations and community events often offer an honorarium or nothing. We target by audience fit first, because a free stage full of your buyers beats a paid one full of strangers.' },
   { q: 'Is this pay-to-play?', a: "No. We pitch earned stages only. If a sponsored slot genuinely fits, we'll flag it — but we never buy your way on." },
-  { q: 'What do you need from me?', a: 'A kickoff call, a positioning workshop, and approval on pitch angles — about a week one effort. After launch, you take the conversations with interested organizers; we keep generating them.' },
+  { q: 'What do you need from me?', a: "A kickoff call, a positioning workshop, and approval on pitch angles — about a week's effort at the start. After launch, you take the conversations with interested organizers; we keep generating them." },
   { q: 'Can I cancel?', a: "After the initial 3 months, yes — month to month from there, no notice period games. We'd rather earn the renewal than lock you in." },
 ]
 
