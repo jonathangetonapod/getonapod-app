@@ -126,6 +126,7 @@
 .dfy-page .dfy-brand:hover { color: var(--text); }
 .dfy-brand i { font-style: italic; }
 .dfy-brand b { font-weight: inherit; color: var(--accent); }
+.dfy-nav-links { display: flex; align-items: center; gap: 18.4px; }
 .dfy-page .dfy-nav-link { color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap; }
 .dfy-page .dfy-nav-link:hover { color: var(--accent-600); }
 .dfy-mode { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 24px; }
@@ -141,9 +142,15 @@
   .dfy-mode { position: static; transform: none; margin-left: auto; }
 }
 @media (max-width: 720px) {
-  .dfy-nav { flex-wrap: wrap; row-gap: 10px; }
-  .dfy-nav-link { display: none; }
-  .dfy-page .dfy-nav-signin { display: inline; }
+  /* Two rows: brand and toggle, then the links and the call button. The
+     ::after is a zero-height line break between them. */
+  .dfy-nav { flex-wrap: wrap; gap: 12px 16px; padding-block: 12px; }
+  .dfy-brand { order: 1; }
+  .dfy-mode { order: 2; gap: 18px; }
+  .dfy-nav::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+  .dfy-nav-links { order: 4; flex: 1 1 auto; gap: 14px; flex-wrap: wrap; }
+  .dfy-nav-cta { order: 5; flex: 1 1 100%; min-height: 44px; }
+  .dfy-page .dfy-nav-link, .dfy-mode-btn { padding-block: 6px; }
 }
 
 /* — hero — */
@@ -177,6 +184,22 @@
 }
 .dfy-table td { padding: 9.2px; border-bottom: 1px solid var(--divider); vertical-align: top; }
 .dfy-table tbody tr:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+@media (max-width: 640px) {
+  /* Three columns cannot share 350px. Each row becomes a block and every cell
+     carries its column heading, read from data-label. */
+  .dfy-table thead { display: none; }
+  .dfy-table tbody, .dfy-table tr, .dfy-table td { display: block; }
+  .dfy-table tr { padding: 14px 0; border-bottom: 1px solid var(--divider); }
+  .dfy-table tbody tr:hover { background: transparent; }
+  .dfy-table td { padding: 6px 0; border: 0; }
+  .dfy-table td::before {
+    content: attr(data-label); display: block; margin-bottom: 2px;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent-700);
+  }
+  .dfy-table .dfy-td-lead { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 19px; }
+  .dfy-table .dfy-td-lead::before { display: none; }
+}
 
 /* — lists — */
 .dfy-list { list-style: none; margin: 0; padding: 0; }
@@ -258,6 +281,15 @@
 .dfy-show-about { display: block; font-size: 13.5px; line-height: 21px; color: var(--neutral-700); margin-top: 4px; }
 .dfy-show-reach { display: block; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-700); margin-top: 8px; }
 .dfy-shows-note { font-size: 13px; line-height: 22px; color: var(--neutral-600); margin-top: 28px; font-style: italic; }
+@media (max-width: 600px) {
+  .dfy-tabs { flex-wrap: nowrap; overflow-x: auto; gap: 22px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .dfy-tabs::-webkit-scrollbar { display: none; }
+  .dfy-tab { flex: none; padding-block: 6px 3px; }
+  .dfy-shows-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; padding-top: 28px; }
+  .dfy-plate { font-size: clamp(28px, 9vw, 40px); }
+  .dfy-show-name { font-size: 18px; }
+  .dfy-show-about { font-size: 13px; line-height: 19px; }
+}
 
 /* — video testimonials — */
 .dfy-stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
@@ -286,6 +318,12 @@
   border-left: 6px solid var(--accent-700); border-top: 4px solid transparent; border-bottom: 4px solid transparent;
 }
 .dfy-story-watch span { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--neutral-700); }
+@media (max-width: 600px) {
+  .dfy-stories { grid-template-columns: 1fr; gap: 20px; }
+  .dfy-story-link { grid-template-columns: 1fr; aspect-ratio: auto; }
+  .dfy-story-mat { margin: 10px 10px 0; aspect-ratio: 16 / 10; }
+  .dfy-story-body { padding: 16px 18px 20px; }
+}
 
 /* — pricing — */
 .dfy-split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px clamp(24px, 5vw, 96px); align-items: start; }
@@ -346,4 +384,38 @@
 .dfy-footer-foot .dfy-copy-italic { margin-left: auto; }
 @media (max-width: 1080px) {
   .dfy-footer-grid { grid-template-columns: 1fr; }
+}
+
+/* — phone width — */
+@media (max-width: 720px) {
+  .dfy-section { padding: 56px 0; }
+  .dfy-section-tight { padding: 48px 0 56px; }
+  .dfy-hero { padding: 56px 0; }
+  .dfy-hero h1 { font-size: clamp(36px, 10vw, 84px); }
+  .dfy-hero-lead { font-size: 16px; line-height: 26px; margin-top: 24px; }
+  .dfy-cta-row { margin-top: 24px; }
+  .dfy-cta-row .dfy-btn { min-height: 44px; }
+  .dfy-h2 { font-size: 28px; line-height: 36px; }
+  .dfy-shows-title { font-size: 28px; line-height: 36px; margin-bottom: 24px; }
+  .dfy-kicker-loose { margin-bottom: 28px; }
+  .dfy-copy-lead-out { margin-bottom: 28px; }
+  .dfy-how-row { padding: 28px 0; gap: 10px; }
+  .dfy-how-podcasts { padding: 56px 0 40px; }
+  .dfy-how-title { font-size: 22px; }
+  .dfy-timeline-row { padding: 20px 0; gap: 4px; }
+  .dfy-price { font-size: clamp(48px, 15vw, 64px); }
+  .dfy-price-cta { min-height: 44px; }
+  .dfy-includes li { padding: 12px 0; font-size: 15px; line-height: 26px; }
+  .dfy-faq { padding: 56px 0 64px; }
+  .dfy-faq summary { font-size: 17px; line-height: 26px; padding: 16px 0; gap: 14px; }
+  .dfy-faq-a { margin-left: 32px; font-size: 15px; line-height: 26px; }
+  .dfy-book-in { padding: 56px var(--gutter); }
+  .dfy-book .dfy-cta-row { margin-top: 28px; }
+  .dfy-book .dfy-btn-ghost { min-height: 44px; }
+  .dfy-footer { padding: 48px var(--gutter) 28px; }
+  .dfy-footer-grid { gap: 32px; }
+  .dfy-page .dfy-footer .dfy-brand { font-size: 26px; }
+  .dfy-footer-col a { padding-block: 4px; }
+  .dfy-footer-foot { margin-top: 36px; flex-direction: column; gap: 6px; }
+  .dfy-footer-foot .dfy-copy-italic { margin-left: 0; }
 }

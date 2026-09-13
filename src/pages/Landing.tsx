@@ -71,7 +71,11 @@ const StagesCase = () => (
         <thead><tr><th>You, doing it yourself</th><th>A VA with a database</th><th>GetOnAPod</th></tr></thead>
         <tbody>
           {MATH_ROWS.map(([you, va, us]) => (
-            <tr key={you}><td>{you}</td><td>{va}</td><td>{us}</td></tr>
+            <tr key={you}>
+              <td data-label="You, doing it yourself">{you}</td>
+              <td data-label="A VA with a database">{va}</td>
+              <td data-label="GetOnAPod">{us}</td>
+            </tr>
           ))}
         </tbody>
       </table>
@@ -171,7 +175,11 @@ const StagesCase = () => (
         <thead><tr><th>Channel</th><th>What most people use it for</th><th>How we use it</th></tr></thead>
         <tbody>
           {CHANNEL_ROWS.map(([channel, most, us]) => (
-            <tr key={channel}><td>{channel}</td><td>{most}</td><td>{us}</td></tr>
+            <tr key={channel}>
+              <td data-label="Channel" className="dfy-td-lead">{channel}</td>
+              <td data-label="What most people use it for">{most}</td>
+              <td data-label="How we use it">{us}</td>
+            </tr>
           ))}
         </tbody>
       </table>
@@ -362,15 +370,19 @@ const Landing = () => {
 
       <nav className="dfy-nav" aria-label="Site">
         <Link className="dfy-brand" to="/"><Brand /></Link>
-        <a className="dfy-nav-link" href="#how">How it works</a>
-        <a className="dfy-nav-link" href="#pricing">Pricing</a>
-        <a className="dfy-nav-link" href="#faq">FAQ</a>
         <div className="dfy-mode" aria-label="What do you want to get on?">
           <button type="button" className="dfy-mode-btn" aria-pressed={!stages} onClick={() => setMode('podcasts')}>Podcasts</button>
           <button type="button" className="dfy-mode-btn" aria-pressed={stages} onClick={() => setMode('stages')}>Stages</button>
         </div>
-        <Link className="dfy-nav-link dfy-nav-signin" to="/login">Sign in</Link>
-        <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call</a>
+        {/* One row on a desk; on a phone the brand and the toggle take the
+            first row and these take the second, so nothing is hidden. */}
+        <div className="dfy-nav-links">
+          <a className="dfy-nav-link" href="#how">How it works</a>
+          <a className="dfy-nav-link" href="#pricing">Pricing</a>
+          <a className="dfy-nav-link" href="#faq">FAQ</a>
+          <Link className="dfy-nav-link" to="/login">Sign in</Link>
+        </div>
+        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call</a>
       </nav>
 
       <main id="main" className="dfy-wrap">
