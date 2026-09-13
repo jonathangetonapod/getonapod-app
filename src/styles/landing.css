@@ -117,16 +117,17 @@
   padding: 13.8px max(var(--gutter), calc((100% - 1200px) / 2 + var(--gutter)));
   border-bottom: 1px solid var(--divider);
 }
-.dfy-brand {
+/* The wordmark and the nav links are ink, not accent. `.dfy-page a` above is
+   class + element, so these carry the page class too or the accent wins. */
+.dfy-page .dfy-brand {
   font-family: var(--heading); font-weight: var(--heading-weight); font-size: 22px;
   color: var(--text); text-decoration: none; margin-right: auto; white-space: nowrap;
 }
-.dfy-brand:hover { color: var(--text); }
+.dfy-page .dfy-brand:hover { color: var(--text); }
 .dfy-brand i { font-style: italic; }
 .dfy-brand b { font-weight: inherit; color: var(--accent); }
-.dfy-nav-link { color: inherit; text-decoration: none; font-size: 14px; white-space: nowrap; }
-.dfy-nav-link:hover { color: var(--accent); }
-.dfy-nav-signin { color: var(--neutral-700); }
+.dfy-page .dfy-nav-link { color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap; }
+.dfy-page .dfy-nav-link:hover { color: var(--accent-600); }
 .dfy-mode { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 24px; }
 .dfy-mode-btn {
   all: unset; cursor: pointer; font-family: var(--body); font-size: 13px;
@@ -142,7 +143,7 @@
 @media (max-width: 720px) {
   .dfy-nav { flex-wrap: wrap; row-gap: 10px; }
   .dfy-nav-link { display: none; }
-  .dfy-nav-signin { display: inline; }
+  .dfy-page .dfy-nav-signin { display: inline; }
 }
 
 /* — hero — */
@@ -332,7 +333,7 @@
 /* — footer — */
 .dfy-footer { max-width: 1200px; margin: 0 auto; padding: 70px var(--gutter) 42px; }
 .dfy-footer-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 3fr) minmax(0, 3fr); gap: 42px var(--col-gap); align-items: start; }
-.dfy-footer .dfy-brand { font-size: 30px; margin-right: 0; }
+.dfy-page .dfy-footer .dfy-brand { font-size: 30px; margin-right: 0; }
 .dfy-footer-tagline { font-size: 14px; line-height: 24px; color: var(--neutral-700); margin-top: 14px; max-width: 36ch; }
 .dfy-footer-col { display: flex; flex-direction: column; gap: 8px; }
 .dfy-footer-head { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-700); margin-bottom: 6px; }
