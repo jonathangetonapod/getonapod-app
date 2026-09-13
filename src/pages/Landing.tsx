@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
@@ -22,6 +22,9 @@ const Brand = () => (
 )
 
 const Mark = () => <span className="dfy-list-mark" aria-hidden="true" />
+
+/** A link that leaves the site in a new tab, and says so to a screen reader. */
+const NewTab = () => <span className="dfy-sr"> (opens in a new tab)</span>
 
 /**
  * The square in a show's mat: its artwork when there is one, its initials
@@ -49,7 +52,7 @@ const Hero = ({ mode }: { mode: Mode }) => {
       </h1>
       <p className="dfy-hero-lead">{hero.lead}</p>
       <div className="dfy-cta-row">
-        <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">{HERO_CTA}</a>
+        <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">{HERO_CTA}<NewTab /></a>
         <a className="dfy-btn dfy-btn-ghost" href="#how">{HERO_SECONDARY}</a>
       </div>
     </section>
@@ -226,27 +229,45 @@ const PodcastsHow = () => (
 const Shows = ({ mode }: { mode: Mode }) => {
   const catalog = CATALOG[mode]
   const [category, setCategory] = useState(0)
-  const active = catalog[Math.min(category, catalog.length - 1)]
+  const index = Math.min(category, catalog.length - 1)
+  const active = catalog[index]
   const stages = mode === 'stages'
+  const tabs = useRef<Array<HTMLButtonElement | null>>([])
+
+  // One tab stop for the strip; the arrow keys walk the niches and the
+  // selection follows focus, as the tabs pattern expects.
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1, Home: -index, End: catalog.length - 1 - index }[event.key]
+    if (step === undefined) return
+    event.preventDefault()
+    const next = (index + step + catalog.length) % catalog.length
+    setCategory(next)
+    tabs.current[next]?.focus()
+  }
+
   return (
     <section id="shows" className="dfy-section">
       <span className="dfy-kicker">{stages ? 'The stages' : 'The shows'}</span>
       <h2 className="dfy-shows-title">{stages ? 'We put you in rooms like these' : 'We pitch you to shows like these'}</h2>
-      <div className="dfy-tabs" role="tablist" aria-label="Niche">
+      <div className="dfy-tabs" role="tablist" aria-label="Niche" onKeyDown={onKey}>
         {catalog.map((cat, i) => (
           <button
             type="button"
             role="tab"
+            id={`dfy-tab-${i}`}
+            aria-controls="dfy-shows-panel"
             key={cat.name}
+            ref={(el) => { tabs.current[i] = el }}
             className="dfy-tab"
-            aria-selected={cat === active}
+            aria-selected={i === index}
+            tabIndex={i === index ? 0 : -1}
             onClick={() => setCategory(i)}
           >
             {cat.name}
           </button>
         ))}
       </div>
-      <div className="dfy-shows-grid" role="tabpanel">
+      <div className="dfy-shows-grid" role="tabpanel" id="dfy-shows-panel" aria-labelledby={`dfy-tab-${index}`}>
         {active.shows.map((show) => (
           <figure className="dfy-show" key={show.name}>
             <div className="dfy-mat">
@@ -318,7 +339,7 @@ const Story = ({ t }: { t: Testimonial }) => {
           {t.quote ? <span className="dfy-story-quote">“{t.quote}”</span> : null}
           <span className="dfy-story-name">{t.client_name}</span>
           {role ? <span className="dfy-story-role">{role}</span> : null}
-          <span className="dfy-story-watch"><span className="dfy-story-play" aria-hidden="true" /><span>{watchLabel(t.video_url)}</span></span>
+          <span className="dfy-story-watch"><span className="dfy-story-play" aria-hidden="true" /><span>{watchLabel(t.video_url)}<NewTab /></span></span>
         </div>
       </a>
     </figure>
@@ -360,7 +381,7 @@ const Pricing = ({ mode }: { mode: Mode }) => {
               ? 'One plan. 3-month minimum, then month to month — a fraction of what building this in-house costs.'
               : 'One plan. 3-month minimum, then month to month — most agencies charge four times this and lock you in for a year.'}
           </p>
-          <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call to start</a>
+          <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
         </div>
         <ul className="dfy-includes">
           {(stages ? STAGE_PLAN_INCLUDES : PODCAST_PLAN_INCLUDES).map((text) => (
@@ -431,7 +452,7 @@ const Landing = () => {
           <a className="dfy-nav-link" href="#faq">FAQ</a>
           <Link className="dfy-nav-link" to="/login">Sign in</Link>
         </div>
-        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call</a>
+        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call<NewTab /></a>
       </nav>
 
       <main id="main" className="dfy-wrap">
@@ -466,7 +487,7 @@ const Landing = () => {
           </h2>
           {stages ? <p className="dfy-book-copy">Let’s build the pipeline that puts you on the right stages, on a schedule you can plan around.</p> : null}
           <div className="dfy-cta-row">
-            <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CLOSE_CTA}</a>
+            <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CLOSE_CTA}<NewTab /></a>
           </div>
         </div>
       </section>
@@ -487,7 +508,7 @@ const Landing = () => {
           <div className="dfy-footer-col">
             <span className="dfy-footer-head">Talk to us</span>
             <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-            <a href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a 30-minute call</a>
+            <a href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a 30-minute call<NewTab /></a>
             <Link to="/platform">For agencies</Link>
           </div>
         </div>
