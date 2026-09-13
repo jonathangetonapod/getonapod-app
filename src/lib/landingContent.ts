@@ -53,7 +53,10 @@ export interface Show {
   name: string
   about: string
   reach: string
-  /** Artwork under public/shows; without one the mat shows the show's initials. */
+  /**
+   * Artwork under public/shows, fetched from the Apple Podcasts directory. Every
+   * podcast has one; without one the mat shows the show's initials.
+   */
   art?: string
 }
 
@@ -64,34 +67,34 @@ export interface ShowCategory {
 
 export const PODCAST_CATALOG: ShowCategory[] = [
   { name: 'SaaS & Tech', shows: [
-    { name: 'The SaaS Podcast', about: 'Founder interviews on growth and funding', reach: '40k listeners', art: '/shows/the-saas-podcast.webp' },
-    { name: 'Indie Hackers', about: 'Bootstrappers and small bets', reach: '60k listeners', art: '/shows/indie-hackers.webp' },
-    { name: 'Product-led shows', about: 'PLG, onboarding, and retention', reach: '10–30k' },
-    { name: 'Dev-tools pods', about: 'Technical founder audiences', reach: '5–20k' },
+    { name: 'The SaaS Podcast', about: 'Founder interviews on growth and funding', reach: '494 episodes', art: '/shows/the-saas-podcast.webp' },
+    { name: 'Indie Hackers', about: 'Bootstrappers and small bets', reach: '290 episodes', art: '/shows/indie-hackers.webp' },
+    { name: 'Lenny\'s Podcast', about: 'Product, growth and career interviews', reach: '361 episodes', art: '/shows/lennys-podcast.webp' },
+    { name: 'The Changelog', about: 'Software development and open source', reach: '1,014 episodes', art: '/shows/the-changelog.webp' },
   ] },
   { name: 'Marketing', shows: [
-    { name: 'Marketing School', about: 'Daily tactics, huge back catalog', reach: '1M+ downloads/mo', art: '/shows/marketing-school.webp' },
-    { name: 'Everyone Hates Marketers', about: 'No-BS positioning conversations', reach: '30k listeners', art: '/shows/everyone-hates-marketers.webp' },
-    { name: 'Demand-gen shows', about: 'B2B pipeline and ABM', reach: '5–25k' },
-    { name: 'Brand & creative pods', about: 'CMO and agency audiences', reach: '10–40k' },
+    { name: 'Marketing School', about: 'Daily tactics, huge back catalog', reach: '2,000 episodes', art: '/shows/marketing-school.webp' },
+    { name: 'Everyone Hates Marketers', about: 'No-BS positioning conversations', reach: '310 episodes', art: '/shows/everyone-hates-marketers.webp' },
+    { name: 'Marketing Against the Grain', about: 'HubSpot\'s growth and marketing show', reach: '458 episodes', art: '/shows/marketing-against-the-grain.webp' },
+    { name: 'Uncensored CMO', about: 'Marketing leaders, unfiltered', reach: '286 episodes', art: '/shows/uncensored-cmo.webp' },
   ] },
   { name: 'Finance', shows: [
-    { name: 'Animal Spirits', about: 'Markets with a practitioner audience', reach: '100k+ listeners', art: '/shows/animal-spirits.webp' },
-    { name: 'Advisor-focused shows', about: 'RIA growth and practice management', reach: '10–30k' },
-    { name: 'Fintech pods', about: 'Operators and investors', reach: '15–50k' },
-    { name: 'Personal finance shows', about: 'Consumer money audiences', reach: '50k+' },
+    { name: 'Animal Spirits', about: 'Markets with a practitioner audience', reach: '817 episodes', art: '/shows/animal-spirits.webp' },
+    { name: 'Financial Advisor Success', about: 'Advisor practice management, with Michael Kitces', reach: '506 episodes', art: '/shows/financial-advisor-success.webp' },
+    { name: 'Fintech Insider', about: 'Fintech operators and news, from 11:FS', reach: '1,134 episodes', art: '/shows/fintech-insider.webp' },
+    { name: 'Afford Anything', about: 'Money, work and life, with Paula Pant', reach: '795 episodes', art: '/shows/afford-anything.webp' },
   ] },
   { name: 'Health & Wellness', shows: [
-    { name: 'Practitioner interview shows', about: 'Functional and integrative medicine', reach: '20–80k' },
-    { name: 'Performance pods', about: 'Sleep, training, longevity', reach: '50k+' },
-    { name: 'Founder-in-wellness shows', about: 'DTC and clinic builders', reach: '10–30k' },
-    { name: 'Mental health shows', about: 'Therapists and coaches', reach: '20–60k' },
+    { name: 'The Dr. Hyman Show', about: 'Functional medicine with Dr. Mark Hyman', reach: '1,273 episodes', art: '/shows/the-dr-hyman-show.webp' },
+    { name: 'The Genius Life', about: 'Health, performance and longevity', reach: '598 episodes', art: '/shows/the-genius-life.webp' },
+    { name: 'Well Made', about: 'Building consumer brands, from Lumi', reach: '152 episodes', art: '/shows/well-made.webp' },
+    { name: 'Therapy Chat', about: 'Trauma-informed therapists and coaches', reach: '545 episodes', art: '/shows/therapy-chat.webp' },
   ] },
   { name: 'Leadership', shows: [
-    { name: 'Coaching for Leaders', about: 'Management practice, loyal audience', reach: '80k listeners', art: '/shows/coaching-for-leaders.webp' },
-    { name: 'HR & people pods', about: 'CHRO and people-ops listeners', reach: '10–30k' },
-    { name: 'Executive interview shows', about: 'C-suite storytelling', reach: '20–50k' },
-    { name: 'Author tour shows', about: 'Book-launch circuits', reach: 'Varies' },
+    { name: 'Coaching for Leaders', about: 'Management practice, loyal audience', reach: '807 episodes', art: '/shows/coaching-for-leaders.webp' },
+    { name: 'Redefining Work', about: 'HR and people leaders, with Lars Schmidt', reach: '144 episodes', art: '/shows/redefining-work.webp' },
+    { name: 'How I Built This', about: 'Founders on how they built it, with Guy Raz', reach: '868 episodes', art: '/shows/how-i-built-this.webp' },
+    { name: 'The Next Big Idea', about: 'Authors on the year\'s big nonfiction', reach: '372 episodes', art: '/shows/the-next-big-idea.webp' },
   ] },
 ]
 

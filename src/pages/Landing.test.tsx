@@ -70,9 +70,9 @@ describe('Landing', () => {
     const tabs = screen.getByRole('tablist', { name: 'Niche' })
     expect(within(tabs).getByRole('tab', { name: 'SaaS & Tech' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('The SaaS Podcast')).toBeInTheDocument()
-    // A show with artwork shows it; a category entry without art shows initials.
+    // Every podcast is a real show with its artwork; no initials plates remain.
     expect(screen.getByRole('img', { name: 'The SaaS Podcast artwork' })).toHaveAttribute('src', '/shows/the-saas-podcast.webp')
-    expect(screen.getByText('PS')).toBeInTheDocument()
+    expect(screen.getAllByRole('img', { name: /artwork$/u })).toHaveLength(4)
     fireEvent.click(within(tabs).getByRole('tab', { name: 'Finance' }))
     expect(screen.getByText('Animal Spirits')).toBeInTheDocument()
     expect(screen.queryByText('The SaaS Podcast')).not.toBeInTheDocument()
