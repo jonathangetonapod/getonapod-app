@@ -3,8 +3,8 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom'
 
 import PageSEO from '@/components/seo/PageSEO'
 import {
-  CALL_URL, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CLOSE_CTA, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
-  FAQ, HERO, HERO_CTA, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_CATALOG, PODCAST_PLAN_INCLUDES,
+  CALL_LABEL, CALL_URLS, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
+  FAQ, HERO, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_CATALOG, PODCAST_PLAN_INCLUDES,
   STAGE_PLAN_INCLUDES, STAGE_STEPS, TIMELINE, WHY_NOT_BOOKED, initials, startingLine, type Mode,
 } from '@/lib/landingContent'
 import '@/styles/landing.css'
@@ -50,7 +50,7 @@ const Hero = ({ mode }: { mode: Mode }) => {
       </h1>
       <p className="dfy-hero-lead">{hero.lead}</p>
       <div className="dfy-cta-row">
-        <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">{HERO_CTA}<NewTab /></a>
+        <a className="dfy-btn dfy-btn-primary" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
         <a className="dfy-btn dfy-btn-ghost" href="#how">{HERO_SECONDARY}</a>
       </div>
     </section>
@@ -466,7 +466,7 @@ const Pricing = ({ mode }: { mode: Mode }) => {
               ? 'One plan. 3-month minimum, then month to month — a fraction of what building this in-house costs.'
               : 'One plan. 3-month minimum, then month to month — most agencies charge four times this and lock you in for a year.'}
           </p>
-          <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
+          <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
         </div>
         <ul className="dfy-includes">
           {(stages ? STAGE_PLAN_INCLUDES : PODCAST_PLAN_INCLUDES).map((text) => (
@@ -537,7 +537,7 @@ const Landing = () => {
           <a className="dfy-nav-link" href="#faq">FAQ</a>
           <Link className="dfy-nav-link" to="/login">Sign in</Link>
         </div>
-        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call<NewTab /></a>
+        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">Book a call<NewTab /></a>
       </nav>
 
       <main id="main" className="dfy-wrap">
@@ -571,7 +571,7 @@ const Landing = () => {
           </h2>
           {stages ? <p className="dfy-book-copy">Let’s build the pipeline that puts you on the right stages, on a schedule you can plan around.</p> : null}
           <div className="dfy-cta-row">
-            <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CLOSE_CTA}<NewTab /></a>
+            <a className="dfy-btn dfy-btn-ghost" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
           </div>
         </div>
       </section>
@@ -592,7 +592,7 @@ const Landing = () => {
           <div className="dfy-footer-col">
             <span className="dfy-footer-head">Talk to us</span>
             <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-            <a href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a 30-minute call<NewTab /></a>
+            <a href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
             <Link to="/platform">For agencies</Link>
           </div>
         </div>
