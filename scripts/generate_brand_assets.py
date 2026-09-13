@@ -348,18 +348,9 @@ def write_manifest(path: Path) -> None:
 def main() -> None:
     PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
 
-    write_favicon_svg(PUBLIC_DIR / "favicon.svg")
-    write_manifest(PUBLIC_DIR / "site.webmanifest")
-
-    for name, size in (
-        ("favicon-16x16.png", 16),
-        ("favicon-32x32.png", 32),
-        ("apple-touch-icon.png", 180),
-        ("icon-192.png", 192),
-        ("icon-512.png", 512),
-    ):
-        render_icon(size).write_png(PUBLIC_DIR / name)
-
+    # The favicon set and manifest now come from scripts/build-favicon.py (the
+    # monogram plate from the brand's Logo Options). Only the social image is
+    # still drawn here, and it still carries the previous brand.
     render_og_image().write_png(PUBLIC_DIR / "og-image.png")
 
 

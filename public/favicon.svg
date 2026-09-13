@@ -1,14 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Get On A Pod icon">
-  <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0%" stop-color="#F7F2EA" />
-      <stop offset="100%" stop-color="#F1ECE5" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="128" fill="url(#bg)" />
-  <circle cx="412" cy="116" r="46" fill="#D9C6B3" opacity="0.72" />
-  <rect x="84" y="84" width="344" height="344" rx="104" fill="#0D1B2A" />
-  <rect x="108" y="108" width="296" height="296" rx="88" fill="none" stroke="#B46A3C" stroke-width="16" />
-  <rect x="308" y="120" width="84" height="40" rx="20" fill="#B46A3C" />
-  <rect x="229" y="193" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="247" y="193" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="265" y="193" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="283" y="193" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="211" y="211" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="211" y="229" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="211" y="247" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="247" y="247" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="265" y="247" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="283" y="247" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="211" y="265" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="283" y="265" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="211" y="283" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="283" y="283" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="229" y="301" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="247" y="301" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="265" y="301" width="18" height="18" rx="5" fill="#F7FAFC" /><rect x="283" y="301" width="18" height="18" rx="5" fill="#F7FAFC" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Get On A Pod">
+  <!-- The monogram plate from the brand's Logo Options: a gold-ruled square on
+       the warm ground, with an italic Cormorant Garamond G. The G is the font's
+       own outline, so this renders the same with no font installed. -->
+  <rect width="512" height="512" fill="#f3f2f2"/>
+  <rect x="44" y="44" width="424" height="424" fill="none" stroke="#b68235" stroke-width="24"/>
+  <path fill="#7d5411" transform="translate(109.76 386.05) scale(0.44247 -0.44247)" d="M330 -12Q231 -12 167.0 30.5Q103 73 78.5 145.5Q54 218 70 308Q83 380 119.5 440.5Q156 501 210.0 544.5Q264 588 330.0 612.0Q396 636 468 636Q509 636 544.0 626.5Q579 617 601 598Q607 591 607.0 587.0Q607 583 606 575L598 470Q597 466 591.5 466.0Q586 466 586 470Q583 542 542.0 578.5Q501 615 429 615Q350 615 289.0 581.5Q228 548 188.0 487.0Q148 426 132 344Q114 243 137.0 166.5Q160 90 216.5 47.5Q273 5 354 5Q397 5 424.5 14.0Q452 23 468.0 49.0Q484 75 492 126Q501 174 499.5 196.5Q498 219 479.0 226.0Q460 233 414 233Q409 233 409.5 241.0Q410 249 414 249Q466 245 509.0 244.5Q552 244 600 247Q604 247 604.5 240.0Q605 233 600 233Q579 234 568.0 226.5Q557 219 550.0 194.0Q543 169 533 116Q528 83 526.5 67.0Q525 51 525.5 43.5Q526 36 524 28Q523 22 520.5 20.0Q518 18 512 16Q468 4 420.5 -4.0Q373 -12 330 -12Z"/>
 </svg>
