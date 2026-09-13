@@ -156,7 +156,7 @@ const PricingSection = () => {
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <Button variant="hero" size="lg" className="w-full rounded-full px-7 sm:w-auto" asChild>
-                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                    <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                       Book My Shortlist Call
                     </a>
                   </Button>

@@ -53,7 +53,7 @@ const HeroSection = () => {
 
             <div className="animate-fade-up animation-delay-300 mt-8 flex flex-col gap-3 sm:flex-row">
               <Button variant="hero" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
-                <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                   Book My Shortlist Call
                 </a>
               </Button>

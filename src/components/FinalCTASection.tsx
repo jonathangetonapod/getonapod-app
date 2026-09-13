@@ -37,7 +37,7 @@ const FinalCTASection = () => {
                   className="min-h-[48px] w-full rounded-full bg-[#f7fafc] text-sm text-[#0d1b2a] sm:min-h-[56px] sm:w-auto sm:text-base"
                   asChild
                 >
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book My Shortlist Call
                   </a>
                 </Button>

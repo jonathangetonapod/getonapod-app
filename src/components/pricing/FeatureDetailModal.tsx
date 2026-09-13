@@ -31,7 +31,7 @@ export const featureDetails: Record<string, FeatureDetail> = {
       'Guest prep support before each recording',
     ],
     ctaLabel: 'Book My Shortlist Call',
-    ctaHref: 'https://calendly.com/getonapodjg/30min',
+    ctaHref: 'https://cal.com/jonathan-garces-x5v8tl/30min',
   },
   "2 podcast bookings/month": {
     title: "2 Podcast Bookings Per Month",

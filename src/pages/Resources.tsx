@@ -262,7 +262,7 @@ export default function Resources() {
                   <a href="#resource-library">Browse the library</a>
                 </Button>
                 <Button variant="heroOutline" size="xl" className="rounded-full px-8 text-base" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book a 30-minute call
                   </a>
                 </Button>
@@ -426,7 +426,7 @@ export default function Resources() {
               </p>
               <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
                 <Button variant="hero" className="rounded-full px-7" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book a 30-minute call
                   </a>
                 </Button>
@@ -495,7 +495,7 @@ export default function Resources() {
 
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <Button variant="heroOutline" size="xl" className="rounded-full bg-[#f7fafc] px-8 text-[#0d1b2a]" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book a 30-minute call
                   </a>
                 </Button>

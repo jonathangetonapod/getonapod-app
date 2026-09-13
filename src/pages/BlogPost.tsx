@@ -213,7 +213,7 @@ export default function BlogPost() {
                     className="bg-white text-blue-600 hover:bg-gray-100"
                     asChild
                   >
-                    <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                    <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                       Book a 30-minute call →
                     </a>
                   </Button>

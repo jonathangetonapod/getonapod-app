@@ -32,7 +32,7 @@ const FAQSection = () => {
                   The shortlist call is where we pressure-test fit. If podcast guesting is not a strong channel for your market, we will tell you directly.
                 </p>
                 <Button variant="hero" size="lg" className="mt-5 w-full rounded-full px-7 sm:w-auto" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book My Shortlist Call
                   </a>
                 </Button>

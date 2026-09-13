@@ -259,7 +259,7 @@ const WhatToExpect = () => {
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button variant="hero" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book a 30-minute call
                     <ArrowRight className="h-4 w-4" />
                   </a>
@@ -498,7 +498,7 @@ const WhatToExpect = () => {
 
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <Button variant="hero" size="xl" className="w-full rounded-full px-8 sm:w-auto" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book a 30-minute call
                     <ArrowRight className="h-4 w-4" />
                   </a>

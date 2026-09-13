@@ -104,7 +104,7 @@ const PodcastShowcaseSection = () => {
               </p>
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                 <Button variant="hero" size="lg" className="rounded-full px-7" asChild>
-                  <a href="https://calendly.com/getonapodjg/30min" target="_blank" rel="noopener noreferrer">
+                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
                     Book My Shortlist Call
                   </a>
                 </Button>
