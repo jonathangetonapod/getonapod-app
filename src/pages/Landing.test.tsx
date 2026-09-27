@@ -1,10 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { HelmetProvider } from 'react-helmet-async'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Landing from './Landing'
-import { CALL_URLS } from '@/lib/landingContent'
+import { CALL_URL } from '@/lib/landingContent'
 
 /** Whose video a testimonial's watch link opens, read from its accessible name. */
 const watching = (link: HTMLElement) => link.textContent.replace(/^Watch on YouTube — | \(opens in a new tab\)$/gu, '')
@@ -36,44 +36,23 @@ describe('Landing', () => {
     expect(screen.getByRole('link', { name: /skip to content/iu })).toHaveAttribute('href', '#main')
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: 'For agencies' })).toHaveAttribute('href', '/platform')
-    // The podcast offer books a 30-minute call; every button agrees.
-    expect(CALL_URLS.podcasts).toMatch(/\/30min$/u)
+    // The page books a 30-minute call; every button agrees.
+    expect(CALL_URL).toMatch(/\/30min$/u)
     const podcastLinks = screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })
     expect(podcastLinks.length).toBeGreaterThanOrEqual(4)
     for (const link of podcastLinks) {
-      expect(link).toHaveAttribute('href', CALL_URLS.podcasts)
+      expect(link).toHaveAttribute('href', CALL_URL)
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
     expect(screen.queryByRole('link', { name: /15-minute/iu })).not.toBeInTheDocument()
     expect(screen.getByText('$500')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Podcasts' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('switches every changing section to the stage offer', () => {
-    renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Stages' }))
-    expect(screen.getByRole('button', { name: 'Stages' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/speak where your buyers sit\.\s*we find rooms and pitch you/iu)
-    expect(screen.getByRole('heading', { name: /one system\. four steps/iu })).toBeInTheDocument()
-    // Events publish no artwork, so the stage offer carries no sample grid.
-    expect(screen.queryByRole('tablist', { name: 'Niche' })).not.toBeInTheDocument()
-    expect(screen.queryByText(/rooms like these/u)).not.toBeInTheDocument()
-    expect(screen.getByText(/we're not a bureau/iu)).toBeInTheDocument()
-    expect(screen.getByText('What exactly am I paying for?')).toBeInTheDocument()
-    expect(screen.queryByText('How is this different from a PR agency?')).not.toBeInTheDocument()
-    // The stage offer books a 30-minute call too.
-    expect(CALL_URLS.stages).toMatch(/\/30min$/u)
-    for (const link of screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })) {
-      expect(link).toHaveAttribute('href', CALL_URLS.stages)
-    }
-    expect(screen.queryByRole('link', { name: /15-minute/iu })).not.toBeInTheDocument()
-  })
-
-  it('reads the offer from the address so the stage page can be linked to', () => {
+  it('has no stage offer, even at its old address', () => {
     renderPage('/?mode=stages')
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/speak where your buyers sit\.\s*we find rooms and pitch you/iu)
-    // The design's "Starting in September" line is computed, never stale.
-    expect(screen.getByText(/^Starting in [A-Z][a-z]+ means your Q[1-4]/u)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Stages' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/get booked on the podcasts/iu)
+    expect(screen.queryByText(/stage/iu)).not.toBeInTheDocument()
   })
 
   it('lets the reader browse sample shows by niche', () => {
@@ -119,7 +98,7 @@ describe('Landing', () => {
     expect(screen.getByText('SP')).toBeInTheDocument()
   })
 
-  it('quotes real clients, by name, with their faces and videos, on the podcast page only', () => {
+  it('quotes real clients, by name, with their faces and videos', () => {
     renderPage()
     const quotes = screen.getByRole('region', { name: 'Testimonials' })
     // Every quote is on the page; the carousel shows one at a time.
@@ -153,9 +132,6 @@ describe('Landing', () => {
     // The carousel replaced the grid of video cards from the testimonials table.
     expect(screen.queryByText('In their words')).not.toBeInTheDocument()
     expect(screen.queryByText('Client story')).not.toBeInTheDocument()
-    cleanup()
-    renderPage('/?mode=stages')
-    expect(screen.queryByRole('region', { name: 'Testimonials' })).not.toBeInTheDocument()
   })
 
   it('shows one testimonial at a time and moves between them from every control', () => {

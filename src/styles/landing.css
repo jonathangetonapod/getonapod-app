@@ -55,21 +55,21 @@
   line-height: 1.12; letter-spacing: -0.015em;
 }
 /* The margin resets weigh no more than a class, so the spacing classes below
-   (.dfy-copy-after, .dfy-h2-lead-out, .dfy-statement…) win by coming later.
-   As `.dfy-page p` they outranked every one of those classes and sections ran
-   flush: paragraphs against headings, tables against paragraphs. */
+   (.dfy-hero-lead, .dfy-shows-title, .dfy-faq-a…) win by coming later. As
+   `.dfy-page p` they outranked every one of those classes and sections ran
+   flush. */
 .dfy-page :where(h1), .dfy-page :where(h2), .dfy-page :where(h3), .dfy-page :where(p) { margin: 0; }
 .dfy-page a { color: var(--accent-700); text-underline-offset: 3px; }
 .dfy-page a:hover { color: var(--accent-800); }
 
 /* Every state change eases; nothing snaps. Off for reduced motion. No
    double-tap-to-zoom wait on anything tappable. */
-.dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-faq summary, .dfy-carousel-toggle, .dfy-carousel-arrow {
+.dfy-page a, .dfy-btn, .dfy-tab, .dfy-faq summary, .dfy-carousel-toggle, .dfy-carousel-arrow {
   transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
   touch-action: manipulation;
 }
 @media (prefers-reduced-motion: reduce) {
-  .dfy-page a, .dfy-btn, .dfy-tab, .dfy-mode-btn, .dfy-carousel-toggle, .dfy-carousel-arrow { transition: none; }
+  .dfy-page a, .dfy-btn, .dfy-tab, .dfy-carousel-toggle, .dfy-carousel-arrow { transition: none; }
 }
 
 /* Visually hidden, read by screen readers. */
@@ -96,24 +96,10 @@
   display: block; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--accent-700); margin: 0 0 14px;
 }
-.dfy-kicker-loose { margin-bottom: 42px; }
 .dfy-kicker-mid { margin-bottom: 28px; }
-.dfy-h2 { font-size: 34px; line-height: 44px; }
-.dfy-h2-tight { margin-bottom: 20px; }
-.dfy-h2-lead-out { margin-bottom: 42px; }
 .dfy-kicker-hero { margin-bottom: 20px; }
-.dfy-copy-intro { margin-bottom: 12px; }
 .dfy-how-podcasts { padding: 84px 0 70px; }
-.dfy-measure { max-width: 24ch; }
-.dfy-measure-wide { max-width: 26ch; }
-.dfy-copy { font-size: 15.5px; line-height: 28px; color: var(--neutral-800); max-width: 58ch; }
-.dfy-copy + .dfy-copy { margin-top: 12px; }
-.dfy-copy-after { margin-top: 24px; }
-.dfy-copy-lead-out { margin-bottom: 42px; }
-.dfy-copy-tail { margin-top: 28px; }
 .dfy-copy-italic { font-style: italic; }
-.dfy-statement { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 22px; line-height: 32px; margin-top: 20px; }
-.dfy-statement-far { margin-top: 28px; }
 .dfy-tnum { font-feature-settings: 'tnum' 1; }
 
 /* — buttons — */
@@ -150,28 +136,15 @@
 .dfy-nav-links { display: flex; align-items: center; gap: 18.4px; }
 .dfy-page .dfy-nav-link { color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap; }
 .dfy-page .dfy-nav-link:hover { color: var(--accent-600); }
-.dfy-mode { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 24px; }
-.dfy-mode-btn {
-  all: unset; cursor: pointer; font-family: var(--body); font-size: 13px;
-  letter-spacing: 0.1em; text-transform: uppercase; padding-bottom: 3px;
-  color: var(--neutral-700); border-bottom: 1px solid transparent;
-}
-.dfy-mode-btn:hover { color: var(--accent-700); }
-.dfy-mode-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.dfy-mode-btn[aria-pressed='true'] { color: var(--accent-700); border-bottom-color: var(--accent); }
-@media (max-width: 980px) {
-  .dfy-mode { position: static; transform: none; margin-left: auto; }
-}
 @media (max-width: 720px) {
-  /* Two rows: brand and toggle, then the links and the call button. The
+  /* The brand on its own row, then the links and the call button. The
      ::after is a zero-height line break between them. */
   .dfy-nav { flex-wrap: wrap; gap: 12px 16px; padding-block: 12px; }
   .dfy-brand { order: 1; }
-  .dfy-mode { order: 2; gap: 18px; }
   .dfy-nav::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
   .dfy-nav-links { order: 4; flex: 1 1 auto; gap: 14px; flex-wrap: wrap; }
   .dfy-nav-cta { order: 5; flex: 1 1 100%; min-height: 44px; }
-  .dfy-page .dfy-nav-link, .dfy-mode-btn { display: inline-flex; align-items: center; min-height: 44px; padding-block: 0; }
+  .dfy-page .dfy-nav-link { display: inline-flex; align-items: center; min-height: 44px; padding-block: 0; }
 }
 
 /* — hero — */
@@ -196,53 +169,8 @@
   .dfy-wordmarks { mask-image: none; }
 }
 
-/* — tables — */
-.dfy-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.dfy-table th {
-  text-align: left; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
-  font-weight: 400; color: color-mix(in srgb, var(--text) 60%, transparent);
-  padding: 9.2px; border-bottom: 1px solid var(--divider); vertical-align: bottom;
-}
-.dfy-table td { padding: 9.2px; border-bottom: 1px solid var(--divider); vertical-align: top; }
-.dfy-table tbody tr:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
-@media (max-width: 640px) {
-  /* Three columns cannot share 350px. Each row becomes a block and every cell
-     carries its column heading, read from data-label. */
-  .dfy-table thead { display: none; }
-  .dfy-table tbody, .dfy-table tr, .dfy-table td { display: block; }
-  .dfy-table tr { padding: 14px 0; border-bottom: 1px solid var(--divider); }
-  .dfy-table tbody tr:hover { background: transparent; }
-  .dfy-table td { padding: 6px 0; border: 0; }
-  .dfy-table td::before {
-    content: attr(data-label); display: block; margin-bottom: 2px;
-    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--accent-700);
-  }
-  .dfy-table .dfy-td-lead { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 19px; }
-  .dfy-table .dfy-td-lead::before { display: none; }
-}
-
 /* — lists — */
-.dfy-list { list-style: none; margin: 0; padding: 0; }
-.dfy-list-narrow { max-width: 58ch; }
-.dfy-list-mid { max-width: 720px; margin-top: 24px; }
-.dfy-list li {
-  display: flex; gap: 16px; align-items: baseline; padding: 14px 0;
-  border-bottom: 1px solid var(--divider);
-  font-size: 15.5px; line-height: 26px; color: var(--neutral-800);
-}
 .dfy-list-mark { width: 8px; height: 8px; flex: none; border: 1px solid var(--accent); align-self: center; }
-
-.dfy-steps {
-  list-style: none; margin: 0; padding: 0;
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 var(--col-gap);
-}
-.dfy-steps li {
-  display: flex; gap: 18px; align-items: baseline; padding: 14px 0;
-  border-bottom: 1px solid var(--divider);
-  font-size: 15px; line-height: 24px; color: var(--neutral-800);
-}
-.dfy-steps-n { font-size: 13px; color: var(--accent-700); flex: none; width: 22px; }
 
 /* — how it works — */
 .dfy-how-row {
@@ -250,32 +178,11 @@
   gap: 28px var(--col-gap); align-items: baseline; padding: 42px 0;
 }
 .dfy-how-row + .dfy-how-row { border-top: 1px solid var(--divider); }
-.dfy-how-row-tight { gap: 14px var(--col-gap); padding: 36px 0; border-top: 1px solid var(--divider); }
 .dfy-how-n { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 15px; line-height: 28px; }
-.dfy-how-n-accent { color: var(--accent-700); }
 .dfy-how-title { font-size: 24px; line-height: 28px; }
-.dfy-how-title-tall { line-height: 30px; }
 .dfy-how-copy { font-size: 15.5px; line-height: 28px; color: var(--neutral-800); max-width: 52ch; }
 @media (max-width: 880px) {
   .dfy-how-row { grid-template-columns: 1fr; gap: 14px; }
-}
-
-/* — deliverables — */
-.dfy-deliverables { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 var(--col-gap); }
-.dfy-deliverable { padding: 20px 0; border-bottom: 1px solid var(--divider); }
-.dfy-deliverable-title { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 19px; line-height: 26px; }
-.dfy-deliverable-copy { font-size: 14.5px; line-height: 24px; color: var(--neutral-800); margin-top: 6px; }
-
-/* — timeline — */
-.dfy-timeline-row {
-  display: grid; grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
-  gap: 8px var(--col-gap); align-items: baseline; padding: 28px 0; border-top: 1px solid var(--divider);
-}
-.dfy-timeline-when { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 20px; line-height: 28px; color: var(--accent-700); }
-.dfy-timeline-title { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 21px; line-height: 28px; }
-.dfy-timeline-copy { font-size: 15px; line-height: 26px; color: var(--neutral-800); margin-top: 8px; max-width: 58ch; }
-@media (max-width: 1080px) {
-  .dfy-timeline-row, .dfy-how-row-tight { grid-template-columns: 1fr; }
 }
 
 /* — the shows — */
@@ -423,8 +330,6 @@
 }
 .dfy-includes li:last-child { border-bottom: 0; }
 .dfy-includes .dfy-list-mark { width: 10px; height: 10px; }
-.dfy-price-aside { font-size: 15px; line-height: 26px; color: var(--neutral-800); margin-top: 28px; font-style: italic; }
-.dfy-price-fine { font-size: 13.5px; line-height: 24px; color: var(--neutral-700); margin-top: 16px; max-width: 62ch; }
 @media (max-width: 720px) {
   .dfy-split { grid-template-columns: 1fr; }
 }
@@ -480,14 +385,10 @@
   .dfy-hero-lead { font-size: 16px; line-height: 26px; margin-top: 24px; }
   .dfy-cta-row { margin-top: 24px; }
   .dfy-cta-row .dfy-btn { min-height: 44px; }
-  .dfy-h2 { font-size: 28px; line-height: 36px; }
   .dfy-shows-title { font-size: 28px; line-height: 36px; margin-bottom: 24px; }
-  .dfy-kicker-loose { margin-bottom: 28px; }
-  .dfy-copy-lead-out { margin-bottom: 28px; }
   .dfy-how-row { padding: 28px 0; gap: 10px; }
   .dfy-how-podcasts { padding: 56px 0 40px; }
   .dfy-how-title { font-size: 22px; }
-  .dfy-timeline-row { padding: 20px 0; gap: 4px; }
   .dfy-price { font-size: clamp(48px, 15vw, 64px); }
   .dfy-price-cta { min-height: 44px; }
   .dfy-includes li { padding: 12px 0; font-size: 15px; line-height: 26px; }

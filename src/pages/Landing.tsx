@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 import PageSEO from '@/components/seo/PageSEO'
 import {
-  CALL_LABEL, CALL_URLS, CHANNEL_ROWS, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, DELIVERABLES, DIY_STEPS,
-  FAQ, HERO, HERO_SECONDARY, MATH_ROWS, MONTHLY_PRICE, NOT_FOR, PODCAST_CATALOG, PODCAST_PLAN_INCLUDES,
-  STAGE_PLAN_INCLUDES, STAGE_STEPS, TIMELINE, WHY_NOT_BOOKED, initials, startingLine, type Mode,
+  CALL_LABEL, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, HERO, HERO_SECONDARY, MONTHLY_PRICE,
+  PODCAST_CATALOG, PLAN_INCLUDES, initials,
 } from '@/lib/landingContent'
 import '@/styles/landing.css'
 
@@ -39,23 +38,20 @@ const Plate = ({ name, art }: { name: string; art?: string }) => {
   )
 }
 
-const Hero = ({ mode }: { mode: Mode }) => {
-  const hero = HERO[mode]
-  return (
-    <section className="dfy-hero">
-      <span className="dfy-kicker">{hero.kicker}</span>
-      <h1>
-        <span>{hero.title[0]}</span>
-        <span>{hero.title[1]}</span>
-      </h1>
-      <p className="dfy-hero-lead">{hero.lead}</p>
-      <div className="dfy-cta-row">
-        <a className="dfy-btn dfy-btn-primary" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
-        <a className="dfy-btn dfy-btn-ghost" href="#how">{HERO_SECONDARY}</a>
-      </div>
-    </section>
-  )
-}
+const Hero = () => (
+  <section className="dfy-hero">
+    <span className="dfy-kicker">{HERO.kicker}</span>
+    <h1>
+      <span>{HERO.title[0]}</span>
+      <span>{HERO.title[1]}</span>
+    </h1>
+    <p className="dfy-hero-lead">{HERO.lead}</p>
+    <div className="dfy-cta-row">
+      <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
+      <a className="dfy-btn dfy-btn-ghost" href="#how">{HERO_SECONDARY}</a>
+    </div>
+  </section>
+)
 
 const Wordmarks = () => {
   if (CLIENT_NAMES.length === 0) return null
@@ -75,142 +71,6 @@ const Wordmarks = () => {
     </>
   )
 }
-
-/**
- * The stage offer's argument, in the order a sceptical buyer needs it: the
- * problem and why it defeats most speakers, what fixing it in-house costs, who
- * this is for, how we fix it, what arrives each month and when, and finally
- * what one room is worth — which is the lead-in to the price.
- */
-const StagesCase = () => (
-  <>
-    <section className="dfy-section">
-      <span className="dfy-kicker">The math nobody tells you</span>
-      <h2 className="dfy-h2 dfy-measure">Getting booked is a numbers problem before it's a talent problem.</h2>
-      <p className="dfy-copy dfy-copy-after">The rule of thumb we plan around: roughly 150 targeted contacts for 15 real conversations, 3 strong fits and 1 confirmed booking.</p>
-      <p className="dfy-copy dfy-copy-lead-out">Most speakers send 15 emails, hear nothing, and decide outreach doesn't work. What doesn't work is the sample size.</p>
-      <table className="dfy-table">
-        <thead><tr><th>You, doing it yourself</th><th>A VA with a database</th><th>Get On A Pod</th></tr></thead>
-        <tbody>
-          {MATH_ROWS.map(([you, va, us]) => (
-            <tr key={you}>
-              <td data-label="You, doing it yourself">{you}</td>
-              <td data-label="A VA with a database">{va}</td>
-              <td data-label="Get On A Pod">{us}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">Why most speakers don't get booked</span>
-      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Five reasons good speakers stay off the program.</h2>
-      <ul className="dfy-list dfy-list-mid">
-        {WHY_NOT_BOOKED.map((text) => <li key={text}><Mark /><span>{text}</span></li>)}
-      </ul>
-      <p className="dfy-statement dfy-statement-far">We answer each one with a process: association lists alongside the big conferences, a session the organizer needs, hundreds of pitches from our domains, every proposal window tracked, and fresh lists each month.</p>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">Do it yourself</span>
-      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Here's what booking a single stage looks like in-house.</h2>
-      <ol className="dfy-steps">
-        {DIY_STEPS.map((text, i) => (
-          <li key={text}>
-            <span className="dfy-steps-n dfy-tnum">{String(i + 1).padStart(2, '0')}</span>
-            <span>{text}</span>
-          </li>
-        ))}
-      </ol>
-      <p className="dfy-copy dfy-copy-tail">Then do it again next month, because bookings are 2 to 6 months out and the calendar needs constant feeding.</p>
-      <p className="dfy-statement">Our clients do step zero: tell us who they want in the room.</p>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">Who this is for</span>
-      <h2 className="dfy-h2">Built for people who sell expertise, not tickets.</h2>
-      <p className="dfy-copy dfy-copy-after">You're a consultant, advisor, coach, agency owner or founder. A single new client is worth thousands to you, and you already know a stage full of your buyers is worth more than any ad.</p>
-      <p className="dfy-copy dfy-copy-after dfy-copy-intro">It is not for:</p>
-      <ul className="dfy-list dfy-list-narrow">
-        {NOT_FOR.map((text) => <li key={text}><Mark /><span>{text}</span></li>)}
-      </ul>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section id="how" className="dfy-section">
-      <span className="dfy-kicker">How it works</span>
-      <h2 className="dfy-h2 dfy-h2-tight">One system. Four steps. Runs every week.</h2>
-      {STAGE_STEPS.map((step) => (
-        <div className="dfy-how-row dfy-how-row-tight" key={step.n}>
-          <p className="dfy-how-n dfy-how-n-accent dfy-tnum">{step.n}</p>
-          <h3 className="dfy-how-title dfy-how-title-tall">{step.title}</h3>
-          <p className="dfy-how-copy">{step.copy}</p>
-        </div>
-      ))}
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">What you get every month</span>
-      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Six things every month, and you can check each one.</h2>
-      <div className="dfy-deliverables">
-        {DELIVERABLES.map((d) => (
-          <div className="dfy-deliverable" key={d.title}>
-            <p className="dfy-deliverable-title">{d.title}</p>
-            <p className="dfy-deliverable-copy">{d.copy}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section id="timeline" className="dfy-section">
-      <span className="dfy-kicker">Timeline</span>
-      <h2 className="dfy-h2 dfy-measure-wide">Honest timeline, because stages don't book next week.</h2>
-      <p className="dfy-copy dfy-copy-after dfy-copy-lead-out">Organizers typically book speakers 2 to 6 months ahead, and major conferences choose theirs 6 to 12 months out. Anyone promising you a keynote in 30 days is selling something else.</p>
-      {TIMELINE.map((t) => (
-        <div className="dfy-timeline-row" key={t.when}>
-          <p className="dfy-timeline-when">{t.when}</p>
-          <div>
-            <p className="dfy-timeline-title">{t.title}</p>
-            <p className="dfy-timeline-copy">{t.copy}</p>
-          </div>
-        </div>
-      ))}
-      <p className="dfy-copy dfy-copy-tail dfy-copy-italic">{startingLine(new Date())}</p>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">Where we pitch you</span>
-      <h2 className="dfy-h2 dfy-measure-wide dfy-h2-lead-out">Four channels, and a job for each.</h2>
-      <table className="dfy-table">
-        <thead><tr><th>Channel</th><th>What most people use it for</th><th>How we use it</th></tr></thead>
-        <tbody>
-          {CHANNEL_ROWS.map(([channel, most, us]) => (
-            <tr key={channel}>
-              <td data-label="Channel" className="dfy-td-lead">{channel}</td>
-              <td data-label="What most people use it for">{most}</td>
-              <td data-label="How we use it">{us}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-    <hr className="dfy-rule" />
-
-    <section className="dfy-section">
-      <span className="dfy-kicker">ROI from one client</span>
-      <h2 className="dfy-h2">One room can pay for the year.</h2>
-      <p className="dfy-copy dfy-copy-after">A year of the plan is ${(MONTHLY_PRICE * 12).toLocaleString('en-US')}. If your average client is worth $10,000, one client won from one room of 150 of your buyers covers the year with room to spare.</p>
-      <p className="dfy-copy">Every stage after that is working for you, not paying off the program.</p>
-    </section>
-  </>
-)
 
 const PodcastsHow = () => (
   <section id="how" className="dfy-how-podcasts">
@@ -233,10 +93,7 @@ const PodcastsHow = () => (
   </section>
 )
 
-/**
- * Sample podcasts by niche. The stage offer has no counterpart: events do not
- * publish artwork the way shows do, and a grid of initials said nothing.
- */
+/** Sample podcasts by niche. */
 const Shows = () => {
   const catalog = PODCAST_CATALOG
   const [category, setCategory] = useState(0)
@@ -462,41 +319,28 @@ const Quotes = () => {
   )
 }
 
-const Pricing = ({ mode }: { mode: Mode }) => {
-  const stages = mode === 'stages'
-  return (
-    <section id="pricing" className="dfy-section">
-      <span className={`dfy-kicker${stages ? ' dfy-kicker-loose' : ''}`}>Pricing</span>
-      <div className="dfy-split">
-        <div>
-          <p className="dfy-price">${MONTHLY_PRICE}<small>/month</small></p>
-          <p className="dfy-price-note">
-            {stages
-              ? 'One plan. 3-month minimum, then month to month. Building the same thing in-house runs about $5,600 a month.'
-              : 'One plan. 3-month minimum, then month to month. PR agencies typically charge $2,000–5,000 a month for a service spread across press, awards and everything else.'}
-          </p>
-          <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
-        </div>
-        <ul className="dfy-includes">
-          {(stages ? STAGE_PLAN_INCLUDES : PODCAST_PLAN_INCLUDES).map((text) => (
-            <li key={text}><Mark /><span>{text}</span></li>
-          ))}
-        </ul>
+const Pricing = () => (
+  <section id="pricing" className="dfy-section">
+    <span className="dfy-kicker">Pricing</span>
+    <div className="dfy-split">
+      <div>
+        <p className="dfy-price">${MONTHLY_PRICE}<small>/month</small></p>
+        <p className="dfy-price-note">One plan. 3-month minimum, then month to month. PR agencies typically charge $2,000–5,000 a month for a service spread across press, awards and everything else.</p>
+        <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
       </div>
-      {stages ? (
-        <>
-          <p className="dfy-price-aside">We're not a bureau. We don't take a cut of your speaking fees — a flat monthly rate, and every fee you earn is yours.</p>
-          <p className="dfy-price-fine">Building this yourself: a research VA (~$3,000/mo), cold email infrastructure (~$300), scraping and enrichment (~$400), deliverability monitoring (~$100), a pitch copywriter (~$600), and someone managing replies and logistics (~$1,200) — about $5,600/mo, and you're the one managing all of it.</p>
-        </>
-      ) : null}
-    </section>
-  )
-}
+      <ul className="dfy-includes">
+        {PLAN_INCLUDES.map((text) => (
+          <li key={text}><Mark /><span>{text}</span></li>
+        ))}
+      </ul>
+    </div>
+  </section>
+)
 
-const Faq = ({ mode }: { mode: Mode }) => (
+const Faq = () => (
   <section id="faq" className="dfy-faq">
     <span className="dfy-kicker dfy-kicker-mid">Questions</span>
-    {FAQ[mode].map((item) => (
+    {FAQ.map((item) => (
       <details key={item.q}>
         <summary><span className="dfy-faq-plus dfy-tnum" aria-hidden="true" />{item.q}</summary>
         <p className="dfy-faq-a">{item.a}</p>
@@ -507,12 +351,6 @@ const Faq = ({ mode }: { mode: Mode }) => (
 
 const Landing = () => {
   const { hash, key } = useLocation()
-  const [params, setParams] = useSearchParams()
-  // The Stages offer is a page of its own behind the toggle; keeping the mode
-  // in the URL means it can be linked to and survives a reload.
-  const mode: Mode = params.get('mode') === 'stages' ? 'stages' : 'podcasts'
-  const setMode = (next: Mode) => setParams(next === 'stages' ? { mode: 'stages' } : {}, { replace: true })
-  const stages = mode === 'stages'
 
   // The router changes the URL without moving the page. `key` changes on every
   // navigation, including one to the hash already in the address bar, so
@@ -527,18 +365,14 @@ const Landing = () => {
   return (
     <div className="dfy-page">
       <PageSEO
-        title={stages ? 'Speak where your buyers sit: done-for-you stage booking | Get On A Pod' : 'Get booked on podcasts your customers listen to | Get On A Pod'}
-        description={HERO[mode].lead}
+        title="Get booked on podcasts your customers listen to | Get On A Pod"
+        description={HERO.lead}
       />
       <a className="dfy-skip" href="#main">Skip to content</a>
 
       <nav className="dfy-nav" aria-label="Site">
         <Link className="dfy-brand" to="/"><Brand /></Link>
-        <div className="dfy-mode" aria-label="What do you want to get on?">
-          <button type="button" className="dfy-mode-btn" aria-pressed={!stages} onClick={() => setMode('podcasts')}>Podcasts</button>
-          <button type="button" className="dfy-mode-btn" aria-pressed={stages} onClick={() => setMode('stages')}>Stages</button>
-        </div>
-        {/* One row on a desk; on a phone the brand and the toggle take the
+        {/* One row on a desk; on a phone the brand and the call take the
             first row and these take the second, so nothing is hidden. */}
         <div className="dfy-nav-links">
           <a className="dfy-nav-link" href="#how">How it works</a>
@@ -546,45 +380,29 @@ const Landing = () => {
           <a className="dfy-nav-link" href="#faq">FAQ</a>
           <Link className="dfy-nav-link" to="/login">Sign in</Link>
         </div>
-        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">Book a call<NewTab /></a>
+        <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call<NewTab /></a>
       </nav>
 
       <main id="main" className="dfy-wrap">
-        <Hero mode={mode} />
+        <Hero />
         <hr className="dfy-rule" />
-        {stages ? <StagesCase /> : (
-          <>
-            <Wordmarks />
-            <PodcastsHow />
-          </>
-        )}
+        <Wordmarks />
+        <PodcastsHow />
         <hr className="dfy-rule" />
-        {stages ? null : (
-          <>
-            <Shows />
-            <hr className="dfy-rule" />
-            <Quotes />
-          </>
-        )}
-        <Pricing mode={mode} />
+        <Shows />
         <hr className="dfy-rule" />
-        <Faq mode={mode} />
+        <Quotes />
+        <Pricing />
+        <hr className="dfy-rule" />
+        <Faq />
       </main>
 
       <section id="book" className="dfy-book">
         <div className="dfy-book-in">
-          <h2>
-            {stages
-              ? <><span>Next year’s stages are</span><span>choosing their speakers now.</span></>
-              : <><span>Your next customer</span><span>is listening right now.</span></>}
-          </h2>
-          <p className="dfy-book-copy">
-            {stages
-              ? 'In 30 minutes we show you the events we would pitch you to and what a realistic first quarter looks like.'
-              : 'In 30 minutes we show you the kinds of shows we would pitch you to, and tell you honestly how many bookings to expect in your niche — including if the number is lower than you hoped.'}
-          </p>
+          <h2><span>Your next customer</span><span>is listening right now.</span></h2>
+          <p className="dfy-book-copy">In 30 minutes we show you the kinds of shows we would pitch you to, and tell you honestly how many bookings to expect in your niche — including if the number is lower than you hoped.</p>
           <div className="dfy-cta-row">
-            <a className="dfy-btn dfy-btn-ghost" href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
+            <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
           </div>
         </div>
       </section>
@@ -593,19 +411,19 @@ const Landing = () => {
         <div className="dfy-footer-grid">
           <div>
             <span className="dfy-brand"><Brand /></span>
-            <p className="dfy-footer-tagline">Done-for-you podcast and stage booking. You bring the story — we get you the room.</p>
+            <p className="dfy-footer-tagline">Done-for-you podcast guesting. You bring the story — we get you on the show.</p>
           </div>
           <div className="dfy-footer-col">
             <span className="dfy-footer-head">Explore</span>
             <a href="#how">How it works</a>
-            {stages ? null : <a href="#shows">The shows</a>}
+            <a href="#shows">The shows</a>
             <a href="#pricing">Pricing</a>
             <a href="#faq">Questions</a>
           </div>
           <div className="dfy-footer-col">
             <span className="dfy-footer-head">Talk to us</span>
             <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-            <a href={CALL_URLS[mode]} target="_blank" rel="noopener noreferrer">{CALL_LABEL[mode]}<NewTab /></a>
+            <a href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
             <Link to="/platform">For agencies</Link>
           </div>
         </div>

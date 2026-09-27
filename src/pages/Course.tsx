@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
 import { CheckCircle2, Clock, PlayCircle, FileText, Mic, Target, TrendingUp } from 'lucide-react';
 import PageSEO from '@/components/seo/PageSEO';
-import { CALL_LABEL, CALL_URLS, CONTACT_EMAIL, MONTHLY_PRICE } from '@/lib/landingContent';
+import { CALL_LABEL, CALL_URL, CONTACT_EMAIL, MONTHLY_PRICE } from '@/lib/landingContent';
 
 /**
  * The course is not built yet, and there is no waitlist table behind this
@@ -220,7 +220,7 @@ const Course = () => {
             Most clients have 2–4 bookings a month once outreach ramps up.
           </p>
           <Button variant="secondary" size="lg" asChild className="min-h-[48px]">
-            <a href={CALL_URLS.podcasts} target="_blank" rel="noopener noreferrer">{CALL_LABEL.podcasts}</a>
+            <a href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}</a>
           </Button>
         </div>
       </section>
