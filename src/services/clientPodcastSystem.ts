@@ -174,7 +174,7 @@ export async function getWorkspaceClientPodcastSystem(
     },
   })
   if (error) {
-    throw await toFunctionError(error, 'The Client Command Center could not be loaded.')
+    throw await toFunctionError(error, 'The pipeline could not be loaded.')
   }
 
   const response = data as ClientPodcastSystemResponse | null
@@ -186,7 +186,7 @@ export async function getWorkspaceClientPodcastSystem(
     || !Array.isArray(response.items)
     || !response.summary
   ) {
-    throw new Error('The Client Command Center response did not match the workspace address.')
+    throw new Error('The pipeline response did not match the workspace address.')
   }
   /*
    * Normalized rather than trusted, because the browser bundle and the edge

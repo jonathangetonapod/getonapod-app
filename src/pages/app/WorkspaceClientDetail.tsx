@@ -43,6 +43,7 @@ import { activitiesFromBookings } from '@/components/workspace/clientActivity'
 import { ClientInstantlyCampaignsCard } from '@/components/workspace/ClientInstantlyCampaignsCard'
 import { ClientSdrPromptsCard } from '@/components/workspace/ClientSdrPromptsCard'
 import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEditor'
+import { OpportunityDetailSheet } from '@/components/workspace/OpportunityDetailSheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,6 +55,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getWorkspaceProspects } from '@/services/prospectDashboards'
+import { getWorkspaceClientPodcastSystem, type ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
 import { useAuth } from '@/contexts/AuthContext'
 import { creditCostSuffix } from '@/lib/creditCosts'
 import { safeExternalUrl } from '@/lib/externalUrl'
@@ -87,7 +89,25 @@ import {
 } from '@/lib/clientSdrProfile'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const CLIENT_DETAIL_TABS = new Set(['overview', 'ai-sdr', 'approval', 'portal', 'podcasts', 'calendar', 'files'])
+const CLIENT_DETAIL_TABS = new Set(['overview', 'profile', 'shortlist', 'placements', 'sharing', 'intake'])
+/*
+ * The ids this page used before it became the one client record. Other
+ * modules, bookmarks and the inbox still link with them, so each lands on the
+ * tab that now holds that content.
+ */
+const LEGACY_TAB_ALIASES: Record<string, string> = {
+  'ai-sdr': 'profile',
+  approval: 'shortlist',
+  podcasts: 'placements',
+  calendar: 'placements',
+  portal: 'sharing',
+  files: 'intake',
+}
+
+function resolveClientDetailTab(requested: string | null): string {
+  const candidate = LEGACY_TAB_ALIASES[requested || ''] ?? requested ?? 'overview'
+  return CLIENT_DETAIL_TABS.has(candidate) ? candidate : 'overview'
+}
 
 interface WorkspaceClientDetailProps {
   platformWorkspaceId?: string
@@ -123,7 +143,7 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return 'Not set'
   // A date-only value (YYYY-MM-DD) is a calendar day, not an instant. Parsing
   // it as local time rendered it a day early for every negative-UTC zone (all
-  // of the Americas), and disagreed with the Command Center, which pins these
+  // of the Americas), and disagreed with the pipeline, which pins these
   // to UTC. Read a bare date in UTC; keep full timestamps as-is.
   const isDateOnly = value.length === 10
   const date = new Date(isDateOnly ? `${value}T00:00:00.000Z` : value)
@@ -365,6 +385,19 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     retry: false,
   })
   const [prospectLinkBusy, setProspectLinkBusy] = useState(false)
+  const activeTab = resolveClientDetailTab(searchParams.get('tab'))
+
+  // The shortlist rows behind this client's placements come from the same
+  // workspace-wide payload the pipeline reads (and share its cache), fetched
+  // only once the Placements tab is open: most visits never need it.
+  const systemQuery = useQuery({
+    queryKey: ['workspace-client-podcast-system', user?.id || 'unknown', workspaceId],
+    queryFn: () => getWorkspaceClientPodcastSystem(workspaceId),
+    enabled: validAddress && activeTab === 'placements',
+    retry: false,
+    staleTime: 30_000,
+  })
+  const [opportunityItem, setOpportunityItem] = useState<ClientPodcastSystemItem | null>(null)
 
   const detail = detailQuery.data
   const client = detail?.client
@@ -497,8 +530,16 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const portalPasswordValid = portalPassword.length >= 12
     && portalPassword.length <= 72
     && portalPassword === portalPasswordConfirm
-  const requestedTab = searchParams.get('tab') || 'overview'
-  const activeTab = CLIENT_DETAIL_TABS.has(requestedTab) ? requestedTab : 'overview'
+  const systemItems = systemQuery.data?.items || []
+  // A placement is matched to its shortlist row by the booking the function
+  // already paired, then by show for a legacy booking paired by name.
+  const opportunityForBooking = (booking: WorkspaceClientBooking): ClientPodcastSystemItem | null => {
+    const clientItems = systemItems.filter((item) => item.client.id === canonicalClientId)
+    return clientItems.find((item) => item.booking?.id === booking.id)
+      || (booking.podcast_id
+        ? clientItems.find((item) => item.podcast.podscan_id.toLowerCase() === booking.podcast_id!.toLowerCase()) || null
+        : null)
+  }
 
   const selectClientDetailTab = (nextTab: string) => {
     const next = new URLSearchParams(searchParams)
@@ -866,7 +907,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{client.name}</h1>
                   <Badge variant={client.status === 'active' ? 'default' : 'secondary'} className="capitalize">{client.status}</Badge>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">Client command center · {detail.workspace.name}</p>
+                <p className="mt-1 text-sm text-muted-foreground">Client record · {detail.workspace.name}</p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   {client.contact_person && <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />{client.contact_person}</span>}
                   {client.email && <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{client.email}</span>}
@@ -876,7 +917,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline"><Link to={onboardingHref}><BookOpenCheck className="mr-2 h-4 w-4" />Onboarding</Link></Button>
-              <Button asChild variant="outline"><Link to={podcastSystemHref}><Activity className="mr-2 h-4 w-4" />Command Center</Link></Button>
+              <Button asChild variant="outline"><Link to={podcastSystemHref}><Activity className="mr-2 h-4 w-4" />Pipeline</Link></Button>
               <Button asChild variant="outline"><Link to={campaignHref}><Megaphone className="mr-2 h-4 w-4" />Client Campaign</Link></Button>
               <Button asChild><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Podcast Finder</Link></Button>
             </div>
@@ -885,15 +926,15 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
 
         <Tabs value={activeTab} onValueChange={selectClientDetailTab} className="space-y-5">
           <div className="overflow-x-auto pb-1">
-            <TabsList aria-label="Client command center sections" className="h-auto min-w-max justify-start gap-1 p-1">
-              {/* Tab ids are stable: ?tab= links elsewhere depend on them. */}
+            <TabsList aria-label="Client record sections" className="h-auto min-w-max justify-start gap-1 p-1">
+              {/* Tab ids are stable: ?tab= links elsewhere depend on them, and
+                  LEGACY_TAB_ALIASES keeps the previous ids landing here. */}
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="ai-sdr"><Bot className="mr-1.5 h-4 w-4" />Reply brief</TabsTrigger>
-              <TabsTrigger value="approval">Shortlist</TabsTrigger>
-              <TabsTrigger value="podcasts">Podcast activity</TabsTrigger>
-              <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              <TabsTrigger value="portal">Client portal</TabsTrigger>
-              <TabsTrigger value="files">Onboarding &amp; files</TabsTrigger>
+              <TabsTrigger value="profile"><UserRound className="mr-1.5 h-4 w-4" />Profile</TabsTrigger>
+              <TabsTrigger value="shortlist">Shortlist</TabsTrigger>
+              <TabsTrigger value="placements">Placements</TabsTrigger>
+              <TabsTrigger value="sharing">Sharing</TabsTrigger>
+              <TabsTrigger value="intake">Intake &amp; files</TabsTrigger>
             </TabsList>
           </div>
 
@@ -994,7 +1035,34 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             </div>
           </TabsContent>
 
-          <TabsContent value="ai-sdr" className="mt-0 space-y-5">
+          <TabsContent value="profile" className="mt-0 space-y-5">
+            <Card className="overflow-hidden">
+              <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Approved client profile</CardTitle>
+                  <CardDescription>Positioning used across discovery and outreach, and the source the reply brief is drafted from.</CardDescription>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {client.bio && <Button type="button" variant="outline" size="sm" onClick={() => setProfileOpen(true)}><BookOpenCheck className="mr-2 h-4 w-4" />View full profile</Button>}
+                  {canManage && <Button type="button" size="sm" onClick={openProfileEditor}><Pencil className="mr-2 h-4 w-4" />{client.bio ? 'Edit profile' : 'Add profile'}</Button>}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {client.bio ? (
+                  <div className="rounded-xl border bg-muted/20 p-4">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Approved source · {profileWordLabel}</p>
+                    <p className="leading-7 text-muted-foreground">{profilePreview}</p>
+                  </div>
+                ) : <div className="rounded-xl border border-dashed p-4"><p className="font-medium">No approved profile yet</p><p className="mt-1 text-sm text-muted-foreground">Add a focused profile before running personalized research or preparing outreach.</p></div>}
+                <div className="flex flex-wrap gap-2 border-t pt-4">
+                  {websiteUrl && <Button asChild variant="outline" size="sm"><a href={websiteUrl} target="_blank" rel="noreferrer"><Globe2 className="mr-2 h-4 w-4" />Website<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
+                  {linkedInUrl && <Button asChild variant="outline" size="sm"><a href={linkedInUrl} target="_blank" rel="noreferrer"><Linkedin className="mr-2 h-4 w-4" />LinkedIn<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
+                  {calendarUrl && <Button asChild variant="outline" size="sm"><a href={calendarUrl} target="_blank" rel="noreferrer"><CalendarDays className="mr-2 h-4 w-4" />Calendar<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
+                  {!websiteUrl && !linkedInUrl && !calendarUrl && <p className="text-sm text-muted-foreground">No external profile links are connected yet.</p>}
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="overflow-hidden border-primary/20">
               <div className="bg-gradient-to-br from-primary/10 via-violet-500/5 to-fuchsia-400/10 p-5 sm:p-7">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -1019,15 +1087,15 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <Button asChild variant="outline"><Link to={masterInboxHref}><Mail className="mr-2 h-4 w-4" />Open inbox</Link></Button>
                     {canManage && !sdrReadiness.ready && (
-                      <Button type="button" variant="outline" disabled={sdrDrafting || (client.bio ?? '').trim().length < 40} title={(client.bio ?? '').trim().length < 40 ? 'Add a client bio of at least 40 characters first — the draft is built from it.' : undefined} onClick={() => void draftSdrProfileWithAi()}>
+                      <Button type="button" variant="outline" disabled={sdrDrafting || (client.bio ?? '').trim().length < 40} title={(client.bio ?? '').trim().length < 40 ? 'Add an approved client profile of at least 40 characters first. The draft is built from it.' : undefined} onClick={() => void draftSdrProfileWithAi()}>
                         {sdrDrafting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                        {sdrDrafting ? 'Drafting…' : `Draft profile ${creditCostSuffix('pitch_profile')}`}
+                        {sdrDrafting ? 'Drafting…' : `Draft brief ${creditCostSuffix('pitch_profile', { byo: detail.ai_keys?.anthropic })}`}
                       </Button>
                     )}
                     {canManage && (
                       <Button type="button" onClick={() => openSdrFieldEditor(nextSdrField.id)}>
                         <Pencil className="mr-2 h-4 w-4" />
-                        {sdrReadiness.ready ? 'Edit profile' : sdrReadiness.completed_fields > 0 ? 'Continue profile' : 'Start profile'}
+                        {sdrReadiness.ready ? 'Edit brief' : sdrReadiness.completed_fields > 0 ? 'Continue brief' : 'Start brief'}
                       </Button>
                     )}
                   </div>
@@ -1036,7 +1104,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
                   <div className="rounded-xl border bg-background/80 p-4">
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium">Profile coverage</span>
+                      <span className="font-medium">Brief coverage</span>
                       <span className="tabular-nums text-muted-foreground">{sdrReadiness.completed_fields} / {sdrReadiness.total_fields}</span>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
@@ -1056,7 +1124,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   </div>
                   <div className="flex items-start gap-2.5 rounded-xl border border-dashed bg-background/80 p-4">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <p className="text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Draft context only.</span> Saving this profile never sends a message or enables automation. Inbox delivery remains a separate, explicit action.</p>
+                    <p className="text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Draft context only.</span> Saving this brief never sends a message or enables automation. Inbox delivery remains a separate, explicit action.</p>
                   </div>
                 </div>
               </div>
@@ -1161,7 +1229,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             </section>
           </TabsContent>
 
-          <TabsContent value="approval" className="mt-0 space-y-6">
+          <TabsContent value="shortlist" className="mt-0 space-y-6">
             <Card className="overflow-hidden border-primary/20">
               <div className="bg-gradient-to-br from-primary/10 via-violet-500/5 to-fuchsia-400/10 p-5 sm:p-7">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1178,9 +1246,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {canManage && <Button asChild variant="outline"><a href="#client-podcast-list"><LayoutDashboard className="mr-2 h-4 w-4" />View &amp; edit podcasts</a></Button>}
-                    {dashboardHref && <Button variant="outline" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
-                    {canManage && dashboardHref && <Button variant="outline" onClick={() => setSlugRotateOpen(true)}><RefreshCw className="mr-2 h-4 w-4" />New link</Button>}
-                    {dashboardAdminPreviewHref && <Button asChild><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
+                    <Button type="button" onClick={() => selectClientDetailTab('sharing')}><LinkIcon className="mr-2 h-4 w-4" />Share with client</Button>
                   </div>
                 </div>
               </div>
@@ -1216,14 +1282,77 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             )}
           </TabsContent>
 
-          <TabsContent value="portal" className="mt-0 space-y-6">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard icon={Mic2} label="Total placements" value={bookings.length} iconClassName="bg-slate-100 text-slate-700" />
-              <MetricCard icon={CalendarDays} label="Upcoming / active" value={progress.booked + progress.inProgress} iconClassName="bg-amber-50 text-amber-600" />
-              <MetricCard icon={Radio} label="Published" value={progress.published} iconClassName="bg-violet-50 text-violet-600" />
-            </div>
+          <TabsContent value="placements" className="mt-0 space-y-6">
+            <section aria-labelledby="placements-heading">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h2 id="placements-heading" className="text-xl font-semibold">Placements</h2><p className="text-sm text-muted-foreground">Confirmed booking and publishing milestones for this client, with every date on the calendar below.</p></div><div className="flex items-center gap-2"><Badge variant="outline">{bookings.length} total</Badge>{canManage && <Button size="sm" onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a placement</Button>}<Button asChild variant="outline" size="sm"><Link to={podcastSystemHref}>Open pipeline<ArrowRight className="ml-2 h-4 w-4" /></Link></Button></div></div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard icon={CalendarDays} label="Booked" value={progress.booked} iconClassName="bg-emerald-50 text-emerald-600" />
+                <MetricCard icon={Clock3} label="In progress" value={progress.inProgress} iconClassName="bg-amber-50 text-amber-600" />
+                <MetricCard icon={Video} label="Recorded" value={progress.recorded} iconClassName="bg-blue-50 text-blue-600" />
+                <MetricCard icon={Radio} label="Published" value={progress.published} iconClassName="bg-violet-50 text-violet-600" />
+              </div>
+            </section>
 
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-4"><div><CardTitle>All placements</CardTitle><CardDescription>Booked, in progress, recorded, published, and cancelled appearances. Details opens the shortlist row behind a placement.</CardDescription></div><Button asChild variant="outline" size="sm"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find more</Link></Button></CardHeader>
+              <CardContent>
+                {bookings.length === 0 ? (
+                  <div className="flex min-h-44 flex-col items-center justify-center text-center"><CheckCircle2 className="mb-3 h-9 w-9 text-muted-foreground/50" /><p className="font-medium">No placements yet</p><p className="text-sm text-muted-foreground">Log the first placement as soon as a host says yes, then move it along as it progresses.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{canManage && <Button onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a placement</Button>}<Button asChild variant="outline"><Link to={podcastSystemHref}>Open pipeline</Link></Button><Button asChild variant="outline"><Link to={finderHref}>Open Podcast Finder</Link></Button></div></div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Podcast</TableHead><TableHead>Host</TableHead><TableHead>Scheduled</TableHead><TableHead>Status</TableHead><TableHead>Episode</TableHead><TableHead className="text-right"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+                      <TableBody>{bookings.map((booking) => {
+                        const podcastUrl = booking.podcast_url ? safeExternalUrl(booking.podcast_url) : null
+                        const episodeUrl = booking.episode_url ? safeExternalUrl(booking.episode_url) : null
+                        const opportunity = opportunityForBooking(booking)
+                        return (
+                          <TableRow key={booking.id}>
+                            <TableCell><div className="font-medium">{podcastUrl ? <a href={podcastUrl} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">{booking.podcast_name}</a> : booking.podcast_name}</div>{booking.notes && <p className="mt-1 max-w-md truncate text-xs text-muted-foreground">{booking.notes}</p>}</TableCell>
+                            <TableCell>{booking.host_name || '—'}</TableCell>
+                            <TableCell>{formatDate(scheduledDate(booking))}</TableCell>
+                            <TableCell><Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge></TableCell>
+                            <TableCell>{episodeUrl ? <a href={episodeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Listen<ExternalLink className="h-3.5 w-3.5" /></a> : '—'}</TableCell>
+                            <TableCell className="whitespace-nowrap text-right">
+                              {opportunity && <Button variant="ghost" size="sm" onClick={() => setOpportunityItem(opportunity)}>Details<span className="sr-only"> for {booking.podcast_name}</span></Button>}
+                              {canManage && <Button variant="ghost" size="sm" onClick={() => { setEditingBooking(booking); setBookingDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /><span className="sr-only">Edit {booking.podcast_name}</span></Button>}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}</TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <ClientActivityCalendar
+              activities={clientActivities}
+              showClientFilter={false}
+              title={`${client.name}'s schedule`}
+              description="Every recording and release date on this client's placements. Select one for the detail, and to put it in your own calendar."
+            />
+          </TabsContent>
+
+          <TabsContent value="sharing" className="mt-0 space-y-6">
             <div className="grid gap-6 xl:grid-cols-3">
+              <Card>
+                <CardHeader><CardTitle>Approval dashboard</CardTitle><CardDescription>The public shortlist link {client.name} reviews podcasts on.</CardDescription></CardHeader>
+                <CardContent>
+                  <DetailRow label="Status" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
+                  <DetailRow label="Podcasts" value={dashboard.podcast_count > 0 ? `${dashboard.reviewed_count} of ${dashboard.podcast_count} reviewed` : 'No shortlist yet'} />
+                  <DetailRow label="Views" value={dashboard.view_count} />
+                  <DetailRow label="Last viewed" value={formatDateTime(dashboard.last_viewed_at)} />
+                  <div className="mt-5 space-y-3 rounded-xl border bg-muted/30 p-4">
+                    <p className="text-sm leading-6 text-muted-foreground">The link is the credential: anyone holding it can review this shortlist. Generate a new one if it was shared too widely.</p>
+                    {dashboardHref && <Button type="button" className="w-full" onClick={() => void copyPublicLink(dashboardHref, 'Dashboard link')}><Copy className="mr-2 h-4 w-4" />Copy link</Button>}
+                    {dashboardAdminPreviewHref && <Button asChild variant="outline" className="w-full"><Link to={dashboardAdminPreviewHref}><Eye className="mr-2 h-4 w-4" />Preview as client</Link></Button>}
+                    {canManage && dashboardHref && <Button type="button" variant="outline" className="w-full" onClick={() => setSlugRotateOpen(true)}><RefreshCw className="mr-2 h-4 w-4" />New link</Button>}
+                    <Button type="button" variant="ghost" className="w-full" onClick={() => selectClientDetailTab('shortlist')}>Edit the shortlist<ArrowRight className="ml-2 h-4 w-4" /></Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader><CardTitle>Portal access</CardTitle><CardDescription>Login readiness and recent client activity.</CardDescription></CardHeader>
                 <CardContent>
@@ -1278,118 +1407,47 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               </Card>
 
               <Card>
-                <CardHeader><CardTitle>Upcoming recordings</CardTitle><CardDescription>Podcast conversations the client will record next.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Original prospect page</CardTitle><CardDescription>The pre-client prospect page remains separate from active delivery.</CardDescription></CardHeader>
                 <CardContent>
-                  <MilestoneList
-                    bookings={upcomingRecordings}
-                    icon={Mic2}
-                    emptyTitle="No upcoming recordings"
-                    emptyDescription="New recording dates will appear in the client portal."
-                    detail={(booking) => formatDate(scheduledDate(booking))}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle>Upcoming episode releases</CardTitle><CardDescription>Recorded episodes the client can promote next.</CardDescription></CardHeader>
-                <CardContent>
-                  <MilestoneList
-                    bookings={upcomingReleases}
-                    icon={Radio}
-                    emptyTitle="No upcoming releases"
-                    emptyDescription="Scheduled publish dates will appear in the client portal."
-                    detail={(booking) => `Goes live ${formatDate(booking.publish_date)}`}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="podcasts" className="mt-0 space-y-6">
-            <section aria-labelledby="podcast-activity-heading">
-              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h2 id="podcast-activity-heading" className="text-xl font-semibold">Podcast activity</h2><p className="text-sm text-muted-foreground">Confirmed booking and publishing milestones. Use the Command Center for the complete client workflow.</p></div><div className="flex items-center gap-2"><Badge variant="outline">{bookings.length} total</Badge>{canManage && <Button size="sm" onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a placement</Button>}<Button asChild variant="outline" size="sm"><Link to={podcastSystemHref}>Open Command Center<ArrowRight className="ml-2 h-4 w-4" /></Link></Button></div></div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={CalendarDays} label="Booked" value={progress.booked} iconClassName="bg-emerald-50 text-emerald-600" />
-                <MetricCard icon={Clock3} label="In progress" value={progress.inProgress} iconClassName="bg-amber-50 text-amber-600" />
-                <MetricCard icon={Video} label="Recorded" value={progress.recorded} iconClassName="bg-blue-50 text-blue-600" />
-                <MetricCard icon={Radio} label="Published" value={progress.published} iconClassName="bg-violet-50 text-violet-600" />
-              </div>
-            </section>
-
-            <Card>
-              <CardHeader className="flex flex-row items-start justify-between gap-4"><div><CardTitle>All placements</CardTitle><CardDescription>Booked, in progress, recorded, published, and cancelled appearances.</CardDescription></div><Button asChild variant="outline" size="sm"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find more</Link></Button></CardHeader>
-              <CardContent>
-                {bookings.length === 0 ? (
-                  <div className="flex min-h-44 flex-col items-center justify-center text-center"><CheckCircle2 className="mb-3 h-9 w-9 text-muted-foreground/50" /><p className="font-medium">No placements yet</p><p className="text-sm text-muted-foreground">Log the first placement as soon as a host says yes, then move it along as it progresses.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{canManage && <Button onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a placement</Button>}<Button asChild variant="outline"><Link to={podcastSystemHref}>Open Command Center</Link></Button><Button asChild variant="outline"><Link to={finderHref}>Open Podcast Finder</Link></Button></div></div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Podcast</TableHead><TableHead>Host</TableHead><TableHead>Scheduled</TableHead><TableHead>Status</TableHead><TableHead>Episode</TableHead>{canManage && <TableHead className="w-20 text-right">Edit</TableHead>}</TableRow></TableHeader>
-                      <TableBody>{bookings.map((booking) => {
-                        const podcastUrl = booking.podcast_url ? safeExternalUrl(booking.podcast_url) : null
-                        const episodeUrl = booking.episode_url ? safeExternalUrl(booking.episode_url) : null
-                        return (
-                          <TableRow key={booking.id}>
-                            <TableCell><div className="font-medium">{podcastUrl ? <a href={podcastUrl} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">{booking.podcast_name}</a> : booking.podcast_name}</div>{booking.notes && <p className="mt-1 max-w-md truncate text-xs text-muted-foreground">{booking.notes}</p>}</TableCell>
-                            <TableCell>{booking.host_name || '—'}</TableCell>
-                            <TableCell>{formatDate(scheduledDate(booking))}</TableCell>
-                            <TableCell><Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge></TableCell>
-                            <TableCell>{episodeUrl ? <a href={episodeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Listen<ExternalLink className="h-3.5 w-3.5" /></a> : '—'}</TableCell>
-                            {canManage && <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => { setEditingBooking(booking); setBookingDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /><span className="sr-only">Edit {booking.podcast_name}</span></Button></TableCell>}
-                          </TableRow>
-                        )
-                      })}</TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="calendar" className="mt-0 space-y-6">
-            <ClientActivityCalendar
-              activities={clientActivities}
-              showClientFilter={false}
-              title={`${client.name}'s schedule`}
-              description="Every recording and release date on this client's placements. Select one for the detail, and to put it in your own calendar."
-            />
-          </TabsContent>
-
-          <TabsContent value="files" className="mt-0 space-y-6">
-            <Card aria-labelledby="client-resources-heading" className="overflow-hidden">
-              <CardHeader className="pb-4">
-                <CardTitle id="client-resources-heading">Onboarding and connected files</CardTitle>
-                <CardDescription>The source material behind research, outreach, and client delivery.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid divide-y border-t p-0 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-                <ConnectedResource icon={BookOpenCheck} title="Onboarding form" description={onboarding ? `Latest activity for ${onboarding.recipient_name}.` : 'Start or review this client’s intake and approved profile.'} status={onboarding ? labelForStatus(onboarding.status) : 'Not started'} statusClassName={onboarding ? onboardingStatusStyles[onboarding.status] : undefined}>
-                  <Button asChild variant="ghost" size="sm" className="-ml-3 h-8"><Link to={onboardingHref}>{onboarding ? 'Review onboarding' : 'Open onboarding'}</Link></Button>
-                </ConnectedResource>
-                <ConnectedResource icon={Activity} title="Media kit" description="Approved bio, positioning, and speaking assets shared with hosts." status={mediaKitUrl ? 'Connected' : 'Not connected'} statusClassName={mediaKitUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
-                  {mediaKitUrl ? <Button asChild variant="ghost" size="sm" className="-ml-3 h-8"><a href={mediaKitUrl} target="_blank" rel="noreferrer">Open media kit<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button> : <span className="text-xs text-muted-foreground">No file connected</span>}
-                </ConnectedResource>
-                <ConnectedResource icon={LayoutDashboard} title="Original prospect page" description="The pre-client prospect page remains separate from active delivery." status={prospectDashboardHref ? 'Linked' : 'Not linked'} statusClassName={prospectDashboardHref ? 'border-sky-200 bg-sky-50 text-sky-800' : undefined}>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <DetailRow label="Status" value={<Badge variant="outline" className={prospectDashboardHref ? 'border-sky-200 bg-sky-50 text-sky-800' : undefined}>{prospectDashboardHref ? 'Linked' : 'Not linked'}</Badge>} />
+                  <DetailRow label="Page" value={client.prospect_dashboard_slug || 'None'} />
+                  <div className="mt-5 space-y-3 rounded-xl border bg-muted/30 p-4">
                     {prospectDashboardHref && (
-                      <Button asChild variant="ghost" size="sm" className="-ml-3 h-8">
+                      <Button asChild variant="outline" className="w-full">
                         <a href={prospectDashboardHref} target="_blank" rel="noreferrer">Open prospect page<ExternalLink className="ml-2 h-3.5 w-3.5" /></a>
                       </Button>
                     )}
                     {canManage ? (
                       <Button
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8"
+                        variant={prospectDashboardHref ? 'ghost' : 'default'}
+                        className="w-full"
                         onClick={() => setProspectPickerOpen(true)}
                       >
                         <Search className="mr-2 h-3.5 w-3.5" />
                         {prospectDashboardHref ? 'Change' : 'Link a prospect page'}
                       </Button>
                     ) : !prospectDashboardHref && (
-                      <span className="text-xs text-muted-foreground">No prospect page linked</span>
+                      <p className="text-sm text-muted-foreground">No prospect page linked.</p>
                     )}
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="intake" className="mt-0 space-y-6">
+            <Card aria-labelledby="client-resources-heading" className="overflow-hidden">
+              <CardHeader className="pb-4">
+                <CardTitle id="client-resources-heading">Onboarding and connected files</CardTitle>
+                <CardDescription>The source material behind research, outreach, and client delivery.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid divide-y border-t p-0 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+                <ConnectedResource icon={BookOpenCheck} title="Onboarding form" description={onboarding ? `Latest activity for ${onboarding.recipient_name}.` : 'Start or review this client’s intake and approved profile.'} status={onboarding ? labelForStatus(onboarding.status) : 'Not started'} statusClassName={onboarding ? onboardingStatusStyles[onboarding.status] : undefined}>
+                  <Button asChild variant="ghost" size="sm" className="-ml-3 h-8"><Link to={onboardingHref}>{onboarding ? 'Review onboarding' : 'Open onboarding'}</Link></Button>
+                </ConnectedResource>
+                <ConnectedResource icon={Activity} title="Media kit" description="Approved bio, positioning, and speaking assets shared with hosts." status={mediaKitUrl ? 'Connected' : 'Not connected'} statusClassName={mediaKitUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
+                  {mediaKitUrl ? <Button asChild variant="ghost" size="sm" className="-ml-3 h-8"><a href={mediaKitUrl} target="_blank" rel="noreferrer">Open media kit<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button> : <span className="text-xs text-muted-foreground">No file connected</span>}
                 </ConnectedResource>
               </CardContent>
             </Card>
@@ -1401,81 +1459,53 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               canManage={canManage}
             />
 
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,.75fr)]">
-              <Card className="overflow-hidden">
-                <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <CardTitle>Approved client profile</CardTitle>
-                    <CardDescription>Positioning used across discovery and outreach.</CardDescription>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {client.bio && <Button type="button" variant="outline" size="sm" onClick={() => setProfileOpen(true)}><BookOpenCheck className="mr-2 h-4 w-4" />View full profile</Button>}
-                    {canManage && <Button type="button" size="sm" onClick={openProfileEditor}><Pencil className="mr-2 h-4 w-4" />{client.bio ? 'Edit profile' : 'Add profile'}</Button>}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {client.bio ? (
-                    <div className="rounded-xl border bg-muted/20 p-4">
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Approved source · {profileWordLabel}</p>
-                      <p className="leading-7 text-muted-foreground">{profilePreview}</p>
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Internal account notes</CardTitle>
+                  <CardDescription>Workspace-only context for this client.</CardDescription>
+                </div>
+                {canManage && !notesEditing && (
+                  <Button type="button" variant="outline" size="sm" onClick={beginEditingNotes}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    {client.notes ? 'Edit notes' : 'Add notes'}
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent>
+                {notesEditing ? (
+                  <div className="space-y-3">
+                    <Label htmlFor="internal-client-notes">Internal account notes</Label>
+                    <Textarea
+                      id="internal-client-notes"
+                      value={notesDraft}
+                      maxLength={10_000}
+                      rows={8}
+                      placeholder="Add context, preferences, follow-ups, or anything your team should know."
+                      disabled={notesBusy}
+                      onChange={(event) => setNotesDraft(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Only workspace staff can see these notes.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" size="sm" disabled={notesBusy} onClick={() => void saveInternalNotes()}>
+                        {notesBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save notes
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" disabled={notesBusy} onClick={() => setNotesEditing(false)}>
+                        Cancel
+                      </Button>
                     </div>
-                  ) : <div className="rounded-xl border border-dashed p-4"><p className="font-medium">No approved profile yet</p><p className="mt-1 text-sm text-muted-foreground">Add a focused profile before running personalized research or preparing outreach.</p></div>}
-                  <div className="flex flex-wrap gap-2 border-t pt-4">
-                    {websiteUrl && <Button asChild variant="outline" size="sm"><a href={websiteUrl} target="_blank" rel="noreferrer"><Globe2 className="mr-2 h-4 w-4" />Website<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                    {linkedInUrl && <Button asChild variant="outline" size="sm"><a href={linkedInUrl} target="_blank" rel="noreferrer"><Linkedin className="mr-2 h-4 w-4" />LinkedIn<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                    {calendarUrl && <Button asChild variant="outline" size="sm"><a href={calendarUrl} target="_blank" rel="noreferrer"><CalendarDays className="mr-2 h-4 w-4" />Calendar<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                    {!websiteUrl && !linkedInUrl && !calendarUrl && <p className="text-sm text-muted-foreground">No external profile links are connected yet.</p>}
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-start justify-between gap-4">
-                  <div>
-                    <CardTitle>Internal account notes</CardTitle>
-                    <CardDescription>Workspace-only context for this client.</CardDescription>
+                ) : client.notes ? (
+                  <div className="space-y-3">
+                    <p className={`leading-7 text-muted-foreground ${notesExpanded ? 'whitespace-pre-wrap' : ''}`}>{notesExpanded ? client.notes : notesPreview}</p>
+                    {notesAreTruncated && <Button type="button" variant="ghost" size="sm" className="-ml-3" onClick={() => setNotesExpanded((expanded) => !expanded)}>{notesExpanded ? 'Show less' : 'Show all notes'}</Button>}
                   </div>
-                  {canManage && !notesEditing && (
-                    <Button type="button" variant="outline" size="sm" onClick={beginEditingNotes}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      {client.notes ? 'Edit notes' : 'Add notes'}
-                    </Button>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  {notesEditing ? (
-                    <div className="space-y-3">
-                      <Label htmlFor="internal-client-notes">Internal account notes</Label>
-                      <Textarea
-                        id="internal-client-notes"
-                        value={notesDraft}
-                        maxLength={10_000}
-                        rows={8}
-                        placeholder="Add context, preferences, follow-ups, or anything your team should know."
-                        disabled={notesBusy}
-                        onChange={(event) => setNotesDraft(event.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">Only workspace staff can see these notes.</p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" size="sm" disabled={notesBusy} onClick={() => void saveInternalNotes()}>
-                          {notesBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          Save notes
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" disabled={notesBusy} onClick={() => setNotesEditing(false)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : client.notes ? (
-                    <div className="space-y-3">
-                      <p className={`leading-7 text-muted-foreground ${notesExpanded ? 'whitespace-pre-wrap' : ''}`}>{notesExpanded ? client.notes : notesPreview}</p>
-                      {notesAreTruncated && <Button type="button" variant="ghost" size="sm" className="-ml-3" onClick={() => setNotesExpanded((expanded) => !expanded)}>{notesExpanded ? 'Show less' : 'Show all notes'}</Button>}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No internal notes have been added.</div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No internal notes have been added.</div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
@@ -1937,7 +1967,20 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
         clientId={client.id}
         clientName={client.name}
         booking={editingBooking}
-        onSaved={() => void detailQuery.refetch()}
+        onSaved={() => { void detailQuery.refetch(); void systemQuery.refetch() }}
+      />
+      <OpportunityDetailSheet
+        item={opportunityItem}
+        baseHref={baseHref}
+        canManage={canManage}
+        onOpenChange={(open) => { if (!open) setOpportunityItem(null) }}
+        onLogPlacement={(item) => {
+          // The placement behind this row is already on the page: edit it in
+          // place rather than seeding a second one.
+          setOpportunityItem(null)
+          setEditingBooking(bookings.find((booking) => booking.id === item.booking?.id) ?? null)
+          setBookingDialogOpen(true)
+        }}
       />
     </WorkspaceLayout>
   )

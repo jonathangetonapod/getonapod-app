@@ -128,7 +128,7 @@ const sections: LegalSection[] = [
 
 const Privacy = () => {
   return (
-    <div className="homepage-shell min-h-screen bg-transparent">
+    <div className="dfy-page">
       <PageSEO
         title="Privacy policy | Get On A Pod"
         description="How Get On A Pod collects, uses, shares and protects personal data across the website, the agency workspace and the client portal."
@@ -136,74 +136,54 @@ const Privacy = () => {
       />
       <Navbar />
 
-      <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-44 sm:pt-40 md:pb-16 md:pt-36">
-        <div className="absolute inset-x-0 top-0 h-px bg-[#0d1b2a]/8" />
-        <div className="absolute left-0 top-20 h-[260px] w-[260px] rounded-full bg-[#b46a3c]/10 blur-3xl sm:h-[380px] sm:w-[380px]" />
-        <div className="absolute right-0 top-14 h-[220px] w-[220px] rounded-full bg-[#d9c6b3]/45 blur-3xl sm:h-[360px] sm:w-[360px]" />
+      <main className="dfy-wrap">
+        <section className="dfy-page-hero">
+          <span className="dfy-kicker">Privacy</span>
+          <h1>Privacy policy</h1>
+          <p className="dfy-page-lead">
+            What we collect, why, who we share it with and the choices you have. This policy applies to the Get On A Pod website, the agency workspace and the client portal.
+          </p>
+          <p className="dfy-kicker dfy-facts">
+            <span>Effective {EFFECTIVE_DATE}</span>
+          </p>
+        </section>
 
-        <div className="container relative mx-auto">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="section-kicker">Privacy</p>
-              <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f6efe7] px-4 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[#7a6554]">
-                Effective {EFFECTIVE_DATE}
-              </span>
-            </div>
+        <hr className="dfy-rule" />
 
-            <h1 className="mt-6 font-editorial text-[clamp(2.75rem,8vw,5rem)] leading-[0.92] tracking-[-0.045em] text-[#0d1b2a] text-balance">
-              Privacy policy
-            </h1>
-
-            <p className="mt-6 max-w-2xl text-base leading-8 text-[#54473d] sm:text-lg">
-              What we collect, why, who we share it with and the choices you have. This policy applies to the Get On A Pod website, the agency workspace and the client portal.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="px-4 py-12 md:py-20">
-        <div className="container mx-auto">
-          <div className="max-w-3xl space-y-12">
+        <section className="dfy-section-tight">
+          <div className="dfy-prose">
             {sections.map((section) => (
-              <div key={section.heading}>
-                <h2 className="font-display text-2xl font-semibold tracking-[-0.03em] text-[#0d1b2a] sm:text-3xl">
-                  {section.heading}
-                </h2>
+              <section key={section.heading}>
+                <h2>{section.heading}</h2>
                 {section.paragraphs?.map((paragraph) => (
-                  <p key={paragraph} className="mt-4 text-base leading-8 text-[#54473d]">
-                    {paragraph}
-                  </p>
+                  <p key={paragraph}>{paragraph}</p>
                 ))}
                 {section.items ? (
-                  <ul className="mt-4 list-disc space-y-2 pl-6 text-base leading-8 text-[#54473d]">
+                  <ul>
                     {section.items.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
                 ) : null}
                 {section.closing?.map((paragraph) => (
-                  <p key={paragraph} className="mt-4 text-base leading-8 text-[#54473d]">
-                    {paragraph}
-                  </p>
+                  <p key={paragraph}>{paragraph}</p>
                 ))}
-              </div>
+              </section>
             ))}
 
-            <div>
-              <h2 className="font-display text-2xl font-semibold tracking-[-0.03em] text-[#0d1b2a] sm:text-3xl">
-                Contact
-              </h2>
-              <p className="mt-4 text-base leading-8 text-[#54473d]">
+            <section>
+              <h2>Contact</h2>
+              <p>
                 Questions, requests about your data or concerns about this policy can be sent to{' '}
-                <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-[#0d1b2a] underline underline-offset-4">
+                <a href={`mailto:${CONTACT_EMAIL}`}>
                   {CONTACT_EMAIL}
                 </a>
                 . We aim to respond within 30 days.
               </p>
-            </div>
+            </section>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       <Footer />
     </div>

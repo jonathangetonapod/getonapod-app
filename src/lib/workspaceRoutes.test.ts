@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clientPitchHref,
+  clientShortlistHref,
   selectedWorkspaceBaseHref,
   workspaceModuleFromPath,
   workspaceModuleHref,
@@ -60,5 +62,20 @@ describe('workspace routes', () => {
 
   it('keeps the retired admin prospect address in Prospect Studio', () => {
     expect(workspaceModuleFromPath('/admin/prospect-dashboards')).toBe('prospects')
+  })
+
+  it('addresses a shortlisted podcast\u2019s pitch page inside the workspace being viewed', () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    const podcastId = '33333333-3333-4333-8333-333333333333'
+    expect(clientPitchHref('/app', clientId, podcastId)).toBe(
+      `/app/clients/${clientId}/podcasts/${podcastId}/pitch`,
+    )
+    expect(clientPitchHref(selectedWorkspaceBaseHref(workspaceId), clientId, podcastId)).toBe(
+      `/app/workspaces/${workspaceId}/clients/${clientId}/podcasts/${podcastId}/pitch`,
+    )
+    expect(clientShortlistHref('/app', clientId)).toBe(`/app/clients/${clientId}?tab=shortlist`)
+    // Deep inside a client, the sidebar still highlights Clients.
+    expect(workspaceModuleFromPath(`/app/clients/${clientId}/podcasts/${podcastId}/pitch`)).toBe('clients')
   })
 })

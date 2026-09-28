@@ -160,7 +160,7 @@ function summarizeCampaign(
   // each shortlisted show.
   const podcastsHref = `${baseHref}/client-campaigns/${client.id}?tab=leads`
   const optionsHref = `${baseHref}/client-campaigns/${client.id}?tab=options`
-  const writeHref = `${baseHref}/clients/${client.id}?tab=approval`
+  const writeHref = `${baseHref}/clients/${client.id}?tab=shortlist`
   const nextAction: CampaignNextAction = campaign?.last_error
     ? { label: 'Resolve campaign issue', href: optionsHref }
     : stagedSendingCount > 0

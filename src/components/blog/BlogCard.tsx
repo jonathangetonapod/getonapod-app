@@ -1,13 +1,15 @@
 import { Link } from 'react-router-dom'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Calendar, Clock } from 'lucide-react'
 import type { BlogPost } from '@/services/blog'
 
 interface BlogCardProps {
   post: BlogPost
 }
 
+/**
+ * One article in a list: its picture in a mat, the category as a kicker, the
+ * title in the display face, then the date and reading time. The whole card
+ * is the link, as before.
+ */
 export function BlogCard({ post }: BlogCardProps) {
   const formattedDate = new Date(post.published_at || post.created_at).toLocaleDateString('en-US', {
     month: 'short',
@@ -16,15 +18,13 @@ export function BlogCard({ post }: BlogCardProps) {
   })
 
   return (
-    <Link to={`/blog/${post.slug}`} className="group">
-      <Card className="h-full overflow-hidden transition-all hover:shadow-lg hover:-translate-y-1">
-        {/* Featured Image */}
+    <Link to={`/blog/${post.slug}`} className="dfy-card-link">
+      <article className="dfy-card">
         {post.featured_image_url && (
-          <div className="aspect-video overflow-hidden">
+          <div className="dfy-card-media">
             <img
               src={post.featured_image_url}
               alt={post.featured_image_alt || post.title}
-              className="w-full h-full object-cover transition-transform group-hover:scale-105"
               loading="lazy"
               decoding="async"
               onError={(e) => {
@@ -35,43 +35,17 @@ export function BlogCard({ post }: BlogCardProps) {
           </div>
         )}
 
-        <CardHeader className="space-y-3">
-          {/* Category Badge */}
-          {post.blog_categories && (
-            <div>
-              <Badge variant="secondary" className="text-xs">
-                {post.blog_categories.name}
-              </Badge>
-            </div>
-          )}
+        {post.blog_categories && <span className="dfy-tag">{post.blog_categories.name}</span>}
 
-          {/* Title */}
-          <h3 className="text-xl font-bold line-clamp-2 group-hover:text-primary transition-colors">
-            {post.title}
-          </h3>
-        </CardHeader>
+        <h3 className="dfy-card-title line-clamp-2">{post.title}</h3>
 
-        <CardContent>
-          {/* Excerpt */}
-          <p className="text-muted-foreground line-clamp-3">
-            {post.excerpt || post.meta_description}
-          </p>
-        </CardContent>
+        <p className="dfy-card-copy line-clamp-3">{post.excerpt || post.meta_description}</p>
 
-        <CardFooter className="flex items-center gap-4 text-sm text-muted-foreground">
-          {/* Date */}
-          <div className="flex items-center gap-1">
-            <Calendar className="h-4 w-4" />
-            <span>{formattedDate}</span>
-          </div>
-
-          {/* Read Time */}
-          <div className="flex items-center gap-1">
-            <Clock className="h-4 w-4" />
-            <span>{post.read_time_minutes} min read</span>
-          </div>
-        </CardFooter>
-      </Card>
+        <p className="dfy-kicker dfy-facts dfy-card-meta">
+          <span>{formattedDate}</span>
+          <span>{post.read_time_minutes} min read</span>
+        </p>
+      </article>
     </Link>
   )
 }

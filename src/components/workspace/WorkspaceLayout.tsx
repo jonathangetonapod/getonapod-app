@@ -76,7 +76,7 @@ interface WorkspaceNavItem {
 // come after. Ids and segments are stable; only labels and positions move.
 const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'clients', name: 'Clients', segment: 'clients', icon: Users, enabled: true },
-  { id: 'client-podcast-system', name: 'Client Command Center', segment: 'client-podcast-system', icon: Calendar, enabled: true },
+  { id: 'client-podcast-system', name: 'Pipeline', segment: 'client-podcast-system', icon: Calendar, enabled: true },
   { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
   { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: true },
   { id: 'outreach-platform', name: 'Client Campaigns', segment: 'client-campaigns', icon: Megaphone, enabled: true },

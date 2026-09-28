@@ -23,7 +23,6 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { ClientCampaignPrepDialog } from '@/components/workspace/ClientCampaignPrepDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,13 +49,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Textarea } from '@/components/ui/textarea'
 import { isTargetInActiveOutreach, pitchActionLabel } from '@/lib/campaignTargetState'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { MY_WORKSPACE_BASE_HREF, clientPitchHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
-  runClientShortlistEmailSearch,
-  runClientShortlistResearch,
   searchClientPodcastCatalog,
   updateClientShortlistPodcast,
   type ClientShortlistCatalogPodcast,
@@ -71,13 +69,22 @@ interface ClientShortlistEditorProps {
   workspaceId: string
   clientId: string
   clientName: string
+  /**
+   * Carried by the client page for the pitch flow, which now lives on its own
+   * page and loads these itself. Accepted so the page's call site is stable.
+   */
   clientBio?: string | null
   viewerRole?: 'owner' | 'admin' | 'member' | 'platform_admin'
   databaseHref: string
   finderHref: string
+  /**
+   * `${base}/client-campaigns/${clientId}`, so the workspace base every pitch
+   * link is built on is what precedes it; the editor is given no other route
+   * context, and a platform admin viewing a tenant must stay in that tenant.
+   */
   campaignHref: string
-  relationshipsHref: string
-  billingHref: string
+  relationshipsHref?: string
+  billingHref?: string
   onChanged?: () => void
 }
 
@@ -156,13 +163,9 @@ export function ClientShortlistEditor({
   workspaceId,
   clientId,
   clientName,
-  clientBio,
-  viewerRole,
   databaseHref,
   finderHref,
   campaignHref,
-  relationshipsHref,
-  billingHref,
   onChanged,
 }: ClientShortlistEditorProps) {
   const queryClient = useQueryClient()
@@ -181,17 +184,17 @@ export function ClientShortlistEditor({
   const [isAdding, setIsAdding] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<ClientShortlistPodcast | null>(null)
   const [detailPodcast, setDetailPodcast] = useState<ClientShortlistPodcast | null>(null)
-  const [campaignPrepPodcast, setCampaignPrepPodcast] = useState<ClientShortlistPodcast | null>(null)
   const [operatorNotes, setOperatorNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
 
   const shortlistQueryKey = ['client-shortlist', workspaceId, clientId] as const
+  const workspaceBaseHref = campaignHref.split('/client-campaigns')[0] || MY_WORKSPACE_BASE_HREF
   /**
    * Which of these podcasts are already out with the host.
    *
    * The row could not see it, so a podcast in active outreach still offered
    * "Write Pitch" — a button promising work the next screen opens locked and
-   * refuses. Same query key as the pitch dialog, so this shares its cache
+   * refuses. Same query key as the pitch page, so this shares its cache
    * rather than fetching the campaign twice, and a failure leaves every label
    * exactly as it was.
    */
@@ -214,14 +217,6 @@ export function ClientShortlistEditor({
     queryKey: shortlistQueryKey,
     queryFn: () => getClientShortlist(workspaceId, clientId),
     retry: false,
-    refetchInterval: (query) => {
-      if (!campaignPrepPodcast) return false
-      const currentPodcast = query.state.data?.podcasts.find((item) => item.id === campaignPrepPodcast.id)
-      return currentPodcast?.research_progress?.status === 'queued'
-        || currentPodcast?.research_progress?.status === 'running'
-        ? 2_000
-        : false
-    },
   })
   const catalogSearchQuery = useQuery({
     queryKey: ['client-shortlist-catalog', workspaceId, clientId, debouncedCatalogQuery],
@@ -238,10 +233,6 @@ export function ClientShortlistEditor({
   useEffect(() => setPage(1), [filter, searchQuery, sort])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
-  const activeCampaignPrepPodcast = useMemo(() => {
-    if (!campaignPrepPodcast) return null
-    return podcasts.find((podcast) => podcast.id === campaignPrepPodcast.id) || campaignPrepPodcast
-  }, [campaignPrepPodcast, podcasts])
   const featured = useMemo(() => podcasts
     .filter((podcast) => podcast.visibility === 'visible' && podcast.is_featured)
     .sort((left, right) => (left.featured_order ?? 99) - (right.featured_order ?? 99)), [podcasts])
@@ -481,17 +472,22 @@ export function ClientShortlistEditor({
                   <div className="flex items-center justify-end gap-2 lg:shrink-0">
                     {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && (
                       <Button
-                        type="button"
+                        asChild
                         variant="outline"
                         size="sm"
                         className={pitchLabel === 'Write Re-pitch' ? 'border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100 hover:text-amber-950' : undefined}
-                        aria-label={`${pitchLabel} for ${podcast.podcast_name}`}
-                        onClick={() => setCampaignPrepPodcast(podcast)}
                       >
-                        {pitchLabel === 'View Pitch'
-                          ? <Eye className="mr-2 h-4 w-4 text-sky-600" />
-                          : <PenLine className={`mr-2 h-4 w-4 ${pitchLabel === 'Write Re-pitch' ? 'text-amber-700' : 'text-primary'}`} />}
-                        {pitchLabel}
+                        {/* A page, not a modal: it can be opened in a new tab,
+                            left while research runs, and returned to. */}
+                        <Link
+                          to={clientPitchHref(workspaceBaseHref, clientId, podcast.id)}
+                          aria-label={`${pitchLabel} for ${podcast.podcast_name}`}
+                        >
+                          {pitchLabel === 'View Pitch'
+                            ? <Eye className="mr-2 h-4 w-4 text-sky-600" />
+                            : <PenLine className={`mr-2 h-4 w-4 ${pitchLabel === 'Write Re-pitch' ? 'text-amber-700' : 'text-primary'}`} />}
+                          {pitchLabel}
+                        </Link>
                       </Button>
                     )}
                     <PodcastExternalLink url={podcast.podcast_url} name={podcast.podcast_name} />
@@ -586,25 +582,6 @@ export function ClientShortlistEditor({
           </div>
         </SheetContent>
       </Sheet>
-
-      <ClientCampaignPrepDialog
-        open={Boolean(activeCampaignPrepPodcast)}
-        onOpenChange={(open) => { if (!open) setCampaignPrepPodcast(null) }}
-        workspaceId={workspaceId}
-        clientId={clientId}
-        clientName={clientName}
-        clientBio={clientBio}
-        viewerRole={viewerRole}
-        campaignHref={campaignHref}
-        relationshipsHref={relationshipsHref}
-        billingHref={billingHref}
-        podcast={activeCampaignPrepPodcast}
-        onArchive={() => {
-          if (!activeCampaignPrepPodcast) return
-          setArchiveTarget(activeCampaignPrepPodcast)
-          setCampaignPrepPodcast(null)
-        }}
-      />
 
       <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(open) => !open && setArchiveTarget(null)}>
         <AlertDialogContent>

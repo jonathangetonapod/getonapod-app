@@ -432,3 +432,231 @@
   .dfy-footer-foot { margin-top: 36px; flex-direction: column; gap: 6px; }
   .dfy-footer-foot .dfy-copy-italic { margin-left: 0; }
 }
+
+/* ==========================================================================
+ * Inner pages: blog, blog post, course, resources, what to expect, privacy,
+ * terms, and the Navbar and Footer they share. These helpers put those pages
+ * in the homepage's system above; nothing here changes a homepage rule.
+ * Every selector still leads with .dfy- for the contract script.
+ * ========================================================================== */
+
+/* — site nav: the homepage's bar, sticky, with a menu button below the
+     desktop breakpoint so six links do not wrap into a second row — */
+.dfy-site-nav { position: sticky; top: 0; z-index: 50; background: var(--bg); }
+.dfy-site-nav-scrolled { box-shadow: 0 10px 30px color-mix(in srgb, var(--text) 8%, transparent); }
+.dfy-site-strip { display: none; border-bottom: 1px solid var(--divider); }
+.dfy-site-strip-in {
+  max-width: 1200px; margin: 0 auto; padding: 8px var(--gutter);
+  display: flex; justify-content: space-between; gap: 16px;
+  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-700);
+}
+.dfy-site-bar {
+  display: flex; align-items: center; gap: 18.4px;
+  padding: 13.8px max(var(--gutter), calc((100% - 1200px) / 2 + var(--gutter)));
+  border-bottom: 1px solid var(--divider);
+}
+.dfy-site-links { display: flex; align-items: center; gap: 18.4px; }
+.dfy-site-toggle {
+  all: unset; box-sizing: border-box; display: none; width: 44px; height: 44px; place-items: center;
+  cursor: pointer; color: var(--text); border: 1px solid var(--divider); border-radius: 4px;
+  touch-action: manipulation;
+}
+.dfy-site-toggle:hover { border-color: var(--accent); color: var(--accent-700); }
+.dfy-site-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dfy-site-menu { display: none; }
+@media (min-width: 640px) {
+  .dfy-site-strip { display: block; }
+}
+@media (max-width: 1023px) {
+  .dfy-site-links, .dfy-site-cta { display: none; }
+  /* The brand takes order 1 below 720px (a homepage rule); the button follows it. */
+  .dfy-site-toggle { display: grid; order: 2; }
+  .dfy-site-menu {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px max(var(--gutter), calc((100% - 1200px) / 2 + var(--gutter))) 20px;
+    border-bottom: 1px solid var(--divider);
+  }
+  .dfy-site-menu .dfy-nav-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .dfy-site-menu .dfy-btn { min-height: 44px; margin-top: 10px; }
+}
+
+/* — page shells — */
+.dfy-page-hero { padding: 70px 0 48px; }
+.dfy-page-hero h1 { font-size: clamp(36px, 5vw, 62px); line-height: 1.06; max-width: 22ch; }
+.dfy-page-lead { font-size: 17px; line-height: 28px; max-width: 58ch; margin-top: 24px; color: var(--neutral-800); }
+.dfy-page-hero .dfy-cta-row { margin-top: 28px; }
+.dfy-page-hero .dfy-facts { margin-top: 24px; }
+.dfy-title { font-size: 32px; line-height: 42px; }
+.dfy-title-sm { font-size: 24px; line-height: 30px; }
+.dfy-copy { font-size: 15.5px; line-height: 28px; color: var(--neutral-800); max-width: 58ch; }
+.dfy-copy + .dfy-copy { margin-top: 16px; }
+.dfy-title + .dfy-copy, .dfy-title-sm + .dfy-copy, .dfy-fact-title + .dfy-copy { margin-top: 14px; }
+.dfy-copy + .dfy-cta-row, .dfy-title + .dfy-cta-row { margin-top: 24px; }
+.dfy-title + .dfy-grid, .dfy-copy + .dfy-grid, .dfy-title + .dfy-grid-2, .dfy-copy + .dfy-grid-2 { margin-top: 36px; }
+.dfy-small { font-size: 13.5px; line-height: 22px; color: var(--neutral-700); }
+.dfy-stack > * + * { margin-top: 20px; }
+.dfy-center { text-align: center; }
+.dfy-center .dfy-page-hero h1, .dfy-center .dfy-page-lead, .dfy-center .dfy-copy { margin-inline: auto; }
+.dfy-center .dfy-cta-row, .dfy-center .dfy-facts { justify-content: center; }
+
+/* — running text from the editor (blog posts, resource articles) — */
+.dfy-prose { font-size: 16.5px; line-height: 30px; color: var(--neutral-800); max-width: 66ch; }
+.dfy-prose p { margin: 0 0 22px; }
+.dfy-prose h2 { font-size: 30px; line-height: 38px; margin: 48px 0 16px; color: var(--text); }
+.dfy-prose h3 { font-size: 24px; line-height: 30px; margin: 36px 0 12px; color: var(--text); }
+.dfy-prose h4 { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 20px; line-height: 28px; margin: 28px 0 10px; color: var(--text); }
+.dfy-prose h2:first-child, .dfy-prose h3:first-child { margin-top: 0; }
+.dfy-prose ul, .dfy-prose ol { margin: 0 0 22px; padding-left: 26px; }
+.dfy-prose ul { list-style: disc; }
+.dfy-prose ol { list-style: decimal; }
+.dfy-prose li { margin: 6px 0; }
+.dfy-prose li::marker { color: var(--accent); }
+.dfy-prose blockquote {
+  margin: 28px 0; padding: 4px 0 4px 22px; border-left: 2px solid var(--accent);
+  font-family: var(--heading); font-size: 23px; line-height: 32px; color: var(--text);
+}
+.dfy-prose blockquote p { margin: 0; }
+.dfy-prose img { display: block; max-width: 100%; height: auto; margin: 28px 0; border: 1px solid var(--divider); }
+.dfy-prose a { text-decoration: underline; }
+.dfy-prose strong { font-weight: 600; color: var(--text); }
+.dfy-prose hr { border: 0; height: 1px; background: var(--divider); margin: 40px 0; }
+.dfy-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em;
+  padding: 1px 5px; background: var(--surface); border: 1px solid var(--divider); border-radius: 3px;
+}
+.dfy-prose pre { overflow-x: auto; padding: 16px; margin: 0 0 22px; background: var(--surface); border: 1px solid var(--divider); }
+.dfy-prose pre code { padding: 0; border: 0; background: none; }
+.dfy-prose table { width: 100%; border-collapse: collapse; margin: 0 0 22px; font-size: 15px; }
+.dfy-prose th, .dfy-prose td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--divider); }
+.dfy-prose th { font-weight: 600; color: var(--text); }
+
+/* — cards: a hairline above, a matted picture, then the type; no fill — */
+.dfy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 40px 32px; }
+.dfy-grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 32px var(--col-gap); }
+.dfy-card { display: flex; flex-direction: column; height: 100%; border-top: 1px solid var(--divider); padding-top: 18px; }
+.dfy-page .dfy-card-link { display: block; height: 100%; color: var(--text); text-decoration: none; }
+.dfy-page .dfy-card-link:hover { color: var(--text); }
+.dfy-card-media { aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--divider); background: var(--surface); padding: 8px; margin-bottom: 18px; }
+.dfy-card-media img {
+  display: block; width: 100%; height: 100%; object-fit: cover; border: 1px solid var(--divider);
+  filter: sepia(0.22) saturate(0.82) contrast(1.05);
+}
+.dfy-card-title { font-size: 22px; line-height: 28px; margin-top: 10px; }
+.dfy-card-link:hover .dfy-card-title { color: var(--accent-700); }
+.dfy-card-copy { font-size: 14.5px; line-height: 24px; color: var(--neutral-800); margin-top: 10px; flex: 1 1 auto; }
+.dfy-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--divider); }
+.dfy-card-meta { margin: 16px 0 0; }
+.dfy-card-foot .dfy-card-meta { margin: 0; }
+.dfy-tag { display: inline-block; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-700); }
+.dfy-tag-row { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0; }
+.dfy-tag-row .dfy-tag + .dfy-tag::before { content: "·"; margin: 0 10px; color: var(--accent); }
+
+/* — a figure: a picture in a mat — */
+.dfy-figure { margin: 36px 0 0; padding: 8px; border: 1px solid var(--divider); background: var(--surface); }
+.dfy-figure img { display: block; width: 100%; height: auto; border: 1px solid var(--divider); filter: sepia(0.22) saturate(0.82) contrast(1.05); }
+
+/* — a portrait's initials, at avatar size — */
+.dfy-avatar { width: 40px; height: 40px; flex: none; }
+.dfy-avatar.dfy-portrait-initials { font-size: 15px; letter-spacing: 0.02em; }
+
+/* — forms: search boxes and filter chips — */
+.dfy-input {
+  box-sizing: border-box; width: 100%; min-height: 44px; padding: 8px 14px;
+  font: inherit; font-size: 15px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--neutral-300); border-radius: 4px;
+}
+.dfy-input::placeholder { color: var(--neutral-700); opacity: 1; }
+.dfy-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.dfy-input-wrap { position: relative; flex: 1 1 280px; max-width: 440px; }
+.dfy-input-wrap svg { position: absolute; left: 14px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--neutral-700); pointer-events: none; }
+.dfy-input-wrap .dfy-input { padding-left: 40px; }
+.dfy-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px;
+  padding: 20px 0; border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider);
+}
+.dfy-chip-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.dfy-chip {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center;
+  min-height: 40px; padding: 0 14px; white-space: nowrap;
+  font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-700);
+  border: 1px solid var(--divider); border-radius: 4px;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  touch-action: manipulation;
+}
+.dfy-chip:hover { color: var(--accent-700); border-color: var(--accent); }
+.dfy-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dfy-chip[aria-pressed='true'] { color: var(--accent-700); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.dfy-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.dfy-btn svg { width: 15px; height: 15px; flex: none; }
+.dfy-btn-primary:disabled:hover { background: transparent; color: var(--accent-700); }
+
+/* — loading placeholders — */
+.dfy-skeleton { display: block; background: color-mix(in srgb, var(--text) 8%, transparent); animation: dfy-pulse 1.6s ease-in-out infinite; }
+@keyframes dfy-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .dfy-skeleton { animation: none; }
+}
+
+/* — a row of labelled facts (stats, timeline summaries) — */
+.dfy-facts-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 28px var(--col-gap);
+  margin-top: 42px; padding-top: 28px; border-top: 1px solid var(--divider);
+}
+.dfy-facts-grid .dfy-kicker { margin-bottom: 8px; }
+.dfy-fact-title { font-size: 21px; line-height: 26px; }
+.dfy-fact-copy { font-size: 14px; line-height: 23px; color: var(--neutral-700); margin-top: 6px; }
+.dfy-stat { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 44px; line-height: 1; color: var(--accent-700); }
+
+/* — a step's timing, under its title in the how-it-works rows — */
+.dfy-when { display: block; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-700); margin-top: 6px; }
+
+/* — two columns: an article and its aside — */
+.dfy-article-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 42px var(--col-gap); align-items: start; }
+.dfy-aside { position: sticky; top: 96px; }
+.dfy-panel { border-top: 1px solid var(--divider); padding-top: 22px; }
+.dfy-panel + .dfy-panel { margin-top: 32px; }
+.dfy-panel > * + * { margin-top: 14px; }
+.dfy-panel .dfy-kicker { margin-bottom: 0; }
+.dfy-panel-title { font-size: 21px; line-height: 26px; }
+.dfy-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.dfy-links a { display: inline-flex; align-items: center; min-height: 40px; font-size: 14.5px; }
+.dfy-author { display: flex; align-items: center; gap: 12px; }
+.dfy-author-name { display: block; font-family: var(--heading); font-weight: var(--heading-weight); font-size: 18px; line-height: 1.2; }
+.dfy-author-role { display: block; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--neutral-700); margin-top: 2px; }
+@media (max-width: 880px) {
+  .dfy-article-grid { grid-template-columns: minmax(0, 1fr); }
+  .dfy-aside { position: static; }
+}
+
+/* — the ink band with two calls in it — */
+.dfy-book .dfy-cta-row .dfy-btn-ghost + .dfy-btn-ghost { border-color: transparent; }
+.dfy-book .dfy-kicker { color: var(--accent-400); }
+.dfy-book .dfy-book-note { font-size: 13.5px; line-height: 22px; color: var(--neutral-300); margin-top: 14px; max-width: 58ch; }
+
+/* — a dialog that sits in the same system as the page under it — */
+.dfy-page.dfy-dialog {
+  min-height: 0; max-width: 880px; padding: 0; border: 1px solid var(--divider); border-radius: 4px;
+  background: var(--bg); color: var(--text); box-shadow: 0 30px 70px color-mix(in srgb, var(--ink-band) 30%, transparent);
+}
+.dfy-dialog-scroll { max-height: 90vh; overflow-y: auto; }
+.dfy-dialog-head { padding: 28px 28px 22px; border-bottom: 1px solid var(--divider); }
+.dfy-dialog-body { padding: 24px 28px 28px; }
+.dfy-dialog-foot { padding: 20px 28px 24px; border-top: 1px solid var(--divider); }
+.dfy-dialog-title { font-family: var(--heading); font-weight: var(--heading-weight); font-size: clamp(26px, 3.4vw, 36px); line-height: 1.1; letter-spacing: -0.015em; }
+
+/* — phone width — */
+@media (max-width: 720px) {
+  .dfy-page-hero { padding: 48px 0 36px; }
+  .dfy-page-hero h1 { font-size: clamp(32px, 8.5vw, 44px); }
+  .dfy-page-lead { font-size: 16px; line-height: 26px; margin-top: 20px; }
+  .dfy-page-hero .dfy-facts { font-size: 12px; }
+  .dfy-title { font-size: 28px; line-height: 36px; }
+  .dfy-title-sm { font-size: 22px; line-height: 28px; }
+  .dfy-prose { font-size: 16px; line-height: 28px; }
+  .dfy-prose h2 { font-size: 26px; line-height: 32px; margin-top: 36px; }
+  .dfy-prose h3 { font-size: 22px; line-height: 28px; }
+  .dfy-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .dfy-facts-grid { margin-top: 32px; gap: 22px; }
+  .dfy-dialog-head, .dfy-dialog-body, .dfy-dialog-foot { padding-inline: 20px; }
+  .dfy-cta-row .dfy-btn, .dfy-card-foot .dfy-btn { min-height: 44px; }
+}

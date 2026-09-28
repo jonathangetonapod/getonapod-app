@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 export default {
   darkMode: ["class"],
@@ -13,12 +14,40 @@ export default {
       },
     },
     extend: {
+      // The marketing site's faces are the homepage's (see the --dfy-* tokens in
+      // src/index.css). The homepage's kicker is its body face set small, in
+      // capitals and letterspaced, not a monospace, so `font-kicker` is Lora;
+      // `font-mono` is the one monospace the domain loads.
       fontFamily: {
-        sans: ["Outfit", "system-ui", "sans-serif"],
-        display: ["Outfit", "system-ui", "sans-serif"],
-        mono: ["DM Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+        sans: ["Instrument Sans", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        display: ["Cormorant Garamond", "Georgia", "Times New Roman", "serif"],
+        body: ["Lora", "Georgia", "Times New Roman", "serif"],
+        kicker: ["Lora", "Georgia", "Times New Roman", "serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       colors: {
+        // The homepage's palette, by the names landing.css gives it.
+        ink: {
+          DEFAULT: "var(--dfy-ink)",
+          band: "var(--dfy-ink-band)",
+        },
+        cream: {
+          DEFAULT: "var(--dfy-bg)",
+          surface: "var(--dfy-surface)",
+        },
+        gold: {
+          DEFAULT: "var(--dfy-accent)",
+          400: "var(--dfy-accent-400)",
+          600: "var(--dfy-accent-600)",
+          700: "var(--dfy-accent-700)",
+          800: "var(--dfy-accent-800)",
+        },
+        neutral: {
+          300: "var(--dfy-neutral-300)",
+          600: "var(--dfy-neutral-600)",
+          700: "var(--dfy-neutral-700)",
+          800: "var(--dfy-neutral-800)",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -139,5 +168,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;

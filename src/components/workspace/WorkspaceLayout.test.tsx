@@ -38,7 +38,7 @@ const workspaceClients = [
 // The daily loop first, then setup and reference pages.
 const expectedNavigation = [
   'Clients',
-  'Client Command Center',
+  'Pipeline',
   'Podcast Finder',
   'Podcast Database',
   'Client Campaigns',
@@ -133,7 +133,7 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', '/app/onboarding')
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
     expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', '/app/podcast-database')
-    expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute('href', '/app/client-podcast-system')
+    expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('href', '/app/client-podcast-system')
     expect(within(navigation).getByRole('link', { name: 'Prospect Studio' })).toHaveAttribute('href', '/app/prospects')
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
     expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/app/master-inbox')
@@ -206,7 +206,7 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getAllByRole('listitem').map((item) => (
       item.querySelector('span')?.textContent
     ))).toEqual([
-      'Client intake', 'Podcast Finder', 'Prospect Studio', 'Podcast Database', 'Client Command Center',
+      'Client intake', 'Podcast Finder', 'Prospect Studio', 'Podcast Database', 'Pipeline',
       'Clients', 'Client Campaigns', 'Relationships', 'Inbox', 'Mailboxes', 'University',
       'Billing & credits', 'Settings',
     ])
@@ -231,7 +231,7 @@ describe('WorkspaceLayout', () => {
     expect(readWorkingClient(workspaceId)).toBe(clientId)
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', `/app/podcast-database?client=${clientId}`)
-    expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
@@ -272,7 +272,7 @@ describe('WorkspaceLayout', () => {
     await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${otherClientId}`)
-    expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute('aria-current', 'page')
+    expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('drops a working client that is no longer active', async () => {
@@ -450,7 +450,7 @@ describe('WorkspaceLayout', () => {
       'href',
       `/app/workspaces/${workspaceId}/podcast-database`,
     )
-    expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute(
       'href',
       `/app/workspaces/${workspaceId}/client-podcast-system`,
     )

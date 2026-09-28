@@ -257,11 +257,11 @@ describe('WorkspaceClientPodcastSystem', () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com' },
       workspace: {
-    id: workspaceId,
-    name: 'Acme Workspace',
-    logo_path: `${workspaceId}/66666666-6666-4666-8666-666666666666.png`,
-    logo_updated_at: '2026-07-25T11:00:00.000Z',
-  },
+        id: workspaceId,
+        name: 'Acme Workspace',
+        logo_path: `${workspaceId}/66666666-6666-4666-8666-666666666666.png`,
+        logo_updated_at: '2026-07-25T11:00:00.000Z',
+      },
       membership: { role: 'owner', full_name: 'Workspace Owner' },
       isPlatformAdmin: false,
     } as never)
@@ -270,9 +270,9 @@ describe('WorkspaceClientPodcastSystem', () => {
 
   /*
    * This was the one page that sent the shell no logo, so an operator walking
-   * Clients → Client Command Center watched the tenant's mark drop to initials
-   * and return on the next page. Nothing about the logo was wrong; the payload
-   * simply never carried it.
+   * Clients → Pipeline watched the tenant's mark drop to initials and return
+   * on the next page. Nothing about the logo was wrong; the payload simply
+   * never carried it.
    */
   it('brands the shell with the viewed workspace logo like every neighbouring page', async () => {
     renderPage(`/app/workspaces/${workspaceId}/client-podcast-system`, workspaceId)
@@ -298,25 +298,10 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(logo).toHaveAttribute('src', '')
   })
 
-  it('keeps a long client bio from pushing the whole workspace off screen', async () => {
-    const bio = 'Positioning paragraph. '.repeat(30)
-    mockedGetSystem.mockResolvedValue({
-      ...response,
-      clients: [{ ...response.clients[0], bio, profile: { ...response.clients[0].profile, positioning: null } }],
-    } as never)
-
-    renderPage(`/app/client-podcast-system?client=${clientId}`)
-
-    const positioning = await screen.findByText(bio.trim())
-    expect(positioning.className).toContain('line-clamp-3')
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
-    expect(screen.getByText(bio.trim()).className).not.toContain('line-clamp-3')
-  })
-
   /*
    * bookings_shortlist_podcast_fk points at client_dashboard_podcasts by
    * (client_id, shortlist_podcast_id). The page was seeding the dialog with
-   * item.podcast.id — the global catalog row — so the insert failed the
+   * item.podcast.id, the global catalog row, so the insert failed the
    * constraint and every placement logged from this page came back "The
    * placement could not be saved". Not an edge case: the whole action.
    */
@@ -335,7 +320,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.queryByText(`seeded shortlist row ${ready.podcast.id}`)).not.toBeInTheDocument()
   })
 
-  it('opens the host conversation from a placement instead of the whole inbox', async () => {
+  it('shows a host reply in the attention list without opening anything', async () => {
     mockedGetSystem.mockResolvedValue({
       ...response,
       items: [{
@@ -344,9 +329,8 @@ describe('WorkspaceClientPodcastSystem', () => {
       }],
     } as never)
 
-    renderPage(`/app/client-podcast-system?client=${clientId}`)
+    renderPage()
 
-    // The reply is visible without opening anything.
     expect((await screen.findAllByText('Host replied')).length).toBeGreaterThan(0)
   })
 
@@ -364,49 +348,43 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(within(sheet).getByText(ready.podcast.name)).toBeInTheDocument()
   })
 
-  it('starts with every client, then switches into one complete client overview', async () => {
+  /*
+   * The queue is the only thing this page does now. A client's own tabs live
+   * on the client record, so every per-client action here links there rather
+   * than repeating it.
+   */
+  it('is the cross-client work queue, with each next action opening where the work is done', async () => {
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Client Command Center' })).toBeInTheDocument()
-    expect(screen.getByText('Private workspace overview')).toBeInTheDocument()
-    expect(screen.getByLabelText('Switch client overview')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Pipeline' })).toBeInTheDocument()
+    expect(screen.queryByText('Private workspace overview')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Podcasts/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /Placements/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'All clients' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
     expect(screen.getByText('Get client podcast decisions')).toBeInTheDocument()
-    expect(screen.queryByText('Founder Frequency')).not.toBeInTheDocument()
+    expect(screen.getByText(/Onboarding not started · Dashboard live · Portal enabled/)).toBeInTheDocument()
+
+    // Every client links to its record, and the churned client's next action
+    // is nothing to open.
+    const links = screen.getAllByRole('link', { name: 'Client record' })
+    expect(links[0]).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(links[1]).toHaveAttribute('href', `/app/clients/${formerClientId}`)
+    expect(screen.queryByRole('link', { name: 'Open Jordan Former next action' })).not.toBeInTheDocument()
+
+    // The attention list holds live work across clients; finished work is not there.
+    const attention = screen.getByRole('heading', { name: 'Needs attention' }).closest('div')?.parentElement as HTMLElement
+    expect(within(attention).getByText('Founder Frequency')).toBeInTheDocument()
+    expect(within(attention).getByText('Operator Stories')).toBeInTheDocument()
     expect(screen.queryByText('Scale Notes')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'View Taylor Client overview' }))
-    expect(screen.getByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Next client' }))
-    expect(screen.getByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Previous client' }))
-    expect(screen.getByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Guest and account readiness' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Outreach and conversations' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
-
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Placements/ }), { button: 0 })
-    expect(screen.getByText('Scale Notes')).toBeInTheDocument()
-
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Podcasts/ }), { button: 0 })
-    expect(screen.getByText('Founder Frequency')).toBeInTheDocument()
-    expect(screen.getByText('Operator Stories')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("Search this client's podcasts"), {
-      target: { value: 'Operator Stories' },
-    })
-    expect(screen.getByText('Operator Stories')).toBeInTheDocument()
-    expect(screen.queryByText('Founder Frequency')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Taylor Client next action' }))
     const details = await screen.findByRole('dialog')
-    expect(within(details).getByRole('heading', { name: 'Operator Stories' })).toBeInTheDocument()
-    expect(within(details).getByText('jamie@operator.example')).toBeInTheDocument()
+    expect(within(details).getByRole('heading', { name: 'Founder Frequency' })).toBeInTheDocument()
     expect(within(details).getByRole('link', { name: 'Client shortlist' })).toHaveAttribute(
       'href',
-      `/app/clients/${clientId}?tab=approval`,
+      `/app/clients/${clientId}?tab=shortlist`,
     )
     expect(within(details).getByRole('link', { name: 'Client campaign' })).toHaveAttribute(
       'href',
@@ -419,15 +397,43 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(mockedGetSystem).toHaveBeenCalledWith(workspaceId)
   })
 
+  it('sends a next action that is not a shortlist row to the right client record tab', async () => {
+    mockedGetSystem.mockResolvedValue({
+      ...response,
+      clients: [{ ...response.clients[0], profile: { ...response.clients[0].profile, ready: false } }],
+    } as never)
+
+    renderPage()
+
+    expect(await screen.findByText('Complete the guest profile')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Taylor Client next action' })).toHaveAttribute(
+      'href',
+      `/app/clients/${clientId}?tab=profile`,
+    )
+  })
+
+  // The nav and the client record open this page on one client. That narrows
+  // the queue rather than opening a second copy of the client's tabs.
+  it('narrows the queue to the client the address names, until cleared', async () => {
+    renderPage(`/app/client-podcast-system?client=${clientId}`)
+
+    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Jordan Former' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Showing/)).toHaveTextContent('Taylor Client')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all clients' }))
+    expect(await screen.findByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+  })
+
   it('keeps raw contact emails out of the member-safe lifecycle response', async () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', email: 'member@example.com' },
       workspace: {
-    id: workspaceId,
-    name: 'Acme Workspace',
-    logo_path: `${workspaceId}/66666666-6666-4666-8666-666666666666.png`,
-    logo_updated_at: '2026-07-25T11:00:00.000Z',
-  },
+        id: workspaceId,
+        name: 'Acme Workspace',
+        logo_path: `${workspaceId}/66666666-6666-4666-8666-666666666666.png`,
+        logo_updated_at: '2026-07-25T11:00:00.000Z',
+      },
       membership: { role: 'member', full_name: 'Workspace Member' },
       isPlatformAdmin: false,
     } as never)
@@ -439,15 +445,10 @@ describe('WorkspaceClientPodcastSystem', () => {
       can_manage: false,
     })
 
-    renderPage()
-    await screen.findByRole('heading', { name: 'Client Command Center' })
-    fireEvent.click(screen.getByRole('button', { name: 'View Taylor Client overview' }))
-    expect(screen.getByText('Owner/admin only')).toBeInTheDocument()
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Podcasts/ }), { button: 0 })
-    fireEvent.change(screen.getByLabelText("Search this client's podcasts"), {
-      target: { value: 'Operator Stories' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    renderPage(`/app/client-podcast-system?client=${clientId}`)
+    await screen.findByRole('heading', { name: 'Pipeline' })
+    expect(await screen.findByText(/Onboarding owner\/admin only/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Operator Stories/ }))
 
     const details = await screen.findByRole('dialog')
     expect(within(details).queryByText('jamie@operator.example')).not.toBeInTheDocument()

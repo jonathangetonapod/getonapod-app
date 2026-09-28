@@ -1,88 +1,56 @@
 import { useState, useEffect, type CSSProperties } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { supabase } from '@/lib/supabase'
-import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
-import {
-  Mic,
-  Users,
-  Star,
-  ExternalLink,
-  Loader2,
-  Sparkles,
-  Target,
-  CheckCircle2,
-  TrendingUp,
-  Radio,
-  X,
-  ChevronRight,
-  ChevronLeft,
-  Headphones,
-  Zap,
-  Globe,
-  Award,
-  BarChart3,
-  ArrowRight,
-  Search,
-  Tag,
-  ThumbsUp,
-  ThumbsDown,
-  MessageSquare,
-  Check,
-  Clock,
-  Building2,
-  MapPin,
-  Home,
-  Heart,
-  Smartphone,
-  ShoppingBag,
-  ChevronDown,
-  ChevronUp,
-  HelpCircle,
-  MousePointerClick,
-  ListChecks,
-  Rocket,
-  Quote,
-  Calendar,
-  FileText,
-  RefreshCw,
-  RotateCcw,
-} from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { ArrowRight, BarChart3, Calendar, ExternalLink, FileText, HelpCircle, Loader2, MessageSquare, Play, Quote, Radio, RefreshCw, Search, X } from 'lucide-react'
 import { bookingLinkUrl, schedulerEmbedUrl, schedulerName } from '@/lib/schedulerEmbed'
-import type { PodcastDemographics } from '@/services/podscan'
-import { cn } from '@/lib/utils'
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 import PageSEO from '@/components/seo/PageSEO'
 import { openExternalUrl } from '@/lib/externalUrl'
 import { currentHostname } from '@/lib/workspaceHost'
+import { AudienceEstimatesSheet } from '@/components/review/AudienceEstimatesSheet'
+import { FocusedReview } from '@/components/review/FocusedReview'
+import { ReviewCard } from '@/components/review/ReviewCard'
+import { ReviewDoneCard } from '@/components/review/ReviewDoneCard'
+import { ReviewEmptyState } from '@/components/review/ReviewEmptyState'
+import { ReviewFilters } from '@/components/review/ReviewFilters'
+import { ReviewPagination } from '@/components/review/ReviewPagination'
+import { ReviewTutorial } from '@/components/review/ReviewTutorial'
+import { ShowProfileSheet } from '@/components/review/ShowProfileSheet'
+import { ReviewBrandContext, normalizedBrandColor, readableBrandColor, reviewBrandStyle } from '@/components/review/reviewBrand'
+import {
+  EMPTY_REVIEW_FILTERS,
+  collectReviewCategories,
+  filterReviewPodcasts,
+  hasActiveFilters,
+  type ReviewFilterState,
+} from '@/components/review/reviewFilters'
+import {
+  REVIEW_CARDS_PER_PAGE,
+  fitAnalysisFor,
+  formatListeners,
+  reviewCounts,
+  uniqueReviewPodcasts,
+  type ReviewPodcast,
+  type ReviewStatus,
+} from '@/components/review/reviewTypes'
+import { useDebouncedValue } from '@/components/review/useDebouncedValue'
 
 export default function ProspectView() {
   return <ProspectViewContent />
 }
 
+/** The fields of the public dashboard payload this page reads. */
 interface ProspectDashboard {
   prospect_name: string
-  prospect_bio: string | null
   prospect_image_url: string | null
-  is_active: boolean
-  show_pricing_section: boolean
   personalized_tagline: string | null
   media_kit_url: string | null
   loom_video_url: string | null
-  loom_thumbnail_url: string | null
   loom_video_title: string | null
   show_loom_video: boolean
   testimonial_ids: string[] | null
@@ -93,12 +61,10 @@ interface ProspectDashboard {
 }
 
 interface ProspectWorkspaceBrand {
-  name: string
   brand_name: string
   logo_url: string | null
   primary_color: string | null
   accent_color: string | null
-  /** Workspace scheduler link, used when this dashboard sets no CTA. */
   booking_url?: string | null
 }
 
@@ -110,54 +76,23 @@ interface ProspectTestimonial {
   quote: string | null
 }
 
-interface PodcastCategory {
-  category_id: string
-  category_name: string
-}
-
-interface OutreachPodcast {
-  podcast_id: string
-  podcast_name: string
-  podcast_description: string | null
-  podcast_image_url: string | null
-  podcast_url: string | null
-  publisher_name: string | null
-  itunes_rating: number | null
-  episode_count: number | null
-  audience_size: number | null
-  podcast_categories?: PodcastCategory[] | null
-  last_posted_at: string | null
-  // Cached AI analysis fields
-  ai_clean_description?: string | null
-  ai_fit_reasons?: string[] | null
-  ai_pitch_angles?: Array<{ title: string; description: string }> | null
-  // Cached demographics
-  demographics?: PodcastDemographics | null
-}
-
-interface PitchAngle {
-  title: string
-  description: string
-}
-
-interface PodcastFitAnalysis {
-  clean_description: string
-  fit_reasons: string[]
-  pitch_angles: PitchAngle[]
-}
-
 interface PodcastFeedback {
   id: string
   prospect_dashboard_id: string
   podcast_id: string
   podcast_name: string | null
-  status: 'approved' | 'rejected' | null
+  status: ReviewStatus
   notes: string | null
   created_at: string
   updated_at: string
 }
 
-type FeedbackFilter = 'all' | 'approved' | 'rejected' | 'not_reviewed'
+interface ProspectDashboardResponse {
+  success: true
+  dashboard: ProspectDashboard
+  feedback: PodcastFeedback[]
+  workspace: ProspectWorkspaceBrand
+}
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -170,7 +105,7 @@ class PublicReadError extends Error {
   }
 }
 
-/** The dashboard exists and is being edited — not the same as a dead link. */
+/** The dashboard exists and is being edited. Not the same as a dead link. */
 const DASHBOARD_UPDATING = 'DASHBOARD_UPDATING'
 
 async function readPublicEndpoint<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
@@ -200,13 +135,11 @@ async function readPublicEndpoint<T>(endpoint: string, body: Record<string, unkn
     }
 
     if (!response.ok) {
-      const message = payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
-        ? payload.error
-        : 'This page could not be loaded. Please try again.'
-      const code = payload && typeof payload === 'object' && 'code' in payload && typeof payload.code === 'string'
-        ? payload.code
-        : undefined
-      throw new PublicReadError(message, response.status, code)
+      const field = (key: string) => {
+        const value = payload && typeof payload === 'object' ? (payload as Record<string, unknown>)[key] : undefined
+        return typeof value === 'string' ? value : undefined
+      }
+      throw new PublicReadError(field('error') || 'This page could not be loaded. Please try again.', response.status, field('code'))
     }
 
     return payload as T
@@ -229,15 +162,24 @@ function shouldRetryPublicRead(failureCount: number, error: unknown): boolean {
 
 function testimonialInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '—'
+  if (parts.length === 0) return '-'
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
 }
 
 function testimonialRole(testimonial: ProspectTestimonial): string {
-  return [testimonial.client_title, testimonial.client_company]
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join(', ')
+  return [testimonial.client_title, testimonial.client_company].map((part) => part?.trim()).filter(Boolean).join(', ')
+}
+
+/** Only a Loom share or embed link, over https, becomes a frame. */
+function loomEmbedUrlFor(url: string): string | null {
+  try {
+    const parsedUrl = new URL(url)
+    if (parsedUrl.protocol !== 'https:' || !['loom.com', 'www.loom.com'].includes(parsedUrl.hostname)) return null
+    const match = parsedUrl.pathname.match(/^\/(?:share|embed)\/([a-zA-Z0-9_-]{8,128})\/?$/)
+    return match ? `https://www.loom.com/embed/${match[1]}` : null
+  } catch {
+    return null
+  }
 }
 
 function ProspectViewContent() {
@@ -245,74 +187,39 @@ function ProspectViewContent() {
   const queryClient = useQueryClient()
 
   // UI state
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
-  const [episodeFilter, setEpisodeFilter] = useState<string>('any')
-  const [audienceFilter, setAudienceFilter] = useState<string>('any')
-  const [sortBy, setSortBy] = useState<'default' | 'audience_desc' | 'audience_asc'>('default')
-
-  // Pagination
-  const CARDS_PER_PAGE = 18
+  const [filters, setFilters] = useState<ReviewFilterState>(EMPTY_REVIEW_FILTERS)
+  const debouncedSearch = useDebouncedValue(filters.search)
   const [currentPage, setCurrentPage] = useState(1)
+  const [focusedQueue, setFocusedQueue] = useState<ReviewPodcast[] | null>(null)
 
-  // Side panel state
-  const [selectedPodcast, setSelectedPodcast] = useState<OutreachPodcast | null>(null)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [fitAnalysis, setFitAnalysis] = useState<PodcastFitAnalysis | null>(null)
-  const [isLoadingDemographics, setIsLoadingDemographics] = useState(false)
-  const [demographics, setDemographics] = useState<PodcastDemographics | null>(null)
-  const [isDemographicsExpanded, setIsDemographicsExpanded] = useState(false)
+  // Show profile state
+  const [selectedPodcast, setSelectedPodcast] = useState<ReviewPodcast | null>(null)
+  const [currentNotes, setCurrentNotes] = useState('')
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false)
 
   // Loom video modal state
   const [showLoomVideo, setShowLoomVideo] = useState(false)
   const [loomVideoLoading, setLoomVideoLoading] = useState(true)
 
-  // Feedback state (for saving)
-  const [currentNotes, setCurrentNotes] = useState('')
-  const [isSavingFeedback, setIsSavingFeedback] = useState(false)
-
-  // Cache for analyses and demographics
-  const [analysisCache, setAnalysisCache] = useState<Map<string, PodcastFitAnalysis>>(new Map())
-  const [demographicsCache, setDemographicsCache] = useState<Map<string, PodcastDemographics | null>>(new Map())
-
-  // Personalized tagline state
-  const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
-
-  // Tutorial modal state
   const [showTutorial, setShowTutorial] = useState(false)
-  const [tutorialStep, setTutorialStep] = useState(0)
-
-  // Review panel state
   const [showReviewPanel, setShowReviewPanel] = useState(false)
 
-  // Pricing feature modal state
-
   // React Query: Fetch dashboard + feedback via edge function (cached for 5 minutes)
-  const {
-    data: dashboardResponse,
-    isLoading: dashboardLoading,
-    error: dashboardError,
-    refetch: refetchDashboard,
-  } = useQuery({
+  const { data: dashboardResponse, isLoading: dashboardLoading, error: dashboardError, refetch: refetchDashboard } = useQuery({
     queryKey: ['prospect-dashboard', slug],
     queryFn: async () => {
       if (!slug) throw new Error('Invalid dashboard link')
 
-      const result = await readPublicEndpoint<{
-        success: boolean
-        error?: string
-        dashboard: ProspectDashboard
-        feedback: PodcastFeedback[]
-        workspace: ProspectWorkspaceBrand
-      }>('get-prospect-dashboard', { slug, hostname: currentHostname() })
+      const result = await readPublicEndpoint<Omit<ProspectDashboardResponse, 'success'> & { success: boolean; error?: string }>(
+        'get-prospect-dashboard',
+        { slug, hostname: currentHostname() },
+      )
 
       if (!result.success) {
         throw new PublicReadError(result.error || 'Dashboard not found', 400)
       }
 
-      return result as { success: true; dashboard: ProspectDashboard; feedback: PodcastFeedback[]; workspace: ProspectWorkspaceBrand }
+      return result as ProspectDashboardResponse
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     enabled: !!slug,
@@ -322,30 +229,15 @@ function ProspectViewContent() {
 
   const dashboard = dashboardResponse?.dashboard ?? null
   const workspaceBrand = dashboardResponse?.workspace ?? null
-  // The agency's own scheduler, pasted once in workspace settings. A dashboard
-  // with its own call-to-action still wins; this is what the page falls back to
-  // instead of "reply to the email that brought you here".
-  /*
-   * The dashboard is white-label, so the accent and the person signing the note
-   * come from the workspace, not from us. The fallback is the design's own
-   * terracotta, used only when a workspace has set no accent of its own.
-   */
-  const accentColor = workspaceBrand?.accent_color?.trim() || '#b46a3c'
-  // The agency's primary brand color, applied to the one surface where
-  // "primary" belongs — the booking CTA — with a text color chosen for
-  // contrast so a light brand color can't render unreadable. #0d1b2a is the
-  // page's structural ink and stays fixed. Falls back to that ink.
-  const primaryColor = /^#[0-9a-f]{6}$/iu.test(workspaceBrand?.primary_color?.trim() || '')
-    ? (workspaceBrand!.primary_color as string).trim()
-    : '#0d1b2a'
-  const primaryTextColor = (() => {
-    const hex = primaryColor.replace('#', '')
-    const r = parseInt(hex.slice(0, 2), 16) / 255
-    const g = parseInt(hex.slice(2, 4), 16) / 255
-    const b = parseInt(hex.slice(4, 6), 16) / 255
-    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
-    return luminance > 0.6 ? '#0d1b2a' : '#f7fafc'
-  })()
+  // White-label: colours and the signature come from the workspace, never from
+  // us. The fallbacks are the design's own ink and terracotta.
+  const brand = {
+    primary: normalizedBrandColor(workspaceBrand?.primary_color, '#0D1B2A'),
+    accent: normalizedBrandColor(workspaceBrand?.accent_color, '#B46A3C'),
+  }
+  const accentColor = brand.accent
+  const primaryColor = brand.primary
+  const primaryTextColor = readableBrandColor(primaryColor)
   const conciergeName = workspaceBrand?.brand_name?.trim()
     ? `${workspaceBrand.brand_name.trim()}, your booking team`
     : 'Your booking team'
@@ -355,11 +247,7 @@ function ProspectViewContent() {
   const bookingProvider = schedulerName(workspaceBrand?.booking_url)
   const brandName = workspaceBrand?.brand_name?.trim() || 'Your booking team'
 
-  /*
-   * The tab, its icon and its colour belong to the agency whose page this is.
-   * A shared link used to preview with our name on it, which is the one thing
-   * a white-label page must never do.
-   */
+  // The tab, its icon and its colour belong to the agency whose page this is.
   const seo = (
     <PageSEO
       title={`Your podcast shortlist | ${brandName}`}
@@ -372,13 +260,8 @@ function ProspectViewContent() {
     />
   )
 
-  /*
-   * Only the testimonials somebody chose for this dashboard, and deliberately
-   * no fallback to the featured ones. The testimonials table is not
-   * workspace-scoped — it is the platform's own library, publicly readable —
-   * so falling back would print our clients on another agency's white-label
-   * page, which is the same mistake as signing the hero note with a fixed name.
-   */
+  // Only the testimonials chosen for this dashboard, and no fallback to the
+  // featured ones: the table is the platform's own library, not workspace-scoped.
   const curatedTestimonialIds =
     dashboard?.show_testimonials === false
       ? []
@@ -404,18 +287,13 @@ function ProspectViewContent() {
   // The design's card is a quote, so one without a quote has nothing to say here.
   const quotedTestimonials = curatedTestimonials.filter((testimonial) => testimonial.quote?.trim())
 
-  /*
-   * Written for the agency to be able to stand behind without being asked:
-   * every answer is about how this page works, and none of them promises a
-   * price, a date, or a number of bookings on their behalf. The team is named
-   * from the workspace, so the prospect reads their agency's name and not ours.
-   */
+  // Every answer is about how this page works; none promises a price, a date,
+  // or a number of bookings on the agency's behalf.
   const faqTeamName = workspaceBrand?.brand_name?.trim() || 'We'
   const prospectFaqs = [
     {
       question: 'How were these shows chosen?',
-      answer:
-        'Each one was matched against your background, the audience you are trying to reach, and whether the format actually gives a guest room to talk. The reason a show made your list is written on its card.',
+      answer: 'Each one was matched against your background, the audience you are trying to reach, and whether the format actually gives a guest room to talk. The reason a show made your list is written on its card.',
     },
     {
       question: 'What happens when I mark a show as interested?',
@@ -423,65 +301,32 @@ function ProspectViewContent() {
     },
     {
       question: 'What if a show is not right for me?',
-      answer:
-        'Mark it not a fit. That is as useful as a pick: it says something about what you want, and the next set of suggestions is sharper for it.',
+      answer: 'Mark it not a fit. That is as useful as a pick: it says something about what you want, and the next set of suggestions is sharper for it.',
     },
     {
       question: 'Am I committing to anything by marking a show as interested?',
-      answer:
-        'No. It marks which rooms are worth a pitch. It is not a booking and it is not a contract, and you can change your mind on any show before it is pitched.',
+      answer: 'No. It marks which rooms are worth a pitch. It is not a booking and it is not a contract, and you can change your mind on any show before it is pitched.',
     },
     {
       question: 'What do you need from me?',
-      answer:
-        'Your decisions on this page, and your time on the recordings themselves. The pitching, the chasing, the scheduling and the prep notes are handled for you.',
+      answer: 'Your decisions on this page, and your time on the recordings themselves. The pitching, the chasing, the scheduling and the prep notes are handled for you.',
     },
     {
       question: 'Who else can see this page?',
-      answer:
-        'Only the people you send the link to. It is not listed anywhere, and search engines are asked not to index it.',
+      answer: 'Only the people you send the link to. It is not listed anywhere, and search engines are asked not to index it.',
     },
   ]
 
   // Fetch the shortlist in parallel with the dashboard so a slow request cannot block both.
-  const {
-    data: podcasts = [],
-    isLoading: podcastsLoading,
-    error: podcastsError,
-    refetch: refetchPodcasts,
-  } = useQuery({
+  const { data: podcasts = [], isLoading: podcastsLoading, error: podcastsError, refetch: refetchPodcasts } = useQuery({
     queryKey: ['prospect-podcasts', slug],
     queryFn: async () => {
       if (!slug) return []
 
-      const data = await readPublicEndpoint<{
-        podcasts?: OutreachPodcast[]
-        cachePerformance?: {
-          cacheHitRate: number
-          apiCallsSaved: number
-          costSavings: number
-        }
-      }>('get-prospect-podcasts', {
+      const data = await readPublicEndpoint<{ podcasts?: ReviewPodcast[] }>('get-prospect-podcasts', {
         dashboardSlug: slug,
         cacheOnly: true,
       })
-
-      // These are the agency's internal API-cost economics — never for a
-      // prospect's console on a white-label page. Dev only.
-      if (import.meta.env.DEV) {
-        if (data.cachePerformance) {
-          const { cacheHitRate, apiCallsSaved, costSavings } = data.cachePerformance
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-          console.log('📊 [PROSPECT DASHBOARD] Cache Performance')
-          console.log(`   Podcasts loaded: ${data.podcasts?.length || 0}`)
-          console.log(`   ✅ Cache hit rate: ${cacheHitRate}%`)
-          console.log(`   💰 API calls saved: ${apiCallsSaved}`)
-          console.log(`   💵 Cost savings: $${costSavings}`)
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-        } else {
-          console.log(`[Dashboard] Loaded ${data.podcasts?.length || 0} podcasts from cache`)
-        }
-      }
 
       if (data.podcasts !== undefined && !Array.isArray(data.podcasts)) {
         throw new PublicReadError('The podcast shortlist could not be read. Please try again.')
@@ -516,153 +361,21 @@ function ProspectViewContent() {
   const isUpdating = dashboardError instanceof PublicReadError
     && dashboardError.code === DASHBOARD_UPDATING
 
-  // Helper function to extract Loom video ID from URL
-  const getLoomEmbedUrl = (url: string): string | null => {
-    try {
-      const parsedUrl = new URL(url)
-      if (
-        parsedUrl.protocol !== 'https:' ||
-        !['loom.com', 'www.loom.com'].includes(parsedUrl.hostname)
-      ) {
-        return null
-      }
-
-      const match = parsedUrl.pathname.match(/^\/(?:share|embed)\/([a-zA-Z0-9_-]{8,128})\/?$/)
-      return match ? `https://www.loom.com/embed/${match[1]}` : null
-    } catch {
-      return null
-    }
-  }
-
-  const loomEmbedUrl = dashboard?.loom_video_url
-    ? getLoomEmbedUrl(dashboard.loom_video_url)
-    : null
-
-  // View count is now incremented server-side by the get-prospect-dashboard edge function
-
-  // Debounce search query for better performance
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [searchQuery])
+  const loomEmbedUrl = dashboard?.loom_video_url ? loomEmbedUrlFor(dashboard.loom_video_url) : null
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedCategories, debouncedSearch, feedbackFilter, episodeFilter, audienceFilter, sortBy])
-
-  // Public dashboards display only content precomputed by an administrator.
-  useEffect(() => {
-    setPersonalizedTagline(dashboard?.personalized_tagline ?? null)
-  }, [dashboard?.personalized_tagline])
-
-  // The dashboard is designed to be self-explanatory. The walkthrough is
-  // there behind the help button and never opens on its own.
-  const closeTutorial = () => {
-    setShowTutorial(false)
-    setTutorialStep(0)
-  }
-
-  // Populate AI analysis cache from database-cached data (instant, no API calls needed)
-  useEffect(() => {
-    if (podcasts.length === 0) return
-
-    setAnalysisCache((current) => {
-      const newCache = new Map(current)
-      let addedCount = 0
-
-      podcasts.forEach(podcast => {
-        if (!newCache.has(podcast.podcast_id) && podcast.ai_fit_reasons && podcast.ai_fit_reasons.length > 0) {
-          newCache.set(podcast.podcast_id, {
-            clean_description: podcast.ai_clean_description || podcast.podcast_description || '',
-            fit_reasons: podcast.ai_fit_reasons || [],
-            pitch_angles: podcast.ai_pitch_angles || [],
-          })
-          addedCount++
-        }
-      })
-
-      if (addedCount > 0) console.log(`[Cache] Loaded ${addedCount} AI analyses from database`)
-      return addedCount > 0 ? newCache : current
-    })
-  }, [podcasts])
-
-  // Populate demographics cache from database-cached data (instant, no API calls)
-  useEffect(() => {
-    if (podcasts.length === 0) return
-
-    setDemographicsCache((current) => {
-      const newCache = new Map(current)
-      let loadedCount = 0
-      let changedCount = 0
-
-      podcasts.forEach(podcast => {
-        if (!newCache.has(podcast.podcast_id) && podcast.demographics) {
-          newCache.set(podcast.podcast_id, podcast.demographics as PodcastDemographics)
-          loadedCount++
-          changedCount++
-        } else if (!newCache.has(podcast.podcast_id)) {
-          newCache.set(podcast.podcast_id, null) // Mark as checked but no data
-          changedCount++
-        }
-      })
-
-      if (loadedCount > 0) console.log(`[Cache] Loaded ${loadedCount} demographics from database`)
-      return changedCount > 0 ? newCache : current
-    })
-  }, [podcasts])
-
-  // Analyze podcast fit when side panel opens
-  useEffect(() => {
-    if (!selectedPodcast || !dashboard?.prospect_bio) {
-      setFitAnalysis(null)
-      return
-    }
-
-    const cached = analysisCache.get(selectedPodcast.podcast_id)
-    console.log('[Panel] Checking cache for:', selectedPodcast.podcast_name, 'Found:', !!cached, 'Cache size:', analysisCache.size)
-    if (cached) {
-      console.log('[Panel] ✅ Using cached analysis')
-      setFitAnalysis(cached)
-      return
-    }
-
-    console.log('[Panel] No precomputed fit analysis is available')
-    setIsAnalyzing(false)
-    setFitAnalysis(null)
-  }, [selectedPodcast, dashboard, analysisCache])
-
-  // Fetch demographics when side panel opens (use cache if available)
-  useEffect(() => {
-    if (!selectedPodcast) {
-      setDemographics(null)
-      return
-    }
-
-    // Check cache first
-    if (demographicsCache.has(selectedPodcast.podcast_id)) {
-      setDemographics(demographicsCache.get(selectedPodcast.podcast_id) || null)
-      return
-    }
-
-    setIsLoadingDemographics(false)
-    setDemographics(null)
-  }, [selectedPodcast, demographicsCache])
+  }, [filters, debouncedSearch])
 
   // Load existing notes when podcast is selected
   useEffect(() => {
-    if (selectedPodcast) {
-      setCurrentNotes(selectedFeedbackNotes)
-    } else {
-      setCurrentNotes('')
-    }
+    setCurrentNotes(selectedPodcast ? selectedFeedbackNotes : '')
   }, [selectedFeedbackNotes, selectedPodcast])
 
   // Save feedback (interested / not a fit / notes)
-  const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string) => {
-    if (!dashboard) return
+  const saveFeedback = async (podcastId: string, status: ReviewStatus, notes?: string) => {
+    if (!dashboard) return false
 
     const existingFeedback = feedbackMap.get(podcastId)
 
@@ -687,13 +400,11 @@ function ProspectViewContent() {
 
       const result = await response.json().catch(() => ({})) as { feedback?: Partial<PodcastFeedback> }
 
-      // Patch the cached feedback instead of refetching: get-prospect-dashboard
-      // records a view on every call, so a refetch would inflate view_count.
-      queryClient.setQueryData<typeof dashboardResponse>(['prospect-dashboard', slug], (current) => {
+      // Patch the cache instead of refetching: get-prospect-dashboard records a
+      // view on every call. The saved row's values fill what the payload lacks.
+      queryClient.setQueryData<ProspectDashboardResponse>(['prospect-dashboard', slug], (current) => {
         if (!current) return current
         const savedFeedback: PodcastFeedback = {
-          // The public dashboard payload carries no id; the saved row's own
-          // values fill these, and a cached row keeps what it already had.
           id: result.feedback?.id ?? existingFeedback?.id ?? `${slug}:${podcastId}`,
           prospect_dashboard_id: result.feedback?.prospect_dashboard_id ?? existingFeedback?.prospect_dashboard_id ?? '',
           podcast_id: podcastId,
@@ -706,9 +417,11 @@ function ProspectViewContent() {
         const rest = (current.feedback ?? []).filter((feedback) => feedback.podcast_id !== podcastId)
         return { ...current, feedback: [...rest, savedFeedback] }
       })
+      return true
     } catch (err) {
       console.error('Error saving feedback:', err)
       toast.error(err instanceof Error ? err.message : 'Unable to save your feedback. Please try again.')
+      return false
     } finally {
       setIsSavingFeedback(false)
     }
@@ -723,31 +436,15 @@ function ProspectViewContent() {
           <div className="container mx-auto">
             <div className="grid gap-10 xl:grid-cols-[1.02fr_0.98fr]">
               <div className="space-y-5">
-                <div className="h-6 w-40 rounded-full bg-[#dfeafb] animate-pulse" />
-                <div className="h-24 max-w-2xl rounded-[28px] bg-[#eef4ff] animate-pulse" />
-                <div className="h-8 max-w-xl rounded-[20px] bg-[#eef4ff] animate-pulse" />
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="h-36 rounded-[24px] bg-white/80 shadow-[0_14px_30px_rgba(13,27,42,0.08)] animate-pulse" />
-                  ))}
-                </div>
+                <div className="h-6 w-40 animate-pulse rounded-full bg-[#dfeafb]" />
+                <div className="h-24 max-w-2xl animate-pulse rounded-[28px] bg-[#eef4ff]" />
+                <div className="h-8 max-w-xl animate-pulse rounded-[20px] bg-[#eef4ff]" />
               </div>
-              <div className="h-[420px] rounded-[34px] bg-[#10263b] animate-pulse" />
+              <div className="h-[420px] animate-pulse rounded-[34px] bg-[#10263b]" />
             </div>
-
-            <div className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="overflow-hidden rounded-[28px] border border-[#0d1b2a]/8 bg-white/82 shadow-[0_16px_34px_rgba(13,27,42,0.08)] animate-pulse">
-                  <div className="aspect-[16/10] bg-[#dfeafb]" />
-                  <div className="space-y-3 p-5">
-                    <div className="h-5 w-3/4 rounded bg-[#e8f0fb]" />
-                    <div className="h-4 w-1/2 rounded bg-[#edf3fa]" />
-                    <div className="flex gap-2">
-                      <div className="h-6 w-16 rounded-full bg-[#edf3fa]" />
-                      <div className="h-6 w-16 rounded-full bg-[#edf3fa]" />
-                    </div>
-                  </div>
-                </div>
+            <div className="mt-10 grid gap-4 lg:grid-cols-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div key={item} className="h-64 animate-pulse rounded-3xl border border-[#0d1b2a]/8 bg-white/82" />
               ))}
             </div>
           </div>
@@ -759,37 +456,38 @@ function ProspectViewContent() {
   /*
    * Being updated is its own state, not an error. Somebody was sent this link
    * on purpose and the shortlist behind it still exists; the only true thing
-   * to say is that it is not ready this minute. The old screen said the
-   * dashboard could not be found, which reads as "you were sent a dead link".
+   * to say is that it is not ready this minute, not "dead link".
    */
-  if (isUpdating) {
+  if (isUpdating || error || !dashboard) {
+    const notice = isUpdating
+      ? {
+          icon: <RefreshCw className="h-8 w-8 text-[#b46a3c]" />,
+          iconClass: 'bg-[#fff3e8]',
+          title: 'Your shortlist is being updated',
+          body: 'We are adding to it right now. Your link still works. Check back in a few minutes, or reply to the email that brought you here and we will tell you the moment it is ready.',
+          action: 'Check again',
+        }
+      : {
+          icon: <X className="h-8 w-8 text-[#c5545b]" />,
+          iconClass: 'bg-[#fce9ea]',
+          title: 'Dashboard not available',
+          body: error || 'This dashboard could not be found.',
+          action: 'Try again',
+        }
     return (
       <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
         {seo}
         <section className="paper-noise flex min-h-screen items-center justify-center px-4 py-16">
           <Card className="w-full max-w-md border border-[#0d1b2a]/8 bg-white/84 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm">
             <CardContent className="space-y-4 px-6 pb-8 pt-8 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#fff3e8]">
-                <RefreshCw className="h-8 w-8 text-[#b46a3c]" />
-              </div>
+              <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${notice.iconClass}`}>{notice.icon}</div>
               <div className="space-y-2">
-                <h2 className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
-                  Your shortlist is being updated
-                </h2>
-                <p className="text-[#5d7188]">
-                  We are adding to it right now. Your link still works — check back in a few
-                  minutes, or reply to the email that brought you here and we will tell you the
-                  moment it is ready.
-                </p>
+                <h2 className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">{notice.title}</h2>
+                <p className="text-[#5d7188]">{notice.body}</p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => void refetchDashboard()}
-              >
+              <Button type="button" variant="outline" className="rounded-full" onClick={() => void refetchDashboard()}>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Check again
+                {notice.action}
               </Button>
             </CardContent>
           </Card>
@@ -798,177 +496,28 @@ function ProspectViewContent() {
     )
   }
 
-  // Error state
-  if (error || !dashboard) {
-    return (
-      <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
-        {seo}
-        <section className="paper-noise flex min-h-screen items-center justify-center px-4 py-16">
-          <Card className="max-w-md w-full border border-[#0d1b2a]/8 bg-white/84 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm">
-            <CardContent className="pt-8 pb-8 text-center space-y-4">
-              <div className="h-16 w-16 rounded-full bg-[#fce9ea] flex items-center justify-center mx-auto">
-                <X className="h-8 w-8 text-[#c5545b]" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">Dashboard not available</h2>
-                <p className="text-[#5d7188]">{error || 'This dashboard could not be found.'}</p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => void refetchDashboard()}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Try again
-              </Button>
-            </CardContent>
-          </Card>
-        </section>
-      </main>
-    )
-  }
+  const uniquePodcasts = uniqueReviewPodcasts(podcasts)
+  const totalReach = uniquePodcasts.reduce((sum, podcast) => sum + (podcast.audience_size || 0), 0)
+  const ratings = uniquePodcasts.filter((podcast) => podcast.itunes_rating).map((podcast) => podcast.itunes_rating!)
+  const avgRating = ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0
 
-
-  // Calculate stats
-  const totalReach = podcasts.reduce((sum, p) => sum + (p.audience_size || 0), 0)
-  const podcastsWithAudience = podcasts.filter(p => p.audience_size && p.audience_size > 0)
-  const avgListenersPerEpisode = podcastsWithAudience.length > 0
-    ? Math.round(totalReach / podcastsWithAudience.length)
-    : 0
-
-  const ratings = podcasts.filter(p => p.itunes_rating).map(p => p.itunes_rating!)
-  const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0
-
-  const totalEpisodes = podcasts.reduce((sum, p) => sum + (p.episode_count || 0), 0)
-  const avgEpisodesPerPodcast = podcasts.length > 0
-    ? Math.round(totalEpisodes / podcasts.length)
-    : 0
-
-  // Find top podcasts
-  const topRatedPodcast = [...podcasts].sort((a, b) => (b.itunes_rating || 0) - (a.itunes_rating || 0))[0]
-  const highestReachPodcast = [...podcasts].sort((a, b) => (b.audience_size || 0) - (a.audience_size || 0))[0]
-  const mostEpisodesPodcast = [...podcasts].sort((a, b) => (b.episode_count || 0) - (a.episode_count || 0))[0]
-
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
-    if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
-    return num.toLocaleString()
-  }
-
-  // Extract unique categories from all podcasts (computed each render, no useMemo)
-  const allCategories: Array<{ category_id: string; category_name: string }> = []
-  const seenCategoryIds = new Set<string>()
-  for (const podcast of podcasts) {
-    const cats = podcast.podcast_categories
-    if (Array.isArray(cats)) {
-      for (const cat of cats) {
-        if (cat?.category_id && cat?.category_name && !seenCategoryIds.has(cat.category_id)) {
-          seenCategoryIds.add(cat.category_id)
-          allCategories.push({ category_id: cat.category_id, category_name: cat.category_name })
-        }
-      }
-    }
-  }
-  allCategories.sort((a, b) => a.category_name.localeCompare(b.category_name))
-
-  // Filter podcasts based on search query, categories, and feedback status
-  // First dedupe podcasts by ID
-  const uniquePodcasts = podcasts.filter((podcast, index, self) =>
-    index === self.findIndex(p => p.podcast_id === podcast.podcast_id)
-  )
-
-  // Count feedback stats (from deduplicated list)
-  const feedbackStats = {
-    approved: 0,
-    rejected: 0,
-    notReviewed: 0
-  }
-  uniquePodcasts.forEach(podcast => {
-    const feedback = feedbackMap.get(podcast.podcast_id)
-    if (feedback?.status === 'approved') feedbackStats.approved++
-    else if (feedback?.status === 'rejected') feedbackStats.rejected++
-    else feedbackStats.notReviewed++
-  })
-
-  const filteredPodcasts = uniquePodcasts.filter(podcast => {
-    // Search filter (use debounced for performance)
-    if (debouncedSearch.trim()) {
-      const query = debouncedSearch.toLowerCase()
-      const matchesSearch = (
-        podcast.podcast_name.toLowerCase().includes(query) ||
-        podcast.podcast_description?.toLowerCase().includes(query) ||
-        podcast.publisher_name?.toLowerCase().includes(query)
-      )
-      if (!matchesSearch) return false
-    }
-
-    // Category filter
-    if (selectedCategories.length > 0) {
-      const podcastCats = podcast.podcast_categories
-      if (!Array.isArray(podcastCats) || podcastCats.length === 0) return false
-      const podcastCatIds = podcastCats.map(c => c.category_id)
-      const hasMatch = selectedCategories.some(id => podcastCatIds.includes(id))
-      if (!hasMatch) return false
-    }
-
-    // Feedback status filter
-    if (feedbackFilter !== 'all') {
-      const feedback = feedbackMap.get(podcast.podcast_id)
-      if (feedbackFilter === 'approved' && feedback?.status !== 'approved') return false
-      if (feedbackFilter === 'rejected' && feedback?.status !== 'rejected') return false
-      if (feedbackFilter === 'not_reviewed' && feedback?.status) return false
-    }
-
-    // Episode count filter
-    if (episodeFilter !== 'any') {
-      const eps = podcast.episode_count || 0
-      if (episodeFilter === 'under50' && eps >= 50) return false
-      if (episodeFilter === '50to100' && (eps < 50 || eps >= 100)) return false
-      if (episodeFilter === '100to200' && (eps < 100 || eps >= 200)) return false
-      if (episodeFilter === '200plus' && eps < 200) return false
-    }
-
-    // Audience size filter
-    if (audienceFilter !== 'any') {
-      const aud = podcast.audience_size || 0
-      if (audienceFilter === 'under1k' && aud >= 1000) return false
-      if (audienceFilter === '1kto5k' && (aud < 1000 || aud >= 5000)) return false
-      if (audienceFilter === '5kto10k' && (aud < 5000 || aud >= 10000)) return false
-      if (audienceFilter === '10kto25k' && (aud < 10000 || aud >= 25000)) return false
-      if (audienceFilter === '25kto50k' && (aud < 25000 || aud >= 50000)) return false
-      if (audienceFilter === '50kto100k' && (aud < 50000 || aud >= 100000)) return false
-      if (audienceFilter === '100kplus' && aud < 100000) return false
-    }
-
-    return true
-  })
-
-  // Sort filtered podcasts
-  const sortedPodcasts = [...filteredPodcasts].sort((a, b) => {
-    switch (sortBy) {
-      case 'audience_desc':
-        return (b.audience_size || 0) - (a.audience_size || 0)
-      case 'audience_asc':
-        return (a.audience_size || 0) - (b.audience_size || 0)
-      default:
-        return 0
-    }
-  })
+  const allCategories = collectReviewCategories(uniquePodcasts)
+  const counts = reviewCounts(uniquePodcasts, feedbackMap)
+  const sortedPodcasts = filterReviewPodcasts(uniquePodcasts, { ...filters, search: debouncedSearch }, feedbackMap)
 
   // Pagination
-  const totalPages = Math.ceil(sortedPodcasts.length / CARDS_PER_PAGE)
-  const startIndex = (currentPage - 1) * CARDS_PER_PAGE
-  const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  const reviewedCountTotal = Array.from(feedbackMap.values()).filter(f => f.status).length
-  const approvedCountTotal = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
+  const totalPages = Math.ceil(sortedPodcasts.length / REVIEW_CARDS_PER_PAGE)
+  const startIndex = (currentPage - 1) * REVIEW_CARDS_PER_PAGE
+  const paginatedPodcasts = sortedPodcasts.slice(startIndex, startIndex + REVIEW_CARDS_PER_PAGE)
+  const reviewedCountTotal = counts.interested + counts.notAFit
+  const approvedCountTotal = counts.interested
   const progressPercent = uniquePodcasts.length > 0 ? (reviewedCountTotal / uniquePodcasts.length) * 100 : 0
   const prospectFirstName = dashboard.prospect_name.trim().split(/\s+/)[0] || dashboard.prospect_name
   // Every show has a decision. The page should say so where the list was,
   // not leave the reader hunting for a submit button that does not exist.
   const reviewComplete = !loadingPodcasts && !podcastsError
     && uniquePodcasts.length > 0
-    && feedbackStats.notReviewed === 0
+    && counts.toReview === 0
   // The one call link this page has: the dashboard's own when it is a
   // booking link, otherwise the workspace scheduler, and nothing when the
   // dashboard turned its call-to-action off.
@@ -978,8 +527,41 @@ function ProspectViewContent() {
       ? dashboard.cta_url
       : bookingLink
 
+  const startFocusedReview = () => {
+    if (sortedPodcasts.length === 0) return
+    setFocusedQueue(sortedPodcasts)
+  }
+
+  const exitFocusedReview = (reason: 'complete' | 'dismiss') => {
+    setFocusedQueue(null)
+    if (reason === 'complete') document.getElementById('opportunities')?.scrollIntoView?.({ behavior: 'smooth' })
+  }
+
+  const bookCallButton = (link: string, className: string) => (
+    <button
+      type="button"
+      onClick={() => openExternalUrl(link)}
+      style={{ backgroundColor: primaryColor, color: primaryTextColor }}
+      className={`inline-flex shrink-0 items-center gap-2 rounded-full px-5 text-sm font-semibold shadow-[0_8px_20px_rgba(13,27,42,0.18)] transition-transform hover:-translate-y-px ${className}`}
+    >
+      <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+      Book a short call
+    </button>
+  )
+
+  const replyFallback = (title: string) => (
+    <div className="flex max-w-sm items-start gap-3 rounded-[22px] border border-white/14 bg-white/8 px-5 py-4">
+      <MessageSquare className="mt-0.5 h-5 w-5 flex-shrink-0 text-white/80" />
+      <div>
+        <p className="font-semibold">{title}</p>
+        <p className="mt-1 text-sm leading-6 text-white/65">Reply to the email that brought you here and we will take care of the next step.</p>
+      </div>
+    </div>
+  )
+
   return (
-    <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+    <ReviewBrandContext.Provider value={brand}>
+    <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]" style={reviewBrandStyle(brand)}>
       {seo}
       <a
         href="#opportunities"
@@ -990,13 +572,7 @@ function ProspectViewContent() {
 
       {/*
        * A sticky bar carrying who this was prepared for and the way to talk to
-       * somebody about it.
-       *
-       * The page is long and the booking link lived only in the hero, so the
-       * further anyone read the further they were from acting on it. It is
-       * branded by the workspace, not by us: on a white-label dashboard the
-       * name at the top is the agency's, and the prospect should never learn
-       * ours from it.
+       * somebody about it, branded by the workspace and never by us.
        */}
       <div className="sticky top-0 z-[45] border-b border-[#0d1b2a]/[0.07] bg-[#fbf8f3]/85 backdrop-blur-[12px]">
         <div className="mx-auto flex max-w-[1320px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
@@ -1021,17 +597,7 @@ function ProspectViewContent() {
                 {approvedCountTotal} {approvedCountTotal === 1 ? 'pick' : 'picks'}
               </span>
             )}
-            {bookingLink && (
-              <button
-                type="button"
-                onClick={() => openExternalUrl(bookingLink)}
-                style={{ backgroundColor: primaryColor, color: primaryTextColor }}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-5 text-sm font-semibold shadow-[0_8px_20px_rgba(13,27,42,0.18)] transition-transform hover:-translate-y-px"
-              >
-                <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                Book a short call
-              </button>
-            )}
+            {bookingLink ? bookCallButton(bookingLink, 'h-10') : null}
           </div>
         </div>
       </div>
@@ -1039,11 +605,7 @@ function ProspectViewContent() {
       <section className="px-4 pb-10 pt-14 md:pb-12 md:pt-16">
         <div className="container mx-auto">
           <div className="grid gap-6 rounded-[32px] border border-[#0d1b2a]/8 bg-white px-5 py-6 shadow-[0_18px_38px_rgba(13,27,42,0.08)] sm:px-6 sm:py-7 lg:grid-cols-[minmax(0,1.2fr)_360px] lg:gap-8">
-            {/* Grid children stretch to the tallest in the row, and the panel
-                beside this one is taller — so this column's content ended at the
-                stats and left the rest of the stretched cell blank underneath
-                them. Made a column so the slack can be pushed above the stats
-                rather than trailing below. */}
+            {/* A column, so the slack under a shorter left side collects above the stats. */}
             <div className="flex flex-col">
               <div className="flex flex-wrap items-center gap-3">
                 {workspaceBrand?.logo_url && (
@@ -1081,16 +643,11 @@ function ProspectViewContent() {
                   ? 'Loading your personalized podcast matches.'
                   : podcastsError
                     ? 'Your profile is ready, but the shortlist needs a quick refresh.'
-                    : personalizedTagline
-                      || `Every show below was matched to your expertise and the audience you want in front of you${totalReach > 0 ? `, ${formatNumber(totalReach)} combined listeners` : ''}. Mark the ones you are interested in; we do everything after that.`}
+                    : dashboard.personalized_tagline
+                      || `Every show below was matched to your expertise and the audience you want in front of you${totalReach > 0 ? `, ${formatListeners(totalReach)} combined listeners` : ''}. Mark the ones you are interested in; we do everything after that.`}
               </p>
 
-              {/*
-               * The note from whoever built the shortlist. It is signed by the
-               * workspace rather than by us: this page is white-label, so a
-               * fixed name here would put one agency's booking lead on every
-               * other agency's dashboard.
-               */}
+              {/* The note from whoever built the shortlist, signed by the workspace and never by us. */}
               <div
                 className="mt-7 flex max-w-[620px] items-start gap-4 rounded-[22px] border p-5"
                 style={{ borderColor: `${accentColor}2e`, background: `${accentColor}0f` }}
@@ -1105,14 +662,14 @@ function ProspectViewContent() {
                 <div>
                   <p className="text-[15px] leading-[25px] text-[#4c5d73]">
                     “{prospectFirstName}, these were picked by hand after going through your
-                    background. Start with the ones marked strongest — they are your best openings.
+                    background. Start with the ones marked strongest; they are your best openings.
                     Any questions, grab a time below.”
                   </p>
                   <p
                     className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em]"
                     style={{ color: accentColor }}
                   >
-                    — {conciergeName}
+                    {conciergeName}
                   </p>
                 </div>
               </div>
@@ -1145,20 +702,12 @@ function ProspectViewContent() {
                 )}
               </div>
 
-              {/*
-               * Three figures on a baseline rather than boxed tiles, as drawn,
-               * and only figures this page can stand behind: a time to first
-               * booking is a promise, not a stat. mt-auto because the panel
-               * beside this column is taller: the leftover height collects
-               * above these rather than under them, so the two columns finish
-               * level. Side by side only; stacked there is no leftover height
-               * to take up.
-               */}
+              {/* Only figures this page can stand behind; a time to first booking is a promise, not a stat. */}
               <div className="mt-8 flex flex-wrap gap-x-8 gap-y-5 lg:mt-auto lg:pt-8">
                 {[
-                  { value: totalReach > 0 ? `${formatNumber(totalReach)}+` : '—', label: 'combined listeners' },
-                  { value: podcastsError ? '—' : String(uniquePodcasts.length), label: 'shows matched' },
-                  { value: avgRating > 0 ? `${avgRating.toFixed(1)}★` : '—', label: 'average rating' },
+                  { value: totalReach > 0 ? `${formatListeners(totalReach)}+` : '-', label: 'combined listeners' },
+                  { value: podcastsError ? '-' : String(uniquePodcasts.length), label: 'shows matched' },
+                  { value: avgRating > 0 ? `${avgRating.toFixed(1)}★` : '-', label: 'average rating' },
                 ].map((stat) => (
                   <div key={stat.label}>
                     <p className="text-[28px] font-semibold tracking-[-0.04em] text-[#0d1b2a]">{stat.value}</p>
@@ -1171,9 +720,6 @@ function ProspectViewContent() {
             </div>
 
             <div className="rounded-[28px] border border-[#0d1b2a]/8 bg-[#f8fbff] p-5">
-              {/* The three-step explanation moved to a full-width strip below
-                  the hero, so this panel says where to begin instead of
-                  repeating it. */}
               <p className="section-kicker">Start here</p>
               <h2 className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
                 Mark the shows you are interested in.
@@ -1228,6 +774,7 @@ function ProspectViewContent() {
 
                 {loomEmbedUrl && dashboard.show_loom_video ? (
                   <button
+                    type="button"
                     onClick={() => setShowLoomVideo(true)}
                     className="rounded-[22px] border border-[#0d1b2a]/8 bg-white p-4 text-left transition-colors hover:bg-[#f8fbff]"
                   >
@@ -1257,13 +804,8 @@ function ProspectViewContent() {
       </section>
 
       {/*
-       * The bar appears once something has been approved, and only then. Its job
-       * is to close the loop the page opens: approving is not the finish line,
-       * the call is, and until now nothing said so once the reading was done.
-       *
-       * Fixed to the bottom rather than parked at the end of the page, because
-       * the moment worth catching is the one just after a decision — which
-       * happens in the middle of the grid, not at the foot of it.
+       * Appears once something has been approved. Approving is not the finish
+       * line, the call is, and the moment worth catching is just after a decision.
        */}
       {approvedCountTotal > 0 && bookingLink && (
         <div className="fixed bottom-5 left-1/2 z-[46] w-[min(calc(100vw-2rem),640px)] -translate-x-1/2">
@@ -1288,709 +830,92 @@ function ProspectViewContent() {
         </div>
       )}
 
-      {/* Featured Podcasts Section */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8" id="opportunities">
-        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
-          Featured opportunities
-        </p>
-        <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 sm:grid sm:grid-cols-3 sm:overflow-visible scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0">
-          {/* Highest Reach */}
-          {highestReachPodcast && highestReachPodcast.audience_size && (
-            <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-green-50/80 to-emerald-50/80 dark:from-green-950/50 dark:to-emerald-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
-              style={{ animationDelay: '100ms' }}
-            >
-              <CardContent className="p-0">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPodcast(highestReachPodcast)}
-                  className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4"
-                  aria-label={`Open ${highestReachPodcast.podcast_name} details`}
-                >
-                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                  {highestReachPodcast.podcast_image_url ? (
-                    <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                  ) : (
-                    <div className="w-full h-full bg-green-200 flex items-center justify-center">
-                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-xs font-semibold text-green-600 uppercase tracking-wide">Highest Reach</p>
-                  <p className="font-semibold truncate text-sm sm:text-base">{highestReachPodcast.podcast_name}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground">{formatNumber(highestReachPodcast.audience_size)} listeners</p>
-                </div>
-                </button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Top Rated */}
-          {topRatedPodcast && topRatedPodcast.itunes_rating && (
-            <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-amber-50/80 to-yellow-50/80 dark:from-amber-950/50 dark:to-yellow-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
-              style={{ animationDelay: '200ms' }}
-            >
-              <CardContent className="p-0">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPodcast(topRatedPodcast)}
-                  className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4"
-                  aria-label={`Open ${topRatedPodcast.podcast_name} details`}
-                >
-                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                  {topRatedPodcast.podcast_image_url ? (
-                    <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                  ) : (
-                    <div className="w-full h-full bg-amber-200 flex items-center justify-center">
-                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-xs font-semibold text-amber-600 uppercase tracking-wide">Top Rated</p>
-                  <p className="font-semibold truncate text-sm sm:text-base">{topRatedPodcast.podcast_name}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-1">
-                    <Star className="h-3 w-3 sm:h-4 sm:w-4 fill-amber-500 text-amber-500" />
-                    {Number(topRatedPodcast.itunes_rating).toFixed(1)} rating
-                  </p>
-                </div>
-                </button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Most Established */}
-          {mostEpisodesPodcast && mostEpisodesPodcast.episode_count && (
-            <Card
-              className="border-0 shadow-xl bg-gradient-to-br from-purple-50/80 to-violet-50/80 dark:from-purple-950/50 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
-              style={{ animationDelay: '300ms' }}
-            >
-              <CardContent className="p-0">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
-                  className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4"
-                  aria-label={`Open ${mostEpisodesPodcast.podcast_name} details`}
-                >
-                <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                  {mostEpisodesPodcast.podcast_image_url ? (
-                    <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                  ) : (
-                    <div className="w-full h-full bg-purple-200 flex items-center justify-center">
-                      <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-xs font-semibold text-purple-600 uppercase tracking-wide">Most Established</p>
-                  <p className="font-semibold truncate text-sm sm:text-base">{mostEpisodesPodcast.podcast_name}</p>
-                  <p className="text-xs sm:text-sm text-muted-foreground">{mostEpisodesPodcast.episode_count} episodes</p>
-                </div>
-                </button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Podcast Grid */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-12" id="shortlist">
-        {/*
-         * Left-aligned and editorial, as drawn. Centred bold sans read as a
-         * marketing page; this is a document addressed to one person, and the
-         * heading is the promise the cards underneath have to keep.
-         */}
-        <div className="mb-6 sm:mb-8">
-          <p className="section-kicker">The full shortlist</p>
-          <h2 className="mt-3 font-editorial text-[clamp(1.9rem,3.4vw,2.8rem)] leading-[1.02] tracking-[-0.04em] text-[#0d1b2a]">
-            Every room, and why it&rsquo;s yours.
-          </h2>
-          <p className="mt-3 max-w-xl text-[15px] leading-[25px] text-[#4c5d73]">
-            Open any show to see why it fits and what you would talk about. Mark the ones you
-            are interested in and we start reaching out on your behalf.
-          </p>
+      {/* The shortlist. Everything from here to the pagination is the shared review surface. */}
+      <section id="opportunities" aria-labelledby="shortlist-heading" className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-12 lg:px-8">
+        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div>
+            <p className="section-kicker">The full shortlist</p>
+            <h2 id="shortlist-heading" className="mt-3 font-editorial text-[clamp(1.9rem,3.4vw,2.8rem)] leading-[1.02] tracking-[-0.04em] text-[#0d1b2a]">
+              Every room, and why it&rsquo;s yours.
+            </h2>
+            <p className="mt-3 max-w-xl text-[15px] leading-[25px] text-[#4c5d73]">
+              Open any show to see why it fits and what you would talk about. Mark the ones you
+              are interested in and we start reaching out on your behalf.
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={startFocusedReview}
+            disabled={sortedPodcasts.length === 0}
+            className="min-h-11 shrink-0 gap-2 rounded-full bg-[var(--campaign-primary)] px-5 text-[var(--campaign-primary-foreground)] hover:brightness-95"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            Focused review
+          </Button>
         </div>
 
         {reviewComplete && (
-          <div
-            role="status"
-            className="mb-6 rounded-[28px] border border-[#0d1b2a]/8 bg-white px-6 py-6 shadow-[0_18px_38px_rgba(13,27,42,0.08)] sm:mb-8 sm:px-8"
-          >
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em]" style={{ color: accentColor }}>
-              Done for now
-            </p>
-            <h3 className="mt-2 font-editorial text-2xl leading-tight tracking-[-0.03em] text-[#0d1b2a] sm:text-3xl">
-              You have reviewed all {uniquePodcasts.length} shows
-            </h3>
-            <p className="mt-2 max-w-2xl text-[15px] leading-[25px] text-[#4c5d73]">
-              {brandName} will start outreach on your {approvedCountTotal} {approvedCountTotal === 1 ? 'pick' : 'picks'}.
-              There is nothing to submit. You will hear from us when the first host replies.
-            </p>
-            {callLink && (
-              <button
-                type="button"
-                onClick={() => openExternalUrl(callLink)}
-                style={{ backgroundColor: primaryColor, color: primaryTextColor }}
-                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold shadow-[0_8px_20px_rgba(13,27,42,0.18)] transition-transform hover:-translate-y-px"
-              >
-                <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                Book a short call
-              </button>
-            )}
-          </div>
+          <ReviewDoneCard total={uniquePodcasts.length} picks={approvedCountTotal} brandName={brandName}>
+            {callLink ? bookCallButton(callLink, 'min-h-11') : null}
+          </ReviewDoneCard>
         )}
 
-        {/* Search */}
-        <div className="flex justify-center mb-6">
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name, topic, or host..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-11 bg-white dark:bg-slate-900 h-12 text-base rounded-full border-2 focus:border-primary"
-            />
-          </div>
-        </div>
-
-        {/* Feedback Status Filter */}
-        <div className="mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <ThumbsUp className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Filter by status</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setFeedbackFilter('all')}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                feedbackFilter === 'all'
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50"
-              )}
-            >
-              All ({loadingPodcasts || podcastsError ? '-' : uniquePodcasts.length})
-            </button>
-            <button
-              onClick={() => setFeedbackFilter('approved')}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border flex items-center gap-1.5",
-                feedbackFilter === 'approved'
-                  ? "bg-green-600 text-white border-green-600"
-                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-green-500 hover:text-green-600"
-              )}
-            >
-              <ThumbsUp className="h-3.5 w-3.5" />
-              Interested ({loadingPodcasts || podcastsError ? '-' : feedbackStats.approved})
-            </button>
-            <button
-              onClick={() => setFeedbackFilter('rejected')}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border flex items-center gap-1.5",
-                feedbackFilter === 'rejected'
-                  ? "bg-red-600 text-white border-red-600"
-                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-red-500 hover:text-red-600"
-              )}
-            >
-              <ThumbsDown className="h-3.5 w-3.5" />
-              Not a fit ({loadingPodcasts || podcastsError ? '-' : feedbackStats.rejected})
-            </button>
-            <button
-              onClick={() => setFeedbackFilter('not_reviewed')}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 border",
-                feedbackFilter === 'not_reviewed'
-                  ? "bg-slate-600 text-white border-slate-600"
-                  : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-slate-500"
-              )}
-            >
-              To review ({loadingPodcasts || podcastsError ? '-' : feedbackStats.notReviewed})
-            </button>
-          </div>
-        </div>
-
-        {/* Category Filter Chips */}
-        {allCategories.length > 0 && (
-          <div className="mb-4 sm:mb-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Tag className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs sm:text-sm font-medium text-muted-foreground">Filter by category</span>
-              {selectedCategories.length > 0 && (
-                <button
-                  onClick={() => setSelectedCategories([])}
-                  className="text-xs text-primary hover:text-primary/80 ml-auto"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {allCategories.map((cat) => (
-                <button
-                  key={cat.category_id}
-                  onClick={() => {
-                    setSelectedCategories(prev =>
-                      prev.includes(cat.category_id)
-                        ? prev.filter(id => id !== cat.category_id)
-                        : [...prev, cat.category_id]
-                    )
-                  }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all duration-200",
-                    "border hover:shadow-md active:scale-95",
-                    selectedCategories.includes(cat.category_id)
-                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                      : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-primary/50 hover:text-primary"
-                  )}
-                >
-                  {cat.category_name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Episode Count & Audience Size Filters */}
-        <div className="mb-4 sm:mb-6 flex flex-wrap gap-3 sm:gap-4">
-          {/* Episode Count Filter */}
-          <div className="flex items-center gap-2">
-            <Mic className="h-4 w-4 text-muted-foreground" />
-            <select
-              aria-label="Filter by episode count"
-              value={episodeFilter}
-              onChange={(e) => setEpisodeFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              <option value="any">Episodes: Any</option>
-              <option value="under50">Under 50 episodes</option>
-              <option value="50to100">50-100 episodes</option>
-              <option value="100to200">100-200 episodes</option>
-              <option value="200plus">200+ episodes</option>
-            </select>
-          </div>
-
-          {/* Audience Size Filter */}
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <select
-              aria-label="Filter by audience size"
-              value={audienceFilter}
-              onChange={(e) => setAudienceFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              <option value="any">Audience: Any</option>
-              <option value="under1k">Under 1K</option>
-              <option value="1kto5k">1K - 5K</option>
-              <option value="5kto10k">5K - 10K</option>
-              <option value="10kto25k">10K - 25K</option>
-              <option value="25kto50k">25K - 50K</option>
-              <option value="50kto100k">50K - 100K</option>
-              <option value="100kplus">100K+</option>
-            </select>
-          </div>
-
-          {/* Sort By */}
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <select
-              aria-label="Sort podcasts"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              <option value="default">Sort: Default</option>
-              <option value="audience_desc">Audience: High to Low</option>
-              <option value="audience_asc">Audience: Low to High</option>
-            </select>
-          </div>
-
-          {/* Clear filters */}
-          {(episodeFilter !== 'any' || audienceFilter !== 'any' || sortBy !== 'default') && (
-            <button
-              onClick={() => {
-                setEpisodeFilter('any')
-                setAudienceFilter('any')
-                setSortBy('default')
-              }}
-              className="px-3 py-1.5 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-
-        {/* Results count when filtering */}
-        {!loadingPodcasts && !podcastsError && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') && (
-          <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
-            Showing {sortedPodcasts.length} of {uniquePodcasts.length} podcasts
-            {selectedCategories.length > 0 && ` in ${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'}`}
-          </p>
-        )}
+        <ReviewFilters
+          value={filters}
+          onChange={setFilters}
+          categories={allCategories}
+          counts={counts}
+          resultCount={sortedPodcasts.length}
+        />
 
         {podcastsError ? (
-          <Card className="border border-[#0d1b2a]/8 bg-white shadow-md">
-            <CardContent className="p-8 text-center sm:p-12">
-              <RefreshCw className="mx-auto mb-4 h-10 w-10 text-[#5d7188]" />
-              <h3 className="mb-2 text-base font-semibold sm:text-lg">The shortlist needs a quick refresh</h3>
-              <p className="mx-auto max-w-lg text-sm text-muted-foreground">
-                Your dashboard is still available. We just could not load the podcast matches on this attempt.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-5 rounded-full"
-                onClick={() => void refetchPodcasts()}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Retry shortlist
-              </Button>
-            </CardContent>
-          </Card>
+          <ReviewEmptyState
+            icon={RefreshCw}
+            title="The shortlist needs a quick refresh"
+            body="Your dashboard is still available. We just could not load the podcast matches on this attempt."
+            actionLabel="Retry shortlist"
+            onAction={() => void refetchPodcasts()}
+          />
         ) : loadingPodcasts ? (
-          /* Podcast grid skeleton while loading */
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-white dark:bg-slate-900 rounded-xl shadow-lg overflow-hidden animate-pulse">
-                <div className="aspect-[16/10] bg-slate-200 dark:bg-slate-800" />
-                <div className="p-4 space-y-3">
-                  <div className="h-5 w-3/4 bg-slate-200 dark:bg-slate-700 rounded" />
-                  <div className="h-4 w-1/2 bg-slate-100 dark:bg-slate-800 rounded" />
-                  <div className="flex gap-2">
-                    <div className="h-6 w-16 bg-slate-100 dark:bg-slate-800 rounded-full" />
-                    <div className="h-6 w-16 bg-slate-100 dark:bg-slate-800 rounded-full" />
-                  </div>
-                </div>
-              </div>
+          <div className="mt-7 grid gap-4 lg:grid-cols-2">
+            {[1, 2, 3, 4].map((item) => (
+              <div key={item} className="h-64 animate-pulse rounded-3xl border border-[#ded5ca] bg-white" />
             ))}
           </div>
         ) : uniquePodcasts.length === 0 ? (
-          <Card className="border-0 shadow-md">
-            <CardContent className="p-8 sm:p-12 text-center">
-              <Radio className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
-              <h3 className="text-base sm:text-lg font-semibold mb-2">Your shortlist is being prepared</h3>
-              <p className="text-sm text-muted-foreground">
-                {brandName} is researching shows that fit you. Check back soon.
-              </p>
-            </CardContent>
-          </Card>
-        ) : sortedPodcasts.length === 0 && (searchQuery || selectedCategories.length > 0 || episodeFilter !== 'any' || audienceFilter !== 'any') ? (
-          <Card className="border-0 shadow-md">
-            <CardContent className="p-8 sm:p-12 text-center">
-              <Search className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
-              <h3 className="text-base sm:text-lg font-semibold mb-2">No podcasts found</h3>
-              <p className="text-sm text-muted-foreground">
-                No podcasts match your current filters. Try adjusting your criteria.
-              </p>
-              <Button
-                variant="outline"
-                className="mt-4"
-                onClick={() => {
-                  setSearchQuery('')
-                  setSelectedCategories([])
-                  setEpisodeFilter('any')
-                  setAudienceFilter('any')
-                }}
-              >
-                Clear all filters
-              </Button>
-            </CardContent>
-          </Card>
+          <ReviewEmptyState
+            icon={Radio}
+            title="Your shortlist is being prepared"
+            body={`${brandName} is researching shows that fit you. Check back soon.`}
+          />
+        ) : sortedPodcasts.length === 0 ? (
+          <ReviewEmptyState
+            icon={Search}
+            title="No podcasts found"
+            body="No podcasts match your current filters. Try adjusting your criteria."
+            actionLabel={hasActiveFilters(filters) ? 'Clear all filters' : undefined}
+            onAction={() => setFilters(EMPTY_REVIEW_FILTERS)}
+          />
         ) : (
           <>
-          <div
-            key={`podcast-grid-${selectedCategories.join(',')}-${debouncedSearch}-${feedbackFilter}-${episodeFilter}-${audienceFilter}-${sortBy}-${currentPage}`}
-            className="grid gap-3 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-          >
-              {paginatedPodcasts.map((podcast, index) => (
-            <Card
-              key={podcast.podcast_id}
-              className={cn(
-                "group cursor-pointer border-0 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden",
-                "active:scale-[0.98] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm",
-                "hover:-translate-y-1 hover:scale-[1.02]",
-                selectedPodcast?.podcast_id === podcast.podcast_id && "ring-2 ring-primary shadow-xl"
-              )}
-              style={{ animationDelay: `${Math.min(index, 10) * 30}ms` }}
-            >
-              <CardContent className="p-0">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPodcast(podcast)}
-                  className="block w-full text-left"
-                  aria-label={`Open ${podcast.podcast_name} details`}
-                >
-                {/* Image */}
-                <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
-                  {podcast.podcast_image_url ? (
-                    <img
-                      src={podcast.podcast_image_url}
-                      alt={podcast.podcast_name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Mic className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50" />
-                    </div>
-                  )}
-                  {/* Overlay gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-
-                  {/* Feedback Status Badge */}
-                  {feedbackMap.get(podcast.podcast_id)?.status && (
-                    <div className={cn(
-                      "absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm",
-                      feedbackMap.get(podcast.podcast_id)?.status === 'approved'
-                        ? "bg-green-500/90 text-white"
-                        : "bg-red-500/90 text-white"
-                    )}>
-                      {feedbackMap.get(podcast.podcast_id)?.status === 'approved' ? (
-                        <>
-                          <ThumbsUp className="h-3 w-3" />
-                          <span className="hidden sm:inline">Interested</span>
-                        </>
-                      ) : (
-                        <>
-                          <ThumbsDown className="h-3 w-3" />
-                          <span className="hidden sm:inline">Not a fit</span>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Top-left badge: quality, based on audience + episodes */}
-                  <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex flex-col gap-1.5">
-                    {(() => {
-                      const hasHighAudience = podcast.audience_size && podcast.audience_size >= 50000
-                      const hasGoodEpisodes = podcast.episode_count && podcast.episode_count >= 100
-                      if (hasHighAudience && hasGoodEpisodes) {
-                        return (
-                          <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-500 hover:to-orange-500 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5 shadow-lg">
-                            <Award className="h-3 w-3 mr-1" />
-                            Top pick
-                          </Badge>
-                        )
-                      }
-                      return null
-                    })()}
-                  </div>
-
-                  {/* Bottom badges: Audience & Rating */}
-                  <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 right-2 sm:right-3 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      {podcast.audience_size && (
-                        <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                          <Users className="h-3 w-3 mr-1" />
-                          {formatNumber(podcast.audience_size)}
-                        </Badge>
-                      )}
-                      {podcast.last_posted_at && (
-                        <Badge className="bg-green-600/90 hover:bg-green-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                          <Clock className="h-3 w-3 mr-1" />
-                          Active
-                        </Badge>
-                      )}
-                    </div>
-                    {/* Star Rating */}
-                    {podcast.itunes_rating && (
-                      <Badge className="bg-black/70 hover:bg-black/70 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                        <Star className="h-3 w-3 mr-1 fill-yellow-400 text-yellow-400" />
-                        {typeof podcast.itunes_rating === 'number' ? podcast.itunes_rating.toFixed(1) : podcast.itunes_rating}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="p-3 pb-0 sm:p-4 sm:pb-0 space-y-2 sm:space-y-3">
-                  <h3 className="font-semibold text-sm sm:text-base line-clamp-2 group-hover:text-primary transition-colors">
-                    {podcast.podcast_name}
-                  </h3>
-
-                  {podcast.publisher_name && (
-                    <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                      with {podcast.publisher_name}
-                    </p>
-                  )}
-
-                  {/*
-                   * Why this one was chosen, on the card.
-                   *
-                   * The reasoning already existed on every row and was only
-                   * readable by opening the show, so the shortlist read as a
-                   * list of logos and the argument for each was a click away.
-                   * Put it here and the page reads as what it is: a set of
-                   * recommendations, each with its reason attached.
-                   */}
-                  {podcast.ai_fit_reasons?.[0] && (
-                    <p className="text-xs leading-5 text-[#4c5d73] sm:text-[13px]">
-                      <span className="font-semibold" style={{ color: accentColor }}>Why this fits: </span>
-                      <span className="line-clamp-2">{podcast.ai_fit_reasons[0]}</span>
-                    </p>
-                  )}
-
-                  {/* Stats Row */}
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {podcast.audience_size && (
-                      <div className="flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" />
-                        <span className="font-medium">{formatNumber(podcast.audience_size)}</span>
-                      </div>
-                    )}
-                    {podcast.episode_count && (
-                      <div className="flex items-center gap-1">
-                        <Mic className="h-3.5 w-3.5" />
-                        <span>{podcast.episode_count} eps</span>
-                      </div>
-                    )}
-                    {podcast.last_posted_at && (
-                      <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>{formatDistanceToNow(new Date(podcast.last_posted_at), { addSuffix: true })}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Categories */}
-                  {Array.isArray(podcast.podcast_categories) && podcast.podcast_categories.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {podcast.podcast_categories.slice(0, 2).map((cat) => (
-                        <span
-                          key={cat.category_id}
-                          className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] sm:text-xs rounded-full text-muted-foreground"
-                        >
-                          {cat.category_name}
-                        </span>
-                      ))}
-                      {podcast.podcast_categories.length > 2 && (
-                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[10px] sm:text-xs rounded-full text-muted-foreground">
-                          +{podcast.podcast_categories.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                </div>
-                </button>
-
-                {/*
-                 * The decision, in words, at a size a thumb can hit. The old
-                 * 28px icon buttons were the same pair the review page had
-                 * already replaced: nobody could tell which was which, or that
-                 * they were buttons at all.
-                 */}
-                <div className="px-3 pb-3 sm:px-4 sm:pb-4">
-                  <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2 border-t border-slate-100 pt-3 dark:border-slate-800 sm:mt-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={isSavingFeedback}
-                      onClick={() => saveFeedback(podcast.podcast_id, 'approved')}
-                      className={cn(
-                        'min-h-11 gap-2 rounded-xl border-[#d8dfda] text-xs font-bold sm:text-sm',
-                        feedbackMap.get(podcast.podcast_id)?.status === 'approved'
-                          ? 'border-[#668b78] bg-[#668b78] text-white hover:bg-[#587765] hover:text-white'
-                          : 'bg-[#f4f8f5] text-[#476b59] hover:border-[#789486] hover:bg-[#e7f0ea]',
-                      )}
-                    >
-                      <ThumbsUp className="h-4 w-4" />
-                      Interested
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={isSavingFeedback}
-                      onClick={() => saveFeedback(podcast.podcast_id, 'rejected')}
-                      className={cn(
-                        'min-h-11 gap-2 rounded-xl border-[#ddd5cd] text-xs font-bold sm:text-sm',
-                        feedbackMap.get(podcast.podcast_id)?.status === 'rejected'
-                          ? 'border-[#78685f] bg-[#78685f] text-white hover:bg-[#665850] hover:text-white'
-                          : 'bg-[#fbf8f4] text-[#6c625c] hover:border-[#a99588] hover:bg-[#f1ebe4]',
-                      )}
-                    >
-                      <ThumbsDown className="h-4 w-4" />
-                      Not a fit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setSelectedPodcast(podcast)}
-                      className="min-h-11 rounded-xl px-3 text-[#62707c] hover:bg-[#f2ede6] hover:text-[#0d1b2a]"
-                      aria-label={`Why ${podcast.podcast_name} fits`}
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          </div>
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-8 pb-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter(page => {
-                    // Show first, last, current, and pages near current
-                    if (page === 1 || page === totalPages) return true
-                    if (Math.abs(page - currentPage) <= 1) return true
-                    return false
-                  })
-                  .map((page, idx, arr) => {
-                    // Add ellipsis between gaps
-                    const showEllipsisBefore = idx > 0 && page - arr[idx - 1] > 1
-                    return (
-                      <div key={page} className="flex items-center gap-1">
-                        {showEllipsisBefore && <span className="px-2 text-muted-foreground">...</span>}
-                        <Button
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                          className="min-w-[40px]"
-                        >
-                          {page}
-                        </Button>
-                      </div>
-                    )
-                  })}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
+            <div className="mt-7 grid gap-4 lg:grid-cols-2">
+              {paginatedPodcasts.map((podcast) => (
+                <ReviewCard
+                  key={podcast.podcast_id}
+                  podcast={podcast}
+                  decision={feedbackMap.get(podcast.podcast_id)?.status ?? null}
+                  disabled={isSavingFeedback}
+                  onDecide={(status) => saveFeedback(podcast.podcast_id, status)}
+                  onOpen={() => setSelectedPodcast(podcast)}
+                />
+              ))}
             </div>
-          )}
+            <ReviewPagination page={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
           </>
         )}
-      </div>
+      </section>
 
-      {/*
-       * Proof sits between the shortlist and the call, where the design puts
-       * it: the reader has just finished deciding and the next thing asked of
-       * them is a conversation. It was previously buried inside the pricing
-       * block, so a dashboard with pricing turned off showed no proof at all,
-       * and the rest showed whichever testimonials were featured on our own
-       * marketing site.
-       *
-       * Nothing chosen, nothing shown. That is the intended resting state
-       * until a dashboard names its testimonials, not a bug.
-       */}
+      {/* Proof sits between the shortlist and the call. Nothing chosen, nothing shown. */}
       {quotedTestimonials.length > 0 && (
         <section className="px-4 pb-2 pt-8 md:pt-10">
           <div className="mx-auto max-w-[1320px] rounded-[32px] bg-[#081a2b] px-6 py-12 text-[#f7fafc] md:px-10 md:py-16">
@@ -2049,137 +974,84 @@ function ProspectViewContent() {
         </section>
       )}
 
-      {/*
-       * Rendered for every dashboard. Before the platform pricing block was
-       * removed, a dashboard with pricing on and cta_type 'none' still got a
-       * booking button out of that block — so deleting it left exactly that
-       * configuration with no next step anywhere on the page. 'none' now
-       * suppresses the button, not the section: the reply-to-the-email fallback
-       * still tells a prospect what to do, in the agency's voice.
-       */}
-      {dashboard && (
-        <section className="px-4 py-12 md:py-16">
-          <div className="container mx-auto">
-            <div className="mx-auto grid gap-6 rounded-[32px] border border-[#0d1b2a]/8 bg-[#0d1b2a] px-6 py-8 text-white shadow-[0_20px_42px_rgba(13,27,42,0.16)] md:px-8 md:py-10 lg:grid-cols-[1fr_auto] lg:items-center">
-              <div className="max-w-2xl">
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-white/60">
-                  The no-pressure next step
-                </p>
-                <h2 className="mt-3 font-editorial text-4xl leading-[0.96] tracking-[-0.045em] sm:text-5xl">
-                  A short call, no pressure.
-                </h2>
-                {/*
-                 * Says what the call is rather than asking for it. "Ready to
-                 * turn your shortlist into conversations?" is a question with
-                 * one acceptable answer, which is a sales move; this describes
-                 * the call and what somebody leaves with even if they say no.
-                 */}
-                <p className="mt-4 max-w-xl text-base leading-7 text-white/72">
-                  Bring your picks, or none at all. We will walk through which rooms to
-                  pitch first, what your angle would be, and what a realistic first month looks
-                  like. If it is not a fit, you leave with a sharper shortlist anyway.
+      {/* Rendered for every dashboard. 'none' suppresses the button, not the section. */}
+      <section className="px-4 py-12 md:py-16">
+        <div className="container mx-auto">
+          <div className="mx-auto grid gap-6 rounded-[32px] border border-[#0d1b2a]/8 bg-[#0d1b2a] px-6 py-8 text-white shadow-[0_20px_42px_rgba(13,27,42,0.16)] md:px-8 md:py-10 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="max-w-2xl">
+              <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-white/60">
+                The no-pressure next step
+              </p>
+              <h2 className="mt-3 font-editorial text-4xl leading-[0.96] tracking-[-0.045em] sm:text-5xl">
+                A short call, no pressure.
+              </h2>
+              <p className="mt-4 max-w-xl text-base leading-7 text-white/72">
+                Bring your picks, or none at all. We will walk through which rooms to
+                pitch first, what your angle would be, and what a realistic first month looks
+                like. If it is not a fit, you leave with a sharper shortlist anyway.
+              </p>
+            </div>
+
+            {dashboard.cta_type === 'none' ? (
+              replyFallback('Reply to move forward')
+            ) : dashboard.cta_url && (dashboard.cta_type === 'book_call' || dashboard.cta_type === 'learn_more') ? (
+              <Button
+                variant="secondary"
+                size="xl"
+                className="min-h-[52px] rounded-full bg-white px-7 text-[#0d1b2a] hover:bg-white/90"
+                onClick={() => openExternalUrl(dashboard.cta_url!)}
+              >
+                {dashboard.cta_type === 'book_call' ? <Calendar className="mr-2 h-4 w-4" /> : <ExternalLink className="mr-2 h-4 w-4" />}
+                {dashboard.cta_label}
+              </Button>
+            ) : bookingEmbedUrl ? null : bookingLink ? (
+              // A booking link this build will not frame still gets a real
+              // button, rather than being refused for not being Calendly.
+              <Button
+                variant="secondary"
+                size="xl"
+                className="min-h-[52px] rounded-full bg-white px-7 text-[#0d1b2a] hover:bg-white/90"
+                onClick={() => openExternalUrl(bookingLink)}
+              >
+                <Calendar className="mr-2 h-4 w-4" />Book a call
+              </Button>
+            ) : (
+              replyFallback(dashboard.cta_label || 'Reply to move forward')
+            )}
+
+            {bookingEmbedUrl && dashboard.cta_type !== 'none' && (
+              // Under the copy and across the section, because a scheduler
+              // beside a paragraph is too narrow to pick a time in.
+              <div className="lg:col-span-2">
+                <div className="overflow-hidden rounded-[22px] border border-white/14 bg-white">
+                  <iframe
+                    src={bookingEmbedUrl}
+                    title={`Book a call${bookingProvider ? ` on ${bookingProvider}` : ''}`}
+                    loading="lazy"
+                    className="h-[640px] w-full border-0 sm:h-[700px]"
+                    // Only what a scheduler needs: it may run and navigate
+                    // itself, and nothing here can reach this page.
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                  />
+                </div>
+                <p className="mt-3 text-sm text-white/60">
+                  Trouble loading?{' '}
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(bookingLink!)}
+                    className="font-semibold text-white underline underline-offset-4"
+                  >
+                    Open the scheduler in a new tab
+                  </button>
+                  .
                 </p>
               </div>
-
-              {dashboard.cta_type === 'none' ? (
-                <div className="flex max-w-sm items-start gap-3 rounded-[22px] border border-white/14 bg-white/8 px-5 py-4">
-                  <MessageSquare className="mt-0.5 h-5 w-5 flex-shrink-0 text-white/80" />
-                  <div>
-                    <p className="font-semibold">Reply to move forward</p>
-                    <p className="mt-1 text-sm leading-6 text-white/65">Reply to the email that brought you here and we will take care of the next step.</p>
-                  </div>
-                </div>
-              ) : dashboard.cta_url && (dashboard.cta_type === 'book_call' || dashboard.cta_type === 'learn_more') ? (
-                <Button
-                  variant="secondary"
-                  size="xl"
-                  className="min-h-[52px] rounded-full bg-white px-7 text-[#0d1b2a] hover:bg-white/90"
-                  onClick={() => openExternalUrl(dashboard.cta_url!)}
-                >
-                  {dashboard.cta_type === 'book_call' ? <Calendar className="mr-2 h-4 w-4" /> : <ExternalLink className="mr-2 h-4 w-4" />}
-                  {dashboard.cta_label}
-                </Button>
-              ) : bookingEmbedUrl ? null : bookingLink ? (
-                // A booking link this build will not frame still gets a real
-                // button, rather than being refused for not being Calendly.
-                <Button
-                  variant="secondary"
-                  size="xl"
-                  className="min-h-[52px] rounded-full bg-white px-7 text-[#0d1b2a] hover:bg-white/90"
-                  onClick={() => openExternalUrl(bookingLink)}
-                >
-                  <Calendar className="mr-2 h-4 w-4" />Book a call
-                </Button>
-              ) : (
-                <div className="flex max-w-sm items-start gap-3 rounded-[22px] border border-white/14 bg-white/8 px-5 py-4">
-                  <MessageSquare className="mt-0.5 h-5 w-5 flex-shrink-0 text-white/80" />
-                  <div>
-                    <p className="font-semibold">{dashboard.cta_label || 'Reply to move forward'}</p>
-                    <p className="mt-1 text-sm leading-6 text-white/65">Reply to the email that brought you here and we will take care of the next step.</p>
-                  </div>
-                </div>
-              )}
-
-              {bookingEmbedUrl && dashboard.cta_type !== 'none' && (
-                // Under the copy and across the section, because a scheduler
-                // beside a paragraph is too narrow to pick a time in.
-                <div className="lg:col-span-2">
-                  <div className="overflow-hidden rounded-[22px] border border-white/14 bg-white">
-                    <iframe
-                      src={bookingEmbedUrl}
-                      title={`Book a call${bookingProvider ? ` on ${bookingProvider}` : ''}`}
-                      loading="lazy"
-                      className="h-[640px] w-full border-0 sm:h-[700px]"
-                      // Only what a scheduler needs: it may run and navigate
-                      // itself, and nothing here can reach this page.
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                    />
-                  </div>
-                  <p className="mt-3 text-sm text-white/60">
-                    Trouble loading?{' '}
-                    <button
-                      type="button"
-                      onClick={() => openExternalUrl(bookingLink!)}
-                      className="font-semibold text-white underline underline-offset-4"
-                    >
-                      Open the scheduler in a new tab
-                    </button>
-                    .
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
-      {/*
-       * The platform's own pricing block used to render here whenever a
-       * dashboard opted back into pricing: our Calendly, our $749 plan, our
-       * Command Center, and a button to our marketing site — under another
-       * agency's logo, on the one page the landing page promises clients never
-       * see our name on. Nothing about it could be true for a different agency.
-       *
-       * The call-to-action above is white-label and already covers this: it
-       * takes the dashboard's own CTA, falls back to the workspace scheduler,
-       * and says "reply to the email that brought you here" when there is
-       * neither. There is no second version of that worth keeping.
-       */}
-
-      {/*
-       * The FAQ is the agency's, not ours. It used to be PricingFAQ, which is
-       * the marketing site's copy: it quotes $749, names the Podcast Command
-       * Center, and answers for our guarantee and our compliance position.
-       * Every one of those is a commercial term the agency reading over this
-       * prospect's shoulder never agreed to, printed under their own logo.
-       *
-       * So these six answer the page instead — what approving does, what a
-       * decline does, who can see this — and say nothing about price, timing,
-       * or guarantees. The team is named from the workspace where a name is
-       * needed. Being sat inside the pricing block also meant a dashboard with
-       * pricing turned off had no questions answered at all; it is page-level
-       * now, under whichever call-to-action ran.
-       */}
+      {/* The FAQ is the agency's, not ours: it answers the page and promises nothing. */}
       <section className="px-4 pb-10 pt-2 md:pb-14">
         <div
           className="mx-auto max-w-[1320px] rounded-[32px] border border-[#0d1b2a]/8 bg-white/84 px-6 py-8 text-[#0d1b2a] shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-[4px] md:px-10 md:py-9"
@@ -2217,901 +1089,66 @@ function ProspectViewContent() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="border-t border-[#0d1b2a]/8 bg-white/40 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 text-center">
-          <p className="text-xs sm:text-sm text-[#5d7188]">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-center gap-3 px-4 py-4 text-center sm:flex-row sm:gap-6 sm:px-6 sm:py-6 lg:px-8">
+          <p className="text-xs text-[#5d7188] sm:text-sm">
             Prepared by <span className="font-semibold text-[#0d1b2a]">{workspaceBrand?.brand_name?.trim() || 'your booking team'}</span>
           </p>
+          <button type="button" onClick={() => setShowTutorial(true)} className="min-h-10 text-xs text-[#5d7188] hover:text-[#0d1b2a] sm:text-sm">
+            How it works
+          </button>
         </div>
       </footer>
 
-      {/* Data Methodology Panel */}
-      <Sheet open={showReviewPanel} onOpenChange={setShowReviewPanel}>
-        <SheetContent side="right" className="!w-full sm:!max-w-lg p-0 overflow-hidden">
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="p-6 border-b bg-gradient-to-r from-green-500/10 via-blue-500/10 to-purple-500/10">
-              <SheetHeader>
-                <SheetTitle className="flex items-center gap-2 text-xl">
-                  <BarChart3 className="h-5 w-5 text-primary" />
-                  Understanding Our Data
-                </SheetTitle>
-              </SheetHeader>
-              <p className="text-sm text-muted-foreground mt-2">
-                How we estimate audience size and listener demographics
-              </p>
-            </div>
+      <AudienceEstimatesSheet open={showReviewPanel} onOpenChange={setShowReviewPanel} />
 
-            {/* Content */}
-            <ScrollArea className="flex-1">
-              <div className="p-6 space-y-6">
-                {/* Key Highlight */}
-                <div className="p-4 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-green-500/20">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-green-800 dark:text-green-300">Verified Estimates</p>
-                      <p className="text-sm text-green-700 dark:text-green-400 mt-1">
-                        Our audience numbers are <span className="font-medium">per-episode listener estimates</span>, making them easily comparable across all podcasts.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Data Sources */}
-                <div>
-                  <h3 className="font-semibold flex items-center gap-2 mb-3">
-                    <Globe className="h-4 w-4 text-blue-500" />
-                    Data Sources
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { icon: '📊', label: 'Chart Rankings' },
-                      { icon: '⭐', label: 'Review Volume' },
-                      { icon: '👥', label: 'Social Following' },
-                      { icon: '📈', label: 'Engagement Metrics' },
-                      { icon: '🎯', label: 'Category Performance' },
-                      { icon: '📅', label: 'Publishing Frequency' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 text-sm">
-                        <span>{item.icon}</span>
-                        <span>{item.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* How It Works */}
-                <div>
-                  <h3 className="font-semibold flex items-center gap-2 mb-3">
-                    <Sparkles className="h-4 w-4 text-purple-500" />
-                    How It Works
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex gap-3">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">1</div>
-                      <p className="text-sm text-muted-foreground">We analyze chart rankings from Apple Podcasts, Spotify, and other major platforms</p>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">2</div>
-                      <p className="text-sm text-muted-foreground">Our ML models process multiple data points to identify patterns and correlations</p>
-                    </div>
-                    <div className="flex gap-3">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xs font-bold text-purple-600">3</div>
-                      <p className="text-sm text-muted-foreground">Estimates are validated against known audience sizes when available</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Use Cases */}
-                <div>
-                  <h3 className="font-semibold flex items-center gap-2 mb-3">
-                    <Target className="h-4 w-4 text-orange-500" />
-                    What These Numbers Help With
-                  </h3>
-                  <ul className="space-y-2">
-                    {[
-                      'Identify high-reach podcast opportunities',
-                      'Compare shows within similar categories',
-                      'Prioritize outreach based on audience size',
-                      'Track growth trends over time',
-                    ].map((item, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <Check className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Disclaimer */}
-                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                  <p className="text-xs text-amber-800 dark:text-amber-300">
-                    <span className="font-semibold">Note:</span> While no third-party service can provide exact listener counts, our estimates consistently align with numbers reported by podcast hosts. Use these as reliable benchmarks for comparison.
-                  </p>
-                </div>
-              </div>
-            </ScrollArea>
-
-            {/* Footer */}
-            <div className="p-4 border-t bg-slate-50 dark:bg-slate-900">
-              <Button
-                className="w-full"
-                onClick={() => setShowReviewPanel(false)}
-              >
-                Got It
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Side Panel */}
-      <Sheet open={!!selectedPodcast} onOpenChange={() => setSelectedPodcast(null)}>
-        <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-hidden overflow-x-hidden border-l-0 shadow-2xl">
-          {selectedPodcast && (
-            <div className="flex flex-col h-[90vh] sm:h-full">
-              <SheetTitle className="sr-only">{selectedPodcast.podcast_name}</SheetTitle>
-              {/* Hero Header with Image */}
-              <div className="relative h-44 sm:h-64 overflow-hidden flex-shrink-0">
-                {selectedPodcast.podcast_image_url ? (
-                  <img
-                    src={selectedPodcast.podcast_image_url}
-                    alt={selectedPodcast.podcast_name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                    <Mic className="h-16 w-16 sm:h-20 sm:w-20 text-white/30" />
-                  </div>
-                )}
-                {/* Gradient overlays */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/30 to-transparent" />
-
-                {/* Drag handle for mobile */}
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/30 rounded-full sm:hidden" />
-
-                {/* Close button */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-3 right-3 sm:top-4 sm:right-4 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm border border-white/20"
-                  onClick={() => setSelectedPodcast(null)}
-                  aria-label="Close"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-
-                {/* Content on image */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
-                  {/* Badges */}
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-                    {selectedPodcast.itunes_rating && selectedPodcast.itunes_rating >= 4.5 && (
-                      <Badge className="bg-amber-500 hover:bg-amber-500 text-white border-0 text-xs">
-                        <Award className="h-3 w-3 mr-1" />
-                        Top Rated
-                      </Badge>
-                    )}
-                    {selectedPodcast.audience_size && selectedPodcast.audience_size >= 50000 && (
-                      <Badge className="bg-green-500 hover:bg-green-500 text-white border-0 text-xs">
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                        High Reach
-                      </Badge>
-                    )}
-                    {selectedPodcast.episode_count && selectedPodcast.episode_count >= 100 && (
-                      <Badge className="bg-purple-500 hover:bg-purple-500 text-white border-0 text-xs">
-                        <Zap className="h-3 w-3 mr-1" />
-                        Established
-                      </Badge>
-                    )}
-                  </div>
-
-                  <h2 className="text-xl sm:text-2xl font-bold text-white line-clamp-2 mb-1">{selectedPodcast.podcast_name}</h2>
-                  {selectedPodcast.publisher_name && (
-                    <p className="text-white/70 text-xs sm:text-sm">by {selectedPodcast.publisher_name}</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Quick Stats Bar */}
-              <div className="flex-shrink-0 bg-gradient-to-r from-slate-900 to-slate-800 text-white">
-                <div className="grid grid-cols-3 divide-x divide-white/10">
-                  <div className="p-2.5 sm:p-4 text-center">
-                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
-                      <Star className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 fill-yellow-400" />
-                      <span className="text-lg sm:text-2xl font-bold">
-                        {selectedPodcast.itunes_rating ? Number(selectedPodcast.itunes_rating).toFixed(1) : '-'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] sm:text-xs text-white/60 uppercase tracking-wide">Rating</p>
-                  </div>
-                  <div className="p-2.5 sm:p-4 text-center">
-                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
-                      <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
-                      <span className="text-lg sm:text-2xl font-bold">
-                        {selectedPodcast.audience_size ? formatNumber(selectedPodcast.audience_size) : '-'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] sm:text-xs text-white/60 uppercase tracking-wide">Listeners</p>
-                  </div>
-                  <div className="p-2.5 sm:p-4 text-center">
-                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 mb-0.5 sm:mb-1">
-                      <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400" />
-                      <span className="text-lg sm:text-2xl font-bold">
-                        {selectedPodcast.episode_count || '-'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] sm:text-xs text-white/60 uppercase tracking-wide">Episodes</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Scrollable Content */}
-              <ScrollArea className="flex-1 min-h-0 overflow-x-hidden">
-                <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-8 overflow-x-hidden">
-                  {/* About Section */}
-                  <div className="space-y-2 sm:space-y-3">
-                    <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest">About This Podcast</h3>
-                    {isAnalyzing ? (
-                      <div className="space-y-2">
-                        <div className="h-4 bg-muted rounded animate-pulse w-full" />
-                        <div className="h-4 bg-muted rounded animate-pulse w-5/6" />
-                        <div className="h-4 bg-muted rounded animate-pulse w-4/6" />
-                      </div>
-                    ) : (
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {fitAnalysis?.clean_description || selectedPodcast.podcast_description || 'No description available'}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Categories */}
-                  {Array.isArray(selectedPodcast.podcast_categories) && selectedPodcast.podcast_categories.length > 0 && (
-                    <div className="space-y-2 sm:space-y-3">
-                      <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                        <Tag className="h-3 w-3" />
-                        Categories
-                      </h3>
-                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                        {selectedPodcast.podcast_categories.map((cat) => (
-                          <Badge
-                            key={cat.category_id}
-                            variant="secondary"
-                            className="text-xs px-2 py-0.5 bg-primary/10 text-primary border-0"
-                          >
-                            {cat.category_name}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Why It's a Great Fit */}
-                  {dashboard.prospect_bio && (
-                    <>
-                      <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 p-3.5 sm:p-5 border border-amber-200/50 dark:border-amber-800/50">
-                        <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg">
-                            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-sm sm:text-base text-amber-900 dark:text-amber-100">Why this show fits you</h3>
-                            <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-300">Based on your background and the show's recent episodes</p>
-                          </div>
-                        </div>
-
-                        {isAnalyzing ? (
-                          <div className="space-y-3">
-                            {[1, 2, 3].map((i) => (
-                              <div key={i} className="flex items-start gap-3">
-                                <div className="h-6 w-6 bg-amber-200 dark:bg-amber-800 rounded-full animate-pulse shrink-0" />
-                                <div className="flex-1 h-4 bg-amber-200 dark:bg-amber-800 rounded animate-pulse" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : fitAnalysis?.fit_reasons && fitAnalysis.fit_reasons.length > 0 ? (
-                          <ul className="space-y-3">
-                            {fitAnalysis.fit_reasons.map((reason, idx) => (
-                              <li key={idx} className="flex items-start gap-3">
-                                <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center shrink-0 mt-0.5">
-                                  <CheckCircle2 className="h-4 w-4 text-white" />
-                                </div>
-                                <span className="text-sm text-amber-900 dark:text-amber-100">{reason}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-amber-800 dark:text-amber-200">No fit analysis yet. Your team will add one.</p>
-                        )}
-                      </div>
-
-                      {/* Pitch Angles */}
-                      <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 p-3.5 sm:p-5 border border-purple-200/50 dark:border-purple-800/50">
-                        <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4">
-                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg">
-                            <Target className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100">What you could talk about</h3>
-                            <p className="text-[10px] sm:text-xs text-purple-700 dark:text-purple-300">Ways to approach this podcast</p>
-                          </div>
-                        </div>
-
-                        {isAnalyzing ? (
-                          <div className="space-y-3">
-                            {[1, 2, 3].map((i) => (
-                              <div key={i} className="p-4 bg-white/50 dark:bg-white/5 rounded-xl space-y-2">
-                                <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded animate-pulse w-2/3" />
-                                <div className="h-3 bg-purple-100 dark:bg-purple-900 rounded animate-pulse w-full" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : fitAnalysis?.pitch_angles && fitAnalysis.pitch_angles.length > 0 ? (
-                          <div className="space-y-3">
-                            {fitAnalysis.pitch_angles.map((angle, idx) => (
-                              <div
-                                key={idx}
-                                className="p-4 bg-white/70 dark:bg-white/5 rounded-xl border border-purple-100 dark:border-purple-800/50 hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
-                              >
-                                <div className="flex items-start gap-3">
-                                  <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-gradient-to-br from-purple-600 to-violet-600 text-white text-sm font-bold shrink-0 shadow">
-                                    {idx + 1}
-                                  </span>
-                                  <div className="space-y-1">
-                                    <h4 className="font-semibold text-purple-900 dark:text-purple-100">{angle.title}</h4>
-                                    <p className="text-sm text-purple-700 dark:text-purple-300">{angle.description}</p>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-purple-800 dark:text-purple-200">No pitch ideas yet. They will appear once the fit analysis is ready.</p>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {/* Demographics - Enhanced */}
-                  {(isLoadingDemographics || demographics) && (
-                    <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/30 p-3.5 sm:p-5 border border-blue-200/50 dark:border-blue-800/50">
-                      <div className="flex items-center justify-between mb-3 sm:mb-4">
-                        <div className="flex items-center gap-2.5 sm:gap-3">
-                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg">
-                            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">Audience Insights</h3>
-                            <p className="text-[10px] sm:text-xs text-blue-700 dark:text-blue-300">
-                              {demographics?.episodes_analyzed ? `Based on ${demographics.episodes_analyzed} episodes` : 'Know who you\'ll reach'}
-                            </p>
-                          </div>
-                        </div>
-                        {demographics && (
-                          <button
-                            onClick={() => setIsDemographicsExpanded(!isDemographicsExpanded)}
-                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 transition-colors p-1"
-                          >
-                            {isDemographicsExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-                          </button>
-                        )}
-                      </div>
-
-                      {isLoadingDemographics ? (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                            {[1, 2, 3, 4].map((i) => (
-                              <div key={i} className="p-3 sm:p-4 bg-white/50 dark:bg-white/5 rounded-lg sm:rounded-xl space-y-2">
-                                <div className="h-3 bg-blue-200 dark:bg-blue-800 rounded animate-pulse w-1/2" />
-                                <div className="h-5 bg-blue-100 dark:bg-blue-900 rounded animate-pulse w-3/4" />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : demographics && (
-                        <div className="space-y-4">
-                          {/* Core Stats - Always visible */}
-                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-blue-100 dark:border-blue-800/50">
-                              <p className="text-[10px] sm:text-xs font-medium text-blue-600 dark:text-blue-400 mb-0.5 sm:mb-1">Age Group</p>
-                              <p className="font-bold text-sm sm:text-base text-blue-900 dark:text-blue-100">{demographics.age}</p>
-                            </div>
-                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-pink-100 dark:border-pink-800/50">
-                              <p className="text-[10px] sm:text-xs font-medium text-pink-600 dark:text-pink-400 mb-0.5 sm:mb-1">Gender Split</p>
-                              <p className="font-bold text-sm sm:text-base text-pink-900 dark:text-pink-100 capitalize">{demographics.gender_skew?.replace(/_/g, ' ')}</p>
-                            </div>
-                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-green-100 dark:border-green-800/50">
-                              <p className="text-[10px] sm:text-xs font-medium text-green-600 dark:text-green-400 mb-0.5 sm:mb-1">Buying Power</p>
-                              <p className="font-bold text-sm sm:text-base text-green-900 dark:text-green-100 capitalize">{demographics.purchasing_power}</p>
-                            </div>
-                            <div className="p-3 sm:p-4 bg-white/70 dark:bg-white/5 rounded-lg sm:rounded-xl border border-purple-100 dark:border-purple-800/50">
-                              <p className="text-[10px] sm:text-xs font-medium text-purple-600 dark:text-purple-400 mb-0.5 sm:mb-1">Education</p>
-                              <p className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100 capitalize">{demographics.education_level}</p>
-                            </div>
-                          </div>
-
-                          {/* Engagement Badge */}
-                          {demographics.engagement_level && (
-                            <div className="flex items-center gap-2 p-2.5 bg-white/50 dark:bg-white/5 rounded-lg border border-orange-200/50 dark:border-orange-800/30">
-                              <Zap className="h-4 w-4 text-orange-500" />
-                              <span className="text-xs font-medium text-orange-700 dark:text-orange-300">
-                                Engagement: <span className="capitalize">{demographics.engagement_level}</span>
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Expanded Details */}
-                          {isDemographicsExpanded && (
-                            <div className="space-y-4 pt-2 border-t border-blue-200/50 dark:border-blue-800/30">
-                              {/* Age Distribution Chart - Recharts */}
-                              {demographics.age_distribution && demographics.age_distribution.length > 0 && (
-                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-blue-100/50 dark:border-blue-800/30">
-                                  <h4 className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-1.5">
-                                    <BarChart3 className="h-3.5 w-3.5" />
-                                    Age Distribution
-                                  </h4>
-                                  <div className="h-36">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                      <BarChart
-                                        data={demographics.age_distribution.map(item => ({
-                                          name: item.age,
-                                          value: item.percentage
-                                        }))}
-                                        layout="vertical"
-                                        margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
-                                      >
-                                        <XAxis type="number" domain={[0, 100]} hide />
-                                        <YAxis
-                                          type="category"
-                                          dataKey="name"
-                                          axisLine={false}
-                                          tickLine={false}
-                                          tick={{ fontSize: 10, fill: '#64748b' }}
-                                          width={50}
-                                        />
-                                        <RechartsTooltip
-                                          formatter={(value: number) => [`${value}%`, 'Audience']}
-                                          contentStyle={{
-                                            backgroundColor: 'rgba(255,255,255,0.95)',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: '8px',
-                                            fontSize: '12px'
-                                          }}
-                                        />
-                                        <Bar
-                                          dataKey="value"
-                                          fill="url(#blueGradient)"
-                                          radius={[0, 4, 4, 0]}
-                                          label={{ position: 'right', fontSize: 10, fill: '#3b82f6', formatter: (v: number) => `${v}%` }}
-                                        />
-                                        <defs>
-                                          <linearGradient id="blueGradient" x1="0" y1="0" x2="1" y2="0">
-                                            <stop offset="0%" stopColor="#3b82f6" />
-                                            <stop offset="100%" stopColor="#06b6d4" />
-                                          </linearGradient>
-                                        </defs>
-                                      </BarChart>
-                                    </ResponsiveContainer>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Professional Industries - Pie Chart with Legend */}
-                              {demographics.professional_industry && demographics.professional_industry.length > 0 && (() => {
-                                const INDUSTRY_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe']
-                                const topIndustries = demographics.professional_industry.slice(0, 5)
-                                return (
-                                  <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-indigo-100/50 dark:border-indigo-800/30">
-                                    <h4 className="text-xs font-semibold text-indigo-800 dark:text-indigo-200 mb-3 flex items-center gap-1.5">
-                                      <Building2 className="h-3.5 w-3.5" />
-                                      Top Industries
-                                    </h4>
-                                    <div className="flex items-center gap-4">
-                                      <div className="w-24 h-24 shrink-0">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                          <PieChart>
-                                            <Pie
-                                              data={topIndustries.map((item, idx) => ({
-                                                name: item.industry,
-                                                value: item.percentage
-                                              }))}
-                                              cx="50%"
-                                              cy="50%"
-                                              innerRadius={20}
-                                              outerRadius={40}
-                                              paddingAngle={2}
-                                              dataKey="value"
-                                            >
-                                              {topIndustries.map((_, idx) => (
-                                                <Cell key={idx} fill={INDUSTRY_COLORS[idx]} />
-                                              ))}
-                                            </Pie>
-                                          </PieChart>
-                                        </ResponsiveContainer>
-                                      </div>
-                                      <div className="flex-1 space-y-1">
-                                        {topIndustries.map((item, idx) => (
-                                          <div key={idx} className="flex items-center gap-2">
-                                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: INDUSTRY_COLORS[idx] }} />
-                                            <span className="text-[10px] text-slate-600 dark:text-slate-400 truncate flex-1">{item.industry}</span>
-                                            <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300">{item.percentage}%</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )
-                              })()}
-
-                              {/* Geographic Distribution */}
-                              {demographics.geographic_distribution && demographics.geographic_distribution.length > 0 && (
-                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-emerald-100/50 dark:border-emerald-800/30">
-                                  <h4 className="text-xs font-semibold text-emerald-800 dark:text-emerald-200 mb-3 flex items-center gap-1.5">
-                                    <MapPin className="h-3.5 w-3.5" />
-                                    Geographic Reach
-                                  </h4>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {demographics.geographic_distribution.slice(0, 6).map((item, idx) => (
-                                      <div
-                                        key={idx}
-                                        className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/50 rounded-full text-[10px] font-medium text-emerald-700 dark:text-emerald-300"
-                                      >
-                                        {item.region} <span className="font-bold">{item.percentage}%</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Living Environment - Donut Chart */}
-                              {demographics.living_environment && (
-                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-amber-100/50 dark:border-amber-800/30">
-                                  <h4 className="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-3 flex items-center gap-1.5">
-                                    <Home className="h-3.5 w-3.5" />
-                                    Living Environment
-                                  </h4>
-                                  <div className="flex items-center gap-4">
-                                    <div className="w-24 h-24">
-                                      <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                          <Pie
-                                            data={[
-                                              { name: 'Urban', value: demographics.living_environment.urban, color: '#f59e0b' },
-                                              { name: 'Suburban', value: demographics.living_environment.suburban, color: '#fbbf24' },
-                                              { name: 'Rural', value: demographics.living_environment.rural, color: '#fcd34d' }
-                                            ]}
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={25}
-                                            outerRadius={40}
-                                            paddingAngle={2}
-                                            dataKey="value"
-                                          >
-                                            <Cell fill="#f59e0b" />
-                                            <Cell fill="#fbbf24" />
-                                            <Cell fill="#fcd34d" />
-                                          </Pie>
-                                        </PieChart>
-                                      </ResponsiveContainer>
-                                    </div>
-                                    <div className="flex-1 space-y-1.5">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-amber-500" />
-                                        <span className="text-[10px] text-slate-600 dark:text-slate-400">Urban</span>
-                                        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 ml-auto">{demographics.living_environment.urban}%</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-amber-400" />
-                                        <span className="text-[10px] text-slate-600 dark:text-slate-400">Suburban</span>
-                                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 ml-auto">{demographics.living_environment.suburban}%</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-amber-300" />
-                                        <span className="text-[10px] text-slate-600 dark:text-slate-400">Rural</span>
-                                        <span className="text-xs font-bold text-amber-500 dark:text-amber-500 ml-auto">{demographics.living_environment.rural}%</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Content Habits */}
-                              {demographics.content_habits && (
-                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-cyan-100/50 dark:border-cyan-800/30">
-                                  <h4 className="text-xs font-semibold text-cyan-800 dark:text-cyan-200 mb-3 flex items-center gap-1.5">
-                                    <Smartphone className="h-3.5 w-3.5" />
-                                    Content Habits
-                                  </h4>
-                                  <div className="space-y-2">
-                                    {demographics.content_habits.primary_platforms && demographics.content_habits.primary_platforms.length > 0 && (
-                                      <div>
-                                        <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">Platforms: </span>
-                                        <span className="text-[10px] text-cyan-800 dark:text-cyan-200">{demographics.content_habits.primary_platforms.join(', ')}</span>
-                                      </div>
-                                    )}
-                                    {demographics.content_habits.content_frequency && (
-                                      <div>
-                                        <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">Frequency: </span>
-                                        <span className="text-[10px] text-cyan-800 dark:text-cyan-200 capitalize">{demographics.content_habits.content_frequency}</span>
-                                      </div>
-                                    )}
-                                    {demographics.content_habits.preferred_formats && demographics.content_habits.preferred_formats.length > 0 && (
-                                      <div>
-                                        <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-medium">Formats: </span>
-                                        <span className="text-[10px] text-cyan-800 dark:text-cyan-200">{demographics.content_habits.preferred_formats.join(', ')}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Brand Relationship */}
-                              {demographics.brand_relationship && (
-                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-rose-100/50 dark:border-rose-800/30">
-                                  <h4 className="text-xs font-semibold text-rose-800 dark:text-rose-200 mb-3 flex items-center gap-1.5">
-                                    <ShoppingBag className="h-3.5 w-3.5" />
-                                    Brand Relationship
-                                  </h4>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
-                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Loyalty</div>
-                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.loyalty_level}</div>
-                                    </div>
-                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
-                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Price Sensitivity</div>
-                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.price_sensitivity}</div>
-                                    </div>
-                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
-                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Switching</div>
-                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.brand_switching_frequency}</div>
-                                    </div>
-                                    <div className="text-center p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded-lg">
-                                      <div className="text-[10px] text-rose-600 dark:text-rose-400">Advocacy</div>
-                                      <div className="text-xs font-bold text-rose-800 dark:text-rose-200 capitalize">{demographics.brand_relationship.advocacy_potential}</div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Technology Adoption */}
-                              {demographics.technology_adoption && (
-                                <div className="bg-white/50 dark:bg-white/5 rounded-lg p-3 border border-violet-100/50 dark:border-violet-800/30">
-                                  <h4 className="text-xs font-semibold text-violet-800 dark:text-violet-200 mb-2 flex items-center gap-1.5">
-                                    <Sparkles className="h-3.5 w-3.5" />
-                                    Tech Adoption: <span className="capitalize">{demographics.technology_adoption.profile}</span>
-                                  </h4>
-                                  {demographics.technology_adoption.reasoning && (
-                                    <p className="text-[10px] text-violet-700 dark:text-violet-300 leading-relaxed">{demographics.technology_adoption.reasoning}</p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Expand prompt */}
-                          {!isDemographicsExpanded && (demographics.age_distribution || demographics.professional_industry || demographics.living_environment) && (
-                            <button
-                              onClick={() => setIsDemographicsExpanded(true)}
-                              className="w-full text-center py-2 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 font-medium transition-colors"
-                            >
-                              View detailed audience breakdown
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Notes. The decision itself is pinned at the foot of the
-                      sheet, where it stays reachable however far the reader
-                      has scrolled. */}
-                  <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                    <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <MessageSquare className="h-3 w-3" />
-                      Note for your team
-                    </h3>
-
-                    <div className="space-y-2">
-                      <label htmlFor="prospect-podcast-notes" className="text-xs font-medium text-muted-foreground">
-                        Add a note (optional)
-                      </label>
-                      <Textarea
-                        id="prospect-podcast-notes"
-                        placeholder="Any thoughts or questions about this podcast..."
-                        value={currentNotes}
-                        onChange={(e) => setCurrentNotes(e.target.value)}
-                        className="min-h-[80px] resize-none text-sm"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full gap-2"
-                        onClick={() => {
-                          const existing = feedbackMap.get(selectedPodcast.podcast_id)
-                          saveFeedback(selectedPodcast.podcast_id, existing?.status || null, currentNotes)
-                        }}
-                        disabled={isSavingFeedback || currentNotes === (feedbackMap.get(selectedPodcast.podcast_id)?.notes || '')}
-                      >
-                        {isSavingFeedback ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Check className="h-4 w-4" />
-                        )}
-                        Save note
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </ScrollArea>
-
-              <div className="flex-shrink-0 border-t border-slate-200 bg-white p-3 shadow-[0_-12px_28px_rgba(13,27,42,.06)] dark:border-slate-700 dark:bg-slate-900 sm:p-4">
-                <div className="mb-2 flex min-h-6 items-center justify-between px-1 text-xs">
-                  <span className="font-semibold text-[#5d7188]">Would you want to be a guest?</span>
-                  {feedbackMap.get(selectedPodcast.podcast_id)?.status ? (
-                    <button
-                      type="button"
-                      disabled={isSavingFeedback}
-                      onClick={() => saveFeedback(selectedPodcast.podcast_id, null)}
-                      className="inline-flex min-h-9 items-center gap-1.5 font-semibold text-[#7b858d] hover:text-[#0d1b2a]"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Clear choice
-                    </button>
-                  ) : null}
-                </div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isSavingFeedback}
-                    onClick={() => saveFeedback(selectedPodcast.podcast_id, 'rejected')}
-                    className={cn(
-                      'min-h-12 gap-2 rounded-xl border-[#d8cec4] font-bold',
-                      feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected'
-                        ? 'border-[#78685f] bg-[#78685f] text-white hover:bg-[#665850] hover:text-white'
-                        : 'bg-[#fbf8f4] text-[#665d57] hover:bg-[#f2ece5]',
-                    )}
-                  >
-                    <ThumbsDown className="h-4 w-4" />
-                    Not a fit
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={isSavingFeedback}
-                    onClick={() => saveFeedback(selectedPodcast.podcast_id, 'approved')}
-                    style={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
-                      ? undefined
-                      : { backgroundColor: primaryColor, color: primaryTextColor }}
-                    className={cn(
-                      'min-h-12 gap-2 rounded-xl font-bold',
-                      feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
-                        ? 'bg-[#668b78] text-white hover:bg-[#587765]'
-                        : 'hover:brightness-95',
-                    )}
-                  >
-                    {isSavingFeedback ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
-                    Interested
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* Help Button - Fixed position */}
-      <button
-        onClick={() => {
-          setTutorialStep(0)
-          setShowTutorial(true)
+      <ShowProfileSheet
+        open={selectedPodcast !== null}
+        onOpenChange={(open) => { if (!open) setSelectedPodcast(null) }}
+        podcast={selectedPodcast}
+        feedback={selectedPodcast ? feedbackMap.get(selectedPodcast.podcast_id) : undefined}
+        fitAnalysis={selectedPodcast ? fitAnalysisFor(selectedPodcast) : null}
+        notes={currentNotes}
+        onNotesChange={setCurrentNotes}
+        onSaveNote={() => {
+          if (!selectedPodcast) return
+          saveFeedback(selectedPodcast.podcast_id, feedbackMap.get(selectedPodcast.podcast_id)?.status || null, currentNotes)
         }}
-        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-primary text-white shadow-lg hover:bg-primary/90 transition-all hover:scale-105 flex items-center justify-center"
+        isSaving={isSavingFeedback}
+        onDecide={(status) => {
+          if (!selectedPodcast) return
+          saveFeedback(selectedPodcast.podcast_id, status)
+        }}
+      />
+
+      <FocusedReview
+        open={focusedQueue !== null}
+        queue={focusedQueue ?? []}
+        feedback={feedbackMap}
+        label="Your shortlist"
+        recipientName={dashboard.prospect_name}
+        isSaving={isSavingFeedback}
+        onDecide={(podcast, status) => saveFeedback(podcast.podcast_id, status)}
+        onExit={exitFocusedReview}
+        onOpenProfile={(podcast) => {
+          setFocusedQueue(null)
+          setSelectedPodcast(podcast)
+        }}
+      />
+
+      {/* Help button, fixed. The walkthrough never opens on its own. */}
+      <button
+        type="button"
+        onClick={() => setShowTutorial(true)}
+        className="fixed bottom-4 right-4 z-40 flex h-10 w-10 items-center justify-center rounded-full text-white shadow-lg transition-all hover:scale-105 sm:bottom-6 sm:right-6 sm:h-12 sm:w-12"
+        style={{ backgroundColor: primaryColor, color: primaryTextColor }}
+        aria-label="How to use this dashboard"
         title="How to use this dashboard"
       >
         <HelpCircle className="h-5 w-5 sm:h-6 sm:w-6" />
       </button>
 
-      {/*
-       * Three steps and no more, none of which opens on its own. The five-step
-       * tour it replaces sold the page ("Fit Score", "Pro Tip") rather than
-       * explaining it, and asked people to click on a phone.
-       */}
-      <Dialog open={showTutorial} onOpenChange={(open) => !open && closeTutorial()}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-lg p-0 overflow-hidden rounded-2xl">
-          <VisuallyHidden>
-            <DialogTitle>How this works</DialogTitle>
-          </VisuallyHidden>
-
-          <div className="relative">
-            {[
-              {
-                icon: MousePointerClick,
-                iconClass: 'from-blue-500 to-cyan-500',
-                title: 'Open a show to see why it fits',
-                body: 'Every card says why the show made your list. Tap it for the audience, the recent episodes, and what you could talk about.',
-              },
-              {
-                icon: ListChecks,
-                iconClass: 'from-green-500 to-emerald-500',
-                title: 'Mark it Interested or Not a fit',
-                body: 'One tap on each show. Not a fit is as useful as Interested; it sharpens the next set. Add a note if there is something your team should know.',
-              },
-              {
-                icon: Rocket,
-                iconClass: 'from-orange-500 to-red-500',
-                title: `${brandName} pitches the shows you picked`,
-                body: 'There is nothing to submit. Your picks go straight to outreach, and you hear from us when the first host replies.',
-              },
-            ].map((step, index) => (
-              tutorialStep === index ? (
-                <div key={step.title} className="p-5 sm:p-8 text-center">
-                  <div className={cn('w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br flex items-center justify-center', step.iconClass)}>
-                    <step.icon className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-bold mb-2">{step.title}</h2>
-                  <p className="text-sm sm:text-base text-muted-foreground">{step.body}</p>
-                </div>
-              ) : null
-            ))}
-
-            {/* Progress Dots */}
-            <div className="flex justify-center gap-2 pb-4">
-              {[0, 1, 2].map((step) => (
-                <button
-                  key={step}
-                  type="button"
-                  aria-label={`Go to step ${step + 1}`}
-                  onClick={() => setTutorialStep(step)}
-                  className={cn(
-                    "w-2 h-2 rounded-full transition-all",
-                    tutorialStep === step
-                      ? "bg-primary w-6"
-                      : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
-                  )}
-                />
-              ))}
-            </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex items-center justify-between gap-2 p-4 border-t bg-muted/30">
-              <Button
-                variant="ghost"
-                onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
-                disabled={tutorialStep === 0}
-                className="min-h-11 gap-1"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back
-              </Button>
-
-              <div className="flex items-center gap-2">
-                {tutorialStep < 2 ? (
-                  <Button variant="ghost" onClick={closeTutorial} className="min-h-11 text-muted-foreground">
-                    Skip
-                  </Button>
-                ) : null}
-                {tutorialStep < 2 ? (
-                  <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="min-h-11 gap-1">
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button onClick={closeTutorial} className="min-h-11 gap-1">
-                    Start reviewing
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Pricing Feature Detail Modal */}
+      <ReviewTutorial open={showTutorial} onOpenChange={setShowTutorial} brandName={brandName} />
 
       {/* Loom Video Modal */}
       {loomEmbedUrl && (
@@ -3125,18 +1162,14 @@ function ProspectViewContent() {
           }}
         >
           <DialogContent className="max-w-4xl w-full p-0">
-            <DialogTitle className="sr-only">Personal Video Message</DialogTitle>
+            <DialogTitle className="sr-only">Personal video message</DialogTitle>
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-              {/* Loading Spinner */}
               {loomVideoLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 rounded-lg z-10">
-                  <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Loading your video...</p>
-                  </div>
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-lg bg-[#f6f9fc]">
+                  <Loader2 className="h-12 w-12 animate-spin text-[#0d1b2a]" />
+                  <p className="text-sm text-muted-foreground">Loading your video...</p>
                 </div>
               )}
-
               <iframe
                 src={loomEmbedUrl}
                 frameBorder="0"
@@ -3152,5 +1185,6 @@ function ProspectViewContent() {
         </Dialog>
       )}
     </main>
+    </ReviewBrandContext.Provider>
   )
 }

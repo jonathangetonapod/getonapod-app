@@ -31,18 +31,18 @@ assert.doesNotMatch(edge, /from\('campaign_replies'\)/u)
 assert.match(config, /\[functions\.workspace-client-podcast-system\]\s+verify_jwt = true/u)
 assert.match(service, /functions\.invoke\('workspace-client-podcast-system'/u)
 assert.match(service, /response\.workspace\.id\.toLowerCase\(\) !== canonicalWorkspaceId/u)
-assert.match(page, /Private workspace overview/u)
-assert.match(page, /Client Command Center/u)
-assert.match(page, /Switch client overview/u)
-assert.match(page, /Guest and account readiness/u)
-assert.match(page, /Outreach and conversations/u)
-assert.match(page, /Search this client's podcasts/u)
-assert.match(page, /Confirmed delivery milestones/u)
-assert.match(layout, /id: 'client-podcast-system', name: 'Client Command Center'[\s\S]+enabled: true/u)
+// The page is the cross-client work queue now ("Pipeline"); the per-client
+// tabs it used to carry live on the client record, and the opportunity sheet
+// is shared between the two.
+assert.match(page, />Pipeline</u)
+assert.match(page, /Needs attention/u)
+assert.match(page, /Client record/u)
+assert.doesNotMatch(page, /Private workspace overview/u)
+assert.match(layout, /id: 'client-podcast-system', name: 'Pipeline'[\s\S]+enabled: true/u)
 assert.match(routes, /path="\/app\/client-podcast-system"/u)
 assert.match(routes, /path="\/app\/workspaces\/:workspaceId\/client-podcast-system"/u)
 
-console.log('workspace Client Command Center Edge contract passed')
+console.log('workspace pipeline Edge contract passed')
 
 // The command center and Master Inbox now reach each other by host, not just
 // by client. A thread records the show it came from at ingestion, so this is a
@@ -57,9 +57,10 @@ assert.match(edge, /function conversationFor\(/u)
 assert.match(edge, /thread_key: thread\?\.thread_key \?\? null/u)
 assert.match(edge, /replied: replyCount > 0 \|\| Boolean\(thread\)/u)
 
-assert.match(page, /function inboxHref\(baseHref: string, item: ClientPodcastSystemItem\)/u)
-assert.match(page, /params\.set\('thread', item\.conversation\.thread_key\)/u)
-assert.match(page, /Reply not read in yet/u)
+const sheet = readFileSync('src/components/workspace/OpportunityDetailSheet.tsx', 'utf8')
+assert.match(sheet, /function inboxHref\(baseHref: string, item: ClientPodcastSystemItem\)/u)
+assert.match(sheet, /params\.set\('thread', item\.conversation\.thread_key\)/u)
+assert.match(sheet, /Reply not read in yet/u)
 // A deep-linked placement must be closeable, or it reopens on every render.
 assert.match(page, /next\.delete\('podcast'\)/u)
 

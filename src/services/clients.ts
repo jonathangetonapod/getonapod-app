@@ -235,6 +235,8 @@ export interface WorkspaceClientOnboardingSummary {
 }
 
 export interface WorkspaceClientDetail {
+  /** Absent from older function builds; treat as no keys. */
+  ai_keys?: WorkspaceAiKeyPresence
   workspace: WorkspaceResearchContext['workspace']
   viewer_role: 'owner' | 'admin' | 'member' | 'platform_admin'
   can_manage: boolean
@@ -255,7 +257,15 @@ export interface WorkspaceClientInput {
   notes?: string
 }
 
+/** Which AI providers the workspace pays for itself; work on those keys is not charged. */
+export interface WorkspaceAiKeyPresence {
+  anthropic: boolean
+  openai: boolean
+}
+
 export interface WorkspaceResearchContext {
+  /** Absent from older function builds; treat as no keys. */
+  ai_keys?: WorkspaceAiKeyPresence
   workspace: {
     id: string
     name: string

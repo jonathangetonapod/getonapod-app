@@ -153,6 +153,8 @@ interface StaffViewDto {
     client_brand_primary_color: string;
     client_brand_accent_color: string;
     client_brand_updated_at: string | null;
+    /** Reply-to on client emails; null until the agency sets one. */
+    client_contact_email: string | null;
     booking_embed_url: string | null;
   };
   members: StaffMemberDto[];
@@ -179,6 +181,8 @@ interface WorkspacePresentationBrandingDto extends WorkspaceBrandingDto {
   client_brand_primary_color: string;
   client_brand_accent_color: string;
   client_brand_updated_at: string;
+  /** Reply-to on client emails; null until the agency sets one. */
+  client_contact_email: string | null;
   /** Scheduler link offered to prospects. Null until an agency sets one. */
   booking_embed_url: string | null;
 }
@@ -310,6 +314,7 @@ function workspacePresentationBrandingDto(
       row.client_brand_accent_color,
     ),
     booking_embed_url: responseText(row.booking_embed_url ?? null, 500, true),
+    client_contact_email: responseText(row.client_contact_email ?? null, 254, true),
     client_brand_updated_at: responseTimestamp(
       row.client_brand_updated_at,
     ) as string,
@@ -565,6 +570,7 @@ function staffViewDto(value: unknown): StaffViewDto {
       client_brand_primary_color: "#0D1B2A",
       client_brand_accent_color: "#C7794F",
       client_brand_updated_at: null,
+      client_contact_email: null,
       // Placeholder; listWorkspaceSettings overlays the real value from
       // loadWorkspaceBranding. The list action always goes through that
       // overlay, so the settings box shows the saved link and can clear it.
@@ -884,7 +890,7 @@ async function loadWorkspaceBranding(
   };
   const { data: canonicalBrand, error: canonicalBrandError } = await admin
     .from("workspaces")
-    .select("id,client_brand_name,client_brand_primary_color,client_brand_accent_color,client_brand_updated_at,booking_embed_url")
+    .select("id,client_brand_name,client_brand_primary_color,client_brand_accent_color,client_brand_updated_at,booking_embed_url,client_contact_email")
     .eq("id", workspaceId)
     .maybeSingle();
 
@@ -905,6 +911,7 @@ async function loadWorkspaceBranding(
         canonicalBrand.client_brand_updated_at,
       ) as string,
       booking_embed_url: responseText(canonicalBrand.booking_embed_url ?? null, 500, true),
+      client_contact_email: responseText(canonicalBrand.client_contact_email ?? null, 254, true),
     };
   }
   if (
@@ -941,6 +948,7 @@ async function loadWorkspaceBranding(
       client_brand_accent_color: "#C7794F",
       client_brand_updated_at: base.updated_at,
       booking_embed_url: responseText(canonicalBrand?.booking_embed_url ?? null, 500, true),
+      client_contact_email: responseText(canonicalBrand?.client_contact_email ?? null, 254, true),
     };
   }
 
@@ -953,6 +961,7 @@ async function loadWorkspaceBranding(
     client_brand_accent_color: responseBrandColor(metadata.accent_color),
     client_brand_updated_at: responseTimestamp(event.created_at) as string,
     booking_embed_url: responseText(canonicalBrand?.booking_embed_url ?? null, 500, true),
+    client_contact_email: responseText(canonicalBrand?.client_contact_email ?? null, 254, true),
   };
 }
 
@@ -979,6 +988,7 @@ async function listWorkspaceSettings(
       client_brand_primary_color: branding.client_brand_primary_color,
       client_brand_accent_color: branding.client_brand_accent_color,
       client_brand_updated_at: branding.client_brand_updated_at,
+      client_contact_email: branding.client_contact_email,
       booking_embed_url: branding.booking_embed_url,
     },
     capabilities: {
@@ -1356,6 +1366,7 @@ async function setWorkspaceClientBrand(
     clientBrandName: string;
     primaryColor: string;
     accentColor: string;
+    contactEmail?: string | null;
     actorUserId: string;
     tokenIssuedAt: number;
   },
@@ -1370,7 +1381,20 @@ async function setWorkspaceClientBrand(
     p_token_issued_at: input.tokenIssuedAt,
   });
   if (!error) {
-    return workspacePresentationBrandingDto(data, input.workspaceId);
+    // The reply-to rides beside the brand rather than inside the RPC: the
+    // RPC has already checked the actor and the expected version, and a
+    // column write here keeps its signature stable.
+    if (input.contactEmail !== undefined) {
+      const { error: contactError } = await admin
+        .from("workspaces")
+        .update({ client_contact_email: input.contactEmail })
+        .eq("id", input.workspaceId);
+      if (contactError && !schemaObjectUnavailable(contactError, "client_contact_email")) {
+        throw new HttpError(500, "BRANDING_UPDATE_FAILED", "The contact email could not be saved");
+      }
+    }
+    const dto = workspacePresentationBrandingDto(data, input.workspaceId);
+    return { ...dto, client_contact_email: input.contactEmail === undefined ? dto.client_contact_email : input.contactEmail };
   }
   if (!schemaObjectUnavailable(error, "set_workspace_client_brand_v1")) {
     rpcFailure(
@@ -3567,6 +3591,7 @@ serve(async (req) => {
         "client_brand_name",
         "client_brand_primary_color",
         "client_brand_accent_color",
+        "client_contact_email",
       ]);
       const expectedBrandUpdatedAt = requireBrandUpdatedAt(
         body.expected_brand_updated_at,
@@ -3580,6 +3605,9 @@ serve(async (req) => {
         body.client_brand_accent_color,
         "client_brand_accent_color",
       );
+      const contactEmail = body.client_contact_email === undefined || body.client_contact_email === null || body.client_contact_email === ""
+        ? null
+        : requireEmail(body.client_contact_email);
       const staff = await listWorkspaceStaff(
         admin,
         workspaceId,
@@ -3602,6 +3630,7 @@ serve(async (req) => {
         clientBrandName,
         primaryColor,
         accentColor,
+        contactEmail,
         actorUserId: user.id,
         tokenIssuedAt,
       });

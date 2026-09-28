@@ -82,7 +82,7 @@ const CATEGORY_META: Array<{ id: UniversityCategory; label: string; segment: str
   { id: 'clients', label: 'Clients', segment: 'clients' },
   { id: 'podcast_finder', label: 'Podcast Finder', segment: 'podcast-finder' },
   { id: 'podcast_database', label: 'Podcast Database', segment: 'podcast-database' },
-  { id: 'client_podcast_system', label: 'Client Command Center', segment: 'client-podcast-system' },
+  { id: 'client_podcast_system', label: 'Pipeline', segment: 'client-podcast-system' },
   { id: 'prospects', label: 'Prospect Studio', segment: 'prospects' },
   { id: 'client_campaigns', label: 'Client Campaigns', segment: 'client-campaigns' },
   { id: 'relationships', label: 'Relationships', segment: 'relationships' },

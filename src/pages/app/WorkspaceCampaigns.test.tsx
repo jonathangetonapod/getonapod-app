@@ -300,7 +300,7 @@ describe('WorkspaceCampaigns', () => {
     // Writing a pitch happens on the client's shortlist, not on the campaign page.
     const table = await screen.findByRole('table')
     expect(within(table).getByRole('link', { name: 'Write 3 pitches' }))
-      .toHaveAttribute('href', `/app/clients/${clientId}?tab=approval`)
+      .toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
   })
 
   it('points a launch step at the campaign options, where the launch button is', async () => {

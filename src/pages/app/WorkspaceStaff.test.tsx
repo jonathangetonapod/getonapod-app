@@ -137,6 +137,7 @@ const ownerView: WorkspaceStaffView = {
     client_brand_accent_color: '#C7794F',
     booking_embed_url: null,
     client_brand_updated_at: '2026-07-22T00:30:00.000Z',
+    client_contact_email: null,
   },
   capabilities: {
     read_only: false,
@@ -296,6 +297,7 @@ describe('WorkspaceStaff', () => {
       client_brand_primary_color: '#16324F',
       client_brand_accent_color: '#E07A5F',
       client_brand_updated_at: '2026-07-22T01:05:00.000Z',
+      client_contact_email: null,
     })
     mockedUpdateWorkspaceName.mockResolvedValue({
       id: workspaceId,
@@ -466,6 +468,7 @@ describe('WorkspaceStaff', () => {
       client_brand_name: 'Northstar Advisory',
       client_brand_primary_color: '#16324F',
       client_brand_accent_color: '#E07A5F',
+      client_contact_email: '',
       expected_brand_updated_at: '2026-07-22T00:30:00.000Z',
     }))
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Client-facing brand updated.'))

@@ -46,6 +46,7 @@ const ClientApprovalView = lazyRoute(() => import("./pages/client/ClientApproval
 const AcceptInvite = lazyRoute(() => import("./pages/admin/AcceptInvite"));
 const WorkspaceClients = lazyRoute(() => import("./pages/app/WorkspaceClients"));
 const WorkspaceClientDetail = lazyRoute(() => import("./pages/app/WorkspaceClientDetail"));
+const WorkspaceClientPitch = lazyRoute(() => import("./pages/app/WorkspaceClientPitch"));
 const WorkspaceOnboarding = lazyRoute(() => import("./pages/app/WorkspaceOnboarding"));
 const MyWorkspaceSettings = lazyRoute(() => import("./pages/app/MyWorkspaceSettings"));
 const PlatformBilling = lazyRoute(() => import("./pages/app/PlatformBilling"));
@@ -67,6 +68,7 @@ const AdminWorkspaceRelationships = lazyRoute(() => import("./pages/admin/AdminW
 const AdminWorkspaceUniversity = lazyRoute(() => import("./pages/admin/AdminWorkspaceUniversity"));
 const AdminWorkspaceClients = lazyRoute(() => import("./pages/admin/AdminWorkspaceClients"));
 const AdminWorkspaceClientDetail = lazyRoute(() => import("./pages/admin/AdminWorkspaceClientDetail"));
+const AdminWorkspaceClientPitch = lazyRoute(() => import("./pages/admin/AdminWorkspaceClientPitch"));
 const AdminWorkspaceOnboarding = lazyRoute(() => import("./pages/admin/AdminWorkspaceOnboarding"));
 const AdminWorkspaceStaff = lazyRoute(() => import("./pages/admin/AdminWorkspaceStaff"));
 const AdminWorkspacePodcastFinderHome = lazyRoute(() => import("./pages/admin/AdminWorkspacePodcastFinderHome"));
@@ -207,6 +209,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <WorkspaceClientDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/clients/:clientId/podcasts/:podcastId/pitch"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceClientPitch />
                 </ProtectedRoute>
               }
             />
@@ -381,6 +391,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceClientDetail />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/clients/:clientId/podcasts/:podcastId/pitch"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceClientPitch />
                 </PlatformAdminRoute>
               }
             />

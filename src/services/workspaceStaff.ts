@@ -60,6 +60,8 @@ export interface WorkspaceStaffView {
     client_brand_primary_color: string
     client_brand_accent_color: string
     client_brand_updated_at: string | null
+    /** Reply-to on client emails; null until the agency sets one. */
+    client_contact_email: string | null
     /** Scheduler prospects are offered when a dashboard sets no CTA. */
     booking_embed_url: string | null
   }
@@ -91,12 +93,15 @@ export interface WorkspaceClientBranding {
   client_brand_primary_color: string
   client_brand_accent_color: string
   client_brand_updated_at: string
+  client_contact_email: string | null
 }
 
 export interface WorkspaceClientBrandingInput {
   client_brand_name: string
   client_brand_primary_color: string
   client_brand_accent_color: string
+  /** Empty clears it. */
+  client_contact_email?: string
   expected_brand_updated_at: string
 }
 
@@ -414,6 +419,9 @@ function parseView(value: unknown, expectedWorkspaceId: string): WorkspaceStaffV
       client_brand_primary_color: clientBrandPrimaryColor,
       client_brand_accent_color: clientBrandAccentColor,
       client_brand_updated_at: clientBrandUpdatedAt,
+      client_contact_email: typeof value.workspace.client_contact_email === 'string' && value.workspace.client_contact_email.includes('@')
+        ? value.workspace.client_contact_email
+        : null,
       booking_embed_url: typeof value.workspace.booking_embed_url === 'string'
         && value.workspace.booking_embed_url.startsWith('https://')
         ? value.workspace.booking_embed_url
@@ -472,6 +480,9 @@ function parseClientBrandingMutation(
     client_brand_name: parseClientBrandName(value.workspace.client_brand_name, ''),
     client_brand_primary_color: parseClientBrandColor(value.workspace.client_brand_primary_color, ''),
     client_brand_accent_color: parseClientBrandColor(value.workspace.client_brand_accent_color, ''),
+    client_contact_email: typeof value.workspace.client_contact_email === 'string' && value.workspace.client_contact_email.includes('@')
+      ? value.workspace.client_contact_email
+      : null,
     client_brand_updated_at: isoTimestamp(value.workspace.client_brand_updated_at),
   }
 }
@@ -569,6 +580,10 @@ export async function updateWorkspaceClientBranding(
   if (!Number.isFinite(Date.parse(input.expected_brand_updated_at))) {
     throw new Error('Workspace branding changed. Refresh before saving.')
   }
+  const contactEmail = (input.client_contact_email ?? '').trim()
+  if (contactEmail && (contactEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(contactEmail))) {
+    throw new Error('Enter a valid contact email, or leave it empty.')
+  }
   const data = await invoke({
     action: 'update_brand',
     workspace_id: canonicalWorkspaceId,
@@ -576,6 +591,7 @@ export async function updateWorkspaceClientBranding(
     client_brand_name: clientBrandName,
     client_brand_primary_color: primaryColor,
     client_brand_accent_color: accentColor,
+    ...(input.client_contact_email === undefined ? {} : { client_contact_email: contactEmail }),
   }, 'Client-facing workspace branding could not be updated.')
   return parseClientBrandingMutation(data, canonicalWorkspaceId)
 }

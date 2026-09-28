@@ -2,7 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,6 +14,13 @@ import {
   Quote, Undo, Redo, Link as LinkIcon, Image as ImageIcon,
   Heading2, Heading3, Code, Sparkles, Loader2
 } from 'lucide-react'
+
+interface ToolbarButtonProps {
+  onClick: () => void
+  active?: boolean
+  children: ReactNode
+  title?: string
+}
 
 interface RichTextEditorProps {
   content: string
@@ -59,7 +66,7 @@ export function RichTextEditor({ content, onChange, placeholder, className }: Ri
   }
 
   // Toolbar button component
-  const ToolbarButton = ({ onClick, active, children, title }: any) => (
+  const ToolbarButton = ({ onClick, active, children, title }: ToolbarButtonProps) => (
     <button
       type="button"
       onClick={onClick}

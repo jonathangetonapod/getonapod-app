@@ -101,9 +101,8 @@ import {
 import { isTargetInActiveOutreach } from '@/lib/campaignTargetState'
 import { researchPromptPhases, researchPromptStepNumbers } from '@/lib/researchPromptStages'
 
-interface ClientCampaignPrepDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+
+export interface ClientCampaignPrepProps {
   workspaceId: string
   clientId: string
   clientName: string
@@ -122,10 +121,39 @@ interface ClientCampaignPrepDialogProps {
    * credit, so pointing it at the viewer's own balance was the wrong ledger.
    */
   billingHref: string
+  /** The client's Shortlist tab: where the page layout returns to. */
+  shortlistHref?: string
   podcast: ClientShortlistPodcast | null
+  /**
+   * Whether the flow is on screen. A dialog passes its open state so queries
+   * pause and the form resets while it is closed; a page is always active.
+   */
+  active?: boolean
+  /**
+   * The workspace runs research on its own Anthropic key, so the metered
+   * steps are included rather than charged, and the labels say so.
+   */
+  byoAi?: boolean
+  /**
+   * Page: the steps as a left rail (a top stepper on narrow screens), the
+   * current step in the main column, a sticky footer. Dialog: the original
+   * header, scroll body and footer rows of a DialogContent grid.
+   */
+  layout?: 'dialog' | 'page'
   onArchive: () => void
   onPrepared?: () => void
+  /** Cancel and Done in the dialog layout. */
+  onDismiss?: () => void
 }
+
+interface ClientCampaignPrepDialogProps extends Omit<
+  ClientCampaignPrepProps,
+  'active' | 'byoAi' | 'layout' | 'onDismiss' | 'shortlistHref'
+> {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
 
 type PitchStep = 'email' | 'research' | 'pitch'
 
@@ -264,9 +292,8 @@ function podcastRelationshipNeedsReview(podcast: ClientShortlistPodcast | null):
   )
 }
 
-export function ClientCampaignPrepDialog({
-  open,
-  onOpenChange,
+
+export function ClientCampaignPrep({
   workspaceId,
   clientId,
   clientName,
@@ -275,10 +302,23 @@ export function ClientCampaignPrepDialog({
   campaignHref,
   relationshipsHref,
   billingHref,
+  shortlistHref,
   podcast,
+  active = true,
+  byoAi = false,
+  layout = 'dialog',
   onArchive,
   onPrepared,
-}: ClientCampaignPrepDialogProps) {
+  onDismiss,
+}: ClientCampaignPrepProps) {
+  const page = layout === 'page'
+  // Leaving a page and closing a modal are different verbs for the same
+  // reassurance: the search keeps going without this screen.
+  const leaveVerb = page ? 'leave this page' : 'close this modal'
+  const leaveWindowVerb = page ? 'leave this page' : 'close this window'
+  // Only the page has anywhere to go. The dialog's Cancel is the close button,
+  // and closing never lost a saved draft; a link away from an unsaved one can.
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false)
   const queryClient = useQueryClient()
   const [activeStep, setActiveStep] = useState<PitchStep>('email')
   // What happened on the last successful send. Held rather than toasted: the
@@ -375,8 +415,8 @@ export function ClientCampaignPrepDialog({
   // that started it and must not decide anything from a stale closure.
   const aiPitchesRef = useRef(aiPitches)
   aiPitchesRef.current = aiPitches
-  const dialogOpenRef = useRef(open)
-  dialogOpenRef.current = open
+  const activeRef = useRef(active)
+  activeRef.current = active
   /**
    * Pitch writes currently in flight, by pitch key.
    *
@@ -497,7 +537,7 @@ export function ClientCampaignPrepDialog({
     const pending: Array<Promise<unknown>> = []
     for (let index = 0; index < total; index += 1) {
       if (index === loadedIndex) continue
-      if (!dialogOpenRef.current) return
+      if (!activeRef.current) return
       const key = pitchKey(podcast.id, index)
       if (aiPitchesRef.current[key]) continue
       pending.push(generatePitch(index).catch(() => null))
@@ -602,7 +642,7 @@ export function ClientCampaignPrepDialog({
   const campaignQuery = useQuery({
     queryKey: campaignQueryKey,
     queryFn: () => getWorkspaceCampaign(workspaceId, clientId),
-    enabled: open && Boolean(podcast),
+    enabled: active && Boolean(podcast),
     retry: false,
   })
   // Which campaigns this pitch may join. Only campaigns this app built carry
@@ -611,7 +651,7 @@ export function ClientCampaignPrepDialog({
   const linksQuery = useQuery({
     queryKey: ['client-instantly-campaign-links', workspaceId, clientId],
     queryFn: () => getClientInstantlyCampaignLinks(workspaceId, clientId),
-    enabled: open && Boolean(podcast),
+    enabled: active && Boolean(podcast),
     retry: false,
     staleTime: 30_000,
   })
@@ -626,7 +666,7 @@ export function ClientCampaignPrepDialog({
       podcast!.podcast_id,
       relationshipAcknowledged,
     ),
-    enabled: open && Boolean(podcast?.podcast_id) && relationshipCanProceed,
+    enabled: active && Boolean(podcast?.podcast_id) && relationshipCanProceed,
     retry: false,
     staleTime: 5 * 60_000,
   })
@@ -712,11 +752,11 @@ export function ClientCampaignPrepDialog({
   const [nowMs, setNowMs] = useState(() => Date.now())
   const researchClaimsWork = researchProgress?.status === 'queued' || researchProgress?.status === 'running'
   useEffect(() => {
-    if (!open || !researchClaimsWork) return
+    if (!active || !researchClaimsWork) return
     setNowMs(Date.now())
     const timer = window.setInterval(() => setNowMs(Date.now()), 30_000)
     return () => window.clearInterval(timer)
-  }, [open, researchClaimsWork])
+  }, [active, researchClaimsWork])
   // Only the current prompt pipeline counts as research. A legacy
   // ai_analyzed_at from the retired analysis path no longer unlocks the
   // pitch flow — those shows re-run research through the real prompts.
@@ -810,7 +850,7 @@ export function ClientCampaignPrepDialog({
   const researchDocumentQuery = useQuery({
     queryKey: researchDocumentQueryKey,
     queryFn: () => getClientShortlistResearchDocument(workspaceId, clientId, podcast!.id),
-    enabled: open && Boolean(podcast?.id) && researchComplete && researchStepsExpanded,
+    enabled: active && Boolean(podcast?.id) && researchComplete && researchStepsExpanded,
     retry: false,
     staleTime: 60_000,
   })
@@ -818,7 +858,7 @@ export function ClientCampaignPrepDialog({
   const promptOverridesQuery = useQuery({
     queryKey: ['workspace-research-prompts', workspaceId],
     queryFn: () => getWorkspaceResearchPromptOverrides(workspaceId),
-    enabled: open,
+    enabled: active,
     retry: false,
     staleTime: 60_000,
   })
@@ -830,7 +870,7 @@ export function ClientCampaignPrepDialog({
   const clientPromptsQuery = useQuery({
     queryKey: ['client-sdr-prompts', workspaceId, clientId],
     queryFn: () => getClientSdrPrompts(workspaceId, clientId),
-    enabled: open,
+    enabled: active,
     retry: false,
   })
   const clientPrompts = clientPromptsQuery.data ?? {}
@@ -840,7 +880,7 @@ export function ClientCampaignPrepDialog({
   const promptModelsQuery = useQuery({
     queryKey: ['workspace-prompt-models', workspaceId],
     queryFn: () => getWorkspacePromptModels(workspaceId),
-    enabled: open && showPromptSettings,
+    enabled: active && showPromptSettings,
     retry: false,
     staleTime: 10 * 60_000,
   })
@@ -936,7 +976,7 @@ export function ClientCampaignPrepDialog({
   const promptPreviewQuery = useQuery({
     queryKey: promptPreviewQueryKey,
     queryFn: () => getPromptPreview(workspaceId, clientId, podcast!.id),
-    enabled: open && Boolean(podcast?.id),
+    enabled: active && Boolean(podcast?.id),
     retry: false,
     staleTime: 30_000,
   })
@@ -976,7 +1016,7 @@ export function ClientCampaignPrepDialog({
   const requirementsQuery = useQuery({
     queryKey: requirementsQueryKey,
     queryFn: () => getWorkspacePromptRequirements(workspaceId),
-    enabled: open,
+    enabled: active,
     retry: false,
     staleTime: 60_000,
   })
@@ -1073,7 +1113,7 @@ export function ClientCampaignPrepDialog({
   // open rather than on every identity change of the polled podcast object.
   const seededForRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!open) {
+    if (!active) {
       seededForRef.current = null
       setActiveStep('email')
       setEmailRoute('podcast')
@@ -1088,20 +1128,20 @@ export function ClientCampaignPrepDialog({
       setDraft(emptyDraft())
       setSavedDraft(emptyDraft())
     }
-  }, [open])
+  }, [active])
 
   useEffect(() => {
     setAcknowledgedRelationshipPodcastId(null)
-  }, [open, podcast?.podcast_id])
+  }, [active, podcast?.podcast_id])
 
   useEffect(() => {
-    if (!open) {
+    if (!active) {
       setStagedResult(null)
       setConfirmSendOpen(false)
       setConfirmRemoveOpen(false)
       setPrepareError(null)
     }
-    if (!open || !podcast || campaignQuery.isLoading) return
+    if (!active || !podcast || campaignQuery.isLoading) return
     // The shortlist polls every two seconds while research runs, and each
     // tick is a new podcast object. Re-seeding on every one wiped a contact
     // email typed by hand and reset the draft under the operator's cursor.
@@ -1139,15 +1179,15 @@ export function ClientCampaignPrepDialog({
     // Seeded once per open and podcast; the rest of these only matter on that
     // first pass, and re-running for them is exactly what wiped typed input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaignQuery.isLoading, open, podcast?.id])
+  }, [campaignQuery.isLoading, active, podcast?.id])
 
   // A search finishing is the one later change worth adopting: the direct
   // address it found replaces whatever placeholder the field held meanwhile.
   useEffect(() => {
-    if (!open || !emailAlreadyUnlocked || !unlockedEmail) return
+    if (!active || !emailAlreadyUnlocked || !unlockedEmail) return
     setContactEmail(unlockedEmail)
     setEmailRoute('waterfall')
-  }, [open, emailAlreadyUnlocked, unlockedEmail])
+  }, [active, emailAlreadyUnlocked, unlockedEmail])
 
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -1507,117 +1547,32 @@ export function ClientCampaignPrepDialog({
     || savePitchMutation.isPending
     || prepareMutation.isPending
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
-        <DialogHeader className="border-b px-5 py-5 pr-12 text-left sm:px-6 sm:pr-12">
+
+  const headerDescription = `Find the right contact, research the show, and then write a thoughtful outreach sequence for ${clientName}. ${submitWillSend
+    ? `${chosenCampaign?.name || campaign?.name || 'This campaign'} is live, so sending this to Client Campaign puts the host into the sequence.`
+    : page ? 'Nothing sends from this page.' : 'Nothing sends from this modal.'}`
+
+  const headerContent = (
+        <div className={page ? undefined : 'text-left'}>
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="mr-1 h-3 w-3" />Approved podcast</Badge>
             <Badge variant="secondary">Pitch workspace</Badge>
             {campaign && <Badge variant="outline">{campaign.name}</Badge>}
           </div>
-          <DialogTitle className="text-2xl">Write a pitch for {podcast?.podcast_name || 'this podcast'}</DialogTitle>
-          <DialogDescription>Find the right contact, research the show, and then write a thoughtful outreach sequence for {clientName}.{' '}{submitWillSend ? `${chosenCampaign?.name || campaign?.name || 'This campaign'} is live, so sending this to Client Campaign puts the host into the sequence.` : 'Nothing sends from this modal.'}</DialogDescription>
-        </DialogHeader>
+          {page ? (
+            <h1 className="mt-2 text-2xl font-semibold leading-tight">Write a pitch for {podcast?.podcast_name || 'this podcast'}</h1>
+          ) : (
+            <DialogTitle className="text-2xl">Write a pitch for {podcast?.podcast_name || 'this podcast'}</DialogTitle>
+          )}
+          {page ? (
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{headerDescription}</p>
+          ) : (
+            <DialogDescription>{headerDescription}</DialogDescription>
+          )}
+        </div>
+  )
 
-        <div className="min-h-0 overflow-y-auto overscroll-contain">
-          {stagedResult ? (
-            <div
-              role="status"
-              aria-label="Pitch added to client campaign"
-              className={stagedResult.willSend || !stagedResult.leadStaged
-                ? 'm-6 flex min-h-80 flex-col items-center justify-center rounded-2xl border border-amber-300 bg-amber-50 px-6 py-10 text-center'
-                : 'm-6 flex min-h-80 flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/60 px-6 py-10 text-center'}
-            >
-              {/* Green is a claim that the work is finished. Without a lead it
-                  is not: the podcast is listed and nobody can be reached. */}
-              {stagedResult.willSend || !stagedResult.leadStaged
-                ? <AlertCircle className="h-10 w-10 text-amber-700" />
-                : <CheckCircle2 className="h-10 w-10 text-emerald-600" />}
-              <h3 className="mt-4 text-lg font-semibold">
-                {stagedResult.willSend
-                  ? `${podcast?.podcast_name || 'This podcast'} is now in a live sequence`
-                  : stagedResult.leadStaged
-                    ? `${podcast?.podcast_name || 'This podcast'} was added to ${stagedResult.campaignName}`
-                    : `${podcast?.podcast_name || 'This podcast'} was added, but has no lead`}
-              </h3>
-              {/* Saying "added as a lead" when no lead exists is the failure
-                  that sends somebody to Instantly looking for a host who was
-                  never created. The sequence only attaches to a real lead. */}
-              <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                {stagedResult.leadStaged
-                  ? `${stagedResult.hostName || 'The host'} was ${stagedResult.added ? 'added' : 'updated'} in ${stagedResult.campaignName} as a lead, with the full three-email sequence attached.`
-                  : `The podcast and its sequence are saved to ${stagedResult.campaignName}. No lead was created, because there is no contact email to create one for, so nothing can reach the host yet.`}
-              </p>
-              <dl className="mt-5 w-full max-w-sm space-y-2 rounded-xl border bg-background/80 p-4 text-left text-xs">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Contact</dt>
-                  <dd className={stagedResult.contactEmail ? 'truncate font-medium' : 'truncate font-medium text-amber-800'}>
-                    {stagedResult.contactEmail || 'None yet'}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Campaign</dt><dd className="truncate font-medium">{stagedResult.campaignName}</dd></div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Sending</dt>
-                  <dd className={stagedResult.willSend || !stagedResult.leadStaged ? 'font-semibold text-amber-800' : 'font-medium'}>
-                    {stagedResult.willSend
-                      ? 'Live — starts automatically'
-                      : stagedResult.leadStaged
-                        ? 'Paused — nothing sends yet'
-                        : 'Nothing to send — no lead yet'}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-4 max-w-md text-xs leading-5 text-muted-foreground">
-                {stagedResult.willSend
-                  ? 'The opening email goes out on the campaign\u2019s next send window, then the two follow-ups on day 6 and day 13. To stop it, pause the campaign in Client Campaigns.'
-                  : stagedResult.leadStaged
-                    ? 'Open Client Campaigns and choose Approve & start outreach when you are ready for this to send. You can keep editing the sequence until then.'
-                    : 'Add a contact email and send again to create the lead. Approving outreach before then starts a sequence with nobody in it.'}
-              </p>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-                {/* The one move that finishes what this screen reports. */}
-                {!stagedResult.leadStaged && (
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setStagedResult(null)
-                      setActiveStep('email')
-                    }}
-                  >
-                    Add a contact email
-                  </Button>
-                )}
-                <Button asChild variant={stagedResult.willSend || !stagedResult.leadStaged ? 'outline' : 'default'}><Link to={campaignHref}>Open Client Campaigns</Link></Button>
-                <Button type="button" variant={stagedResult.willSend ? 'outline' : 'default'} onClick={() => onOpenChange(false)}>Done</Button>
-              </div>
-              {prepareErrorAlert && <div className="mt-6 w-full max-w-xl text-left">{prepareErrorAlert}</div>}
-              {/* The undo. Most valuable in exactly the moment it is offered:
-                  right after a send the operator did not mean to make. */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-3 text-destructive hover:text-destructive"
-                onClick={() => setConfirmRemoveOpen(true)}
-                disabled={removeMutation.isPending}
-              >
-                {removeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                Remove from campaign
-              </Button>
-            </div>
-          ) : campaignQuery.isLoading ? (
-            <div className="flex min-h-96 flex-col items-center justify-center gap-3"><Loader2 className="h-7 w-7 animate-spin text-primary" /><p className="text-sm text-muted-foreground">Loading the pitch workspace…</p></div>
-          ) : locked ? (
-            <div className="m-6 flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed px-6 text-center">
-              <Send className="h-9 w-9 text-sky-600" />
-              <h3 className="mt-4 text-lg font-semibold">This podcast is already in active outreach</h3>
-              <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">The live campaign sequence is locked so it cannot be changed accidentally. Prior outreach by itself no longer prevents you from opening this workspace and preparing a considered re-pitch.</p>
-              <Button asChild className="mt-5"><Link to={campaignHref}>View outreach</Link></Button>
-            </div>
-          ) : podcast ? (
-            <div>
-              <div className="border-b bg-muted/10 px-5 py-4 sm:px-6">
+  const podcastContext = podcast ? (
                 <section aria-labelledby="pitch-podcast-context-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
                   <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
                     <div className="flex min-w-0 flex-1 gap-4">
@@ -1765,9 +1720,15 @@ export function ClientCampaignPrepDialog({
                     </div>
                   )}
                 </section>
-              </div>
+  ) : null
 
-              <nav aria-label="Pitch workflow steps" className="grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6">
+  const stepNav = (
+              <nav
+                aria-label="Pitch workflow steps"
+                className={page
+                  ? 'grid gap-2 sm:grid-cols-3 lg:sticky lg:top-4 lg:grid-cols-1'
+                  : 'grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6'}
+              >
                 {pitchSteps.map((item) => {
                   const active = activeStep === item.id
                   const lockedUntilEmail = item.id !== 'email' && !emailReady
@@ -1796,9 +1757,12 @@ export function ClientCampaignPrepDialog({
                   )
                 })}
               </nav>
+  )
 
+  const stepContent = podcast ? (
+    <>
               {activeStep === 'email' && (
-                <div className="mx-auto max-w-4xl p-5 sm:p-8">
+                <div className={page ? undefined : 'mx-auto max-w-4xl p-5 sm:p-8'}>
                   <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
                     <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
                       <div className="flex gap-3">
@@ -1857,14 +1821,14 @@ export function ClientCampaignPrepDialog({
                               <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700">{emailAlreadyUnlocked ? <CheckCircle2 className="h-5 w-5" /> : emailSearchRunning ? <Loader2 className="h-5 w-5 animate-spin" /> : emailSearchHasNoResult ? <AlertCircle className="h-5 w-5" /> : <Search className="h-5 w-5" />}</div>
                               <div className="flex flex-col items-end gap-1.5">
                                 <Badge className={contactIsStale ? 'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100' : 'border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100'}>{contactIsStale ? 'Needs re-check' : emailAlreadyUnlocked ? 'Globally unlocked' : emailSearchRunning ? 'Global search in progress' : emailSearchHasNoResult ? 'No result yet' : 'Recommended'}</Badge>
-                                <span className={contactIsStale ? 'text-[11px] font-semibold text-amber-900' : 'text-[11px] font-semibold text-violet-800'}>{contactIsStale ? 'Re-check costs 0 credits' : emailAlreadyUnlocked ? '0 additional credits' : emailSearchRunning ? 'Safe to close' : emailSearchHasNoResult ? 'You were not charged' : `${creditsLabel(CREDIT_COSTS.email_unlock_verify)} on success`}</span>
+                                <span className={contactIsStale ? 'text-[11px] font-semibold text-amber-900' : 'text-[11px] font-semibold text-violet-800'}>{contactIsStale ? 'Re-check costs 0 credits' : emailAlreadyUnlocked ? '0 additional credits' : emailSearchRunning ? 'Safe to close' : emailSearchHasNoResult ? 'You were not charged' : byoAi ? 'Included' : `${creditsLabel(CREDIT_COSTS.email_unlock_verify)} on success`}</span>
                               </div>
                             </div>
                             <h4 className="mt-4 font-semibold">{emailAlreadyUnlocked ? 'Use the direct host email' : emailSearchRunning ? 'Finding the direct host email' : emailSearchHasNoResult ? 'No direct email found yet' : "Find the host's direct email"}</h4>
                             <p className="mt-2 text-sm leading-6 text-muted-foreground">{emailAlreadyUnlocked
                               ? 'A verified direct contact for this podcast is already in the Database. It can be reused for every client and campaign.'
                               : emailSearchRunning
-                                ? 'One platform-wide search is running for this podcast. It keeps going if you close this modal, and another workspace cannot start or pay for a duplicate lookup.'
+                                ? `One platform-wide search is running for this podcast. It keeps going if you ${leaveVerb}, and another workspace cannot start or pay for a duplicate lookup.`
                                 : emailSearchHasNoResult
                                   ? storedEmailUnlock?.message || 'The last search did not return a verified direct email. Use the public inbox, enter your own address, or try again.'
                                   : 'Run a waterfall search to identify the host and verify a work or personal address—the stronger route for reply potential.'}</p>
@@ -1901,11 +1865,11 @@ export function ClientCampaignPrepDialog({
                               <p className="mt-4 rounded-xl border border-violet-200 bg-background/80 px-3 py-2.5 text-xs leading-5 text-violet-900">No credit was used. A future retry is charged only if it becomes the first successful direct-contact unlock across the entire platform.</p>
                             ) : (
                               <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_identify')}</span></span>
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_identify', { byo: byoAi })}</span></span>
                                 <ArrowRight className="h-3 w-3 text-violet-400" />
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_find')}</span></span>
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_find', { byo: byoAi })}</span></span>
                                 <ArrowRight className="h-3 w-3 text-violet-400" />
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_verify')}</span></span>
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_verify', { byo: byoAi })}</span></span>
                               </div>
                             )}
                             <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">
@@ -1957,20 +1921,20 @@ export function ClientCampaignPrepDialog({
                           </div>
                         ) : emailSearchRunning ? (
                           <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                            <div className="flex gap-3"><Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-violet-700" /><div><p className="text-sm font-semibold text-violet-950">Direct email search in progress</p><p className="mt-1 max-w-3xl text-xs leading-5 text-violet-900/75">You can safely close this modal. The search continues in the background, and reopening this podcast returns to the same job without reserving or charging another credit.</p></div></div>
+                            <div className="flex gap-3"><Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-violet-700" /><div><p className="text-sm font-semibold text-violet-950">Direct email search in progress</p><p className="mt-1 max-w-3xl text-xs leading-5 text-violet-900/75">You can safely {leaveVerb}. The search continues in the background, and {page ? 'returning to this podcast picks up' : 'reopening this podcast returns to'} the same job without reserving or charging another credit.</p></div></div>
                           </div>
                         ) : emailSearchHasNoResult ? (
                           <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">No verified direct email · No charge</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-900/75">Try again, use the free Podscan inbox, or enter an address manually. A credit is eligible only for the first successful global unlock.</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 border-amber-200 bg-background text-amber-950" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}>Try search again<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify')}</span></Button></div>
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">No verified direct email · No charge</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-900/75">Try again, use the free Podscan inbox, or enter an address manually. A credit is eligible only for the first successful global unlock.</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 border-amber-200 bg-background text-amber-950" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}>Try search again<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify', { byo: byoAi })}</span></Button></div>
                           </div>
                         ) : (
                           <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                               <div className="flex gap-3">
                                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-                                <div><p className="text-sm font-semibold text-violet-950">Robust lookup · 1 credit on first global success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We check the global contact network first. Only a true global miss starts host identification and verification; no verified direct email means no credit is charged.</p></div>
+                                <div><p className="text-sm font-semibold text-violet-950">{byoAi ? 'Robust lookup · Included with your own key' : 'Robust lookup · 1 credit on first global success'}</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We check the global contact network first. Only a true global miss starts host identification and verification; no verified direct email means no credit is charged.</p></div>
                               </div>
-                              <div className="flex shrink-0 flex-wrap gap-2"><Button asChild variant="outline" size="sm" className="border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to={billingHref} target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button><Button type="button" size="sm" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />Start direct email search<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify')}</span></Button></div>
+                              <div className="flex shrink-0 flex-wrap gap-2"><Button asChild variant="outline" size="sm" className="border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to={billingHref} target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button><Button type="button" size="sm" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />Start direct email search<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify', { byo: byoAi })}</span></Button></div>
                             </div>
                             <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium leading-5 text-violet-800">Once successfully unlocked in the Database, this podcast never costs another direct-email credit. Billing opens in a new tab so this pitch stays here.</p>
                           </div>
@@ -1990,7 +1954,7 @@ export function ClientCampaignPrepDialog({
               )}
 
               {activeStep === 'research' && (
-                <div className="mx-auto max-w-5xl p-5 sm:p-8">
+                <div className={page ? undefined : 'mx-auto max-w-5xl p-5 sm:p-8'}>
                   <section aria-labelledby="campaign-research-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
                     <div className="border-b bg-gradient-to-br from-sky-50 via-primary/5 to-background p-5 sm:p-6">
                       <div className="flex gap-3">
@@ -1998,7 +1962,7 @@ export function ClientCampaignPrepDialog({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">Step 2</Badge>
-                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">{creditsLabel(CREDIT_COSTS.research_run)} per run</Badge>
+                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">{byoAi ? 'Included' : `${creditsLabel(CREDIT_COSTS.research_run)} per run`}</Badge>
                           </div>
                           <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Research and Pitch</h3>
                           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Review the show, its audience, and the strongest reasons to feature {clientName} before choosing the angle for the pitch.</p>
@@ -2039,23 +2003,8 @@ export function ClientCampaignPrepDialog({
                                     ? 'Research running'
                                     : researchProgress ? 'Regenerate' : 'Run research'}
                                 {!researchRegenerating && !researchWorking && (
-                                  <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('research_run')}</span>
+                                  <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('research_run', { byo: byoAi })}</span>
                                 )}
-                              </Button>
-                            )}
-                            {canCustomizePrompts && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="bg-background"
-                                disabled={researchRegenerating}
-                                aria-expanded={showPromptSettings}
-                                aria-controls="campaign-research-prompt-settings"
-                                onClick={togglePromptSettings}
-                              >
-                                <PenLine className="mr-2 h-3.5 w-3.5" />
-                                {showPromptSettings ? 'Close prompt editor' : 'Edit stage prompts'}
                               </Button>
                             )}
                             {researchComplete && (
@@ -2192,16 +2141,194 @@ export function ClientCampaignPrepDialog({
                         )}
                       </div>
 
-                      {showPromptSettings && canCustomizePrompts && (
-                        <section id="campaign-research-prompt-settings" aria-labelledby="campaign-research-prompt-heading" className="mt-4 overflow-hidden rounded-xl border bg-background shadow-sm">
-                          <div className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+                    </div>
+
+                    <div className="space-y-5 p-5 sm:p-6">
+                      <section className="rounded-2xl border p-5">
+                        <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Each direction creates its own opening pitch and two follow-ups. Select an option to compare the complete sequence below.</p>
+                        {researchComplete && pitchAngles.length > 0
+                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={researchWorking || !relationshipCanProceed} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
+                          : (
+                            <p className="mt-3 rounded-xl border border-dashed p-3 text-sm leading-6 text-muted-foreground">
+                              {researchWorking
+                                ? 'The prompt pipeline is running — three sequence directions appear here when every stage above completes.'
+                                : 'Pitch angles are written by the research pipeline. Run research above and the three options appear here when it finishes.'}
+                            </p>
+                          )}
+                      </section>
+
+                      {researchComplete && (
+                        <section aria-labelledby="campaign-sequence-preview-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                          <div className="flex flex-col gap-4 border-b bg-gradient-to-br from-violet-50 via-primary/5 to-background p-5 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex gap-3">
+                              <div className="h-fit rounded-xl bg-violet-100 p-2.5 text-violet-700"><Send className="h-5 w-5" /></div>
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">Selected sequence</Badge></div>
+                                {selectedPitchAngle && <p className="mt-2 text-sm font-medium text-foreground">{selectedPitchAngle.title}</p>}
+                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Read-only preview. Compare the options above, then continue to Finalize Pitch to edit and save the sequence you prefer.</p>
+                                <div className="mt-3 max-w-2xl">
+                                  <PitchTrustPanel
+                                    generated={Boolean(selectedPitchMeta)}
+                                    auditFlags={selectedPitchMeta?.auditFlags ?? []}
+                                    grounding={pitchGrounding}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4 p-5">
+                            <article aria-label="Opening pitch preview" className="rounded-xl border bg-muted/10 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 1 · Opening pitch</Badge><span className="text-[11px] font-medium text-muted-foreground">Sends first</span></div>
+                              <p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p>
+                            </article>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                              <article aria-label="First follow-up preview" className="rounded-xl border p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">Same thread</span></div>
+                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>
+                              </article>
+
+                              <article aria-label="Second follow-up preview" className="rounded-xl border p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">Same thread</span></div>
+                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>
+                              </article>
+                            </div>
+                          </div>
+                        </section>
+                      )}
+
+                    </div>
+                  </section>
+                </div>
+              )}
+
+              {activeStep === 'pitch' && (
+                <div className={page ? 'space-y-5' : 'space-y-5 p-5 sm:p-6'}>
+                  {(campaignQuery.error || !mappedCampaign) && (
+                    <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold">You can finalize the pitch now</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Connect or assign the client campaign before sending this finished sequence to it.</p></div></div>
+                      <div className="flex shrink-0 gap-2">{campaignQuery.error && <Button type="button" variant="outline" size="sm" onClick={() => void campaignQuery.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>}<Button asChild variant="outline" size="sm"><Link to={campaignHref}>Campaign setup</Link></Button></div>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Finalize the selected pitch</h3><p className="mt-1 text-sm text-muted-foreground">Edit the chosen opening pitch and two follow-ups, then save the finished sequence for outreach.</p></div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="outline" className={draftHasUnsavedEdits ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}>{draftHasUnsavedEdits ? 'Unsaved edits' : 'All edits saved'}</Badge>
+                      <Button type="button" variant="outline" disabled={!draftHasUnsavedEdits || savePitchMutation.isPending} onClick={saveDraftEdits}>{savePitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save edits</Button>
+                    </div>
+                  </div>
+
+                  <PitchTrustPanel
+                    generated={Boolean(selectedPitchMeta)}
+                    auditFlags={selectedPitchMeta?.auditFlags ?? []}
+                    liveIssues={liveCopyIssues}
+                    grounding={pitchGrounding}
+                  />
+
+                  <section aria-labelledby="campaign-outreach-sequence-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                    <div className="border-b bg-muted/20 px-5 py-4">
+                      <h4 id="campaign-outreach-sequence-heading" className="font-semibold">Outreach sequence</h4>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">Follow the timeline, then choose an email to review or edit its contents.</p>
+                    </div>
+                    <nav aria-label="Sequence emails" className="grid items-stretch gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] sm:p-5">
+                      {sequenceEmailSteps.map((step, index) => {
+                        const selected = activeSequenceEmail === step.id
+                        const ready = sequenceEmailReady[step.id]
+                        return (
+                          <Fragment key={step.id}>
+                            <button
+                              type="button"
+                              aria-label={`Edit ${step.email}: ${step.title}`}
+                              aria-pressed={selected}
+                              className={`rounded-xl border p-4 text-left transition-colors ${selected ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
+                              onClick={() => setActiveSequenceEmail(step.id)}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{index + 1}</span>
+                                <div className="flex items-center gap-1.5"><Badge variant="secondary">{step.timing}</Badge>{ready && <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-label={`${step.email} ready`} />}</div>
+                              </div>
+                              <p className="mt-3 text-xs font-medium text-muted-foreground">{step.email}</p>
+                              <p className="mt-1 text-sm font-semibold">{step.title}</p>
+                              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p>
+                            </button>
+                            {index < sequenceEmailSteps.length - 1 && <div className="flex items-center justify-center text-muted-foreground/50"><ArrowRight className="h-4 w-4 rotate-90 sm:rotate-0" aria-hidden="true" /></div>}
+                          </Fragment>
+                        )
+                      })}
+                    </nav>
+                  </section>
+
+                  <section aria-labelledby="campaign-active-email-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                    <div className="flex flex-col gap-3 border-b bg-gradient-to-br from-primary/5 to-background px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{activeSequenceEmailStep.email}</Badge><Badge variant="outline">{activeSequenceEmailStep.timing}</Badge><h4 id="campaign-active-email-heading" className="font-semibold">{activeSequenceEmailStep.title}</h4></div>
+                        <p className="mt-2 text-xs leading-5 text-muted-foreground">{activeSequenceEmail === 'opening' ? 'Your personalized first note to the host or producer.' : activeSequenceEmail === 'follow_up_one' ? 'Follows up in the same thread, adding a second angle rather than bumping. Stops when the host replies.' : 'Closes the loop respectfully in the same thread, and ends the sequence.'}</p>
+                      </div>
+                      <Badge variant="outline" className={`w-fit ${sequenceEmailReady[activeSequenceEmail] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{sequenceEmailReady[activeSequenceEmail] ? 'Ready' : 'Needs copy'}</Badge>
+                    </div>
+                    <div className="space-y-4 p-5">
+                      {activeSequenceEmail === 'opening' && (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="campaign-pitch-subject">Subject</Label>
+                            <Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} />
+                            <p className="text-[11px] leading-4 text-muted-foreground">Plain and specific beats clever. Hosts open on the idea, not the wording.</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="campaign-pitch-body">Opening email</Label>
+                            <Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-72 resize-y" maxLength={20_000} />
+                          </div>
+                        </>
+                      )}
+                      {activeSequenceEmail === 'follow_up_one' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="campaign-follow-up-one-body">Follow-up 1 reply</Label>
+                          <Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-64 resize-y" maxLength={20_000} />
+                        </div>
+                      )}
+                      {activeSequenceEmail === 'follow_up_two' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="campaign-follow-up-two-body">Follow-up 2 reply</Label>
+                          <Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-64 resize-y" maxLength={20_000} />
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              )}
+    </>
+  ) : null
+
+  // Owner-only prompt engineering, out of the flow. Inside the research step
+  // it tripled the step's height for everyone who opened it; here it is one
+  // collapsed section under the steps, and the same editor when expanded.
+  const promptSettings = podcast && canCustomizePrompts ? (
+                        <section aria-labelledby="campaign-research-prompt-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+                          <div className="flex flex-col gap-3 bg-muted/20 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                               <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-research-prompt-heading" className="text-sm font-semibold">Research prompts</h4><Badge variant="secondary">Owner controls</Badge>{customPromptCount > 0 && <Badge variant="outline">{customPromptCount} customized</Badge>}</div>
                               <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Choose a stage and adjust the instructions used the next time research runs. Saving applies to this client only and does not interrupt research already in progress.</p>
                             </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="shrink-0 bg-background"
+                              disabled={researchRegenerating}
+                              aria-expanded={showPromptSettings}
+                              aria-controls="campaign-research-prompt-editor"
+                              onClick={togglePromptSettings}
+                            >
+                              <PenLine className="mr-2 h-3.5 w-3.5" />
+                              {showPromptSettings ? 'Close prompt editor' : 'Edit stage prompts'}
+                              <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showPromptSettings ? 'rotate-180' : ''}`} />
+                            </Button>
                           </div>
 
-                          <div className="grid lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+                          {showPromptSettings && (
+                          <div id="campaign-research-prompt-editor" className="grid border-t lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
                             {/* Grouped and numbered, because the first seven are
                                 one run in order and the last two fire when a
                                 host replies. Flat and identical, they read as
@@ -2334,173 +2461,140 @@ export function ClientCampaignPrepDialog({
                               </div>
                             </div>
                           </div>
-                        </section>
-                      )}
-                    </div>
-
-                    <div className="space-y-5 p-5 sm:p-6">
-                      <section className="rounded-2xl border p-5">
-                        <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Each direction creates its own opening pitch and two follow-ups. Select an option to compare the complete sequence below.</p>
-                        {researchComplete && pitchAngles.length > 0
-                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={researchWorking || !relationshipCanProceed} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
-                          : (
-                            <p className="mt-3 rounded-xl border border-dashed p-3 text-sm leading-6 text-muted-foreground">
-                              {researchWorking
-                                ? 'The prompt pipeline is running — three sequence directions appear here when every stage above completes.'
-                                : 'Pitch angles are written by the research pipeline. Run research above and the three options appear here when it finishes.'}
-                            </p>
                           )}
-                      </section>
-
-                      {researchComplete && (
-                        <section aria-labelledby="campaign-sequence-preview-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                          <div className="flex flex-col gap-4 border-b bg-gradient-to-br from-violet-50 via-primary/5 to-background p-5 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex gap-3">
-                              <div className="h-fit rounded-xl bg-violet-100 p-2.5 text-violet-700"><Send className="h-5 w-5" /></div>
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">Selected sequence</Badge></div>
-                                {selectedPitchAngle && <p className="mt-2 text-sm font-medium text-foreground">{selectedPitchAngle.title}</p>}
-                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Read-only preview. Compare the options above, then continue to Finalize Pitch to edit and save the sequence you prefer.</p>
-                                <div className="mt-3 max-w-2xl">
-                                  <PitchTrustPanel
-                                    generated={Boolean(selectedPitchMeta)}
-                                    auditFlags={selectedPitchMeta?.auditFlags ?? []}
-                                    grounding={pitchGrounding}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-4 p-5">
-                            <article aria-label="Opening pitch preview" className="rounded-xl border bg-muted/10 p-4">
-                              <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 1 · Opening pitch</Badge><span className="text-[11px] font-medium text-muted-foreground">Sends first</span></div>
-                              <p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p>
-                            </article>
-
-                            <div className="grid gap-4 lg:grid-cols-2">
-                              <article aria-label="First follow-up preview" className="rounded-xl border p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">Same thread</span></div>
-                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>
-                              </article>
-
-                              <article aria-label="Second follow-up preview" className="rounded-xl border p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">Same thread</span></div>
-                                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>
-                              </article>
-                            </div>
-                          </div>
                         </section>
-                      )}
+  ) : null
 
-                    </div>
-                  </section>
-                </div>
-              )}
-
-              {activeStep === 'pitch' && (
-                <div className="space-y-5 p-5 sm:p-6">
-                  {(campaignQuery.error || !mappedCampaign) && (
-                    <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold">You can finalize the pitch now</p><p className="mt-1 text-xs leading-5 text-amber-900/80">Connect or assign the client campaign before sending this finished sequence to it.</p></div></div>
-                      <div className="flex shrink-0 gap-2">{campaignQuery.error && <Button type="button" variant="outline" size="sm" onClick={() => void campaignQuery.refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Retry</Button>}<Button asChild variant="outline" size="sm"><Link to={campaignHref}>Campaign setup</Link></Button></div>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Finalize the selected pitch</h3><p className="mt-1 text-sm text-muted-foreground">Edit the chosen opening pitch and two follow-ups, then save the finished sequence for outreach.</p></div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Badge variant="outline" className={draftHasUnsavedEdits ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}>{draftHasUnsavedEdits ? 'Unsaved edits' : 'All edits saved'}</Badge>
-                      <Button type="button" variant="outline" disabled={!draftHasUnsavedEdits || savePitchMutation.isPending} onClick={saveDraftEdits}>{savePitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save edits</Button>
-                    </div>
-                  </div>
-
-                  <PitchTrustPanel
-                    generated={Boolean(selectedPitchMeta)}
-                    auditFlags={selectedPitchMeta?.auditFlags ?? []}
-                    liveIssues={liveCopyIssues}
-                    grounding={pitchGrounding}
-                  />
-
-                  <section aria-labelledby="campaign-outreach-sequence-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                    <div className="border-b bg-muted/20 px-5 py-4">
-                      <h4 id="campaign-outreach-sequence-heading" className="font-semibold">Outreach sequence</h4>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">Follow the timeline, then choose an email to review or edit its contents.</p>
-                    </div>
-                    <nav aria-label="Sequence emails" className="grid items-stretch gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] sm:p-5">
-                      {sequenceEmailSteps.map((step, index) => {
-                        const selected = activeSequenceEmail === step.id
-                        const ready = sequenceEmailReady[step.id]
-                        return (
-                          <Fragment key={step.id}>
-                            <button
-                              type="button"
-                              aria-label={`Edit ${step.email}: ${step.title}`}
-                              aria-pressed={selected}
-                              className={`rounded-xl border p-4 text-left transition-colors ${selected ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
-                              onClick={() => setActiveSequenceEmail(step.id)}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{index + 1}</span>
-                                <div className="flex items-center gap-1.5"><Badge variant="secondary">{step.timing}</Badge>{ready && <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-label={`${step.email} ready`} />}</div>
-                              </div>
-                              <p className="mt-3 text-xs font-medium text-muted-foreground">{step.email}</p>
-                              <p className="mt-1 text-sm font-semibold">{step.title}</p>
-                              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{step.detail}</p>
-                            </button>
-                            {index < sequenceEmailSteps.length - 1 && <div className="flex items-center justify-center text-muted-foreground/50"><ArrowRight className="h-4 w-4 rotate-90 sm:rotate-0" aria-hidden="true" /></div>}
-                          </Fragment>
-                        )
-                      })}
-                    </nav>
-                  </section>
-
-                  <section aria-labelledby="campaign-active-email-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                    <div className="flex flex-col gap-3 border-b bg-gradient-to-br from-primary/5 to-background px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2"><Badge variant="secondary">{activeSequenceEmailStep.email}</Badge><Badge variant="outline">{activeSequenceEmailStep.timing}</Badge><h4 id="campaign-active-email-heading" className="font-semibold">{activeSequenceEmailStep.title}</h4></div>
-                        <p className="mt-2 text-xs leading-5 text-muted-foreground">{activeSequenceEmail === 'opening' ? 'Your personalized first note to the host or producer.' : activeSequenceEmail === 'follow_up_one' ? 'Follows up in the same thread, adding a second angle rather than bumping. Stops when the host replies.' : 'Closes the loop respectfully in the same thread, and ends the sequence.'}</p>
-                      </div>
-                      <Badge variant="outline" className={`w-fit ${sequenceEmailReady[activeSequenceEmail] ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{sequenceEmailReady[activeSequenceEmail] ? 'Ready' : 'Needs copy'}</Badge>
-                    </div>
-                    <div className="space-y-4 p-5">
-                      {activeSequenceEmail === 'opening' && (
-                        <>
-                          <div className="space-y-2">
-                            <Label htmlFor="campaign-pitch-subject">Subject</Label>
-                            <Input id="campaign-pitch-subject" value={draft.subject} onChange={(event) => updateDraft('subject', event.target.value)} maxLength={300} />
-                            <p className="text-[11px] leading-4 text-muted-foreground">Plain and specific beats clever. Hosts open on the idea, not the wording.</p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="campaign-pitch-body">Opening email</Label>
-                            <Textarea id="campaign-pitch-body" value={draft.pitchBody} onChange={(event) => updateDraft('pitchBody', event.target.value)} className="min-h-72 resize-y" maxLength={20_000} />
-                          </div>
-                        </>
-                      )}
-                      {activeSequenceEmail === 'follow_up_one' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="campaign-follow-up-one-body">Follow-up 1 reply</Label>
-                          <Textarea id="campaign-follow-up-one-body" value={draft.followUpOneBody} onChange={(event) => updateDraft('followUpOneBody', event.target.value)} className="min-h-64 resize-y" maxLength={20_000} />
-                        </div>
-                      )}
-                      {activeSequenceEmail === 'follow_up_two' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="campaign-follow-up-two-body">Follow-up 2 reply</Label>
-                          <Textarea id="campaign-follow-up-two-body" value={draft.followUpTwoBody} onChange={(event) => updateDraft('followUpTwoBody', event.target.value)} className="min-h-64 resize-y" maxLength={20_000} />
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              )}
-            </div>
-          ) : null}
+  const flow = podcast ? (
+    page ? (
+      <>
+        {podcastContext}
+        <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+          {stepNav}
+          <div className="min-w-0">{stepContent}</div>
         </div>
+        {promptSettings}
+      </>
+    ) : (
+      <div>
+        <div className="border-b bg-muted/10 px-5 py-4 sm:px-6">{podcastContext}</div>
+        {stepNav}
+        {stepContent}
+        {promptSettings && <div className="px-5 pb-6 sm:px-6">{promptSettings}</div>}
+      </div>
+    )
+  ) : null
 
-        {/* The last stop before a stranger is emailed. The campaign is live, so
-            there is no draft state on the other side of this button and no way
-            to recall what goes out. Naming the person and the address is the
-            difference between a decision and a reflex. */}
+  const body = stagedResult ? (
+            <div
+              role="status"
+              aria-label="Pitch added to client campaign"
+              className={stagedResult.willSend || !stagedResult.leadStaged
+                ? `${page ? '' : 'm-6 '}flex min-h-80 flex-col items-center justify-center rounded-2xl border border-amber-300 bg-amber-50 px-6 py-10 text-center`
+                : `${page ? '' : 'm-6 '}flex min-h-80 flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/60 px-6 py-10 text-center`}
+            >
+              {/* Green is a claim that the work is finished. Without a lead it
+                  is not: the podcast is listed and nobody can be reached. */}
+              {stagedResult.willSend || !stagedResult.leadStaged
+                ? <AlertCircle className="h-10 w-10 text-amber-700" />
+                : <CheckCircle2 className="h-10 w-10 text-emerald-600" />}
+              <h3 className="mt-4 text-lg font-semibold">
+                {stagedResult.willSend
+                  ? `${podcast?.podcast_name || 'This podcast'} is now in a live sequence`
+                  : stagedResult.leadStaged
+                    ? `${podcast?.podcast_name || 'This podcast'} was added to ${stagedResult.campaignName}`
+                    : `${podcast?.podcast_name || 'This podcast'} was added, but has no lead`}
+              </h3>
+              {/* Saying "added as a lead" when no lead exists is the failure
+                  that sends somebody to Instantly looking for a host who was
+                  never created. The sequence only attaches to a real lead. */}
+              <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                {stagedResult.leadStaged
+                  ? `${stagedResult.hostName || 'The host'} was ${stagedResult.added ? 'added' : 'updated'} in ${stagedResult.campaignName} as a lead, with the full three-email sequence attached.`
+                  : `The podcast and its sequence are saved to ${stagedResult.campaignName}. No lead was created, because there is no contact email to create one for, so nothing can reach the host yet.`}
+              </p>
+              <dl className="mt-5 w-full max-w-sm space-y-2 rounded-xl border bg-background/80 p-4 text-left text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Contact</dt>
+                  <dd className={stagedResult.contactEmail ? 'truncate font-medium' : 'truncate font-medium text-amber-800'}>
+                    {stagedResult.contactEmail || 'None yet'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Campaign</dt><dd className="truncate font-medium">{stagedResult.campaignName}</dd></div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Sending</dt>
+                  <dd className={stagedResult.willSend || !stagedResult.leadStaged ? 'font-semibold text-amber-800' : 'font-medium'}>
+                    {stagedResult.willSend
+                      ? 'Live — starts automatically'
+                      : stagedResult.leadStaged
+                        ? 'Paused — nothing sends yet'
+                        : 'Nothing to send — no lead yet'}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-4 max-w-md text-xs leading-5 text-muted-foreground">
+                {stagedResult.willSend
+                  ? 'The opening email goes out on the campaign\u2019s next send window, then the two follow-ups on day 6 and day 13. To stop it, pause the campaign in Client Campaigns.'
+                  : stagedResult.leadStaged
+                    ? 'Open Client Campaigns and choose Approve & start outreach when you are ready for this to send. You can keep editing the sequence until then.'
+                    : 'Add a contact email and send again to create the lead. Approving outreach before then starts a sequence with nobody in it.'}
+              </p>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                {/* The one move that finishes what this screen reports. */}
+                {!stagedResult.leadStaged && (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setStagedResult(null)
+                      setActiveStep('email')
+                    }}
+                  >
+                    Add a contact email
+                  </Button>
+                )}
+                {page ? (
+                  <>
+                    {shortlistHref && <Button asChild variant="outline"><Link to={shortlistHref}><ArrowLeft className="mr-2 h-4 w-4" />Back to shortlist</Link></Button>}
+                    <Button asChild variant={stagedResult.willSend || !stagedResult.leadStaged ? 'outline' : 'default'}><Link to={campaignHref}>Open campaign<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+                  </>
+                ) : (
+                  <>
+                    <Button asChild variant={stagedResult.willSend || !stagedResult.leadStaged ? 'outline' : 'default'}><Link to={campaignHref}>Open Client Campaigns</Link></Button>
+                    <Button type="button" variant={stagedResult.willSend ? 'outline' : 'default'} onClick={onDismiss}>Done</Button>
+                  </>
+                )}
+              </div>
+              {prepareErrorAlert && <div className="mt-6 w-full max-w-xl text-left">{prepareErrorAlert}</div>}
+              {/* The undo. Most valuable in exactly the moment it is offered:
+                  right after a send the operator did not mean to make. */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-3 text-destructive hover:text-destructive"
+                onClick={() => setConfirmRemoveOpen(true)}
+                disabled={removeMutation.isPending}
+              >
+                {removeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Remove from campaign
+              </Button>
+            </div>
+          ) : campaignQuery.isLoading ? (
+            <div className="flex min-h-96 flex-col items-center justify-center gap-3"><Loader2 className="h-7 w-7 animate-spin text-primary" /><p className="text-sm text-muted-foreground">Loading the pitch workspace…</p></div>
+          ) : locked ? (
+            <div className={`${page ? '' : 'm-6 '}flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed px-6 text-center`}>
+              <Send className="h-9 w-9 text-sky-600" />
+              <h3 className="mt-4 text-lg font-semibold">This podcast is already in active outreach</h3>
+              <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">The live campaign sequence is locked so it cannot be changed accidentally. Prior outreach by itself no longer prevents you from opening this workspace and preparing a considered re-pitch.</p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                {page && shortlistHref && <Button asChild variant="outline"><Link to={shortlistHref}><ArrowLeft className="mr-2 h-4 w-4" />Back to shortlist</Link></Button>}
+                <Button asChild><Link to={campaignHref}>View outreach</Link></Button>
+              </div>
+            </div>
+          ) : flow
+
+  const confirmDialogs = (
+    <>
         <Dialog open={confirmSendOpen} onOpenChange={(next) => !prepareMutation.isPending && setConfirmSendOpen(next)}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -2556,8 +2650,39 @@ export function ClientCampaignPrepDialog({
           </DialogContent>
         </Dialog>
 
-        {podcast && !locked && !stagedResult && !campaignQuery.isLoading && (
-          <footer aria-label="Pitch actions" className="shrink-0 border-t bg-muted/20 px-4 pb-5 pt-4 sm:px-6 sm:pb-6">
+        {/* Only the page has a link away from the draft; the dialog's Cancel
+            was never a link. An unsaved edit is exactly what a click on
+            "Back to shortlist" would lose, so it asks first. */}
+        <Dialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Leave without saving?</DialogTitle>
+              <DialogDescription>
+                {promptDirty
+                  ? 'The prompt you are editing has unsaved changes. Save or discard them before leaving, or they are gone.'
+                  : 'Your pitch edits are not saved yet. Leaving now keeps the last saved sequence and drops the rest.'}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="mt-5">
+              <Button type="button" variant="outline" onClick={() => setConfirmLeaveOpen(false)}>Keep editing</Button>
+              {shortlistHref && (
+                <Button asChild variant="destructive">
+                  <Link to={shortlistHref}>Leave without saving</Link>
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+    </>
+  )
+
+  const footer = podcast && !locked && !stagedResult && !campaignQuery.isLoading ? (
+          <footer
+            aria-label="Pitch actions"
+            className={page
+              ? 'sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 pb-5 pt-4 backdrop-blur sm:-mx-6 sm:px-6 sm:pb-6'
+              : 'shrink-0 border-t bg-muted/20 px-4 pb-5 pt-4 sm:px-6 sm:pb-6'}
+          >
             {prepareErrorAlert}
             <div className="flex flex-col gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-xl text-xs leading-5 text-muted-foreground">
@@ -2569,8 +2694,8 @@ export function ClientCampaignPrepDialog({
                   ? 'Email ready. Research is unlocked.'
                   : emailSearchRunning
                     ? publicPodcastEmail
-                      ? 'The global direct-email search is still running. You can close this window or choose the free Podscan inbox while it continues.'
-                      : 'The global direct-email search is still running. You can safely close this window and return later.'
+                      ? `The global direct-email search is still running. You can ${leaveWindowVerb} or choose the free Podscan inbox while it continues.`
+                      : `The global direct-email search is still running. You can safely ${leaveWindowVerb} and return later.`
                     : 'A valid email is required before you can continue to Research.')}
                 {activeStep === 'research' && (researchWorking
                   ? researchRegenerating
@@ -2628,20 +2753,71 @@ export function ClientCampaignPrepDialog({
                     </Select>
                   </div>
                 )}
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                {page ? (
+                  shortlistHref && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      onClick={(event) => {
+                        if (!draftHasUnsavedEdits && !promptDirty) return
+                        event.preventDefault()
+                        setConfirmLeaveOpen(true)
+                      }}
+                    >
+                      <Link to={shortlistHref}><ArrowLeft className="mr-2 h-4 w-4" />Back to shortlist</Link>
+                    </Button>
+                  )
+                ) : (
+                  <Button type="button" variant="outline" onClick={onDismiss}>Cancel</Button>
+                )}
                 {activeStep === 'pitch' && alreadyStaged && (
                   <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setConfirmRemoveOpen(true)}>
                     <Trash2 className="mr-2 h-4 w-4" />Remove from campaign
                   </Button>
                 )}
-                {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
+                {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />{page ? 'Previous step' : 'Back'}</Button>}
                 {activeStep === 'email' && <Button type="button" disabled={!emailReady || !relationshipCanProceed} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
                 {activeStep === 'research' && <Button type="button" disabled={!researchComplete} onClick={() => { setActiveSequenceEmail('opening'); setActiveStep('pitch') }}>Finalize selected pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
                 {activeStep === 'pitch' && <Button type="button" variant={submitWillSend ? 'destructive' : 'default'} disabled={submitDisabled} onClick={() => (submitWillSend ? setConfirmSendOpen(true) : prepareMutation.mutate())}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{submitWillSend ? 'Send to Client Campaign (goes live)' : alreadyStaged ? 'Update in Client Campaign' : 'Send to Client Campaign'}</Button>}
               </div>
             </div>
           </footer>
-        )}
+  ) : null
+
+  if (page) {
+    return (
+      <div className="space-y-6">
+        <header>{headerContent}</header>
+        {body}
+        {confirmDialogs}
+        {footer}
+      </div>
+    )
+  }
+
+  return (
+    <>
+        <DialogHeader className="border-b px-5 py-5 pr-12 text-left sm:px-6 sm:pr-12">{headerContent}</DialogHeader>
+
+        <div className="min-h-0 overflow-y-auto overscroll-contain">
+          {body}
+        </div>
+
+        {confirmDialogs}
+        {footer}
+    </>
+  )
+}
+
+/**
+ * The flow in a modal. Kept for callers that still open it in place; the
+ * shortlist now links to the page, which can be left and returned to.
+ */
+export function ClientCampaignPrepDialog({ open, onOpenChange, ...prep }: ClientCampaignPrepDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <ClientCampaignPrep {...prep} layout="dialog" active={open} onDismiss={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   )

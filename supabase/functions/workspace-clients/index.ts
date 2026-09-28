@@ -17,7 +17,7 @@ import {
   writeAudit,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
 import { notifyBookingConfirmed, notifyEpisodePublished } from '../_shared/clientNotify.ts'
 
 const METHODS = ['POST'] as const
@@ -233,6 +233,20 @@ function rpcError(error: { message?: string }): never {
     throw new HttpError(400, 'INVALID_REQUEST', 'Workspace client request is invalid')
   }
   throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The workspace client operation failed')
+}
+
+
+/**
+ * Which providers the workspace pays for itself. Work on those keys is not
+ * charged, and the buttons that quote a price say "Included" instead.
+ */
+async function aiKeyPresence(admin: Parameters<typeof workspaceAiKeyStatus>[0], workspaceId: string): Promise<{ anthropic: boolean; openai: boolean }> {
+  try {
+    const status = await workspaceAiKeyStatus(admin, workspaceId)
+    return { anthropic: status.anthropic.configured, openai: status.openai.configured }
+  } catch {
+    return { anthropic: false, openai: false }
+  }
 }
 
 serve(async (req) => {
@@ -863,6 +877,7 @@ serve(async (req) => {
         },
         viewer_role: access.role,
         can_manage: ['owner', 'admin', 'platform_admin'].includes(access.role),
+        ai_keys: await aiKeyPresence(admin, workspaceId),
         client: {
           ...client,
           // A legacy auto_send row reads as auto_draft here exactly as in
@@ -963,6 +978,7 @@ serve(async (req) => {
       ))
 
       return jsonResponse(req, METHODS, 200, {
+        ai_keys: await aiKeyPresence(admin, workspaceId),
         workspace: {
           id: access.workspace.id,
           name: access.workspace.name,

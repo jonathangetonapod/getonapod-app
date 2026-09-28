@@ -37,6 +37,19 @@ export function workspaceModuleHref(baseHref: string, module: WorkspaceModule): 
   return `${baseHref}/${module}`
 }
 
+/** The client's Shortlist tab, where the pitch flow starts and returns to. */
+export function clientShortlistHref(baseHref: string, clientId: string): string {
+  return `${baseHref}/clients/${encodeURIComponent(clientId)}?tab=shortlist`
+}
+
+/**
+ * The pitch page for one shortlisted podcast. Addressed by the shortlist row,
+ * so the same podcast on two clients is two pages, each with its own draft.
+ */
+export function clientPitchHref(baseHref: string, clientId: string, shortlistPodcastId: string): string {
+  return `${baseHref}/clients/${encodeURIComponent(clientId)}/podcasts/${encodeURIComponent(shortlistPodcastId)}/pitch`
+}
+
 export function workspaceModuleFromPath(pathname: string): WorkspaceModule {
   if (pathname.includes('/podcast-finder')) return 'podcast-finder'
   if (pathname.includes('/prospect-dashboards')) return 'prospects'

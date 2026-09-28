@@ -117,6 +117,7 @@ const defaultClientBrand = {
   client_brand_name: '',
   client_brand_primary_color: '#0D1B2A',
   client_brand_accent_color: '#C7794F',
+  client_contact_email: '',
 }
 
 function readableColor(background: string): string {
@@ -465,6 +466,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       data.workspace.client_brand_name,
       data.workspace.client_brand_primary_color,
       data.workspace.client_brand_accent_color,
+      data.workspace.client_contact_email,
     ])
     if (lastServerBrandRef.current !== serverBrand) {
       lastServerBrandRef.current = serverBrand
@@ -472,6 +474,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
         client_brand_name: data.workspace.client_brand_name,
         client_brand_primary_color: data.workspace.client_brand_primary_color,
         client_brand_accent_color: data.workspace.client_brand_accent_color,
+        client_contact_email: data.workspace.client_contact_email ?? '',
       })
     }
   }, [data])
@@ -482,6 +485,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     clientBrandDraft.client_brand_name !== data?.workspace.client_brand_name
     || clientBrandDraft.client_brand_primary_color.toUpperCase() !== data?.workspace.client_brand_primary_color
     || clientBrandDraft.client_brand_accent_color.toUpperCase() !== data?.workspace.client_brand_accent_color
+    || clientBrandDraft.client_contact_email.trim() !== (data?.workspace.client_contact_email ?? '')
   )
 
   const [bookingLinkDraft, setBookingLinkDraft] = useState('')
@@ -1069,6 +1073,23 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             </div>
 
                             <div className="space-y-2">
+                              <Label htmlFor="client-contact-email">Email clients reply to</Label>
+                              <Input
+                                id="client-contact-email"
+                                type="email"
+                                maxLength={254}
+                                value={clientBrandDraft.client_contact_email}
+                                disabled={!canManageClientBranding || clientBrandMutation.isPending}
+                                onChange={(event) => setClientBrandDraft((current) => ({
+                                  ...current,
+                                  client_contact_email: event.target.value,
+                                }))}
+                                placeholder="hello@youragency.com"
+                              />
+                              <p className="text-xs text-muted-foreground">Set as the reply-to on shortlist and booking emails, so a client who replies reaches you. Leave it empty and replies go nowhere.</p>
+                            </div>
+
+                            <div className="space-y-2">
                               <Label htmlFor="workspace-booking-link">Booking link or embed code</Label>
                               <div className="flex flex-col gap-2">
                                 {/* A textarea because "embed code" is a block
@@ -1312,6 +1333,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                   client_brand_name: data.workspace.client_brand_name,
                                   client_brand_primary_color: data.workspace.client_brand_primary_color,
                                   client_brand_accent_color: data.workspace.client_brand_accent_color,
+                                  client_contact_email: data.workspace.client_contact_email ?? '',
                                 })}
                               >
                                 Reset

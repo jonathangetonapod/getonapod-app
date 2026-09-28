@@ -70,6 +70,7 @@ function ownerView(overrides: Partial<WorkspaceStaffView> = {}): WorkspaceStaffV
       client_brand_accent_color: '#C7794F',
       booking_embed_url: null,
     client_brand_updated_at: '2026-07-22T00:30:00.000Z',
+    client_contact_email: null,
     },
     capabilities: {
       read_only: false,
@@ -263,6 +264,7 @@ describe('workspaceStaff', () => {
       client_brand_primary_color: '#16324F',
       client_brand_accent_color: '#E07A5F',
       client_brand_updated_at: updatedAt,
+      client_contact_email: null,
     })
     expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
       body: {

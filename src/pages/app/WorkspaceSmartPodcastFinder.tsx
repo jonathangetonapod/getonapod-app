@@ -294,8 +294,8 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const scoringUnits = Math.ceil(MAX_SCORED / SCORING_BATCH_SIZE)
   const draftsStrategy = includeAiStrategy && aiQueries.length === 0 && !aiStrategyLoaded
   const scanCostSuffix = draftsStrategy
-    ? `· up to ${creditsLabel(CREDIT_COSTS.compatibility_scoring * scoringUnits + CREDIT_COSTS.query_generation)}`
-    : creditCostSuffix('compatibility_scoring', { units: scoringUnits })
+    ? (contextQuery.data?.ai_keys?.anthropic ? '· Included' : `· up to ${creditsLabel(CREDIT_COSTS.compatibility_scoring * scoringUnits + CREDIT_COSTS.query_generation)}`)
+    : creditCostSuffix('compatibility_scoring', { units: scoringUnits, byo: contextQuery.data?.ai_keys?.anthropic })
   const activeFilterCount = [
     language !== 'en',
     region !== 'any',

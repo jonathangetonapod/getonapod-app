@@ -31,6 +31,8 @@ interface Recipient {
   email: string
   name: string
   workspaceName: string
+  /** The agency's contact address, or null when it has not set one. */
+  replyTo: string | null
   reviewUrl: string | null
   portalUrl: string | null
 }
@@ -90,7 +92,7 @@ async function resolveRecipient(
 
   const { data: workspace } = await admin
     .from('workspaces')
-    .select('id,name')
+    .select('id,name,client_contact_email')
     .eq('id', workspaceId)
     .maybeSingle()
 
@@ -111,6 +113,11 @@ async function resolveRecipient(
     email,
     name: (contact || String(client.name || '').trim() || 'there').split(' ')[0],
     workspaceName: String(workspace?.name || 'Your podcast team').trim() || 'Your podcast team',
+    // Where a reply lands. The prospect page tells people to reply to the
+    // email that brought them here; without this it went nowhere.
+    replyTo: typeof workspace?.client_contact_email === 'string' && workspace.client_contact_email.includes('@')
+      ? workspace.client_contact_email.trim()
+      : null,
     reviewUrl,
     portalUrl,
   }
@@ -153,6 +160,7 @@ async function deliver(
     eventKey: string
     recipients: string[]
     workspaceName: string
+    replyTo?: string | null
     subject: string
     html: string
     text: string
@@ -209,6 +217,7 @@ async function deliver(
       body: JSON.stringify({
         from,
         to: input.recipients,
+        ...(input.replyTo ? { reply_to: input.replyTo } : {}),
         subject: input.subject,
         html: input.html,
         text: input.text,
@@ -289,6 +298,7 @@ export async function notifyShortlistReady(
     eventKey: `shortlist:${input.day}`,
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
+    replyTo: recipient.replyTo,
     subject: `${shows} ready for your review`,
     html,
     text,
@@ -339,6 +349,7 @@ export async function notifyBookingConfirmed(
     eventKey: `booking:${input.bookingId}:booked`,
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
+    replyTo: recipient.replyTo,
     subject: `You are booked on ${show}`,
     html,
     text,
@@ -381,6 +392,7 @@ export async function notifyEpisodePublished(
     eventKey: `booking:${input.bookingId}:published`,
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
+    replyTo: recipient.replyTo,
     subject: `Your episode of ${show} is live`,
     html,
     text,

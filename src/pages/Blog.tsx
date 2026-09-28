@@ -1,18 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Filter, Search } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Search } from 'lucide-react';
 import { BlogCard } from '@/components/blog/BlogCard';
 import { getAllPosts, getAllCategories, type BlogPost, type BlogCategory } from '@/services/blog';
 import PageSEO from '@/components/seo/PageSEO';
 
 /** How long the search box waits after the last keystroke before asking the database. */
 const SEARCH_DEBOUNCE_MS = 300;
+
+/** The shape of an article, drawn while the articles load. */
+const CardPlaceholder = () => (
+  <div className="dfy-card" aria-hidden="true">
+    <span className="dfy-skeleton mb-4 aspect-video w-full" />
+    <span className="dfy-skeleton h-3 w-20" />
+    <span className="dfy-skeleton mt-4 h-6 w-full" />
+    <span className="dfy-skeleton mt-2 h-6 w-4/5" />
+    <span className="dfy-skeleton mt-4 h-4 w-full" />
+    <span className="dfy-skeleton mt-2 h-4 w-full" />
+    <span className="dfy-skeleton mt-2 h-4 w-3/5" />
+    <span className="dfy-skeleton mt-5 h-3 w-40" />
+  </div>
+);
 
 const Blog = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
@@ -68,7 +78,7 @@ const Blog = () => {
   }, [selectedCategory, debouncedSearch, attempt]);
 
   return (
-    <main className="min-h-screen bg-background">
+    <div className="dfy-page">
       <PageSEO
         title="How to get booked on podcasts: guides and tactics | Get On A Pod"
         description="Practical guides on pitching podcast hosts, preparing for interviews and turning guest appearances into customers."
@@ -76,141 +86,82 @@ const Blog = () => {
       />
       <Navbar />
 
-      {/* Hero Section */}
-      <section className="pt-44 pb-16 sm:pt-40 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
-        <div className="container mx-auto">
-          <div className="max-w-3xl mx-auto text-center">
-            <Badge className="mb-4">The Get On A Pod Blog</Badge>
-            <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold text-foreground mb-6 leading-tight px-2">
-              How to get booked on podcasts, and what to do once you are
-            </h1>
-            <p className="text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed px-4">
-              Guides on pitching hosts, preparing for interviews and turning episodes into customers, from the team that books its clients on podcasts every week.
-            </p>
+      <main className="dfy-wrap">
+        <section className="dfy-page-hero">
+          <span className="dfy-kicker">The Get On A Pod blog</span>
+          <h1>How to get booked on podcasts, and what to do once you are</h1>
+          <p className="dfy-page-lead">
+            Guides on pitching hosts, preparing for interviews and turning episodes into customers, from the team that books its clients on podcasts every week.
+          </p>
+        </section>
+
+        <section className="dfy-toolbar" aria-label="Search and filter">
+          <div className="dfy-input-wrap">
+            <Search aria-hidden="true" />
+            <input
+              type="search"
+              className="dfy-input"
+              aria-label="Search articles"
+              placeholder="Search articles..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-        </div>
-      </section>
 
-      {/* Search & Filter */}
-      <section className="pb-8 px-4">
-        <div className="container mx-auto">
-          <div className="space-y-4">
-            {/* Search Bar */}
-            <div className="max-w-md">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  aria-label="Search articles"
-                  placeholder="Search articles..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            {/* Category Filter */}
-            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-4 scrollbar-hide">
-              <Filter className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              <Button
-                variant={selectedCategory === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedCategory('all')}
-                className="whitespace-nowrap min-h-[40px]"
+          <div className="dfy-chip-row" role="group" aria-label="Category">
+            <button
+              type="button"
+              className="dfy-chip"
+              aria-pressed={selectedCategory === 'all'}
+              onClick={() => setSelectedCategory('all')}
+            >
+              All
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                className="dfy-chip"
+                aria-pressed={selectedCategory === category.id}
+                onClick={() => setSelectedCategory(category.id)}
               >
-                All
-              </Button>
-              {categories.map((category) => (
-                <Button
-                  key={category.id}
-                  variant={selectedCategory === category.id ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedCategory(category.id)}
-                  className="whitespace-nowrap min-h-[40px]"
-                >
-                  {category.name}
-                </Button>
-              ))}
-            </div>
+                {category.name}
+              </button>
+            ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Blog Posts Grid */}
-      <section className="pb-20 md:pb-32 px-4">
-        <div className="container mx-auto">
+        <section className="dfy-section">
           <div
             ref={ref}
             className={`transition-all duration-700 ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
             }`}
           >
-            {/* Loading State */}
             {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="dfy-grid" role="status" aria-label="Loading articles">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-lg border bg-card overflow-hidden"
-                  >
-                    {/* Image placeholder */}
-                    <Skeleton className="aspect-video w-full rounded-none" />
-
-                    {/* CardHeader area */}
-                    <div className="p-6 space-y-3">
-                      {/* Category badge */}
-                      <Skeleton className="h-5 w-20 rounded-full" />
-                      {/* Title */}
-                      <Skeleton className="h-6 w-full" />
-                      <Skeleton className="h-6 w-4/5" />
-                    </div>
-
-                    {/* CardContent - excerpt */}
-                    <div className="px-6 pb-4 space-y-2">
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-3/5" />
-                    </div>
-
-                    {/* CardFooter - date & read time */}
-                    <div className="px-6 pb-6 flex items-center gap-4">
-                      <div className="flex items-center gap-1">
-                        <Skeleton className="h-4 w-4 rounded-full" />
-                        <Skeleton className="h-4 w-20" />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Skeleton className="h-4 w-4 rounded-full" />
-                        <Skeleton className="h-4 w-16" />
-                      </div>
-                    </div>
-                  </div>
+                  <CardPlaceholder key={i} />
                 ))}
               </div>
             ) : loadFailed ? (
               /* The request failed: not the same as there being nothing to show. */
-              <div className="text-center py-20" role="alert">
-                <p className="text-xl text-muted-foreground">Articles did not load.</p>
-                <Button
-                  variant="outline"
-                  className="mt-6 min-h-[44px]"
-                  onClick={() => setAttempt((count) => count + 1)}
-                >
-                  Retry
-                </Button>
+              <div role="alert">
+                <p className="dfy-copy">Articles did not load.</p>
+                <div className="dfy-cta-row">
+                  <button type="button" className="dfy-btn dfy-btn-primary" onClick={() => setAttempt((count) => count + 1)}>
+                    Retry
+                  </button>
+                </div>
               </div>
             ) : posts.length === 0 ? (
-              /* No Results */
-              <div className="text-center py-20">
-                <p className="text-xl text-muted-foreground">
-                  {debouncedSearch || selectedCategory !== 'all'
-                    ? 'No articles found. Try adjusting your filters.'
-                    : 'No articles published yet. Check back soon.'}
-                </p>
-              </div>
+              <p className="dfy-copy">
+                {debouncedSearch || selectedCategory !== 'all'
+                  ? 'No articles found. Try adjusting your filters.'
+                  : 'No articles published yet. Check back soon.'}
+              </p>
             ) : (
-              /* Blog Posts Grid */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="dfy-grid">
                 {posts.map((post, index) => (
                   <div
                     key={post.id}
@@ -223,11 +174,11 @@ const Blog = () => {
               </div>
             )}
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       <Footer />
-    </main>
+    </div>
   );
 };
 

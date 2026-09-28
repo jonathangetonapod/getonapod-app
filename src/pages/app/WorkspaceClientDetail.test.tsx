@@ -14,6 +14,7 @@ import {
   type WorkspaceClientDetail as WorkspaceClientDetailData,
 } from '@/services/clients'
 import { getWorkspaceProspects } from '@/services/prospectDashboards'
+import { getWorkspaceClientPodcastSystem, type ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({
@@ -32,6 +33,9 @@ vi.mock('@/services/clients', () => ({
 }))
 vi.mock('@/services/prospectDashboards', () => ({
   getWorkspaceProspects: vi.fn().mockResolvedValue({ dashboards: [] }),
+}))
+vi.mock('@/services/clientPodcastSystem', () => ({
+  getWorkspaceClientPodcastSystem: vi.fn(),
 }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({ WorkspaceSwitcher: () => <div>Workspace switcher</div> }))
 vi.mock('@/components/workspace/ClientInstantlyCampaignsCard', () => ({
@@ -64,6 +68,7 @@ const mockedSetPortalPassword = vi.mocked(setWorkspaceClientPassword)
 const mockedUpdateClient = vi.mocked(updateWorkspaceClient)
 const mockedUpdateProfile = vi.mocked(updateWorkspaceClientProfile)
 const mockedUpdateSdrProfile = vi.mocked(updateWorkspaceClientSdrProfile)
+const mockedGetSystem = vi.mocked(getWorkspaceClientPodcastSystem)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 const onboardingId = '33333333-3333-4333-8333-333333333333'
@@ -194,15 +199,72 @@ const detail: WorkspaceClientDetailData = {
   },
 }
 
-function renderPage(path = `/app/clients/${clientId}`) {
+// The shortlist row behind booking-one, as the pipeline function pairs them.
+const founderStoriesOpportunity: ClientPodcastSystemItem = {
+  id: 'shortlist-founder-stories',
+  client: { id: clientId, name: 'Taylor Client', status: 'active', photo_url: null },
+  podcast: {
+    id: '44444444-4444-4444-8444-444444444444',
+    podscan_id: 'podcast-one',
+    name: 'Founder Stories',
+    description: 'Founder interviews.',
+    image_url: null,
+    url: 'https://podcasts.example.com/founder-stories',
+    publisher_name: 'Story Media',
+    host_name: 'Morgan Host',
+    audience_size: 25_000,
+    last_posted_at: '2026-07-20T12:00:00.000Z',
+  },
+  stage: 'booked',
+  outcome: null,
+  terminal: false,
+  has_conflict: false,
+  next_action: 'Send the prep pack',
+  contact: { available: true, source: 'direct', email: 'morgan@founder.example', verified_at: '2026-07-01T00:00:00.000Z' },
+  decision: { status: 'approved', notes: null, updated_at: '2026-07-10T00:00:00.000Z' },
+  analysis: {
+    source: 'normalized',
+    clean_description: 'Founders on the decisions that shaped their companies.',
+    fit_reasons: ['Taylor has a founder story with operating depth.'],
+    pitch_angles: [],
+    analyzed_at: '2026-07-10T00:00:00.000Z',
+  },
+  campaign: null,
+  legacy_outreach_at: null,
+  conversation: null,
+  booking: {
+    id: 'booking-one',
+    match: 'podcast_id',
+    status: 'booked',
+    host_name: 'Morgan Host',
+    scheduled_date: '2099-09-12',
+    recording_date: null,
+    publish_date: null,
+    episode_url: null,
+    prep_sent: false,
+    notes: null,
+    created_at: '2026-07-22T00:00:00.000Z',
+    updated_at: '2026-07-22T00:00:00.000Z',
+  },
+  operator_notes: null,
+  shortlist_created_at: '2026-07-01T00:00:00.000Z',
+  shortlist_updated_at: '2026-07-22T00:00:00.000Z',
+  last_activity_at: '2026-07-22T00:00:00.000Z',
+}
+
+function renderPageWithHandle(path = `/app/clients/${clientId}`) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes><Route path="/app/clients/:clientId" element={<WorkspaceClientDetail />} /></Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+function renderPage(path = `/app/clients/${clientId}`) {
+  renderPageWithHandle(path)
 }
 
 function renderPlatformPage() {
@@ -236,6 +298,18 @@ describe('WorkspaceClientDetail', () => {
       signOut: vi.fn(),
     } as never)
     mockedDetail.mockResolvedValue(detail)
+    mockedGetSystem.mockResolvedValue({
+      workspace: { id: workspaceId, name: 'Acme Workspace', logo_path: null, logo_updated_at: null },
+      viewer_role: 'owner',
+      can_manage: true,
+      generated_at: '2026-07-25T12:00:00.000Z',
+      clients: [],
+      summary: {
+        total: 1, active: 1, completed: 0, needs_attention: 1, upcoming_recordings: 1, awaiting_publication: 0,
+        stage_counts: { awaiting_review: 0, approved: 0, contact_needed: 0, research_needed: 0, ready: 0, outreach: 0, conversation: 0, booked: 1, recorded: 0, published: 0 },
+      },
+      items: [founderStoriesOpportunity],
+    })
     mockedSetPortalPassword.mockResolvedValue(undefined)
     mockedUpdateClient.mockResolvedValue(detail.client)
     mockedUpdateSdrProfile.mockResolvedValue({
@@ -281,11 +355,14 @@ describe('WorkspaceClientDetail', () => {
       .toHaveAttribute('href', '/app/settings/billing')
   })
 
-  it('rebuilds the legacy client command center inside the workspace shell', async () => {
+  it('is the one client record: overview, profile, shortlist, placements, sharing, intake', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
-    expect(screen.getByText('Client command center · Acme Workspace')).toBeInTheDocument()
+    expect(screen.getByText('Client record · Acme Workspace')).toBeInTheDocument()
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Overview', 'Profile', 'Shortlist', 'Placements', 'Sharing', 'Intake & files',
+    ])
     expect(screen.getAllByRole('link', { name: 'Podcast Finder' }).find((link) => (
       link.getAttribute('href')?.includes(`client=${clientId}`)
     ))).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
@@ -296,10 +373,10 @@ describe('WorkspaceClientDetail', () => {
       'href',
       `/app/client-campaigns/${clientId}`,
     )
-    expect(screen.getByRole('link', { name: 'Command Center' })).toHaveAttribute(
-      'href',
-      `/app/client-podcast-system?client=${clientId}`,
-    )
+    // The shell's nav carries the same label; this is the record's own button.
+    expect(screen.getAllByRole('link', { name: 'Pipeline' }).find((link) => (
+      link.getAttribute('href')?.includes(`client=${clientId}`)
+    ))).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
     const progress = screen.getByRole('heading', { name: 'Campaign snapshot' }).closest('section')
     expect(progress).not.toBeNull()
     expect(within(progress as HTMLElement).getByText('Booked').nextElementSibling).toHaveTextContent('1')
@@ -319,7 +396,6 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view & edit podcasts/i })).toHaveAttribute('href', '#client-podcast-list')
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.queryByRole('button', { name: 'Stop sharing' })).not.toBeInTheDocument()
     expect(screen.getByText('Positive').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('Negative').nextElementSibling).toHaveTextContent('3')
@@ -329,35 +405,115 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.queryByRole('heading', { name: 'Client engagement' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Dashboard setup' })).not.toBeInTheDocument()
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
+    // Every way this client's work is shared sits together: the approval
+    // dashboard link, the portal login, and the prospect page it came from.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
     expect(screen.queryByRole('heading', { name: 'Client portal' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /open portal login/i })).not.toBeInTheDocument()
     expect(screen.getAllByText('taylor@example.com').length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('heading', { name: 'Upcoming recordings' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('heading', { name: 'Upcoming episode releases' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New link' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Link a prospect page/i })).toBeInTheDocument()
+    // The upcoming milestones are on the overview, not repeated here.
+    expect(screen.queryByRole('heading', { name: 'Upcoming recordings' })).not.toBeInTheDocument()
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Podcast activity' }), { button: 0 })
-    expect(screen.getByRole('heading', { name: 'Podcast activity' })).toBeInTheDocument()
-    expect(screen.getByText('Founder Stories')).toBeInTheDocument()
-    expect(screen.getByText('Operator Weekly')).toBeInTheDocument()
+    // Placements carry the calendar with them.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Placements' }), { button: 0 })
+    expect(screen.getByRole('heading', { name: 'Placements' })).toBeInTheDocument()
+    const placements = screen.getByRole('table')
+    expect(within(placements).getByText('Founder Stories')).toBeInTheDocument()
+    expect(within(placements).getByText('Operator Weekly')).toBeInTheDocument()
+    expect(screen.getByRole('grid', { name: 'Client activity calendar' })).toBeInTheDocument()
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
-    expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
-    expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
+    // The profile tab holds both what the client approved and the reply brief drafted from it.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
     expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View full profile' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Intake & files' }), { button: 0 })
+    expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
+    expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Internal account notes' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View full profile' })).not.toBeInTheDocument()
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
+  })
+
+  it('lands every previous tab id on the tab that now holds its content', async () => {
+    const aliases: Array<[string, string]> = [
+      ['ai-sdr', 'Profile'],
+      ['approval', 'Shortlist'],
+      ['podcasts', 'Placements'],
+      ['calendar', 'Placements'],
+      ['portal', 'Sharing'],
+      ['files', 'Intake & files'],
+    ]
+    for (const [legacy, tabName] of aliases) {
+      const { unmount } = renderPageWithHandle(`/app/clients/${clientId}?tab=${legacy}`)
+      expect(await screen.findByRole('tab', { name: tabName })).toHaveAttribute('data-state', 'active')
+      unmount()
+    }
+  })
+
+  /*
+   * The shortlist editor exposes no row-level hook, so the shared opportunity
+   * sheet opens from the placements table instead: each placement's Details
+   * shows the shortlist row the pipeline pairs it with. The workspace payload
+   * is fetched only once that tab is open.
+   */
+  it('opens the shared opportunity sheet for a placement, loading the rows only when needed', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    expect(mockedGetSystem).not.toHaveBeenCalled()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Placements' }), { button: 0 })
+    await waitFor(() => expect(mockedGetSystem).toHaveBeenCalledWith(workspaceId))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Details for Founder Stories' }))
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByRole('heading', { name: 'Founder Stories' })).toBeInTheDocument()
+    expect(within(sheet).getByText('Send the prep pack')).toBeInTheDocument()
+    expect(within(sheet).getByRole('link', { name: 'Client shortlist' })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
+    // A placement with no shortlist row behind it has nothing to open.
+    expect(screen.queryByRole('button', { name: 'Details for Operator Weekly' })).not.toBeInTheDocument()
+
+    // Updating the placement from the sheet edits the booking already on the page.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Update placement' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByText('Booking dialog')).toBeInTheDocument()
+  })
+
+  it('prices the reply brief draft as included for a workspace on its own key', async () => {
+    const unready: WorkspaceClientDetailData = {
+      ...detail,
+      client: {
+        ...detail.client,
+        ai_sdr_profile: { ...detail.client.ai_sdr_profile, listener_takeaways: '' },
+        ai_sdr_readiness: { ready: false, completed_fields: 5, total_fields: 6, missing_fields: ['listener_takeaways'], missing_core_fields: ['listener_takeaways'] },
+      },
+    }
+    mockedDetail.mockResolvedValueOnce({ ...unready, ai_keys: { anthropic: true, openai: false } })
+    const first = renderPageWithHandle(`/app/clients/${clientId}?tab=profile`)
+    expect(await screen.findByRole('button', { name: 'Draft brief · Included' })).toBeInTheDocument()
+    first.unmount()
+
+    mockedDetail.mockResolvedValueOnce(unready)
+    renderPage(`/app/clients/${clientId}?tab=profile`)
+    expect(await screen.findByRole('button', { name: 'Draft brief · 3 credits' })).toBeInTheDocument()
   })
 
   it('gives one client their own calendar, built from the bookings already loaded', async () => {
     renderPage(`/app/clients/${clientId}?tab=calendar`)
 
-    expect(await screen.findByRole('tab', { name: 'Calendar' })).toHaveAttribute('data-state', 'active')
+    expect(await screen.findByRole('tab', { name: 'Placements' })).toHaveAttribute('data-state', 'active')
     expect(screen.getByRole('grid', { name: 'Client activity calendar' })).toBeInTheDocument()
     // Every entry is this client, so the client filter is not offered.
     expect(screen.queryByLabelText('Filter by client')).not.toBeInTheDocument()
-    // A booking with only a scheduled date still lands on the calendar.
-    expect(screen.getByText(/Founder Stories/)).toBeInTheDocument()
+    // A booking with only a scheduled date still lands on the calendar: it is
+    // named once in the placements table and again as a calendar entry.
+    const table = screen.getByRole('table')
+    expect(screen.getAllByText(/Founder Stories/).filter((node) => !table.contains(node)).length).toBeGreaterThan(0)
     // No extra request: the page's own bookings feed it.
     expect(mockedDetail).toHaveBeenCalledTimes(1)
   })
@@ -365,7 +521,7 @@ describe('WorkspaceClientDetail', () => {
   it('edits each client-scoped reply brief section in a focused modal for the inbox', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Reply brief' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
 
     expect(screen.getByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
     expect(screen.getByText('Context ready')).toBeInTheDocument()
@@ -395,7 +551,7 @@ describe('WorkspaceClientDetail', () => {
     renderPage(`/app/clients/${clientId}?tab=ai-sdr`)
 
     expect(await screen.findByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Reply brief' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('data-state', 'active')
     expect(screen.queryByRole('heading', { name: 'Campaign snapshot' })).not.toBeInTheDocument()
   })
 
@@ -403,9 +559,10 @@ describe('WorkspaceClientDetail', () => {
     mockedDetail.mockResolvedValueOnce({ ...detail, viewer_role: 'member', can_manage: false })
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Reply brief' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
 
     expect(screen.getByText('Sustainable scale, founder leverage, and the operator systems behind durable growth.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit brief' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Guest positioning' })).not.toBeInTheDocument()
   })
@@ -424,7 +581,7 @@ describe('WorkspaceClientDetail', () => {
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
 
     expect(screen.queryByText(/FINAL APPROVED TOPIC/)).not.toBeInTheDocument()
     expect(screen.getByText(/PODCAST OUTREACH STRATEGY FOR TAYLOR CLIENT/)).toHaveTextContent(/…$/)
@@ -447,7 +604,7 @@ describe('WorkspaceClientDetail', () => {
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }))
     const editor = screen.getByRole('dialog', { name: 'Edit approved client profile' })
@@ -474,7 +631,7 @@ describe('WorkspaceClientDetail', () => {
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
 
     expect(screen.getByRole('button', { name: 'View full profile' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument()
@@ -506,18 +663,20 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getAllByText('Live').length).toBeGreaterThan(0)
     expect(screen.queryByText('Not shared')).not.toBeInTheDocument()
     expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.getByText('Client podcast editor')).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
+    expect(screen.getAllByText('Live').length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: /preview as client/i })).toHaveAttribute('href', '/client/taylor-client-123?preview=1')
     expect(screen.queryByRole('heading', { name: 'Review completion' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /run fresh discovery/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Make dashboard live' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Stop sharing' })).not.toBeInTheDocument()
   })
 
-  it('edits internal account notes without leaving the client command center', async () => {
+  it('edits internal account notes without leaving the client record', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding & files' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Intake & files' }), { button: 0 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit notes' }))
     fireEvent.change(screen.getByLabelText('Internal account notes'), {
@@ -540,7 +699,7 @@ describe('WorkspaceClientDetail', () => {
   it('lets the workspace owner set and reveal a client portal password once', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Change portal password' }))
     const editor = screen.getByRole('dialog', { name: 'Change portal password' })
@@ -565,7 +724,7 @@ describe('WorkspaceClientDetail', () => {
     mockedDetail.mockResolvedValue({ ...detail, viewer_role: 'admin', can_manage: true })
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Client portal' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
 
     expect(screen.queryByRole('button', { name: 'Change portal password' })).not.toBeInTheDocument()
     expect(screen.getByText('Only the workspace owner can manage client portal passwords.')).toBeInTheDocument()
@@ -581,8 +740,8 @@ describe('WorkspaceClientDetail', () => {
     vi.mocked(linkWorkspaceClientProspect).mockResolvedValue('prospect-bbb')
     renderPage()
 
-    // The prospect link lives on the Files tab, not the default one.
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: /Files/i }), { button: 0 })
+    // The prospect link lives on the Sharing tab, not the default one.
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Sharing' }), { button: 0 })
     fireEvent.click(await screen.findByRole('button', { name: /Link a prospect page/i }))
     expect(await screen.findByText('Andre Daughty')).toBeInTheDocument()
     expect(screen.getByText('Kari Yasi')).toBeInTheDocument()
@@ -610,7 +769,7 @@ describe('WorkspaceClientDetail', () => {
     } as never)
     renderPage()
 
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: /Files/i }), { button: 0 })
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Sharing' }), { button: 0 })
     fireEvent.click(await screen.findByRole('button', { name: /Link a prospect page/i }))
 
     // The 26th onwards used to be unreachable behind a "narrow the search" note.
@@ -622,7 +781,7 @@ describe('WorkspaceClientDetail', () => {
     vi.mocked(getWorkspaceProspects).mockResolvedValue({ dashboards: [] } as never)
     renderPage()
 
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: /Files/i }), { button: 0 })
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Sharing' }), { button: 0 })
     fireEvent.click(await screen.findByRole('button', { name: /Link a prospect page/i }))
     expect(await screen.findByText('No prospect pages yet')).toBeInTheDocument()
     expect(screen.getByText(/built in Prospect Studio before a client signs/i)).toBeInTheDocument()

@@ -155,6 +155,8 @@ export interface ProspectWorkspaceSummary {
 }
 
 export interface WorkspaceProspectList {
+  /** Which AI providers the workspace pays for itself; absent from older builds. */
+  ai_keys?: { anthropic: boolean; openai: boolean }
   workspace: ProspectWorkspaceSummary
   viewer_role: 'owner' | 'admin' | 'member' | 'platform_admin'
   can_manage: boolean

@@ -19,7 +19,7 @@ import {
   type WorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
 
 const METHODS = ['POST'] as const
 const PROSPECT_IMAGE_BUCKET = 'prospect-images'
@@ -1155,10 +1155,16 @@ serve(async (req) => {
           status: String(row.status ?? ''),
         })
       }
+      // Which providers the workspace pays for itself: a build on the
+      // workspace's own key is not charged, and the button says so.
+      const aiKeys = await workspaceAiKeyStatus(context.admin, workspaceId)
+        .then((status) => ({ anthropic: status.anthropic.configured, openai: status.openai.configured }))
+        .catch(() => ({ anthropic: false, openai: false }))
       return jsonResponse(req, METHODS, 200, {
         workspace,
         viewer_role: access.role,
         can_manage: MANAGER_ROLES.has(access.role),
+        ai_keys: aiKeys,
         dashboards: rows.map((dashboard) => ({
           ...dashboard,
           readiness: readinessForRows(dashboard, shortlistByDashboard.get(dashboard.id) || []),

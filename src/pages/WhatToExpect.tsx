@@ -1,8 +1,7 @@
-import { Button } from '@/components/ui/button';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import PageSEO from '@/components/seo/PageSEO';
+import { CALL_URL } from '@/lib/landingContent';
 
 /**
  * The eleven things that happen after someone joins, each in one sentence.
@@ -109,7 +108,7 @@ const constants = [
 
 const WhatToExpect = () => {
   return (
-    <div className="homepage-shell min-h-screen bg-transparent">
+    <div className="dfy-page">
       <PageSEO
         title="What happens after you join, week by week | Get On A Pod"
         description="How Get On A Pod runs a podcast guesting campaign, from the positioning interview to the published episode: what you approve, when pitches go out and when you record."
@@ -117,149 +116,86 @@ const WhatToExpect = () => {
       />
       <Navbar />
 
-      <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-44 sm:pt-40 md:pb-16 md:pt-36">
-        <div className="absolute inset-x-0 top-0 h-px bg-[#0d1b2a]/8" />
-        <div className="absolute left-0 top-20 h-[260px] w-[260px] rounded-full bg-[#b46a3c]/10 blur-3xl sm:h-[380px] sm:w-[380px]" />
-        <div className="absolute right-0 top-14 h-[220px] w-[220px] rounded-full bg-[#d9c6b3]/45 blur-3xl sm:h-[360px] sm:w-[360px]" />
+      <main className="dfy-wrap">
+        <section className="dfy-page-hero">
+          <span className="dfy-kicker">What to expect</span>
+          <h1>What happens after you join, week by week.</h1>
+          <p className="dfy-page-lead">
+            You approve every show and every pitch before anything goes out. Outreach starts within the first two weeks, most clients record their first episode within 3–5 weeks, and your portal shows where everything stands the whole time.
+          </p>
 
-        <div className="container relative mx-auto">
-          <div className="max-w-3xl">
-            <p className="section-kicker">What to expect</p>
-
-            <h1 className="mt-6 max-w-4xl font-editorial text-[clamp(3rem,10vw,6rem)] leading-[0.92] tracking-[-0.045em] text-[#0d1b2a] text-balance">
-              What happens after you join, week by week.
-            </h1>
-
-            <p className="mt-6 max-w-2xl text-base leading-8 text-[#54473d] sm:text-lg md:text-xl">
-              You approve every show and every pitch before anything goes out. Outreach starts within the first two weeks, most clients record their first episode within 3–5 weeks, and your portal shows where everything stands the whole time.
-            </p>
-
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button variant="hero" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
-                <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
-                  Book a 30-minute call
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </Button>
-              <Button variant="heroOutline" size="xl" className="min-h-[56px] rounded-full px-8 text-base" asChild>
-                <a href="/#pricing">See pricing: $500 a month</a>
-              </Button>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-[#76665a]">
-              On the call we show you the kinds of shows we would pitch you to, and tell you honestly whether we are a fit.
-            </p>
+          <div className="dfy-cta-row">
+            <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">
+              Book a 30-minute call
+            </a>
+            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $500 a month</a>
           </div>
 
-          <div className="mt-10 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <p className="dfy-cta-note">
+            On the call we show you the kinds of shows we would pitch you to, and tell you honestly whether we are a fit.
+          </p>
+
+          <div className="dfy-facts-grid">
             {summaryCards.map((card) => (
-              <div
-                key={card.title}
-                className="rounded-[22px] border border-[#0d1b2a]/8 bg-white px-4 py-4 shadow-[0_18px_40px_rgba(13,27,42,0.06)]"
-              >
-                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#b46a3c]">
-                  {card.label}
-                </p>
-                <p className="mt-3 font-display text-xl font-semibold tracking-[-0.03em] text-[#0d1b2a]">
-                  {card.title}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-[#6a5a4d]">
-                  {card.description}
-                </p>
+              <div key={card.title}>
+                <span className="dfy-kicker">{card.label}</span>
+                <h2 className="dfy-fact-title">{card.title}</h2>
+                <p className="dfy-fact-copy">{card.description}</p>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="px-4 py-12 md:py-20">
-        <div className="container mx-auto">
-          <div className="grid gap-10 xl:grid-cols-[0.34fr_0.66fr] xl:gap-12">
-            <div className="max-w-xl xl:sticky xl:top-28 xl:self-start">
-              <p className="section-kicker">The eleven steps</p>
-              <h2 className="mt-4 font-editorial text-4xl leading-[0.94] tracking-[-0.045em] text-[#0d1b2a] sm:text-5xl md:text-6xl">
-                From shortlist to published episode.
-              </h2>
-              <p className="mt-5 max-w-lg text-base leading-8 text-[#54473d] sm:text-lg">
-                At every step you can see what stage the campaign is in, what needs your approval and what is already moving.
-              </p>
+        <hr className="dfy-rule" />
 
-              <div className="mt-8 rounded-[28px] border border-[#0d1b2a]/8 bg-[#fffaf4]/92 p-5 shadow-[0_18px_36px_rgba(13,27,42,0.08)]">
-                <p className="section-kicker">What stays true throughout</p>
-                <ul className="mt-4 space-y-3">
-                  {constants.map((item) => (
-                    <li key={item} className="flex items-start gap-3 rounded-[18px] border border-[#0d1b2a]/8 bg-white px-4 py-3">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#b46a3c]" aria-hidden="true" />
-                      <p className="text-sm leading-7 text-[#3f342c]">{item}</p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+        <section className="dfy-section">
+          <span className="dfy-kicker">The eleven steps</span>
+          <h2 className="dfy-title">From shortlist to published episode.</h2>
+          <p className="dfy-copy">
+            At every step you can see what stage the campaign is in, what needs your approval and what is already moving.
+          </p>
 
-            <ol className="divide-y divide-[#0d1b2a]/8 rounded-[30px] border border-[#0d1b2a]/8 bg-[#fffdf9]/94 shadow-[0_18px_40px_rgba(13,27,42,0.08)]">
-              {steps.map((step) => (
-                <li key={step.number} className="grid gap-2 px-5 py-5 sm:grid-cols-[3rem_minmax(0,1fr)] sm:gap-x-5 sm:px-6">
-                  <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8e4a1f] sm:pt-1.5">
-                    {step.number}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <h3 className="font-display text-xl font-semibold tracking-[-0.03em] text-[#0d1b2a] sm:text-2xl">
-                        {step.title}
-                      </h3>
-                      <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#7a6554]">
-                        {step.duration}
-                      </span>
-                    </div>
-                    <p className="mt-2 max-w-2xl text-sm leading-7 text-[#54473d] sm:text-base">
-                      {step.description}
-                    </p>
-                  </div>
+          <ol className="mt-6 list-none p-0">
+            {steps.map((step) => (
+              <li key={step.number} className="dfy-how-row">
+                <span className="dfy-how-n">{step.number}</span>
+                <div>
+                  <h3 className="dfy-how-title">{step.title}</h3>
+                  <span className="dfy-when">{step.duration}</span>
+                </div>
+                <p className="dfy-how-copy">{step.description}</p>
+              </li>
+            ))}
+          </ol>
+
+          <div className="dfy-panel mt-10">
+            <span className="dfy-kicker">What stays true throughout</span>
+            <ul className="dfy-includes">
+              {constants.map((item) => (
+                <li key={item}>
+                  <span className="dfy-list-mark" aria-hidden="true" />
+                  <span>{item}</span>
                 </li>
               ))}
-            </ol>
+            </ul>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      <section className="px-4 pb-16 pt-2 md:pb-24">
-        <div className="container mx-auto">
-          <div className="overflow-hidden rounded-[36px] border border-[#0d1b2a]/10 bg-[#081a2b] px-6 py-8 text-[#f7fafc] shadow-[0_30px_70px_rgba(13,27,42,0.2)] sm:px-8 sm:py-10 md:px-10">
-            <div className="grid gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-end">
-              <div className="max-w-2xl">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="section-kicker text-[#d4b08f]">Next step</p>
-                  <span className="rounded-full border border-[#d4b08f]/25 bg-[#d4b08f]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f0ddc8]">
-                    30 minutes, no commitment
-                  </span>
-                </div>
-                <h2 className="mt-4 font-editorial text-4xl leading-[0.94] tracking-[-0.045em] text-[#f7fafc] sm:text-5xl md:text-6xl">
-                  See the shows we would pitch you to.
-                </h2>
-                <p className="mt-5 max-w-xl text-base leading-8 text-[#d8c8b5] sm:text-lg">
-                  In 30 minutes we show you the kinds of shows we would target for you, and tell you honestly how many bookings to expect in your niche.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
-                <Button variant="hero" size="xl" className="w-full rounded-full px-8 sm:w-auto" asChild>
-                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
-                    Book a 30-minute call
-                    <ArrowRight className="h-4 w-4" />
-                  </a>
-                </Button>
-                <Button
-                  variant="heroOutline"
-                  size="xl"
-                  className="w-full rounded-full border-white/15 bg-white/5 px-8 text-[#f7fafc] shadow-none hover:border-[#d4b08f]/35 hover:bg-white/10 sm:w-auto"
-                  asChild
-                >
-                  <a href="/#pricing">See pricing: $500 a month</a>
-                </Button>
-              </div>
-            </div>
+      <section className="dfy-book">
+        <div className="dfy-book-in">
+          <span className="dfy-kicker">Next step</span>
+          <h2><span>See the shows</span><span>we would pitch you to.</span></h2>
+          <p className="dfy-book-copy">
+            In 30 minutes we show you the kinds of shows we would target for you, and tell you honestly how many bookings to expect in your niche.
+          </p>
+          <div className="dfy-cta-row">
+            <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">
+              Book a 30-minute call
+            </a>
+            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $500 a month</a>
           </div>
+          <p className="dfy-book-note">30 minutes, no commitment.</p>
         </div>
       </section>
 
