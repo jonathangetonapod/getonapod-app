@@ -4,6 +4,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceStaff from '@/pages/app/WorkspaceStaff'
 import { useAuth } from '@/contexts/AuthContext'
+import { getWorkspaceClients } from '@/services/clients'
+import { getWorkspaceCampaignOverview, getWorkspaceMailboxes } from '@/services/workspaceCampaigns'
+import { listWorkspaceOnboarding } from '@/services/workspaceOnboarding'
 import {
   createWorkspaceStaffTemporaryPassword,
   inviteWorkspaceStaff,
@@ -36,6 +39,15 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
   WorkspaceSwitcher: () => <div>Workspace switcher</div>,
 }))
+// The setup-progress line in the header reads the same sources the clients
+// page checklist does. None of them matter to these tests beyond answering;
+// their answers are primed in beforeEach, since clearAllMocks empties them.
+vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
+vi.mock('@/services/workspaceCampaigns', () => ({
+  getWorkspaceCampaignOverview: vi.fn(),
+  getWorkspaceMailboxes: vi.fn(),
+}))
+vi.mock('@/services/workspaceOnboarding', () => ({ listWorkspaceOnboarding: vi.fn() }))
 vi.mock('@/services/workspaceStaff', () => ({
   createWorkspaceStaffTemporaryPassword: vi.fn(),
   getWorkspaceAiKeys: vi.fn(),
@@ -143,6 +155,18 @@ const refreshAccount = vi.fn()
 const refreshSession = vi.fn()
 const signOut = vi.fn()
 
+const mediumDate = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
+
+/**
+ * Row actions other than the role live behind a per-row menu now. Radix opens
+ * it from the keyboard in jsdom, where pointer events do not exist.
+ */
+function openRowMenu(email: string) {
+  const trigger = screen.getByRole('button', { name: `More actions for ${email}` })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+}
+
 function renderPage(platformWorkspaceId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -190,6 +214,22 @@ describe('WorkspaceStaff', () => {
       recent_activity: [],
     })
     vi.mocked(grantWorkspaceCredits).mockResolvedValue({ granted: 100, balance: 110 })
+    vi.mocked(getWorkspaceClients).mockResolvedValue([])
+    vi.mocked(getWorkspaceCampaignOverview).mockResolvedValue({
+      integration: { connected: true, status: 'connected', provider_workspace_name: 'Acme Sending' },
+      can_manage_campaigns: true,
+      campaigns: [],
+      provider_campaigns: [],
+      provider_campaigns_error: null,
+    } as never)
+    vi.mocked(getWorkspaceMailboxes).mockResolvedValue({
+      connected: true,
+      provider_workspace_name: 'Acme Sending',
+      accounts: [],
+      last_synced_at: null,
+      analytics_errors: [],
+    })
+    vi.mocked(listWorkspaceOnboarding).mockResolvedValue({ templates: [] } as never)
     refreshAccount.mockResolvedValue(true)
     refreshSession.mockResolvedValue(true)
     signOut.mockResolvedValue(undefined)
@@ -322,21 +362,75 @@ describe('WorkspaceStaff', () => {
     expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
     expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
     expect(within(settingsNavigation).getByRole('link', { name: /Billing/ })).toHaveAttribute('href', '/app/settings/billing')
+    expect(within(settingsNavigation).getByText('Plan and credits')).toBeInTheDocument()
+    expect(within(settingsNavigation).getByRole('link', { name: /Danger zone/ })).toHaveAttribute('href', '#danger-zone')
     expect(within(settingsNavigation).queryByRole('link', { name: /^Credits/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Client-facing brand', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Workspace users', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Team', level: 2 })).toBeInTheDocument()
+    // The way out sits inside the settings body under its own heading, not
+    // floating after the grid where nothing pointed at it.
+    expect(screen.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close workspace' })).toBeInTheDocument()
     expect(screen.getByLabelText('Primary color')).toHaveClass('min-w-0', 'flex-1')
     expect(screen.getByRole('table')).toHaveClass('min-w-[52rem]')
     expect(screen.getByText('Manage the people who can access your workspace.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /make owner/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /suspend/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /remove/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
     expect(screen.getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
-    expect(screen.getByText('Protected owner')).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    expect(within(table).getByText('Owner')).toBeInTheDocument()
+    expect(within(table).queryByText('Protected owner')).not.toBeInTheDocument()
+    expect(within(table).queryByText('No actions')).not.toBeInTheDocument()
+    // The roles are explained once, beside the list they apply to.
+    expect(screen.getByText(/Cannot see Settings, Billing or the team list\./)).toBeInTheDocument()
+
+    // Everything but the role sits behind the row menu, grouped by what it does.
+    openRowMenu('admin@example.com')
+    expect(await screen.findByRole('menuitem', { name: 'Suspend' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Reset password' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /make owner/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /remove/i })).toHaveClass('text-destructive')
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('says how far setup has come, and whether Instantly is connected', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    const status = screen.getByTestId('instantly-status')
+    await waitFor(() => expect(status).toHaveTextContent('Connected to Acme Sending · Manage in Client Campaigns'))
+    expect(within(status).getByRole('link', { name: 'Manage in Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
+    // Instantly connected and credits in hand, but no client and no linked
+    // mailbox: two of four, linking to the clients page where the full
+    // checklist lives.
+    expect(await screen.findByRole('link', { name: /Setup: 2 of 4 required steps done/ })).toHaveAttribute('href', '/app/clients')
+    expect(screen.queryByText('Workspace active')).not.toBeInTheDocument()
+  })
+
+  it('marks an expired invite and puts sending a new one in the open', async () => {
+    const expired: WorkspaceStaffMember = {
+      ...admin,
+      id: '88888888-8888-4888-8888-888888888888',
+      email: 'late@example.com',
+      full_name: 'Late Invitee',
+      role: 'member',
+      status: 'invited',
+      setup_method: 'email_invite',
+      invited_at: '2026-07-01T00:00:00.000Z',
+      invite_expires_at: '2026-07-08T00:00:00.000Z',
+      accepted_at: null,
+      allowed_actions: ['retry_invite', 'revoke'],
+    }
+    mockedList.mockResolvedValue({ ...ownerView, members: [owner, admin, expired] })
+    mockedMutate.mockResolvedValue(undefined)
+    renderPage()
+
+    await screen.findByText('Late Invitee')
+    expect(screen.getByText('Invite expired')).toBeInTheDocument()
+    expect(screen.getByText(`Expired ${mediumDate(expired.invite_expires_at as string)}`)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send a new invite' }))
+    await waitFor(() => expect(mockedMutate).toHaveBeenCalledWith(workspaceId, expired.id, 'retry_invite'))
   })
 
   it('lets only the signed-in workspace owner launch their sidebar organizer', async () => {
@@ -401,8 +495,13 @@ describe('WorkspaceStaff', () => {
     })
     mockedMutate.mockResolvedValue(undefined)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Suspend user' }))
+    openRowMenu('admin@example.com')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Suspend' }))
+    const confirmation = await screen.findByRole('alertdialog', { name: 'Suspend Agency Admin?' })
+    expect(within(confirmation).getByText(
+      'Agency Admin loses access straight away. Their clients, campaigns and notes stay exactly as they are, and you can reactivate them any time.',
+    )).toBeInTheDocument()
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Suspend user' }))
     await waitFor(() => expect(mockedMutate).toHaveBeenCalledWith(workspaceId, adminId, 'suspend'))
 
     // The edit the user never saved is still in the field.
@@ -505,7 +604,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
     const dialog = screen.getByRole('dialog')
     fireEvent.change(within(dialog).getByLabelText('Full name'), { target: { value: 'New Teammate' } })
     fireEvent.change(within(dialog).getByLabelText('Email'), { target: { value: 'new@example.com' } })
@@ -876,7 +975,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
     const inviteDialog = screen.getByRole('dialog')
     fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'New Teammate' } })
     fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'new@example.com' } })
@@ -931,8 +1030,9 @@ describe('WorkspaceStaff', () => {
     renderPage()
 
     expect(await screen.findByText('Password User')).toBeInTheDocument()
-    expect(screen.getByText('Password setup')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Generate password' }))
+    expect(screen.getByText('Setting up')).toBeInTheDocument()
+    openRowMenu('password@example.com')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Generate password' }))
 
     await waitFor(() => expect(mockedRetryPassword).toHaveBeenCalledWith(workspaceId, pendingPassword.id))
     expect(await screen.findByRole('dialog', { name: 'Save the temporary password' })).toBeInTheDocument()
@@ -942,8 +1042,9 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
-    const confirmation = screen.getByRole('alertdialog', { name: 'Reset Agency Admin’s password?' })
+    openRowMenu('admin@example.com')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reset password' }))
+    const confirmation = await screen.findByRole('alertdialog', { name: 'Reset Agency Admin’s password?' })
     expect(within(confirmation).getByText(/current workspace sessions will stop working/i)).toBeInTheDocument()
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Reset password' }))
 
@@ -951,14 +1052,27 @@ describe('WorkspaceStaff', () => {
     const credentialDialog = await screen.findByRole('dialog', { name: 'Save the temporary password' })
     expect(within(credentialDialog).getByLabelText('Temporary password')).toHaveValue(temporaryPassword)
     expect(within(credentialDialog).getByText(/must replace the temporary password at first sign-in/i)).toBeInTheDocument()
+
+    // One paste for the person being set up: where, who, the password, and
+    // that it is a one-off.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    fireEvent.click(within(credentialDialog).getByRole('button', { name: 'Copy sign-in instructions' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(
+      `Sign in at ${window.location.origin}/login with admin@example.com and this temporary password: ${temporaryPassword}\n`
+      + 'You will be asked to choose your own password straight away. '
+      + `This temporary one stops working on ${mediumDate('2026-07-29T00:00:00.000Z')}.`,
+    ))
+    expect(await within(credentialDialog).findByRole('button', { name: 'Sign-in instructions copied' })).toBeInTheDocument()
   })
 
   it('confirms ownership transfer and refreshes the demoted owner session', async () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: /make owner/i }))
-    const dialog = screen.getByRole('alertdialog')
+    openRowMenu('admin@example.com')
+    fireEvent.click(await screen.findByRole('menuitem', { name: /make owner/i }))
+    const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText('Transfer ownership to Agency Admin?')).toBeInTheDocument()
     expect(within(dialog).getByText(/Your role changes to admin/)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Transfer ownership' }))
@@ -1006,9 +1120,8 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Organize sidebar' })).toBeEnabled()
     expect(screen.getByText(/the order is yours rather than the workspace's/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /invite user/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /make owner/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /^suspend$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.getByText('platform@example.com')).toBeInTheDocument()
     expect(screen.getByText('platform owner')).toBeInTheDocument()
@@ -1017,7 +1130,7 @@ describe('WorkspaceStaff', () => {
       `/app/workspaces/${workspaceId}/settings`,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
     const inviteDialog = screen.getByRole('dialog')
     fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'Platform Invite' } })
     fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'platform-invite@example.com' } })
@@ -1028,8 +1141,9 @@ describe('WorkspaceStaff', () => {
       role: 'admin',
     }))
 
-    fireEvent.click(screen.getByRole('button', { name: /make owner/i }))
-    const dialog = screen.getByRole('alertdialog')
+    openRowMenu('admin@example.com')
+    fireEvent.click(await screen.findByRole('menuitem', { name: /make owner/i }))
+    const dialog = await screen.findByRole('alertdialog')
     expect(within(dialog).getByText(/current workspace owner becomes an admin/i)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Transfer ownership' }))
 
@@ -1077,15 +1191,18 @@ describe('WorkspaceStaff', () => {
     const teamTable = await screen.findByRole('table')
     const ownerRow = within(teamTable).getByText('Workspace Owner').closest('tr')
     expect(ownerRow).not.toBeNull()
-    fireEvent.click(within(ownerRow as HTMLElement).getByRole('button', { name: 'Reset password' }))
-    const confirmation = screen.getByRole('alertdialog', { name: 'Reset Workspace Owner’s password?' })
+    const trigger = within(ownerRow as HTMLElement).getByRole('button', { name: 'More actions for owner@example.com' })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reset password' }))
+    const confirmation = await screen.findByRole('alertdialog', { name: 'Reset Workspace Owner’s password?' })
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Reset password' }))
 
     await waitFor(() => expect(mockedResetPassword).toHaveBeenCalledWith(workspaceId, ownerId))
     expect(await screen.findByRole('dialog', { name: 'Save the temporary password' })).toBeInTheDocument()
   })
 
-  it('shows how long an invite has gone unclaimed, not just that it is pending', async () => {
+  it('says what a temporary-password account is waiting for, and since when', async () => {
     const fiveDaysAgo = new Date(Date.now() - 5 * 86_400_000).toISOString()
     mockedList.mockResolvedValue({
       ...ownerView,
@@ -1106,16 +1223,21 @@ describe('WorkspaceStaff', () => {
     renderPage()
 
     // A temporary password is handed over by a person, so it can simply never
-    // arrive. "Password change required" read the same on day one and day five.
-    expect(await screen.findByText(/Never signed in · 5 days ago/)).toBeInTheDocument()
+    // arrive. "Password change required" read the same on day one and day
+    // five; the issue date says which it is.
+    expect(await screen.findByText('Waiting for first sign-in')).toBeInTheDocument()
+    expect(screen.getByText(`Issued ${mediumDate(fiveDaysAgo)}`)).toBeInTheDocument()
   })
 
   it('leaves a member who has signed in unmarked', async () => {
     mockedList.mockResolvedValue({ ...ownerView, members: [owner, admin] })
     renderPage()
 
-    await screen.findByText('Workspace Owner')
-    expect(screen.queryByText(/Never signed in/)).not.toBeInTheDocument()
+    // The shell footer also names the signed-in owner, so wait for the row
+    // only the table draws.
+    await screen.findByText('Agency Admin')
+    expect(screen.queryByText(/Issued |Email sent /)).not.toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getAllByText('Active')).toHaveLength(2)
   })
 
   it('fails closed when selected-workspace data names a different workspace', async () => {
@@ -1223,8 +1345,8 @@ describe('WorkspaceStaff', () => {
 
     it('sends the platform roster to the platform tools instead of offering an invite', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: 'Workspace users' })
-      expect(screen.queryByRole('button', { name: /Invite user/ })).not.toBeInTheDocument()
+      await screen.findByRole('heading', { name: 'Team' })
+      expect(screen.queryByRole('button', { name: 'Invite' })).not.toBeInTheDocument()
       const links = screen.getAllByRole('link', { name: /Manage workspaces/ })
       expect(links.length).toBeGreaterThan(0)
       for (const link of links) expect(link).toHaveAttribute('href', '/app/manage-workspaces')
@@ -1232,7 +1354,7 @@ describe('WorkspaceStaff', () => {
 
     it('offers no action on a platform operator account', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: 'Workspace users' })
+      await screen.findByRole('heading', { name: 'Team' })
       // Staff mutations are refused at the SQL root for this workspace, so a
       // button here would be a promise the database will not keep.
       expect(screen.queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()

@@ -186,7 +186,9 @@ describe('WorkspaceSmartPodcastFinder', () => {
     )
 
     // The client arrived from the URL: the scan button already names them.
-    expect(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeInTheDocument()
+    // The cost is on the button: five scoring requests for up to 100 podcasts,
+    // plus one credit to draft the AI strategy the scan has not loaded yet.
+    expect(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client · up to 6 credits' })).toBeInTheDocument()
     await waitFor(() =>
       expect(vi.mocked(getWorkspaceResearchContext)).toHaveBeenCalledWith(viewedWorkspaceId, clientId))
     expect(vi.mocked(getWorkspaceResearchContext)).not.toHaveBeenCalledWith(workspaceId, clientId)
@@ -205,7 +207,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
       `/app/workspaces/${viewedWorkspaceId}/podcast-finder?client=${clientId}`,
       viewedWorkspaceId,
     )
-    fireEvent.click(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
     expect(await screen.findByText('Ranked by fit for Taylor Client')).toBeInTheDocument()
 
     expect(vi.mocked(searchClientPodcastCatalog)).toHaveBeenCalledWith(viewedWorkspaceId, clientId, expect.any(String))
@@ -254,14 +256,14 @@ describe('WorkspaceSmartPodcastFinder', () => {
       `/app/workspaces/${viewedWorkspaceId}/podcast-finder?client=${clientId}`,
       viewedWorkspaceId,
     )
-    fireEvent.click(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
     expect(await screen.findByRole('link', { name: 'advanced finder' }))
       .toHaveAttribute('href', `/app/workspaces/${viewedWorkspaceId}/podcast-finder/advanced`)
 
     cleanup()
     renderFinder()
-    fireEvent.click(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
     expect(await screen.findByRole('link', { name: 'advanced finder' }))
       .toHaveAttribute('href', '/app/podcast-finder/advanced')
@@ -298,7 +300,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
   it('scans, ranks by AI fit, and never rescored podcasts already on the list', async () => {
     renderFinder()
 
-    const scanButton = await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' })
+    const scanButton = await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ })
     fireEvent.click(scanButton)
 
     expect(await screen.findByText('Ranked by fit for Taylor Client')).toBeInTheDocument()
@@ -323,7 +325,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
 
   it('adds the ranked podcasts to the client list with their compatibility scores', async () => {
     renderFinder()
-    fireEvent.click(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add top 3' }))
 
     await waitFor(() => expect(vi.mocked(addClientShortlistPodcasts)).toHaveBeenCalled())
@@ -337,13 +339,13 @@ describe('WorkspaceSmartPodcastFinder', () => {
 
   it('lets the owner search with their own keywords and filters instead of the AI strategy', async () => {
     renderFinder()
-    await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' })
+    await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ })
 
     fireEvent.change(screen.getByLabelText('Your keywords'), { target: { value: '"b2b saas" AND founders' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     fireEvent.click(screen.getByRole('switch', { name: 'AI search strategy' }))
     fireEvent.change(screen.getByLabelText('Min audience'), { target: { value: '5000' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
     expect(await screen.findByText('Ranked by fit for Taylor Client')).toBeInTheDocument()
     expect(vi.mocked(generatePodcastQueries)).not.toHaveBeenCalled()
@@ -359,7 +361,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
 
   it('previews the AI strategy so individual queries can be removed before scanning', async () => {
     renderFinder()
-    await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' })
+    await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ })
 
     fireEvent.click(screen.getByRole('button', { name: 'Preview strategy' }))
     expect(await screen.findByText('founder stories')).toBeInTheDocument()
@@ -367,7 +369,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove AI query founder stories' }))
     fireEvent.change(screen.getByLabelText('Your keywords'), { target: { value: 'bootstrapping' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
     expect(await screen.findByText('Ranked by fit for Taylor Client')).toBeInTheDocument()
     const searchedQueries = vi.mocked(searchPodcastsWithMeta).mock.calls.map((call) => (call[0] as { query: string }).query)
@@ -394,7 +396,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
     renderFinder()
 
     expect(await screen.findByText(/has no profile bio yet/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
     expect(vi.mocked(generatePodcastQueries)).not.toHaveBeenCalled()
   })
 
@@ -406,11 +408,11 @@ describe('WorkspaceSmartPodcastFinder', () => {
 
     expect(await screen.findByText(/profile could not be loaded/)).toBeInTheDocument()
     expect(screen.queryByText(/has no profile bio yet/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Scan podcasts for Taylor Client/ })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(vi.mocked(getWorkspaceResearchContext)).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Scan podcasts for Taylor Client/ })).toBeEnabled())
     expect(screen.queryByText(/profile could not be loaded/)).not.toBeInTheDocument()
   })
 })

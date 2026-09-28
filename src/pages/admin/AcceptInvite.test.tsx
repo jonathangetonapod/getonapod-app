@@ -69,7 +69,7 @@ describe('AcceptInvite', () => {
     renderPage()
     const field = screen.getByLabelText('Create password')
     expect(field).toHaveAttribute('aria-describedby', 'invite-password-requirements')
-    expect(document.getElementById('invite-password-requirements')).toHaveTextContent(/12\+ characters/u)
+    expect(document.getElementById('invite-password-requirements')).toHaveTextContent(/12 to 72 characters/u)
   })
 
   it('sets the password and accepts the invitation for this membership', async () => {
@@ -126,7 +126,7 @@ describe('AcceptInvite', () => {
     fireEvent.click(screen.getByRole('button', { name: /accept invitation/iu }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
-      'Choose a new password instead of using a temporary-password format.',
+      'Choose a password that does not start with Tmp-.',
     ))
     expect(updateUser).not.toHaveBeenCalled()
   })
@@ -138,7 +138,7 @@ describe('AcceptInvite', () => {
     fireEvent.click(screen.getByRole('button', { name: /accept invitation/iu }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
-      'Use at least 12 characters and no more than 72 UTF-8 bytes.',
+      'Passwords can be at most 72 characters.',
     ))
     expect(updateUser).not.toHaveBeenCalled()
   })
@@ -148,8 +148,18 @@ describe('AcceptInvite', () => {
     fill('short')
     fireEvent.click(screen.getByRole('button', { name: /accept invitation/iu }))
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Passwords need at least 12 characters.'))
     expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('tells someone who is signed out to sign in, in plain words', () => {
+    auth.user = null
+    auth.accountState = 'signed_out'
+    renderPage()
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Sign in to open your invitation.')
+    expect(screen.getByText(/if you already used the link, just sign in/iu)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /go to sign in/iu })).toHaveAttribute('href', '/login')
   })
 
   it('refuses a confirmation that does not match', async () => {

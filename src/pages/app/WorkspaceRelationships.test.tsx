@@ -229,23 +229,23 @@ describe('WorkspaceRelationships', () => {
   })
 
   /*
-   * The reply happens in Master Inbox; this page only knows about it. The
+   * The reply happens in the inbox; this page only knows about it. The
    * saved threads named the conversation and stopped one click short of the
    * place a follow-up is written — the inbox links here, and this is the way
    * back, carrying the client and the thread.
    */
-  it('links a saved thread back to its Master Inbox conversation', async () => {
+  it('links a saved thread back to its inbox conversation', async () => {
     renderPage()
 
     fireEvent.change(await screen.findByLabelText('Search relationships'), { target: { value: 'morgan@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: 'Open' }))
 
-    expect(await screen.findByRole('link', { name: 'Reply in Master Inbox' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Reply in the inbox' })).toHaveAttribute(
       'href',
       `/app/master-inbox?client=${clientId}&thread=thread-one`,
     )
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Threads 1' }), { button: 0, ctrlKey: false })
-    expect(screen.getByRole('link', { name: 'Open in Master Inbox' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open in the inbox' })).toHaveAttribute(
       'href',
       `/app/master-inbox?client=${clientId}&thread=thread-one`,
     )

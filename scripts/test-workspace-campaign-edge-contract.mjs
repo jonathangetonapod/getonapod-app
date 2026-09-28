@@ -1138,9 +1138,10 @@ assert.deepEqual(checkedPromptIds(workspacePromptMigration), edgePromptIds)
 // for one client and unsavable for the workspace it belongs to.
 assert.deepEqual(checkedPromptIds(clientPromptMigration), edgePromptIds)
 
-// Research charges two credits a run. The badge said so while the caption
-// underneath it said the run was included with the plan.
-assert.match(prepDialog, /2 credits per run/u)
+// Research charges credits per run and the badge says so, priced from the
+// one frontend copy of the ledger prices (pinned to the migrations by
+// test-credit-costs-sync) rather than a literal that could drift.
+assert.match(prepDialog, /\{creditsLabel\(CREDIT_COSTS\.research_run\)\} per run/u)
 assert.doesNotMatch(prepDialog, /included with your plan/iu)
 
 // Contact name extraction is offered in the prompt editor, and the call that

@@ -350,16 +350,18 @@ function formatSendDays(days: number[]): string {
 
 const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetailProps) => {
   const { clientId: routeClientId = '' } = useParams<{ clientId: string }>()
-  // The campaign list links straight to the work: "Write 3 pitches" opens the
-  // finder, "Launch 2 staged" opens Podcasts. Without the tab in the URL every
-  // one of those links landed on Analytics and left the operator to navigate.
+  // The campaign list links straight to the work: "Launch 2 staged" opens
+  // Options, a provider fault opens Options. Without the tab in the URL every
+  // one of those links landed on the first tab and left the operator to
+  // navigate. That first tab is Podcasts: the list of shows is what the page
+  // is for, and analytics are a summary of it.
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab') || ''
-  const activeTab = CAMPAIGN_TABS.includes(requestedTab) ? requestedTab : 'analytics'
+  const activeTab = CAMPAIGN_TABS.includes(requestedTab) ? requestedTab : 'leads'
   const selectTab = (tab: string) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
-      if (tab === 'analytics') next.delete('tab')
+      if (tab === 'leads') next.delete('tab')
       else next.set('tab', tab)
       return next
     }, { replace: true })
@@ -782,8 +784,8 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   // Podcasts already sitting in the provider campaign. Activating emails them.
   const stagedWaitingCount = campaign?.target_counts.staged ?? 0
   const campaignRunningAction = campaignIsRunning
-    ? 'Pause Campaign'
-    : persistedCampaignStatus === 'Draft' ? 'Launch Campaign' : 'Resume Campaign'
+    ? 'Pause campaign'
+    : persistedCampaignStatus === 'Draft' ? 'Launch campaign' : 'Resume campaign'
   const campaignStatusClass = campaignStatus === 'Active'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
     : campaignStatus === 'Needs attention'
@@ -842,14 +844,22 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline"><Link to={clientHref}><UserRound className="mr-2 h-4 w-4" />Open client</Link></Button>
+            {/* Launching is the one action the page exists for, so it sits in
+                the header; Options keeps a copy beside the settings it depends
+                on. The same confirm guards both. */}
+            {campaign?.instantly_campaign_id && canManageCampaign && (
+              <Button variant={campaignIsRunning ? 'destructive' : 'default'} disabled={runningMutation.isPending} onClick={() => (campaignIsRunning ? runningMutation.mutate(false) : setConfirmActivateOpen(true))}>
+                {runningMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : campaignIsRunning ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaignRunningAction}
+              </Button>
+            )}
           </div>
         </header>
 
         <Tabs value={activeTab} onValueChange={selectTab} className="space-y-4">
           <div className="overflow-x-auto pb-1">
             <TabsList className="h-auto min-w-max justify-start" aria-label="Campaign sections">
-              <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="leads">Podcasts</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="sequences">Sequences</TabsTrigger>
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
               <TabsTrigger value="options">Options</TabsTrigger>
@@ -1211,7 +1221,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         : previewTarget.last_error
                         || (previewTarget.launched_at
                           ? `Outreach started ${formatDate(previewTarget.launched_at)}. Reply activity updates automatically.`
-                          : 'This final sequence is ready for outreach. Launch or pause delivery for the entire campaign from Options.')}
+                          : 'This final sequence is ready for outreach. Launch or pause delivery for the entire campaign from the page header or Options.')}
                     </div>
                   )}
                   <div className="flex items-start gap-3 rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
@@ -1395,14 +1405,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
 
           <TabsContent value="options" className="mt-0">
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div><h2 className="text-lg font-semibold">Campaign options</h2><p className="mt-1 text-sm text-muted-foreground">Update the campaign identity, sending accounts, and live status.</p></div>
-                {campaign?.instantly_campaign_id && canManageCampaign && (persistedCampaignStatus !== 'Draft' || campaignIsRunning) && (
-                  <Button variant={campaignIsRunning ? 'destructive' : 'default'} disabled={runningMutation.isPending} onClick={() => (campaignIsRunning ? runningMutation.mutate(false) : setConfirmActivateOpen(true))}>
-                    {runningMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : campaignIsRunning ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaignRunningAction}
-                  </Button>
-                )}
-              </div>
+              <div><h2 className="text-lg font-semibold">Campaign options</h2><p className="mt-1 text-sm text-muted-foreground">Update the campaign identity, sending accounts, and live status.</p></div>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <Card>

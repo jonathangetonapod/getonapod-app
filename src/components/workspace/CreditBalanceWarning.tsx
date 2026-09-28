@@ -10,6 +10,11 @@ interface CreditBalanceWarningProps {
   workspaceId: string
   /** Only a manager can act on this, and only they can see the billing page. */
   canManageBilling: boolean
+  /**
+   * Automatic top-up settings, when the caller already knows them. Left out,
+   * they are read from the same billing overview the balance comes from.
+   */
+  autoRefill?: { thresholdCredits: number; packCredits: number }
 }
 
 /**
@@ -23,7 +28,7 @@ interface CreditBalanceWarningProps {
  * Silent while the balance is healthy. A banner that is always there is one
  * nobody reads on the day it matters.
  */
-export function CreditBalanceWarning({ workspaceId, canManageBilling }: CreditBalanceWarningProps) {
+export function CreditBalanceWarning({ workspaceId, canManageBilling, autoRefill }: CreditBalanceWarningProps) {
   const overviewQuery = useQuery({
     queryKey: ['workspace-billing-overview', workspaceId],
     queryFn: () => getWorkspaceBillingOverview(workspaceId),
@@ -40,6 +45,15 @@ export function CreditBalanceWarning({ workspaceId, canManageBilling }: CreditBa
   if (health.level === 'ok') return null
 
   const empty = health.level === 'empty'
+  // A workspace that has agreed to be topped up automatically is not asked to
+  // top up by hand; it is told when the top-up will happen.
+  const refill = autoRefill
+    ?? (typeof overview.refill_threshold_credits === 'number' && typeof overview.refill_pack_credits === 'number'
+      ? { thresholdCredits: overview.refill_threshold_credits, packCredits: overview.refill_pack_credits }
+      : null)
+  const refillNote = refill
+    ? `Automatic top-up will buy ${refill.packCredits.toLocaleString()} credits when you reach ${refill.thresholdCredits.toLocaleString()}.`
+    : null
   return (
     <div
       role="status"
@@ -52,14 +66,18 @@ export function CreditBalanceWarning({ workspaceId, canManageBilling }: CreditBa
       <p className="flex items-start gap-2 leading-5">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
-          {empty
-            ? 'Your workspace is out of credits. Research, contact finding and dashboard builds will not run until it is topped up.'
-            : `${overview.balance.toLocaleString()} credits left. Research, contact finding and dashboard builds stop when this reaches zero.`}
+          {refillNote
+            ? `${overview.balance.toLocaleString()} credits left. ${refillNote}`
+            : empty
+              ? 'Your workspace is out of credits. Research, contact finding and prospect page builds will not run until it is topped up.'
+              : `${overview.balance.toLocaleString()} credits left. Research, contact finding and prospect page builds stop when this reaches zero.`}
         </span>
       </p>
-      <Button asChild size="sm" variant={empty ? 'default' : 'outline'} className="w-fit shrink-0">
-        <Link to="/app/settings/billing">Top up</Link>
-      </Button>
+      {!refillNote && (
+        <Button asChild size="sm" variant={empty ? 'default' : 'outline'} className="w-fit shrink-0">
+          <Link to="/app/settings/billing">Top up</Link>
+        </Button>
+      )}
     </div>
   )
 }

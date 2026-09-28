@@ -135,10 +135,10 @@ describe('WorkspaceCampaignDetail', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Podcasts' })).toHaveAttribute('aria-selected', 'true'))
   })
 
-  it('falls back to analytics when the tab in the address is not real', async () => {
+  it('falls back to podcasts when the tab in the address is not real', async () => {
     renderPage(undefined, '?tab=not-a-tab')
 
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Analytics' })).toHaveAttribute('aria-selected', 'true'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Podcasts' })).toHaveAttribute('aria-selected', 'true'))
   })
 
   it('says why an active campaign is sending nothing', async () => {
@@ -155,13 +155,13 @@ describe('WorkspaceCampaignDetail', () => {
     expect(await screen.findByText(/reached its daily sending limit/i)).toBeInTheDocument()
   })
 
-  it('opens with campaign analytics and keeps the saved sequence under Podcasts', async () => {
+  it('opens on the podcast list and keeps the saved sequence under Podcasts', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Dallas Fontaine Podcast Outreach', level: 1 })).toBeInTheDocument()
     expect(screen.getByText('Campaign active')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Analytics' })).toHaveAttribute('data-state', 'active')
-    expect(screen.getByRole('tab', { name: 'Podcasts' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Podcasts' })).toHaveAttribute('data-state', 'active')
+    expect(screen.getByRole('tab', { name: 'Analytics' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Sequences' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Options' })).toBeInTheDocument()
@@ -313,14 +313,14 @@ describe('WorkspaceCampaignDetail', () => {
 
     expect(await screen.findByText('Campaign active')).toBeInTheDocument()
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Options' }), { button: 0 })
-    const pauseButtons = screen.getAllByRole('button', { name: 'Pause Campaign' })
+    const pauseButtons = screen.getAllByRole('button', { name: 'Pause campaign' })
     expect(pauseButtons).toHaveLength(2)
     expect(pauseButtons[0]).toHaveClass('bg-destructive')
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeInTheDocument()
 
     fireEvent.click(pauseButtons[0])
     await waitFor(() => expect(mockedRunning).toHaveBeenCalledWith(workspaceId, clientId, false))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Resume Campaign' })).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Resume campaign' })).toHaveLength(2))
     expect(screen.getByText('Campaign inactive · Paused')).toBeInTheDocument()
   })
 
@@ -335,8 +335,9 @@ describe('WorkspaceCampaignDetail', () => {
 
     expect(await screen.findByText('Campaign inactive · Not launched')).toBeInTheDocument()
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Options' }), { button: 0 })
-    const launchButtons = screen.getAllByRole('button', { name: 'Launch Campaign' })
-    expect(launchButtons).toHaveLength(1)
+    // One in the header, one in Options.
+    const launchButtons = screen.getAllByRole('button', { name: 'Launch campaign' })
+    expect(launchButtons).toHaveLength(2)
     fireEvent.click(launchButtons[0])
 
     // Activating also changes what Send to Client Campaign does, so it is
@@ -347,11 +348,11 @@ describe('WorkspaceCampaignDetail', () => {
     expect(confirm.getByText(/without a separate launch step/i)).toBeInTheDocument()
     expect(mockedRunning).not.toHaveBeenCalled()
 
-    fireEvent.click(confirm.getByRole('button', { name: 'Launch Campaign' }))
+    fireEvent.click(confirm.getByRole('button', { name: 'Launch campaign' }))
     await waitFor(() => expect(mockedRunning).toHaveBeenCalledWith(workspaceId, clientId, true))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Pause Campaign' })).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Pause campaign' })).toHaveLength(2))
     expect(screen.getByText('Campaign active')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Pause Campaign' })[0]).toHaveClass('bg-destructive')
+    expect(screen.getAllByRole('button', { name: 'Pause campaign' })[0]).toHaveClass('bg-destructive')
   })
 
   it('shows the sending window Instantly actually holds, not an assumed one', async () => {

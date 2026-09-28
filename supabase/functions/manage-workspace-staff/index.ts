@@ -643,7 +643,7 @@ function rpcFailure(
     throw new HttpError(
       401,
       "REAUTHENTICATION_REQUIRED",
-      "Sign in again with the newest account credentials",
+      "Your sign-in is out of date. Sign out and sign in again to continue",
     );
   }
   if (
@@ -1170,7 +1170,7 @@ async function setMembershipAvatar(
       throw new HttpError(
         401,
         "REAUTHENTICATION_REQUIRED",
-        "Sign in again with the newest account credentials",
+        "Your sign-in is out of date. Sign out and sign in again to continue",
       );
     }
     if (message.includes("avatar changed")) {
@@ -2145,7 +2145,7 @@ async function deliverStaffInvite(
       throw new HttpError(
         409,
         "AUTH_ACCOUNT_EXISTS",
-        "This email already has an unrelated account",
+        "This email already has a Get On A Pod account outside this workspace. Invite a different address, or contact support to move the account",
       );
     }
     throw new HttpError(
@@ -2260,7 +2260,7 @@ async function issueStaffTemporaryPassword(
       throw new HttpError(
         409,
         "AUTH_ACCOUNT_EXISTS",
-        "This email already has an unrelated account",
+        "This email already has a Get On A Pod account outside this workspace. Invite a different address, or contact support to move the account",
       );
     }
     await releaseInviteClaim(admin, membership.id, lockToken);
@@ -2930,7 +2930,7 @@ serve(async (req) => {
       throw new HttpError(
         401,
         "REAUTHENTICATION_REQUIRED",
-        "Sign in again with the newest account credentials",
+        "Your sign-in is out of date. Sign out and sign in again to continue",
       );
     }
     const body = await parseJsonObject(req, MAX_WORKSPACE_LOGO_REQUEST_BYTES);

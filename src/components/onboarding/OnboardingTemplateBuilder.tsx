@@ -68,25 +68,32 @@ type OnboardingSection = OnboardingDefinition['sections'][number]
 const typeLabels: Record<OnboardingQuestionType, string> = {
   short_text: 'Short text',
   long_text: 'Long text',
-  email: 'Email (free text)',
-  url: 'Website / link (free text)',
+  email: 'Email',
+  url: 'Website or link',
   single_select: 'Single select',
   multi_select: 'Multi-select',
   yes_no: 'Yes / No',
-  date: 'Date (free text)',
+  date: 'Date',
   image_upload: 'Image upload',
   document_upload: 'PDF upload',
 }
+
+/* Typed answers the form does not validate, so the builder says so. */
+const freeTextTypes = new Set<OnboardingQuestionType>(['email', 'url', 'date'])
 
 const mappingLabels: Record<OnboardingMapping, string> = {
   'client.name': 'Client name',
   'client.email': 'Client email',
   'client.contact_person': 'Contact person',
   'client.website': 'Website',
-  'client.linkedin_url': 'LinkedIn URL',
-  'client.calendar_link': 'Calendar link',
-  'client.bio': 'Client bio',
+  'client.linkedin_url': 'LinkedIn profile',
+  'client.calendar_link': 'Booking link',
+  'client.bio': 'Bio',
 }
+
+const UNTITLED_QUESTION = 'Untitled question'
+const UNTITLED_SECTION = 'Untitled section'
+const untitled = (value: string, placeholder: string) => !value.trim() || value.trim() === placeholder
 
 const compatibleMappings = (type: OnboardingQuestionType): OnboardingMapping[] => {
   if (type === 'email') return ['client.email']
@@ -99,10 +106,12 @@ const compatibleMappings = (type: OnboardingQuestionType): OnboardingMapping[] =
 const generatedId = (prefix: 'section' | 'question' | 'option') =>
   prefix + '_' + crypto.randomUUID().replace(/-/gu, '').slice(0, 10)
 
+// Empty, not "New question": a placeholder label that reads like a title was
+// left in place and published, and the client was asked "New question".
 const blankQuestion = (): OnboardingQuestion => ({
   id: generatedId('question'),
   type: 'short_text',
-  label: 'New question',
+  label: '',
   description: '',
   required: false,
   placeholder: '',
@@ -111,7 +120,7 @@ const blankQuestion = (): OnboardingQuestion => ({
 
 const blankSection = (): OnboardingSection => ({
   id: generatedId('section'),
-  title: 'New section',
+  title: '',
   description: '',
   questions: [blankQuestion()],
 })
@@ -347,23 +356,33 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
       // Empty choice lines are an editing artifact, not a choice.
       const sections = draft.definition.sections.map((section) => ({
         ...section,
-        questions: section.questions.map((question) => (
-          question.options
+        // A draft may be saved half-written, but the server refuses an empty
+        // title, so the outline's placeholder stands in until there is one.
+        // Publishing is where the placeholder stops being acceptable.
+        title: publish ? section.title : (section.title.trim() || UNTITLED_SECTION),
+        questions: section.questions.map((question) => ({
+          ...question,
+          label: publish ? question.label : (question.label.trim() || UNTITLED_QUESTION),
+          ...(question.options
             ? {
-                ...question,
                 options: question.options
                   .map((option) => ({ ...option, label: option.label.trim() }))
                   .filter((option) => option.label),
               }
-            : question
-        )),
+            : {}),
+        })),
       }))
-      const questions = sections.flatMap((section) => {
-        if (!section.title.trim()) throw new Error('Every section needs a title.')
-        return section.questions
-      })
-      if (questions.some((question) => !question.label.trim())) {
-        throw new Error('Every question needs a label.')
+      const questions = sections.flatMap((section) => section.questions)
+      if (publish) {
+        const untitledQuestions = questions.filter((question) => untitled(question.label, UNTITLED_QUESTION)).length
+        if (untitledQuestions > 0) {
+          throw new Error(untitledQuestions === 1
+            ? '1 question still needs a title.'
+            : `${untitledQuestions} questions still need a title.`)
+        }
+        if (sections.some((section) => untitled(section.title, UNTITLED_SECTION))) {
+          throw new Error('Every section needs a title.')
+        }
       }
       if (questions.some((question) => (
         question.type === 'single_select' || question.type === 'multi_select'
@@ -405,6 +424,10 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
       && questionCount + activeSection.questions.length <= 100,
   )
 
+  // The version clients get today. Zero until the first publish, when there
+  // is nothing for a default to apply to yet.
+  const publishedVersion = template?.published_version ?? 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="h-[min(92dvh,48rem)] w-[calc(100vw-1rem)] max-w-[1440px] gap-0 overflow-hidden p-0 sm:w-[96vw] sm:max-w-[1440px]">
@@ -420,6 +443,11 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                 <DialogDescription>
                   Organize the client experience by section, then preview exactly what they will receive.
                 </DialogDescription>
+                {publishedVersion > 0 && (
+                  <p className="text-sm text-muted-foreground" data-testid="template-version-status">
+                    Clients currently receive version {publishedVersion}. Save draft keeps them on it; Save and publish creates version {publishedVersion + 1}.
+                  </p>
+                )}
               </DialogHeader>
 
               <div className="inline-flex w-fit rounded-xl border bg-muted/50 p-1" role="tablist" aria-label="Template builder views">
@@ -584,6 +612,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                               id={'section-title-' + activeSection.id}
                               value={activeSection.title}
                               maxLength={200}
+                              placeholder="Section title"
                               onChange={(event) => updateSection(activeSectionIndex, { title: event.target.value })}
                             />
                           </div>
@@ -709,26 +738,34 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                                           ))}
                                         </SelectContent>
                                       </Select>
+                                      {freeTextTypes.has(question.type) && (
+                                        <p className="text-xs text-muted-foreground">Not checked for format.</p>
+                                      )}
                                     </div>
                                     <div className="space-y-1.5">
-                                      <Label>Save answer to client field</Label>
+                                      <Label htmlFor={'question-mapping-' + question.id}>Also save this answer to the client&rsquo;s profile</Label>
                                       <Select
                                         value={question.mapping ?? 'none'}
                                         onValueChange={(value) => updateQuestion(activeSectionIndex, questionIndex, {
                                           mapping: value === 'none' ? null : value as OnboardingMapping,
                                         })}
                                       >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectTrigger id={'question-mapping-' + question.id}><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                          <SelectItem value="none">Do not map</SelectItem>
+                                          <SelectItem value="none">Do not save to profile</SelectItem>
                                           {mappings.map((mapping) => (
                                             <SelectItem key={mapping} value={mapping}>{mappingLabels[mapping]}</SelectItem>
                                           ))}
                                         </SelectContent>
                                       </Select>
                                       <p className="text-xs text-muted-foreground">
-                                        Only compatible client fields appear for this answer type.
+                                        When you approve the form, this answer fills that field on the client record.
                                       </p>
+                                      {question.mapping && !question.required && (
+                                        <p className="text-xs text-muted-foreground">
+                                          Usually worth requiring, so the profile field is never left empty.
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
 
@@ -829,14 +866,13 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                     </div>
                   </div>
 
-                  <div className="grid gap-5 lg:grid-cols-2">
-                    <Card>
+                  <Card>
                       <CardHeader>
                         <div className="flex items-center gap-2">
                           <span className="rounded-lg bg-primary/10 p-2 text-primary"><FileText className="h-4 w-4" /></span>
                           <div>
                             <CardTitle className="text-lg">Template setup</CardTitle>
-                            <CardDescription>Only workspace managers see these details.</CardDescription>
+                            <CardDescription>Your team sees the name and note. Clients only see the form.</CardDescription>
                           </div>
                         </div>
                       </CardHeader>
@@ -864,32 +900,21 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                         <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/30 p-3">
                           <div>
                             <Label htmlFor="default-template">Use as default</Label>
-                            <p className="text-xs text-muted-foreground">Preselect this template for new client links.</p>
+                            <p className="text-xs text-muted-foreground">
+                              {publishedVersion > 0
+                                ? 'Preselect this template for new client links.'
+                                : 'Applies when you publish.'}
+                            </p>
                           </div>
-                          <Switch id="default-template" checked={makeDefault} onCheckedChange={setMakeDefault} />
+                          <Switch
+                            id="default-template"
+                            checked={makeDefault}
+                            disabled={publishedVersion === 0}
+                            onCheckedChange={setMakeDefault}
+                          />
                         </div>
                       </CardContent>
                     </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Share it your way</CardTitle>
-                        <CardDescription>Your team stays in control of every client follow-up.</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {[
-                          ['1', 'Publish the template', 'Publishing locks a version for future client links.'],
-                          ['2', 'Create a secure link', 'Start onboarding for a client and copy their private link.'],
-                          ['3', 'Send and follow up', 'Share the link from your own client communication workflow.'],
-                        ].map(([number, title, description]) => (
-                          <div key={number} className="flex gap-3 rounded-xl border p-3">
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{number}</span>
-                            <div><p className="text-sm font-semibold">{title}</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p></div>
-                          </div>
-                        ))}
-                      </CardContent>
-                    </Card>
-                  </div>
 
                   <Card>
                     <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -985,7 +1010,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
             <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
                 <Button type="button" variant="secondary" disabled={saving} onClick={() => submit(false)}>Save draft</Button>
-                <Button type="button" disabled={saving} onClick={() => submit(true)}>{saving ? 'Saving…' : 'Save & publish'}</Button>
+                <Button type="button" disabled={saving} onClick={() => submit(true)}>{saving ? 'Saving…' : 'Save and publish'}</Button>
             </div>
           </footer>
         </div>

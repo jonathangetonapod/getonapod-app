@@ -201,6 +201,7 @@
 .gp-plan-price { font-size: 2.4rem; line-height: 1; letter-spacing: -0.03em; font-weight: 600; }
 .gp-plan-price span { font-size: 0.95rem; font-weight: 400; color: var(--muted); letter-spacing: 0; }
 .gp-plan-credits { font-size: 0.9rem; color: var(--accent-ink); font-weight: 500; }
+.gp-plan-unit { font-size: 0.84rem; color: var(--faint); margin-top: -0.3rem; }
 .gp-plan-who { font-size: 0.93rem; color: var(--muted); }
 .gp-plan-list { list-style: none; display: grid; gap: 0.4rem; margin: 0.4rem 0 0; padding: 0; font-size: 0.93rem; }
 .gp-plan-list li { padding-left: 1.15rem; position: relative; }
@@ -210,6 +211,9 @@
 }
 .gp-plan-cta { margin-top: auto; align-self: start; }
 .gp-plan-note { margin-top: 1.4rem; font-size: 0.9rem; line-height: 1.65; color: var(--muted); max-width: 62ch; }
+.gp-plan-note + .gp-plan-note { margin-top: 0.7rem; }
+/* One line after the tour, saying where the product came from. */
+.gp-tour-credit { margin-top: 1.6rem; font-size: 0.93rem; color: var(--muted); max-width: 56ch; }
 .gp-card p { color: var(--muted); font-size: 0.93rem; margin-top: 0.3rem; }
 @media (max-width: 820px) { .gp-cards { grid-template-columns: 1fr; } }
 
@@ -323,6 +327,7 @@
   margin: 0; padding: 0.7rem 0.85rem; font-size: 0.88rem; border-radius: 10px;
   color: #7A2C18; background: #FCEDE8; border: 1px solid #E9BFB2;
 }
+.gp-form-error a { color: inherit; font-weight: 500; }
 .gp-form-done h3 { font-size: 1.3rem; }
 .gp-form-done p { margin-top: 0.7rem; color: var(--muted); }
 
@@ -357,7 +362,12 @@
 .gp-auth-main { margin: auto 0; align-self: center; width: 100%; max-width: 24.5rem; padding-block: 3rem; }
 .gp-auth-narrow { max-width: 22rem; }
 .gp-auth-main h1 { font-size: clamp(1.9rem, 3vw, 2.4rem); line-height: 1.08; letter-spacing: -0.035em; }
-.gp-auth-standfirst { margin-top: 0.7rem; color: var(--muted); font-size: 0.98rem; }
+.gp-auth-standfirst { margin-top: 1rem; color: var(--muted); font-size: 0.98rem; max-width: 52ch; }
+/* A line that sends someone to a different door, above the form they are
+   about to fill in by mistake. */
+.gp-auth-aside-note { margin-top: 1.4rem; font-size: 0.9rem; color: var(--muted); }
+.gp-auth-aside-note a { color: var(--accent-ink); font-weight: 500; text-decoration: none; }
+.gp-auth-aside-note a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .gp-auth-main .gp-form { margin-top: 2rem; gap: 1rem; }
 .gp-auth-copyright { font-size: 0.78rem; color: var(--faint); }
 
@@ -367,7 +377,7 @@
 .gp-field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .gp-field-head label { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
 .gp-auth-link {
-  background: none; border: 0; padding: 0; cursor: pointer;
+  background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none;
   font-family: inherit; font-size: 0.78rem; font-weight: 500; color: var(--accent-ink);
 }
 .gp-auth-link:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -389,6 +399,11 @@
   margin: 0; padding: 0.6rem 0.8rem; font-size: 0.84rem; border-radius: 10px;
   background: #FDF6E9; border: 1px solid #E0C68A; color: #6B4415;
 }
+.gp-auth-status a { color: inherit; font-weight: 500; }
+/* The same box in the page's own greys: a signpost, not a warning. */
+.gp-auth-status-quiet { margin-top: 1.4rem; background: var(--tint); border-color: var(--line-strong); color: var(--muted); }
+.gp-auth-status-quiet a { color: var(--accent-ink); text-decoration: none; }
+.gp-auth-status-quiet a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .gp-auth-reason { margin-top: 1.2rem; color: var(--ink); }
 .gp-auth-note { margin-top: 0.9rem; color: var(--muted); font-size: 0.86rem; }
 .gp-auth-actions { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1.4rem; }
@@ -436,6 +451,13 @@
 .gp-frame-dark .gp-chrome span { color: #93A5AC; }
 .gp-frame-dark .gp-shot { background: var(--band); }
 .gp-frame-dark .gp-shot-empty { color: #93A5AC; background: none; }
+
+/* The portal door stands alone: no panel selling the workspace to a client,
+   and the column centred where the panel would have balanced it. */
+.gp-auth-solo { grid-template-columns: 1fr; }
+.gp-auth-solo .gp-auth-col { max-width: 34rem; width: 100%; margin-inline: auto; }
+.gp-auth-solo .gp-auth-main { margin-inline: auto; }
+.gp-auth-logo { height: 32px; width: auto; max-width: 160px; object-fit: contain; border-radius: 8px; }
 
 /* The panel is context, not content. Below this it goes and the form gets the
    whole screen. */

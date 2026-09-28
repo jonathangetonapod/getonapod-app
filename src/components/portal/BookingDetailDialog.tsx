@@ -13,8 +13,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
-import { googleCalendarUrl } from '@/lib/calendarLinks'
+import { googleCalendarUrl, icsDownloadHref, icsFileName } from '@/lib/calendarLinks'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { PLACEMENT_STATUS_LABELS } from '@/lib/placementStatus'
 import { removePortalCalendarEvent, type PortalExperienceBooking } from '@/services/clientPortal'
 
 const displayDate = (value: string | null | undefined) => {
@@ -42,15 +43,17 @@ const timelineSteps = (booking: PortalExperienceBooking): TimelineStep[] => {
   // conversation in progress should read as real progress, not an empty row.
   return [
     {
-      label: 'Conversation started',
+      label: PLACEMENT_STATUS_LABELS.conversation_started,
       date: null,
       done: reached(['conversation_started', 'in_progress', 'booked', 'recorded', 'published']),
     },
-    { label: 'Booked', date: booking.scheduled_date, done: reached(['booked', 'recorded', 'published']) },
+    { label: PLACEMENT_STATUS_LABELS.booked, date: booking.scheduled_date, done: reached(['booked', 'recorded', 'published']) },
     { label: 'Recording', date: booking.recording_date, done: reached(['recorded', 'published']) },
     { label: 'Episode live', date: booking.publish_date, done: reached(['published']) },
   ]
 }
+
+const FIRST_STEP = PLACEMENT_STATUS_LABELS.conversation_started
 
 // Only real, still-relevant dates are worth offering: a cancelled placement or
 // an unset date would export an event the client then has to delete by hand.
@@ -120,7 +123,7 @@ export function BookingDetailDialog({ booking, onOpenChange, onRemoved }: Bookin
                 <div className="min-w-0">
                   <DialogTitle className="text-left">{booking.podcast_name}</DialogTitle>
                   <DialogDescription className="mt-1 text-left">
-                    {booking.host_name ? `Hosted by ${booking.host_name}` : 'Your placement details'}
+                    {booking.host_name ? `Hosted by ${booking.host_name}` : 'Show details'}
                   </DialogDescription>
                   {booking.status === 'cancelled' && (
                     <Badge variant="outline" className="mt-2 bg-muted text-muted-foreground">Cancelled</Badge>
@@ -140,7 +143,7 @@ export function BookingDetailDialog({ booking, onOpenChange, onRemoved }: Bookin
             )}
 
             {booking.status !== 'cancelled' && (
-              <ol aria-label="Placement timeline" className="space-y-3">
+              <ol aria-label="Progress" className="space-y-3">
                 {timelineSteps(booking).map((step) => (
                   <li key={step.label} className="flex items-start gap-3">
                     {step.done
@@ -150,9 +153,9 @@ export function BookingDetailDialog({ booking, onOpenChange, onRemoved }: Bookin
                       <p className={`text-sm font-medium ${step.done ? '' : 'text-muted-foreground'}`}>{step.label}</p>
                       <p className="text-xs text-muted-foreground">
                         {displayDate(step.date)
-                          ?? (step.label === 'Conversation started'
+                          ?? (step.label === FIRST_STEP
                             ? (step.done ? 'Your team is talking with this show' : 'Not started yet')
-                            : step.done ? 'Date not recorded' : 'Date coming soon')}
+                            : step.done ? 'Date not noted' : 'Date coming soon')}
                       </p>
                     </div>
                   </li>
@@ -182,31 +185,43 @@ export function BookingDetailDialog({ booking, onOpenChange, onRemoved }: Bookin
 
             {calendarTargets(booking).length > 0 && (
               <div className="rounded-lg border bg-muted/10 p-3">
-                <p className="text-xs font-medium text-muted-foreground">Add to your calendar</p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <p className="text-xs font-medium text-muted-foreground">Save to your calendar app</p>
+                <div className="mt-2 space-y-2">
                   {calendarTargets(booking).map((target) => {
-                    const url = googleCalendarUrl({
+                    const event = {
                       title: `${target.label}: ${booking.podcast_name}`,
                       day: target.day,
                       details: [
                         booking.host_name ? `Hosted by ${booking.host_name}` : '',
                         podcastUrl ? `Podcast: ${podcastUrl}` : '',
                       ].filter(Boolean).join('\n') || null,
-                    })
-                    if (!url) return null
+                      uid: `${booking.id}:${target.key}`,
+                    }
+                    const googleUrl = googleCalendarUrl(event)
+                    const icsHref = icsDownloadHref(event)
+                    if (!googleUrl || !icsHref) return null
                     return (
-                      <Button key={target.key} asChild variant="outline" size="sm">
-                        <a href={url} target="_blank" rel="noreferrer">
-                          <CalendarPlus className="mr-2 h-3.5 w-3.5" />
-                          {target.label}
-                          <span className="ml-1.5 text-muted-foreground">{displayDate(target.day)}</span>
-                        </a>
-                      </Button>
+                      <div key={target.key} className="flex flex-wrap items-center gap-2">
+                        <Button asChild variant="outline" size="sm">
+                          <a href={googleUrl} target="_blank" rel="noreferrer">
+                            <CalendarPlus className="mr-2 h-3.5 w-3.5" />
+                            {target.label}
+                            <span className="ml-1.5 text-muted-foreground">{displayDate(target.day)}</span>
+                          </a>
+                        </Button>
+                        {/* One Google link and one file: Apple Calendar,
+                            Outlook and the rest all take an .ics. */}
+                        <Button asChild variant="ghost" size="sm">
+                          <a href={icsHref} download={icsFileName(event.title, target.day)}>
+                            Apple / Outlook (.ics)
+                          </a>
+                        </Button>
+                      </div>
                     )
                   })}
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  Opens Google Calendar with the details filled in — it is saved once you confirm there.
+                  The first button opens Google Calendar with the details filled in. The .ics file opens in Apple Calendar, Outlook and most other calendar apps.
                 </p>
               </div>
             )}

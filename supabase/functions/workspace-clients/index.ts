@@ -249,7 +249,7 @@ serve(async (req) => {
     let bookingId: string | null = null
     const authContext = await requireAuthenticatedUser(req)
     if (!workspaceCredentialIsFresh(authContext)) {
-      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
     }
     const { admin, user, tokenIssuedAt } = authContext
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')

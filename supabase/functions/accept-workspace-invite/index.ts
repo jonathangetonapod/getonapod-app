@@ -30,7 +30,7 @@ serve(async (req) => {
       throw new HttpError(
         409,
         'INITIAL_PASSWORD_CHANGE_REQUIRED',
-        'Use the initial password change flow for this account',
+        'This account still has a temporary password. Sign in with it and you will be asked to set a new one',
       )
     }
 
@@ -54,7 +54,7 @@ serve(async (req) => {
         throw new HttpError(409, 'PASSWORD_SETUP_REQUIRED', 'Create a password before accepting this invitation')
       }
       if (message.includes('not found')) {
-        throw new HttpError(404, 'INVITE_NOT_FOUND', 'Invitation not found')
+        throw new HttpError(404, 'INVITE_NOT_FOUND', 'This invitation is no longer active. Ask the person who invited you to send a new one')
       }
       if (message.includes('suspend')) {
         throw new HttpError(403, 'ACCOUNT_SUSPENDED', 'This account is suspended')
@@ -63,7 +63,7 @@ serve(async (req) => {
         throw new HttpError(409, 'WORKSPACE_INACTIVE', 'This workspace is not accepting members right now')
       }
       if (message.includes('pending') || message.includes('status')) {
-        throw new HttpError(409, 'INVITE_NOT_PENDING', 'This invitation cannot be accepted')
+        throw new HttpError(409, 'INVITE_NOT_PENDING', 'This invitation is no longer active. Ask the person who invited you to send a new one')
       }
       // Both of these are refusals the RPC raises deliberately, and neither
       // matched a branch above — so a conflict the caller can act on was

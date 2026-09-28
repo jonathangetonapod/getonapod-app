@@ -56,6 +56,8 @@ const Course = () => {
         title="Book yourself on podcasts: a course | Get On A Pod"
         description="A coming course on getting yourself booked on podcasts, using the process Get On A Pod runs for its clients: targeting, pitching, preparing and repurposing."
         path="/course"
+        // Nothing links here and nothing is for sale yet; keep it out of search.
+        noindex
       />
       <Navbar />
 

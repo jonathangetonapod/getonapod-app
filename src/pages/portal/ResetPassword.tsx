@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,51 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import PageSEO from '@/components/seo/PageSEO'
+import { supabase } from '@/lib/supabase'
+import { currentHostname } from '@/lib/workspaceHost'
 import { completePortalPasswordReset } from '@/services/clientPortal'
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
+
+interface LinkBranding {
+  name: string
+  logo_url: string | null
+  primary_color: string | null
+}
+
+// The same public metadata lookup ForgotPassword makes, for the tab title and
+// icon. Cosmetic: the neutral page stays fully usable when it fails.
+function useLinkBranding(brandingSlug: string): LinkBranding | null {
+  const [linkBranding, setLinkBranding] = useState<LinkBranding | null>(null)
+
+  useEffect(() => {
+    if (!brandingSlug || !SLUG_PATTERN.test(brandingSlug) || brandingSlug.length > 180) return
+    let cancelled = false
+    supabase.functions
+      .invoke('public-client-dashboard', { body: { action: 'metadata', slug: brandingSlug.toLowerCase(), hostname: currentHostname() } })
+      .then(({ data, error }) => {
+        if (cancelled || error) return
+        const workspace = data?.metadata?.workspace
+        if (workspace && typeof workspace.name === 'string' && workspace.name.trim()) {
+          setLinkBranding({
+            name: workspace.name.trim(),
+            logo_url: typeof workspace.logo_url === 'string' ? workspace.logo_url : null,
+            primary_color: typeof workspace.primary_color === 'string' && /^#[0-9a-f]{6}$/iu.test(workspace.primary_color)
+              ? workspace.primary_color
+              : null,
+          })
+        }
+      })
+      .catch(() => {
+        // Branding is cosmetic; the neutral page stays fully functional.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [brandingSlug])
+
+  return linkBranding
+}
 
 export default function PortalResetPassword() {
   const [password, setPassword] = useState('')
@@ -17,6 +61,26 @@ export default function PortalResetPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const token = searchParams.get('token') || ''
+  // The reset email carries the agency's slug so the sign-in it lands on is
+  // branded the same way; dropping it here would send the client to a
+  // neutral login after a branded reset.
+  const brandingSlug = searchParams.get('b') || ''
+  const loginHref = brandingSlug ? `/portal/login?b=${encodeURIComponent(brandingSlug)}` : '/portal/login'
+  const forgotHref = brandingSlug ? `/portal/forgot?b=${encodeURIComponent(brandingSlug)}` : '/portal/forgot'
+  const linkBranding = useLinkBranding(brandingSlug)
+
+  const seo = (
+    <PageSEO
+      title="Choose a new portal password"
+      description="Choose a new client portal password."
+      path="/portal/reset"
+      noindex
+      whiteLabel
+      brandName={linkBranding?.name || 'Client portal'}
+      favicon={linkBranding?.logo_url}
+      themeColor={linkBranding?.primary_color || undefined}
+    />
+  )
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -32,7 +96,7 @@ export default function PortalResetPassword() {
     setSubmitting(true)
     try {
       await completePortalPasswordReset(token, password)
-      navigate('/portal/login', { replace: true, state: { passwordReset: true } })
+      navigate(loginHref, { replace: true, state: { passwordReset: true } })
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : 'This reset link is invalid or has expired.')
     } finally {
@@ -43,7 +107,7 @@ export default function PortalResetPassword() {
   if (!token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-        <PageSEO title="Reset Portal Password" description="Choose a new client portal password." path="/portal/reset" noindex />
+        {seo}
         <Card className="w-full max-w-md">
           <CardHeader className="text-center space-y-2">
             <h1 className="text-2xl font-semibold leading-none tracking-tight">Reset link missing</h1>
@@ -53,7 +117,7 @@ export default function PortalResetPassword() {
           </CardHeader>
           <CardContent>
             <Button asChild className="w-full h-11">
-              <Link to="/portal/forgot">Request a new link</Link>
+              <Link to={forgotHref}>Request a new link</Link>
             </Button>
           </CardContent>
         </Card>
@@ -63,7 +127,7 @@ export default function PortalResetPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <PageSEO title="Reset Portal Password" description="Choose a new client portal password." path="/portal/reset" noindex />
+      {seo}
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70">
@@ -71,7 +135,7 @@ export default function PortalResetPassword() {
           </div>
           <h1 className="text-2xl font-semibold leading-none tracking-tight">Choose a new password</h1>
           <CardDescription>
-            At least 8 characters. You'll sign in with it right after.
+            At least 8 characters. You will sign in with it right after.
           </CardDescription>
         </CardHeader>
         <CardContent>

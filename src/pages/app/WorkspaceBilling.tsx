@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, CreditCard, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 import { Link, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { CREDIT_COSTS, OPERATION_NAMES, creditsLabel, type MeteredOperation } from '@/lib/creditCosts'
 import { CREDIT_PACKS, packPriceLabel } from '@/lib/creditPacks'
 
 import { AutoRefillCard } from '@/components/workspace/AutoRefillCard'
@@ -18,19 +19,16 @@ import { getWorkspaceBillingOverview,
   createWorkspaceSubscriptionCheckout,
 } from '@/services/workspaceStaff'
 
-const OPERATION_LABELS: Record<string, string> = {
-  research_run: 'AI research runs',
-  email_unlock_identify: 'Email unlock · identify',
-  email_unlock_find: 'Email unlock · find',
-  email_unlock_verify: 'Email unlock · verify',
-  dashboard_build: 'Prospect dashboard builds',
-  query_generation: 'Search query generation',
-  compatibility_scoring: 'Compatibility scoring',
-  podscan_lookup: 'Podcast data lookups',
-  semantic_search: 'Semantic catalog search',
-  pitch_profile: 'AI pitch profiles',
-  other: 'Other operations',
-}
+// One name per operation, shared with every button that quotes a price, so
+// the usage table and the ledger call a thing what the button called it.
+const operationName = (type: string): string =>
+  (OPERATION_NAMES as Record<string, string>)[type] ?? (type === 'other' ? OPERATION_NAMES.other : type)
+
+// The price list, grouped: mailboxes are a different kind of spend from the
+// per-run AI and data work above them.
+const MAILBOX_OPERATIONS: MeteredOperation[] = ['mailbox_domain_purchase', 'mailbox_monthly']
+const WORK_OPERATIONS = (Object.keys(CREDIT_COSTS) as MeteredOperation[])
+  .filter((operation) => !MAILBOX_OPERATIONS.includes(operation))
 
 const PLAN_LABELS: Record<string, string> = {
   founding_member: 'Founding member',
@@ -74,6 +72,12 @@ function formatShortDate(value: string | null): string {
   if (!value || !Number.isFinite(Date.parse(value))) return '—'
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(value))
 }
+
+// The date the explainer, the balance and the empty alert all lean on. Null
+// rather than a dash, so a sentence can leave the clause out instead of
+// reading "paused until —".
+const knownDate = (value: string | null | undefined): string | null =>
+  value && Number.isFinite(Date.parse(value)) ? formatShortDate(value) : null
 
 // How long a purchased balance is given to arrive before the page stops
 // claiming it is on its way. The webhook is normally seconds; a minute means
@@ -251,6 +255,19 @@ const WorkspaceBilling = () => {
   const allowance = overview?.monthly_credit_allowance ?? 0
   const spentPercent = allowance > 0 ? Math.min(100, Math.round((creditsSpent / allowance) * 100)) : 0
   const status = overview ? billingStatusBadge(overview.billing_status) : undefined
+  const renewalDate = knownDate(overview?.current_period_end)
+  // Live prices first; the shared table is what they were seeded at.
+  const priceFor = (operation: MeteredOperation): number => prices[operation] ?? CREDIT_COSTS[operation]
+  // Everything the explainer says, with the clauses it cannot fill left out.
+  const creditsExplainer = [
+    'Credits pay for the AI and data work in your workspace.',
+    allowance > 0
+      ? `Your plan includes ${allowance.toLocaleString()} credits every month; monthly credits you do not use expire at the end of the following month.`
+      : null,
+    'Credits you buy never expire and are only used once the monthly ones are gone.',
+    `When the balance reaches zero, research, contact finding and prospect page builds pause until ${renewalDate ? `${renewalDate} or until you buy more` : 'you buy more'}.`,
+    'Anything that runs on your own AI keys is free.',
+  ].filter(Boolean).join(' ')
   // Purchases are hidden until credits are actually being spent. Selling a pack
   // while the page says the balance will not move is asking for money for
   // something the product has just admitted it is not doing yet.
@@ -334,7 +351,9 @@ const WorkspaceBilling = () => {
                       onClick={() => void openPlanManagement(Boolean(overview.has_subscription))}
                     >
                       {openingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {overview.has_subscription ? 'Manage plan' : 'Choose a plan'}
+                      {overview.has_subscription
+                        ? 'Manage plan'
+                        : `Start the Founding member plan · ${packPriceLabel(overview.base_price_cents)}/month`}
                     </Button>
                     {/* Invoices, receipts and card details are Stripe's pages.
                         The portal is where they live, so the link goes there
@@ -358,6 +377,7 @@ const WorkspaceBilling = () => {
             {/* 2. Credits: what is left, and how fast it is going. */}
             <section aria-labelledby="credits-title" className="space-y-3">
               <h2 id="credits-title" className="text-lg font-semibold">Credits</h2>
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{creditsExplainer}</p>
 
               {!overview.enforcement_enabled && (
                 <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900" role="status">
@@ -388,6 +408,11 @@ const WorkspaceBilling = () => {
                           ? `${overview.expiring_credits.toLocaleString()} expire ${formatShortDate(overview.next_expiry_at)}`
                           : 'No expiring credits'}
                       </p>
+                      {allowance > 0 && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Next monthly credits: {allowance.toLocaleString()}{renewalDate ? ` on ${renewalDate}` : ''}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-muted-foreground">Used this month</p>
@@ -423,9 +448,40 @@ const WorkspaceBilling = () => {
 
                   {overview.enforcement_enabled && overview.balance === 0 && (
                     <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-                      You have no credits left. Metered work will stop until your allowance renews or you top up.
+                      You have no credits left. Research, contact finding and prospect page builds are paused
+                      until {renewalDate ? `${renewalDate}, or until you buy a pack` : 'you buy a pack'}.
                     </p>
                   )}
+                </CardContent>
+              </Card>
+
+              {/* Every price, before anything is clicked. The buttons quote the
+                  same numbers; this is where they can all be read at once. */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">What credits pay for</CardTitle>
+                  <CardDescription>The price of each operation. Anything that runs on your own AI keys is free.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+                    {WORK_OPERATIONS.map((operation) => (
+                      <div key={operation} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
+                        <dt>{OPERATION_NAMES[operation]}</dt>
+                        <dd className="shrink-0 tabular-nums text-muted-foreground">{creditsLabel(priceFor(operation))}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mailboxes</h3>
+                    <dl className="mt-1.5 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+                      {MAILBOX_OPERATIONS.map((operation) => (
+                        <div key={operation} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
+                          <dt>{OPERATION_NAMES[operation]}</dt>
+                          <dd className="shrink-0 tabular-nums text-muted-foreground">{creditsLabel(priceFor(operation))}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -486,7 +542,7 @@ const WorkspaceBilling = () => {
                           {usageRows.map((row) => (
                             <tr key={row.type}>
                               <td className="px-5 py-2.5">
-                                {OPERATION_LABELS[row.type] || row.type}
+                                {operationName(row.type)}
                                 {row.byo > 0 && (
                                   <span className="ml-2 text-xs text-muted-foreground">
                                     {row.byo.toLocaleString()} on your own key, free
@@ -526,7 +582,7 @@ const WorkspaceBilling = () => {
                               {entry.entry_type === 'grant'
                                 ? 'Credits added'
                                 : entry.operation_type
-                                  ? OPERATION_LABELS[entry.operation_type] || entry.operation_type
+                                  ? operationName(entry.operation_type)
                                   : entry.entry_type}
                             </span>
                             <span className="text-xs text-muted-foreground">{formatShortDate(entry.created_at)}</span>

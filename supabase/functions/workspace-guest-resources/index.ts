@@ -462,7 +462,7 @@ serve(async (req) => {
       throw new HttpError(
         401,
         "REAUTHENTICATION_REQUIRED",
-        "Sign in again with the newest account credentials",
+        "Your sign-in is out of date. Sign out and sign in again to continue",
       );
     }
     const { admin, user, tokenIssuedAt } = authContext;

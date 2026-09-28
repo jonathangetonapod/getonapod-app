@@ -64,7 +64,7 @@ import {
   RotateCcw,
   ArrowUpRight,
   WandSparkles,
-  LineChart
+  ArrowLeft,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -241,6 +241,8 @@ function ClientApprovalViewContent() {
   const [searchParams] = useSearchParams()
   const forceTour = searchParams.get('tour') === '1'
   const isAdminPreview = searchParams.get('preview') === '1'
+  // Opened from the portal dashboard, so a way back belongs in the header.
+  const fromPortal = searchParams.get('from') === 'portal'
   const queryClient = useQueryClient()
 
   // UI state
@@ -362,6 +364,9 @@ function ClientApprovalViewContent() {
   const feedbackMap = new Map<string, PodcastFeedback>(
     feedbackData.map((fb: PodcastFeedback) => [fb.podcast_id, fb])
   )
+  // "Choose 10" on a list of six is a goal nobody can reach; the first batch
+  // is ten or the whole list, whichever is smaller.
+  const shortlistGoal = Math.max(1, Math.min(SHORTLIST_GOAL, new Set(podcasts.map((podcast) => podcast.podcast_id)).size))
   const selectedFeedbackNotes = selectedPodcast
     ? feedbackMap.get(selectedPodcast.podcast_id)?.notes || ''
     : ''
@@ -411,51 +416,17 @@ function ClientApprovalViewContent() {
     setBrandLogoUnavailable(false)
   }, [dashboard?.workspace?.logo_url])
 
-  // Show tutorial on first visit or if ?tour=1 is in URL
+  // The page explains itself. The walkthrough stays a tap away under "How it
+  // works" and opens on ?tour=1, but it never interrupts a first visit.
   useEffect(() => {
-    if (!dashboard || loading) return
-
-    // Workspace previews should open directly to the approval experience.
-    // Genuine first-time client visits still receive the guided tutorial.
-    if (isAdminPreview) {
-      setShowTutorial(false)
-      return
-    }
-
-    // If ?tour=1 is in URL, always show the tutorial
-    if (forceTour) {
-      const timer = setTimeout(() => {
-        setShowTutorial(true)
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-
-    // Otherwise, check localStorage for first-time visitors
-    let hasSeenTutorial: string | null = null
-    try {
-      hasSeenTutorial = window.localStorage.getItem('client-tutorial-seen-v1')
-    } catch {
-      // Continue with an in-memory tutorial when persistent storage is denied.
-    }
-    if (!hasSeenTutorial) {
-      const timer = setTimeout(() => {
-        setShowTutorial(true)
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
+    if (!dashboard || loading || isAdminPreview || !forceTour) return
+    const timer = setTimeout(() => setShowTutorial(true), 500)
+    return () => clearTimeout(timer)
   }, [dashboard, loading, forceTour, isAdminPreview])
 
-  // Mark tutorial as seen when closed
   const closeTutorial = () => {
     setShowTutorial(false)
     setTutorialStep(0)
-    if (dashboard) {
-      try {
-        window.localStorage.setItem('client-tutorial-seen-v1', 'true')
-      } catch {
-        // Closing the tutorial must still work in hardened/private browsers.
-      }
-    }
   }
 
   // Populate AI analysis cache from database-cached data (instant, no API calls needed)
@@ -553,8 +524,10 @@ function ClientApprovalViewContent() {
   }, [selectedFeedbackNotes, selectedPodcast])
 
 
-  // Confetti celebration for approvals
+  // One burst when the first batch is complete, and none for anyone who has
+  // asked their device for less motion.
   const triggerConfetti = () => {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)')?.matches) return
     const count = 200
     const defaults = {
       origin: { y: 0.7 },
@@ -614,7 +587,7 @@ function ClientApprovalViewContent() {
       queryClient.invalidateQueries({ queryKey: ['client-feedback', dashboard.id] })
 
       // Celebrate the meaningful milestone, not every individual click.
-      if (isNewApproval && approvedBefore < SHORTLIST_GOAL && approvedBefore + 1 >= SHORTLIST_GOAL) {
+      if (isNewApproval && approvedBefore < shortlistGoal && approvedBefore + 1 >= shortlistGoal) {
         triggerConfetti()
       }
       return true
@@ -782,8 +755,13 @@ function ClientApprovalViewContent() {
 
   const approvedPodcasts = uniquePodcasts.filter((podcast) => feedbackMap.get(podcast.podcast_id)?.status === 'approved')
   const reviewedTopMatches = topMatches.filter((podcast) => Boolean(feedbackMap.get(podcast.podcast_id)?.status)).length
-  const firstBatchApproved = Math.min(feedbackStats.approved, SHORTLIST_GOAL)
-  const shortlistProgress = Math.min(100, Math.round((firstBatchApproved / SHORTLIST_GOAL) * 100))
+  const firstBatchApproved = Math.min(feedbackStats.approved, shortlistGoal)
+  const shortlistProgress = Math.min(100, Math.round((firstBatchApproved / shortlistGoal) * 100))
+  // Nothing left to decide, or the first batch is full: either way the work
+  // here is done and the page should say so, in place, rather than in a toast
+  // that is gone by the time anyone wonders what happens next.
+  const reviewComplete = uniquePodcasts.length > 0
+    && (feedbackStats.notReviewed === 0 || firstBatchApproved >= shortlistGoal)
   const viewPodcasts = dashboardView === 'top'
     ? topMatches
     : dashboardView === 'picks'
@@ -935,8 +913,10 @@ function ClientApprovalViewContent() {
       return
     }
 
+    // The done card at the top of the list says what happens next, so the
+    // dialog just closes and leaves the reader there.
     setShowFocusedReview(false)
-    toast.success(`${focusedReviewViewLabel} review complete. Your choices will guide outreach.`)
+    document.getElementById('podcast-shortlist')?.scrollIntoView?.({ behavior: 'smooth' })
   }
 
   const shareDashboard = async () => {
@@ -1009,6 +989,19 @@ function ClientApprovalViewContent() {
                 <span className="hidden rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 sm:inline-flex">
                   Share preview
                 </span>
+              ) : null}
+              {fromPortal ? (
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-11 gap-2 text-white/70 hover:bg-white/10 hover:text-white"
+                >
+                  <a href="/portal/dashboard">
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to your portal
+                  </a>
+                </Button>
               ) : null}
               <Button
                 type="button"
@@ -1133,7 +1126,7 @@ function ClientApprovalViewContent() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="section-kicker !text-[var(--campaign-accent)]">Your first batch</p>
-                  <h2 className="mt-2 font-editorial text-3xl text-white">Choose 10 shows</h2>
+                  <h2 className="mt-2 font-editorial text-3xl text-white">Choose {shortlistGoal} shows</h2>
                 </div>
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#789486]/20 text-[#b8d0c4]">
                   <Target className="h-5 w-5" />
@@ -1145,10 +1138,10 @@ function ClientApprovalViewContent() {
               <div className="mt-6 flex items-end justify-between">
                 <div>
                   <span className="font-editorial text-5xl text-white">{firstBatchApproved}</span>
-                  <span className="ml-1 text-lg text-white/40">/ {SHORTLIST_GOAL}</span>
+                  <span className="ml-1 text-lg text-white/40">/ {shortlistGoal}</span>
                 </div>
                 <span className="pb-1 text-sm font-semibold text-[#b8d0c4]">
-                  {Math.max(0, SHORTLIST_GOAL - firstBatchApproved)} to go
+                  {Math.max(0, shortlistGoal - firstBatchApproved)} to go
                 </span>
               </div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
@@ -1217,6 +1210,27 @@ function ClientApprovalViewContent() {
               Focused review · {focusedReviewViewLabel}
             </Button>
           </div>
+
+          {reviewComplete ? (
+            <div
+              role="status"
+              className="mt-7 rounded-3xl border border-[#9ab4a7] bg-[#edf4ef] px-6 py-6 shadow-sm sm:px-8"
+            >
+              <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#476b59]">
+                <CheckCircle2 className="h-4 w-4" />
+                Done for now
+              </p>
+              <h3 className="mt-2 font-editorial text-2xl text-[#102033] sm:text-3xl">
+                {feedbackStats.notReviewed === 0
+                  ? `You have reviewed all ${uniquePodcasts.length} shows`
+                  : `You have picked ${feedbackStats.approved} shows`}
+              </h3>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#4f5f5a] sm:text-base">
+                {brandName} will start outreach on your {feedbackStats.approved} {feedbackStats.approved === 1 ? 'pick' : 'picks'}.
+                There is nothing to submit. You will hear from us when the first host replies.
+              </p>
+            </div>
+          ) : null}
 
           <div className="mt-7 grid grid-cols-3 overflow-hidden rounded-2xl border border-[#d9d0c4] bg-white p-1.5 shadow-sm" role="tablist" aria-label="Podcast views">
             {[
@@ -1525,17 +1539,16 @@ function ClientApprovalViewContent() {
             </div>
             <div className="grid gap-px bg-white/10 sm:grid-cols-3">
               {[
-                { icon: WandSparkles, title: 'Personalized outreach', text: 'Every pitch is written for the show and host—not sprayed from a template.' },
+                { icon: WandSparkles, title: 'Personalized outreach', text: 'Every pitch is written for the show and host, not sprayed from a template.' },
                 { icon: CalendarCheck, title: 'Booking visibility', text: 'See upcoming recordings, scheduled appearances, and what is going live next.' },
-                { icon: LineChart, title: 'Clips & analytics', text: 'Turn appearances into content and track campaign impact as optional add-ons.' },
-              ].map((feature, index) => (
+                { icon: Radio, title: 'Episodes go live', text: 'You get the link and a ready-to-share note.' },
+              ].map((feature) => (
                 <div key={feature.title} className="bg-black/10 p-6 sm:p-7">
                   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/8 text-[var(--campaign-accent)]">
                     <feature.icon className="h-5 w-5" />
                   </span>
                   <p className="mt-5 font-editorial text-xl">{feature.title}</p>
                   <p className="mt-2 text-sm leading-6 text-white/52">{feature.text}</p>
-                  {index === 2 ? <span className="mt-4 inline-flex rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-white/45">Available add-on</span> : null}
                 </div>
               ))}
             </div>
@@ -1569,8 +1582,8 @@ function ClientApprovalViewContent() {
             </button>
             <button type="button" onClick={shareDashboard} className="min-h-10 hover:text-[#102033]">Share dashboard</button>
             {slug && (
-              <a href={`/portal/login?b=${encodeURIComponent(slug)}`} className="min-h-10 leading-10 hover:text-[#102033]">
-                Client portal sign-in
+              <a href={fromPortal ? '/portal/dashboard' : `/portal/login?b=${encodeURIComponent(slug)}`} className="min-h-10 leading-10 hover:text-[#102033]">
+                Open your portal
               </a>
             )}
           </div>
@@ -2111,8 +2124,8 @@ function ClientApprovalViewContent() {
                             <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-sm sm:text-base text-amber-900 dark:text-amber-100">Why This Is Perfect For You</h3>
-                            <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-300">AI-powered analysis</p>
+                            <h3 className="font-bold text-sm sm:text-base text-amber-900 dark:text-amber-100">Why this show fits you</h3>
+                            <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-300">Based on your background and the show's recent episodes</p>
                           </div>
                         </div>
 
@@ -2148,7 +2161,7 @@ function ClientApprovalViewContent() {
                             <Target className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100">Suggested Pitch Angles</h3>
+                            <h3 className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100">What you could talk about</h3>
                             <p className="text-[10px] sm:text-xs text-purple-700 dark:text-purple-300">Ways to approach this podcast</p>
                           </div>
                         </div>
@@ -2608,7 +2621,7 @@ function ClientApprovalViewContent() {
       <Dialog open={showTutorial} onOpenChange={(open) => !open && closeTutorial()}>
         <DialogContent className="w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-[28px] border-[#ded5ca] bg-[#fbf8f3] p-0">
           <VisuallyHidden>
-            <DialogTitle>How to Use Your Dashboard</DialogTitle>
+            <DialogTitle>How this works</DialogTitle>
             <DialogDescription>A short introduction to reviewing and choosing podcast opportunities.</DialogDescription>
           </VisuallyHidden>
 
@@ -2667,15 +2680,15 @@ function ClientApprovalViewContent() {
                 <div className="bg-muted/50 rounded-xl p-3 sm:p-4 text-left space-y-2">
                   <div className="flex items-center gap-2 text-xs sm:text-sm">
                     <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 shrink-0" />
-                    <span><strong>Why it fits</strong> — The real overlap with your expertise</span>
+                    <span><strong>Why this show fits you</strong>: the real overlap with your expertise</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs sm:text-sm">
                     <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500 shrink-0" />
-                    <span><strong>Pitch Angles</strong> — Topics to discuss</span>
+                    <span><strong>What you could talk about</strong>: topics to discuss</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs sm:text-sm">
                     <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 shrink-0" />
-                    <span><strong>Audience Insights</strong> — Who you'll reach</span>
+                    <span><strong>Audience insights</strong>: who you will reach</span>
                   </div>
                 </div>
               </div>
@@ -2689,7 +2702,7 @@ function ClientApprovalViewContent() {
                 </div>
                 <h2 className="mb-2 font-editorial text-2xl text-[#102033] sm:text-3xl">Make a simple choice</h2>
                 <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
-                  For each podcast, let us know if it's a good fit for you.
+                  For each podcast, tap whether it is a good fit for you.
                 </p>
                 <div className="flex justify-center gap-3 sm:gap-4 mb-3 sm:mb-4">
                   <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
@@ -2702,7 +2715,7 @@ function ClientApprovalViewContent() {
                   </div>
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground">
-                  You can also add notes to explain your preference — this helps us find even better matches!
+                  You can also add a note to explain your preference. It helps us find better matches.
                 </p>
               </div>
             )}
@@ -2719,7 +2732,7 @@ function ClientApprovalViewContent() {
                 </p>
                 <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-xl p-3 sm:p-4 border border-primary/20">
                   <p className="text-xs sm:text-sm font-medium text-primary">
-                    Start with 10 strong choices. Quality signals help us pitch you more convincingly.
+                    Start with {shortlistGoal} strong choices. Clear signals help us pitch you more convincingly.
                   </p>
                 </div>
               </div>
@@ -2744,28 +2757,35 @@ function ClientApprovalViewContent() {
             </div>
 
             {/* Navigation Buttons */}
-            <div className="flex items-center justify-between p-4 border-t bg-muted/30">
+            <div className="flex items-center justify-between gap-2 p-4 border-t bg-muted/30">
               <Button
                 variant="ghost"
                 onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
                 disabled={tutorialStep === 0}
-                className="gap-1"
+                className="min-h-11 gap-1"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Back
               </Button>
 
-              {tutorialStep < 4 ? (
-                <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="gap-1 bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button onClick={closeTutorial} className="gap-1 bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
-                  Start reviewing
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {tutorialStep < 4 ? (
+                  <Button variant="ghost" onClick={closeTutorial} className="min-h-11 text-muted-foreground">
+                    Skip
+                  </Button>
+                ) : null}
+                {tutorialStep < 4 ? (
+                  <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="min-h-11 gap-1 bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button onClick={closeTutorial} className="min-h-11 gap-1 bg-[var(--campaign-primary)] text-[var(--campaign-primary-foreground)] hover:brightness-95">
+                    Start reviewing
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </DialogContent>

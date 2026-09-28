@@ -9,11 +9,13 @@ import { AuthShell } from '@/components/landing/AuthShell'
 const TEMPORARY_PASSWORD_PREFIX = 'Tmp-'
 
 function passwordPolicyError(password: string, confirmation: string): string | null {
-  if (password.length < 12) return 'Use at least 12 characters.'
-  if (new TextEncoder().encode(password).length > 72) return 'Use no more than 72 UTF-8 bytes.'
+  if (password.length < 12) return 'Passwords need at least 12 characters.'
+  // The server's cap is 72 bytes of UTF-8. Said in characters, which is what
+  // people count; only an accented password is ever off by a few.
+  if (new TextEncoder().encode(password).length > 72) return 'Passwords can be at most 72 characters.'
   if (password.startsWith(TEMPORARY_PASSWORD_PREFIX)) return 'Choose a password that does not start with Tmp-.'
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
-    return 'Include uppercase, lowercase, a digit, and a symbol.'
+    return 'Include a capital letter, a lowercase letter, a number and a symbol.'
   }
   if (password !== confirmation) return 'Passwords do not match.'
   return null
@@ -70,11 +72,11 @@ const ResetPassword = () => {
         description="This password reset link can no longer be used."
         path="/reset-password"
         tone="notice"
-        heading="Reset link expired."
+        heading="This reset link no longer works."
         footer={<>No account yet? <Link to="/register">Request to join</Link></>}
       >
         <p className="gp-auth-reason">
-          This password reset link is invalid or has expired. Request a new one from the sign-in page.
+          Links last one hour. Ask for a new one from the sign-in page.
         </p>
         <div className="gp-auth-actions">
           <Link className="gp-btn gp-btn-primary" to="/login">Back to sign in</Link>
@@ -121,7 +123,7 @@ const ResetPassword = () => {
             </button>
           </div>
           <span id="password-requirements" className="gp-field-hint">
-            At least 12 characters with uppercase, lowercase, a digit, and a symbol.
+            12 to 72 characters, with at least one capital letter, one number and one symbol.
           </span>
         </div>
 

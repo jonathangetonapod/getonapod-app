@@ -15,6 +15,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { PLACEMENT_STATUS_LABELS } from '@/lib/placementStatus'
 import {
   deleteWorkspaceClientBooking,
   saveWorkspaceClientBooking,
@@ -311,6 +312,12 @@ export const ClientBookingDialog = ({
               })}
             </div>
             <p className="text-xs text-muted-foreground">{stage.hint}</p>
+            {/* The operator's stage names are not the client's. Saying what
+                the portal will call this stops "Scheduling" being expected on
+                the client side when they will read "Talking to the host". */}
+            <p className="text-xs text-muted-foreground">
+              {clientName} sees this as <span className="font-medium text-foreground">{PLACEMENT_STATUS_LABELS[form.status]}</span>.
+            </p>
           </div>
 
           {stage.dates.length > 0 && (

@@ -76,7 +76,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[QA Review] Error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: (error as Error).message || 'Internal server error' }),
+      JSON.stringify({ success: false, error: (error as Error).message || 'Something went wrong on our side. Try again in a moment' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

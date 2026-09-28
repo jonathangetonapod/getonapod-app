@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShieldCheck,
   Sparkles,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -115,7 +116,7 @@ function toShortlistPodcast(podcast: WorkspacePodcastCatalogItem): ClientShortli
 /*
  * The prospect shortlist takes a narrower row than a client's: no contact
  * address, no feed, no language or region. That is the point of the two shapes
- * — a prospect dashboard is something you send to someone who has not signed
+ * — a prospect page is something you send to someone who has not signed
  * anything yet, so the things worth protecting are not gathered for it.
  */
 function toProspectPodcast(podcast: WorkspacePodcastCatalogItem): ProspectShortlistPodcastInput {
@@ -179,7 +180,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [detailsPodcast, setDetailsPodcast] = useState<WorkspacePodcastCatalogItem | null>(null)
   const [selectedClientId, setSelectedClientId] = useState(targetClientId)
-  // Which kind of thing the selection is being added to. A prospect dashboard
+  // Which kind of thing the selection is being added to. A prospect page
   // is a pitch to someone who is not a client yet, and the same shows are
   // exactly what you want to put in front of them.
   const [addTarget, setAddTarget] = useState<'client' | 'prospect'>('client')
@@ -332,9 +333,9 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       if (addTarget === 'prospect') {
         const prospect = availableProspects.find((candidate) => candidate.id === selectedProspectId)
         if (result.added > 0) {
-          toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${prospect?.prospect_name || 'the prospect dashboard'}.`)
+          toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${prospect?.prospect_name || 'the prospect page'}.`)
         } else {
-          toast.info('Those podcasts are already on this prospect dashboard.')
+          toast.info('Those podcasts are already on this prospect page.')
         }
         // A live dashboard stays live; the additions wait hidden for review.
         if ('hidden_pending_review' in result && result.hidden_pending_review) {
@@ -345,7 +346,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         if (result.added > 0) {
           toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${client?.name || 'the client shortlist'}.`)
         } else {
-          toast.info('Those podcasts are already on this client shortlist.')
+          toast.info('Those podcasts are already on this client’s shortlist.')
         }
       }
       setSelectedPodcasts(new Map())
@@ -478,7 +479,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/[0.035] p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-semibold">Browsing for {targetClient.name}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Select podcasts here and they’ll be ready to add to this client’s approval list.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Select podcasts here and they’ll be ready to add to this client’s shortlist.</p>
             </div>
             <Button asChild variant="outline" size="sm" className="shrink-0">
               <Link to={`${baseHref}/clients/${encodeURIComponent(targetClient.id)}`}><ArrowLeft className="mr-2 h-4 w-4" />Back to client</Link>
@@ -517,7 +518,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                   <SelectItem value="all">All podcasts</SelectItem>
                   <SelectItem value="any">Has an email</SelectItem>
                   <SelectItem value="free">Free email</SelectItem>
-                  <SelectItem value="direct">👑 Verified direct email</SelectItem>
+                  <SelectItem value="direct"><span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-violet-700" aria-hidden="true" />Verified direct email</span></SelectItem>
                   <SelectItem value="none">No email yet</SelectItem>
                 </SelectContent>
               </Select>
@@ -608,7 +609,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           <Card>
             <CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
               <Search className="h-10 w-10 text-muted-foreground" />
-              <div><p className="font-semibold">No podcasts match these filters</p><p className="mt-1 text-sm text-muted-foreground">Reset the filters or use Podcast Finder to discover a new show.</p></div>
+              <div><p className="font-semibold">No podcasts match these filters.</p><p className="mt-1 text-sm text-muted-foreground">Clear a filter, or search the live index to add a new show.</p></div>
               <div className="flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={resetFilters}>Reset filters</Button><Button asChild><Link to={`${baseHref}/podcast-finder`}>Open Podcast Finder</Link></Button></div>
             </CardContent>
           </Card>
@@ -679,7 +680,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                       <div className="min-w-0">
                         {podcast.direct_email ? (
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Badge className="border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100">👑 Verified direct</Badge>
+                            <Badge className="border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100"><ShieldCheck className="mr-1 h-3 w-3" aria-hidden="true" />Verified direct email</Badge>
                             <span className="truncate text-sm">{podcast.direct_email}</span>
                             {/* When somebody confirmed it. A direct address
                                 that was checked two years ago is a different
@@ -737,11 +738,11 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             <DialogTitle>Add {selectedPodcasts.size} podcast{selectedPodcasts.size === 1 ? '' : 's'}</DialogTitle>
             <DialogDescription>{addTarget === 'prospect'
               ? 'The selected shows will be added to the prospect’s dashboard. Existing entries are skipped.'
-              : 'The selected shows will be added to the client’s review shortlist. Existing entries are skipped.'}</DialogDescription>
+              : 'The selected shows will be added to the client’s shortlist. Existing entries are skipped.'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {/* The same shows serve both: a client shortlist is work already
-                sold, a prospect dashboard is the pitch for work that is not. */}
+                sold, a prospect page is the pitch for work that is not. */}
             <div className="space-y-2">
               <Label>Add to</Label>
               {/* secondary and outline read almost the same here, so the chosen
@@ -769,8 +770,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
               </div>
               <p className="text-xs text-muted-foreground">
                 {addTarget === 'prospect'
-                  ? 'Adding to a prospect dashboard — a pitch for someone who is not a client yet.'
-                  : 'Adding to a client’s review shortlist.'}
+                  ? 'Adding to a prospect page, a pitch for someone who is not a client yet.'
+                  : 'Adding to a client’s shortlist.'}
               </p>
             </div>
             {addTarget === 'prospect' ? (
@@ -781,7 +782,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                 ) : prospectsQuery.error ? (
                   <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{prospectsQuery.error instanceof Error ? prospectsQuery.error.message : 'Prospects could not be loaded.'}</div>
                 ) : availableProspects.length === 0 ? (
-                  <div className="rounded-lg border p-4 text-sm text-muted-foreground">No prospect dashboards are available in this workspace.</div>
+                  <div className="rounded-lg border p-4 text-sm text-muted-foreground">No prospect pages are available in this workspace.</div>
                 ) : (
                   <Select value={selectedProspectId} onValueChange={setSelectedProspectId}>
                     <SelectTrigger id="podcast-database-prospect" aria-label="Prospect"><SelectValue placeholder="Choose a prospect" /></SelectTrigger>

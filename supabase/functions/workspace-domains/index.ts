@@ -158,7 +158,7 @@ serve(async (req) => {
         .maybeSingle()
       if (domainError) throw new HttpError(500, 'DOMAIN_REFRESH_FAILED', 'The domain could not be read')
       if (!domain || !domain.provider_domain_id) {
-        throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is unavailable')
+        throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is not set up for this workspace')
       }
       if (domain.status === 'disabled') {
         throw new HttpError(409, 'DOMAIN_DISABLED', 'That domain is disabled')
@@ -176,7 +176,7 @@ serve(async (req) => {
         .select('id,workspace_id,hostname,status')
         .eq('id', domainId)
         .maybeSingle()
-      if (!domain) throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is unavailable')
+      if (!domain) throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is not set up for this workspace')
       if (domain.status !== 'active') {
         throw new HttpError(409, 'DOMAIN_NOT_SERVING', 'A domain must be serving before it can be the primary one')
       }
@@ -214,7 +214,7 @@ serve(async (req) => {
       .select('id,workspace_id,hostname,provider,provider_domain_id')
       .eq('id', domainId)
       .maybeSingle()
-    if (!domain) throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is unavailable')
+    if (!domain) throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is not set up for this workspace')
 
     if (domain.provider_domain_id) {
       await deleteProviderDomain(providerOfRow(domain.provider), domain.provider_domain_id)

@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { AccessRequestForm } from '@/components/landing/AccessRequestForm'
 import { Chrome, Shot } from '@/components/landing/Shot'
 import PageSEO from '@/components/seo/PageSEO'
+import { CREDIT_COSTS } from '@/lib/creditCosts'
 import '@/styles/agencyLanding.css'
 
 /** Whether to hold still. Read on use, and safe with no window and no matchMedia. */
@@ -86,10 +87,20 @@ const PORTAL_ACTIVITY = [
  */
 const PER_CLIENT_MONTHLY = '$39'
 
+/*
+ * What a credit buys, in the unit an agency thinks in. A client shortlist is
+ * one prospect page build plus research on roughly ten shows, priced from the
+ * same table every button in the app quotes, so the number here moves when
+ * the ledger does.
+ */
+const SHOWS_PER_SHORTLIST = 10
+const CREDITS_PER_SHORTLIST = CREDIT_COSTS.dashboard_build + CREDIT_COSTS.research_run * SHOWS_PER_SHORTLIST
+const shortlistsFor = (credits: number) => Math.floor(credits / CREDITS_PER_SHORTLIST)
+
 interface Plan {
   name: string
   price: string
-  credits: string
+  monthlyCredits: number
   who: string
   includes: string[]
   featured?: boolean
@@ -99,7 +110,7 @@ const PLANS: Plan[] = [
   {
     name: 'Founding member',
     price: '$39',
-    credits: '100 credits a month',
+    monthlyCredits: 100,
     who: 'For a freelancer, or an agency with its first client on the platform.',
     includes: [
       'One active client included',
@@ -112,8 +123,8 @@ const PLANS: Plan[] = [
   {
     name: 'Standard',
     price: '$99',
-    credits: '300 credits a month',
-    who: 'For an agency running several clients at once.',
+    monthlyCredits: 300,
+    who: 'For a team: three times the research credits.',
     includes: [
       'One active client included',
       'Everything in Founding member',
@@ -268,6 +279,7 @@ const AgencyLanding = () => {
                 </article>
               ))}
             </div>
+            <p className="gp-tour-credit">Built from the outreach we run for our own clients.</p>
           </div>
         </section>
 
@@ -334,7 +346,10 @@ const AgencyLanding = () => {
                   <p className="gp-plan-price">
                     {plan.price}<span> a month</span>
                   </p>
-                  <p className="gp-plan-credits">{plan.credits}</p>
+                  <p className="gp-plan-credits">{plan.monthlyCredits} credits a month</p>
+                  <p className="gp-plan-unit">
+                    About {shortlistsFor(plan.monthlyCredits)} client shortlists a month, at {CREDITS_PER_SHORTLIST} credits each.
+                  </p>
                   <p className="gp-plan-who">{plan.who}</p>
                   <ul className="gp-plan-list">
                     {plan.includes.map((line) => <li key={line}>{line}</li>)}
@@ -346,9 +361,11 @@ const AgencyLanding = () => {
 
             <p className="gp-plan-note">
               Each additional active client is {PER_CLIENT_MONTHLY} a month. Credits pay for research,
-              contact finding and dashboard builds — the work that costs us money to run. Sending goes
-              through your own mailboxes, so there is nothing here for the emails themselves.
+              contact finding and prospect page builds; a typical client shortlist uses
+              about {CREDITS_PER_SHORTLIST}. Sending goes through your own mailboxes, so there is nothing
+              here for the emails themselves.
             </p>
+            <p className="gp-plan-note">Not sure? Start on Founding member; upgrading keeps everything.</p>
           </div>
         </section>
 
@@ -372,8 +389,8 @@ const AgencyLanding = () => {
               <div>
                 <h2>See it on your own client list.</h2>
                 <p className="gp-start-said">
-                  Tell us what you run today and we will walk you through it. Joining is by invite, so we
-                  take a few agencies at a time.
+                  Tell us what you run today: how many clients, what you use now, and whether podcasts are
+                  new for you. Joining is by invite, so Jonathan Garces takes a few agencies at a time.
                 </p>
               </div>
               <AccessRequestForm />

@@ -34,8 +34,11 @@ describe('Landing', () => {
     renderPage()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/get booked on the podcasts\s*your customers already listen to/iu)
     expect(screen.getByRole('link', { name: /skip to content/iu })).toHaveAttribute('href', '#main')
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+    // Two doors, named for who walks through them.
+    expect(screen.getAllByRole('link', { name: 'Client sign-in' })[0]).toHaveAttribute('href', '/portal/login')
+    expect(screen.getByRole('link', { name: 'Agency sign-in' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: 'For agencies' })).toHaveAttribute('href', '/platform')
+    expect(screen.getByRole('link', { name: 'See the week-by-week plan' })).toHaveAttribute('href', '/what-to-expect')
     // The page books a 30-minute call; every button agrees.
     expect(CALL_URL).toMatch(/\/30min$/u)
     const podcastLinks = screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })
@@ -46,6 +49,29 @@ describe('Landing', () => {
     }
     expect(screen.queryByRole('link', { name: /15-minute/iu })).not.toBeInTheDocument()
     expect(screen.getByText('$500')).toBeInTheDocument()
+  })
+
+  // The terms, under the hero, in the same words the pricing section uses.
+  it('states the terms under the hero, before the reader scrolls', () => {
+    renderPage()
+    const facts = screen.getByText('$500 a month').parentElement
+    expect(facts).toHaveTextContent('3-month minimum')
+    expect(facts).toHaveTextContent('about 15 minutes a week of your time')
+    expect(facts).toHaveTextContent('you approve every show')
+    expect(screen.getAllByText(/30 minutes on video with Jonathan Garces/u)).toHaveLength(2)
+    expect(screen.getAllByText(/opens cal\.com in a new tab/iu).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows the clients by name and by face, and points the faces at their words', () => {
+    renderPage()
+    const clients = screen.getByRole('region', { name: 'Clients' })
+    for (const name of ['Relai', 'North Street Creative', 'Quirk', 'Ownify', 'ShareClub', 'ScaleUp Valley']) {
+      expect(clients).toHaveTextContent(name)
+    }
+    const proof = screen.getByRole('link', { name: 'Six founders, on camera, on why it worked' })
+    expect(proof).toHaveAttribute('href', '#quotes')
+    expect(proof.querySelectorAll('img')).toHaveLength(6)
+    expect(screen.getByRole('region', { name: 'Testimonials' })).toHaveAttribute('id', 'quotes')
   })
 
   it('has no stage offer, even at its old address', () => {

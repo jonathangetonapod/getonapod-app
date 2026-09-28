@@ -262,7 +262,8 @@ describe('WorkspaceProspectDashboards stale build', () => {
     renderPage()
 
     expect(await screen.findByText(/previous build did not finish/i)).toBeInTheDocument()
-    const buttons = screen.getAllByRole('button', { name: 'Build shortlist' })
+    // The cost is on the button once it can be clicked again.
+    const buttons = screen.getAllByRole('button', { name: 'Build shortlist · 5 credits' })
     expect(buttons.length).toBeGreaterThan(0)
     for (const button of buttons) expect(button).toBeEnabled()
   })
@@ -275,6 +276,7 @@ describe('WorkspaceProspectDashboards stale build', () => {
     expect(buttons.length).toBeGreaterThan(0)
     for (const button of buttons) expect(button).toBeDisabled()
     expect(screen.queryByText(/previous build did not finish/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText('Usually 3 to 6 minutes.').length).toBeGreaterThan(0)
   })
 })
 

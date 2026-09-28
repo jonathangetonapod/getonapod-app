@@ -7,8 +7,8 @@
  * The copy began as the "Landing v2" design and has since been edited for
  * selling: one promise, stated in the headline, and proven with the facts the
  * FAQ already commits to (price, time asked of the client, booking rates,
- * timelines). One rule still holds from the design: the placeholder client
- * list stays empty until there are real names.
+ * timelines). One rule still holds from the design: the client list carries
+ * only real names, each one quoted further down the page.
  */
 
 /**
@@ -22,11 +22,23 @@ export const CONTACT_EMAIL = 'jonathan@getonapod.com'
 /** One plan. Stated so people can self-qualify; nothing is sold on-page. */
 export const MONTHLY_PRICE = 500
 
+/** One plan's terms, as the pricing section below states them. */
+export const MINIMUM_MONTHS = 3
+export const WEEKLY_MINUTES = 15
+
 /**
- * The design scrolls a marquee of client wordmarks under the hero. Its names
- * were placeholders, so the section stays hidden until this has real ones.
+ * The design scrolls a marquee of client wordmarks under the hero. These are
+ * the companies of the six clients quoted below, so every name here has a
+ * face and a recording further down the page.
  */
-export const CLIENT_NAMES: string[] = []
+export const CLIENT_NAMES: string[] = [
+  'Relai',
+  'North Street Creative',
+  'Quirk',
+  'Ownify',
+  'ShareClub',
+  'ScaleUp Valley',
+]
 
 export interface ClientQuote {
   quote: string
@@ -104,6 +116,10 @@ export const HERO: Hero = {
 
 export const HERO_SECONDARY = 'See how it works'
 
+/** What the call is, said the same way under the hero and in the closing band. */
+export const CALL_PROMISE = '30 minutes on video with Jonathan Garces, who runs the outreach. You leave with a list of the kinds of shows we would pitch you to, whether or not you sign up.'
+export const CALL_NOTE = 'Opens Cal.com in a new tab.'
+
 export interface Show {
   name: string
   about: string
@@ -129,9 +145,9 @@ export const PODCAST_CATALOG: ShowCategory[] = [
   ] },
   { name: 'Marketing', shows: [
     { name: 'Marketing School', about: 'Daily tactics, huge back catalog', reach: '2,000 episodes', art: '/shows/marketing-school.webp' },
-    { name: 'Everyone Hates Marketers', about: 'No-BS positioning conversations', reach: '310 episodes', art: '/shows/everyone-hates-marketers.webp' },
+    { name: 'Everyone Hates Marketers', about: 'Positioning, argued plainly', reach: '310 episodes', art: '/shows/everyone-hates-marketers.webp' },
     { name: 'Marketing Against the Grain', about: 'HubSpot\'s growth and marketing show', reach: '458 episodes', art: '/shows/marketing-against-the-grain.webp' },
-    { name: 'Uncensored CMO', about: 'Marketing leaders, unfiltered', reach: '286 episodes', art: '/shows/uncensored-cmo.webp' },
+    { name: 'Uncensored CMO', about: 'Interviews with marketing leaders', reach: '286 episodes', art: '/shows/uncensored-cmo.webp' },
   ] },
   { name: 'Finance', shows: [
     { name: 'Animal Spirits', about: 'Markets with a practitioner audience', reach: '817 episodes', art: '/shows/animal-spirits.webp' },

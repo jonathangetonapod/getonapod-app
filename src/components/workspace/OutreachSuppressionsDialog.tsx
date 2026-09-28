@@ -233,18 +233,18 @@ export const OutreachSuppressionsDialog = ({
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
               <p className="text-sm text-destructive">The do-not-contact list could not be loaded.</p>
               <Button type="button" variant="outline" size="sm" onClick={() => void suppressionsQuery.refetch()}>
-                Retry
+                Try again
               </Button>
             </div>
           )}
           {!suppressionsQuery.isLoading && !suppressionsQuery.error && visible.length === 0 && (
             <div className="rounded-xl border border-dashed p-8 text-center">
               <p className="text-sm font-medium">
-                {suppressions.length === 0 ? 'Nobody is suppressed' : 'No addresses match that search'}
+                {suppressions.length === 0 ? 'No addresses on the do-not-contact list.' : 'No addresses match that search'}
               </p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
                 {suppressions.length === 0
-                  ? 'A reply asking to stop is added here automatically, and outreach to that address stops for every client.'
+                  ? 'Add one here or from any conversation. A reply asking to stop is added automatically, and outreach to that address stops for every client.'
                   : 'Try a different address, host, or show.'}
               </p>
             </div>

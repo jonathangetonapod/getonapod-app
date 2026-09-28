@@ -46,6 +46,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { openExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
+import { creditCostSuffix } from '@/lib/creditCosts'
 import { cn } from '@/lib/utils'
 import {
   archiveWorkspaceProspect,
@@ -1011,6 +1012,8 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const buildStartedAt = selected?.build_started_at || selected?.updated_at || null
   const buildStale = buildInProgress && Boolean(buildStartedAt) && Date.now() - Date.parse(buildStartedAt) > BUILD_STALE_AFTER_MS
   const building = buildMutation.isPending || (buildInProgress && !buildStale)
+  // Said on every button that starts a build, and hidden once one is running.
+  const buildCost = building ? null : <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build')}</span>
   const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending
   const nextActionKind = !selected?.readiness.profile_ready
     ? 'profile'
@@ -1219,12 +1222,13 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           {canManage && (
                             <div className="mt-4 flex flex-wrap gap-2">
                               {(nextActionKind === 'profile' || nextActionKind === 'cta') && <Button onClick={openEdit}><Pencil className="mr-2 h-4 w-4" />{nextActionKind === 'cta' ? 'Edit next step' : 'Edit profile'}</Button>}
-                              {(nextActionKind === 'build' || nextActionKind === 'analyze') && <Button disabled={mutating} onClick={startBuild}>{building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{nextActionKind === 'build' ? 'Build shortlist' : 'Analyze matches'}</Button>}
+                              {(nextActionKind === 'build' || nextActionKind === 'analyze') && <Button disabled={mutating} onClick={startBuild}>{building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{nextActionKind === 'build' ? 'Build shortlist' : 'Analyze matches'}{buildCost}</Button>}
                               {nextActionKind === 'publish' && <Button disabled={mutating} onClick={() => publicationMutation.mutate(true)}><Send className="mr-2 h-4 w-4" />Publish dashboard</Button>}
                               {nextActionKind === 'share' && <Button onClick={() => void copyLiveLink()}><Copy className="mr-2 h-4 w-4" />Copy private link</Button>}
                               {nextActionKind === 'share' && <Button variant="outline" onClick={() => openExternalUrl(publicProspectUrl(selected.slug))}><Eye className="mr-2 h-4 w-4" />Open live</Button>}
                             </div>
                           )}
+                          {building && <p className="mt-2 text-xs text-muted-foreground">Usually 3 to 6 minutes.</p>}
 
                           {/*
                             * Live and edited at the same time is now a normal
@@ -1420,7 +1424,8 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                         <div className="flex min-h-52 flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-6 text-center">
                           <div className="rounded-full bg-primary/10 p-4 text-primary"><Mic2 className="h-7 w-7" /></div>
                           <div><p className="font-semibold">{shortlistView === 'new' ? 'Nothing waiting for review' : shortlistView === 'removed' ? 'No removed podcasts' : 'No matches yet'}</p><p className="mt-1 max-w-md text-sm text-muted-foreground">{shortlistView === 'new' ? 'Podcasts added from the Finder land here, hidden from the prospect, until you show them.' : shortlistView === 'removed' ? 'Removed matches will appear here and can be restored.' : 'A focused profile lets Scout find and explain the strongest 8–12 opportunities.'}</p></div>
-                          {!['removed', 'new'].includes(shortlistView) && canManage && <Button disabled={mutating || !selected.readiness.profile_ready} onClick={startBuild}>{building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Build shortlist</Button>}
+                          {!['removed', 'new'].includes(shortlistView) && canManage && <Button disabled={mutating || !selected.readiness.profile_ready} onClick={startBuild}>{building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Build shortlist{buildCost}</Button>}
+                          {building && <p className="text-xs text-muted-foreground">Usually 3 to 6 minutes.</p>}
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -1485,6 +1490,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
               }}
             >
               <Sparkles className="mr-2 h-4 w-4" />Rebuild and take it offline
+              <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build')}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as SelectPrimitive from '@radix-ui/react-select'
 import {
+  AlertTriangle,
   Building2,
+  Check,
+  ClipboardList,
   Copy,
   CreditCard,
   Crown,
@@ -10,11 +14,10 @@ import {
   ImageIcon,
   KeyRound,
   Loader2,
+  MoreHorizontal,
   Palette,
   PanelLeft,
-  PauseCircle,
-  PlayCircle,
-  RefreshCw,
+  Send,
   ShieldCheck,
   Save,
   Trash2,
@@ -32,6 +35,16 @@ import {
 } from '@/components/workspace/WorkspaceLayout'
 import { WorkspaceDeletionCard } from '@/components/workspace/WorkspaceDeletionCard'
 import { WorkspaceAiKeysCard } from '@/components/workspace/WorkspaceAiKeysCard'
+import { useSetupProgress } from '@/components/workspace/SetupChecklist'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/contexts/AuthContext'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
@@ -52,7 +65,7 @@ import {
   WORKSPACE_LOGO_MIME_TYPES,
   workspaceLogoUrl,
 } from '@/lib/workspaceLogo'
-import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
+import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
   createWorkspaceStaffTemporaryPassword,
   inviteWorkspaceStaff,
@@ -142,6 +155,98 @@ function formatDate(value: string | null): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
 }
 
+/*
+ * What each role can and cannot do, in the words the select and its caption
+ * both use. Lower-case openings so they read after "Admin:"; the select item
+ * capitalises its own copy.
+ */
+const roleDescriptions: Record<WorkspaceStaffRole, string> = {
+  admin: 'manages clients, campaigns, onboarding and the team. Cannot change the owner or other admins, and cannot close the workspace.',
+  member: 'works on clients, campaigns and the inbox. Cannot see Settings, Billing or the team list.',
+  owner: 'everything above, plus billing, AI keys and closing the workspace. There is one owner; transfer it from the team list.',
+}
+
+const roleLabel = (role: WorkspaceStaffRole) => role.charAt(0).toUpperCase() + role.slice(1)
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+/**
+ * A two-line select option: the role, then what it means. The shadcn item
+ * puts all of its children inside the ItemText, which the closed trigger then
+ * repeats, so the description has to sit beside the text rather than in it.
+ */
+const RoleOption = ({ role }: { role: WorkspaceStaffRole }) => (
+  <SelectPrimitive.Item
+    value={role}
+    textValue={roleLabel(role)}
+    className="relative flex w-full cursor-default select-none flex-col items-start rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+  >
+    <span className="absolute left-2 top-2 flex h-3.5 w-3.5 items-center justify-center">
+      <SelectPrimitive.ItemIndicator><Check className="h-4 w-4" /></SelectPrimitive.ItemIndicator>
+    </span>
+    <SelectPrimitive.ItemText>{roleLabel(role)}</SelectPrimitive.ItemText>
+    <span className="max-w-72 text-xs leading-5 text-muted-foreground">{sentence(roleDescriptions[role])}</span>
+  </SelectPrimitive.Item>
+)
+
+const RolesCaption = ({ roles, className }: { roles: WorkspaceStaffRole[]; className?: string }) => (
+  <ul className={cn('space-y-1 text-xs leading-5 text-muted-foreground', className)}>
+    {roles.map((role) => (
+      <li key={role}><span className="font-medium text-foreground">{roleLabel(role)}:</span> {roleDescriptions[role]}</li>
+    ))}
+  </ul>
+)
+
+interface MemberState {
+  label: string
+  tone: 'default' | 'secondary' | 'destructive'
+  /** When the invite went out and when it stops working, where that is known. */
+  detail: string | null
+  expired: boolean
+}
+
+/**
+ * One vocabulary for where a person is on the way in, whichever way they were
+ * added. A temporary password is handed over by a person and an invite is
+ * emailed, and both used to be described by their mechanism rather than by
+ * what the owner is waiting for.
+ */
+function memberState(member: WorkspaceStaffMember, now = Date.now()): MemberState {
+  if (member.status === 'active') return { label: 'Active', tone: 'default', detail: null, expired: false }
+  if (member.status === 'suspended') return { label: 'Suspended', tone: 'destructive', detail: null, expired: false }
+  if (member.status === 'provisioning') return { label: 'Setting up', tone: 'secondary', detail: null, expired: false }
+  const expiresAt = member.invite_expires_at ? Date.parse(member.invite_expires_at) : Number.NaN
+  if (Number.isFinite(expiresAt) && expiresAt <= now) {
+    return { label: 'Invite expired', tone: 'destructive', detail: `Expired ${formatDate(member.invite_expires_at)}`, expired: true }
+  }
+  const expiry = member.invite_expires_at ? ` · expires ${formatDate(member.invite_expires_at)}` : ''
+  if (member.setup_method === 'admin_temporary_password') {
+    return {
+      label: 'Waiting for first sign-in',
+      tone: 'secondary',
+      detail: member.invited_at ? `Issued ${formatDate(member.invited_at)}${expiry}` : null,
+      expired: false,
+    }
+  }
+  return {
+    label: 'Invited',
+    tone: 'secondary',
+    detail: member.invited_at ? `Email sent ${formatDate(member.invited_at)}${expiry}` : null,
+    expired: false,
+  }
+}
+
+/**
+ * The text an owner pastes to whoever they are setting up, so the person gets
+ * the address, the account and the password in one message instead of three.
+ */
+function signInInstructions(credential: WorkspaceStaffTemporaryCredential): string {
+  const origin = String(import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/+$/u, '')
+  const expiry = credential.member.invite_expires_at ? formatDate(credential.member.invite_expires_at) : null
+  return `Sign in at ${origin}/login with ${credential.email} and this temporary password: ${credential.temporary_password}\n`
+    + 'You will be asked to choose your own password straight away.'
+    + (expiry ? ` This temporary one stops working on ${expiry}.` : '')
+}
+
 function confirmationCopy(
   confirmation: Confirmation,
   isPlatformWorkspace: boolean,
@@ -150,21 +255,21 @@ function confirmationCopy(
   if (confirmation.action === 'suspend') {
     return {
       title: `Suspend ${name}?`,
-      description: 'This immediately blocks this employee from the agency workspace. The agency and its client portals stay active.',
+      description: `${name} loses access straight away. Their clients, campaigns and notes stay exactly as they are, and you can reactivate them any time.`,
       button: 'Suspend user',
     }
   }
   if (confirmation.action === 'reactivate') {
     return {
       title: `Reactivate ${name}?`,
-      description: 'This restores this employee’s access to the same agency workspace.',
+      description: 'This restores this team member’s access to the workspace.',
       button: 'Reactivate user',
     }
   }
   if (confirmation.action === 'revoke') {
     return {
       title: `Remove ${name}?`,
-      description: 'This permanently removes this employee’s workspace access. It does not archive the agency or sign out client portal users.',
+      description: `${name} is taken off the team and can no longer sign in. Nothing they worked on is deleted.`,
       button: 'Remove user',
     }
   }
@@ -186,25 +291,9 @@ function confirmationCopy(
   }
   return {
     title: `Change ${name} to ${confirmation.role}?`,
-    description: confirmation.role === 'admin'
-      ? 'Admins can manage agency operations and member accounts, but cannot manage the owner or other admins.'
-      : 'Members have restricted operational access and cannot manage workspace users.',
+    description: confirmation.role ? sentence(`${roleLabel(confirmation.role)} ${roleDescriptions[confirmation.role]}`) : '',
     button: 'Change role',
   }
-}
-
-/**
- * Days since an invite that was never taken up, or null when the member is
- * through the door. Credentials for admin_temporary_password accounts are
- * handed over by a person rather than emailed, so a stalled invite is invisible
- * unless the list says so.
- */
-function staleInviteDays(member: { status: string; accepted_at?: string | null; invited_at?: string | null }): number | null {
-  if (member.accepted_at) return null
-  if (member.status !== 'invited' && member.status !== 'provisioning') return null
-  const invitedAt = member.invited_at ? Date.parse(member.invited_at) : Number.NaN
-  if (!Number.isFinite(invitedAt)) return null
-  return Math.max(0, Math.floor((Date.now() - invitedAt) / 86_400_000))
 }
 
 const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
@@ -216,6 +305,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const [credential, setCredential] = useState<WorkspaceStaffTemporaryCredential | null>(null)
   const [credentialVisible, setCredentialVisible] = useState(false)
   const [credentialCopied, setCredentialCopied] = useState(false)
+  const [instructionsCopied, setInstructionsCopied] = useState(false)
   const [credentialSaved, setCredentialSaved] = useState(false)
   const [credentialError, setCredentialError] = useState<string | null>(null)
   const [passwordBusy, setPasswordBusy] = useState(false)
@@ -315,6 +405,15 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     () => (data?.members || []).filter((member) => member.status !== 'revoked'),
     [data?.members],
   )
+  const baseHref = isPlatformWorkspace ? selectedWorkspaceBaseHref(workspaceId) : MY_WORKSPACE_BASE_HREF
+  // The same steps the clients page lists, so the header here and the card
+  // there never disagree about how far along the workspace is.
+  const setupProgress = useSetupProgress({
+    workspaceId,
+    baseHref,
+    enabled: validWorkspaceId,
+    staffView: data ?? null,
+  })
   const capabilities = data?.capabilities
   const canInvite = Boolean(capabilities?.invite_roles.length)
   const canGeneratePassword = capabilities?.can_generate_password === true
@@ -616,13 +715,13 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
           : request.action === 'transfer_owner'
             ? 'Workspace ownership transferred.'
             : request.action === 'revoke'
-              ? 'Workspace user removed.'
+              ? 'Team member removed.'
               : request.action === 'suspend'
-                ? 'Workspace user suspended.'
-                : 'Workspace user reactivated.'
+                ? 'Team member suspended.'
+                : 'Team member reactivated.'
       toast.success(message)
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The workspace user could not be updated.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The team member could not be updated.'),
   })
 
   const inviteBusy = inviteMutation.isPending || passwordBusy
@@ -631,6 +730,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     setCredential(null)
     setCredentialVisible(false)
     setCredentialCopied(false)
+    setInstructionsCopied(false)
     setCredentialSaved(false)
     setCredentialError(null)
   }
@@ -640,6 +740,17 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     try {
       await navigator.clipboard.writeText(credential.temporary_password)
       setCredentialCopied(true)
+      setCredentialError(null)
+    } catch {
+      setCredentialError('Copy failed. Reveal the password and copy it manually.')
+    }
+  }
+
+  const copySignInInstructions = async () => {
+    if (!credential) return
+    try {
+      await navigator.clipboard.writeText(signInInstructions(credential))
+      setInstructionsCopied(true)
       setCredentialError(null)
     } catch {
       setCredentialError('Copy failed. Reveal the password and copy it manually.')
@@ -670,7 +781,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     // people see, and a tenant has never had a manual-grant screen — that is
     // platform work and lives at /app/platform/billing, against any workspace.
     ...(!isPlatformWorkspace
-      ? [{ href: '/app/settings/billing', label: 'Billing', description: 'Plan and Waterfall credits', icon: CreditCard }]
+      ? [{ href: '/app/settings/billing', label: 'Billing', description: 'Plan and credits', icon: CreditCard }]
+      : []),
+    ...(canCloseWorkspace
+      ? [{ href: '#danger-zone', label: 'Danger zone', description: 'Close the workspace', icon: AlertTriangle }]
       : []),
   ]
 
@@ -700,10 +814,13 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </p>
                   </div>
                 </div>
-                <Badge variant="outline" className="w-fit gap-2 rounded-full px-3 py-1.5 text-xs font-medium">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Workspace active
-                </Badge>
+                <Link
+                  to={`${baseHref}/clients`}
+                  className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 px-3 py-1.5 text-xs font-medium hover:bg-muted/60"
+                >
+                  <span className={cn('h-2 w-2 rounded-full', setupProgress.complete ? 'bg-emerald-500' : 'bg-amber-500')} />
+                  Setup: {setupProgress.requiredDone} of {setupProgress.requiredTotal} required steps done
+                </Link>
               </header>
 
               <div className="grid min-w-0 items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)]">
@@ -1217,21 +1334,42 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
-                  {canManageAiKeys && (
-                    <section id="ai-keys" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="ai-keys-title">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Integrations</p>
-                        <h2 id="ai-keys-title" className="mt-1 text-2xl font-semibold tracking-tight">AI API keys</h2>
-                      </div>
-                      <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={queryKey} />
-                    </section>
-                  )}
+                  <section id="ai-keys" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="ai-keys-title">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Integrations</p>
+                      <h2 id="ai-keys-title" className="mt-1 text-2xl font-semibold tracking-tight">
+                        {canManageAiKeys ? 'AI API keys' : 'Integrations'}
+                      </h2>
+                    </div>
+                    {canManageAiKeys && <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={queryKey} />}
+                    {/* Read-only on purpose: the connection is made and
+                        managed in Client Campaigns. This row only says whether
+                        it exists, so nobody hunts through settings for it. */}
+                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                      <CardContent className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                          <Send className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-semibold">Instantly</p>
+                          <p className="text-sm text-muted-foreground" data-testid="instantly-status">
+                            {setupProgress.integration?.connected
+                              ? `Connected to ${setupProgress.integration.provider_workspace_name || 'your Instantly workspace'} · `
+                              : 'Not connected · '}
+                            <Link to={`${baseHref}/client-campaigns`} className="font-medium text-foreground underline underline-offset-2">
+                              {setupProgress.integration?.connected ? 'Manage in Client Campaigns' : 'Connect in Client Campaigns'}
+                            </Link>
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </section>
 
                   <section id="workspace-access" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="workspace-access-title">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Access</p>
-                        <h2 id="workspace-access-title" className="mt-1 text-2xl font-semibold tracking-tight">Workspace users</h2>
+                        <h2 id="workspace-access-title" className="mt-1 text-2xl font-semibold tracking-tight">Team</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
                           Manage the people who can access your workspace.
                         </p>
@@ -1249,7 +1387,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             setInviteOpen(true)
                           }}
                         >
-                          <UserPlus className="mr-2 h-4 w-4" />Invite user
+                          <UserPlus className="mr-2 h-4 w-4" />Invite
                         </Button>
                       )}
                     </div>
@@ -1275,8 +1413,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                         <CardDescription>
                           {platformRoster
                             ? <>These are platform operator accounts, listed here for reference. They are managed by the platform allowlist rather than invited into a workspace — open <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-2">Manage workspaces</Link> to create a workspace or change a tenant owner's access.</>
-                            : 'Workspace users are separate from client portal users, which are managed inside each client.'}
+                            : 'Team members are separate from client portal users, which are managed inside each client.'}
                         </CardDescription>
+                        {!platformRoster && <RolesCaption roles={['admin', 'member', 'owner']} className="pt-2" />}
                       </CardHeader>
                       <CardContent className="min-w-0 p-0">
                         <div className="max-w-full overflow-hidden">
@@ -1286,6 +1425,13 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                         {staff.map((member) => {
                           const manageable = member.allowed_actions.length > 0
                           const busy = actionMutation.isPending || passwordBusy || member.pending_review
+                          const state = memberState(member)
+                          const allows = (action: WorkspaceStaffMember['allowed_actions'][number]) => member.allowed_actions.includes(action)
+                          const rowPasswordBusy = passwordBusy && passwordBusyMemberId === member.id
+                          const accessActions = [allows('suspend'), allows('reactivate')].some(Boolean)
+                          const signInActions = [allows('reset_password'), allows('retry_password'), allows('retry_invite')].some(Boolean)
+                          const dangerActions = [allows('transfer_owner') && capabilities.can_transfer_owner, allows('revoke')].some(Boolean)
+                          const hasMenu = accessActions || signInActions || dangerActions
                           return (
                             <TableRow key={member.id}>
                               <TableCell>
@@ -1299,66 +1445,101 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge variant={member.status === 'active' ? 'default' : member.status === 'suspended' ? 'destructive' : 'secondary'} className="capitalize">
-                                  {member.status === 'provisioning'
-                                    ? member.setup_method === 'admin_temporary_password' ? 'Password setup' : 'Sending invite'
-                                    : member.status === 'invited' && member.setup_method === 'admin_temporary_password'
-                                      ? 'Password change required'
-                                      : member.status}
-                                </Badge>
+                                <Badge variant={state.tone}>{state.label}</Badge>
+                                {state.detail && (
+                                  <p className={cn('mt-1 max-w-48 text-xs', state.expired ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+                                    {state.detail}
+                                  </p>
+                                )}
                                 {member.pending_review && <p className="mt-1 max-w-44 text-xs text-destructive">Provider reconciliation requires review.</p>}
-                                {/* A temporary password is handed over by a
-                                    person, so it can simply never arrive. The
-                                    row said "Password change required" whether
-                                    that was yesterday or a fortnight ago, and
-                                    nothing distinguished waiting from stuck. */}
-                                {(() => {
-                                  const stalledDays = staleInviteDays(member)
-                                  if (stalledDays === null) return null
-                                  return (
-                                    <p className="mt-1 max-w-44 text-xs font-medium text-amber-700">
-                                      Never signed in · {stalledDays === 0 ? 'invited today' : `${stalledDays} day${stalledDays === 1 ? '' : 's'} ago`}
-                                    </p>
-                                  )
-                                })()}
                               </TableCell>
                               <TableCell>{formatDate(member.accepted_at || member.invited_at)}</TableCell>
                               <TableCell className="text-right">
-                                {member.role === 'owner' && !manageable ? <span className="text-sm text-muted-foreground">Protected owner</span> : manageable ? (
-                                  <div className="inline-flex flex-wrap justify-end gap-2">
-                                    {member.allowed_actions.includes('retry_invite') && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => actionMutation.mutate({ action: 'retry_invite', member })}><RefreshCw className="mr-2 h-4 w-4" />Retry invite</Button>
-                                    )}
-                                    {member.allowed_actions.includes('retry_password') && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => void issueTemporaryPassword({ mode: 'retry', member })}>
-                                        {passwordBusy && passwordBusyMemberId === member.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                                        Generate password
+                                {member.role === 'owner' && !manageable ? <span className="text-sm text-muted-foreground">Owner</span> : manageable ? (
+                                  <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                    {/* An expired invite gets its one obvious
+                                        next step in the open, not behind the
+                                        menu: the person is locked out until
+                                        somebody presses it. */}
+                                    {state.expired && allows('retry_invite') && (
+                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => actionMutation.mutate({ action: 'retry_invite', member })}>
+                                        <Send className="mr-2 h-4 w-4" />Send a new invite
                                       </Button>
                                     )}
-                                    {member.allowed_actions.includes('reset_password') && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmation({ action: 'reset_password', member })}>
-                                        {passwordBusy && passwordBusyMemberId === member.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                                        Reset password
+                                    {state.expired && !allows('retry_invite') && (allows('retry_password') || allows('reset_password')) && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={busy}
+                                        onClick={() => allows('retry_password')
+                                          ? void issueTemporaryPassword({ mode: 'retry', member })
+                                          : setConfirmation({ action: 'reset_password', member })}
+                                      >
+                                        {rowPasswordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                                        Issue a new password
                                       </Button>
                                     )}
-                                    {member.allowed_actions.includes('update_role') && capabilities.can_update_roles && (
+                                    {allows('update_role') && capabilities.can_update_roles && (
                                       <Select value={member.role} disabled={busy} onValueChange={(role: 'admin' | 'member') => setConfirmation({ action: 'update_role', member, role })}>
                                         <SelectTrigger className="h-9 w-28" aria-label={`Change role for ${member.email}`}><SelectValue /></SelectTrigger>
-                                        <SelectContent><SelectItem value="admin">Admin</SelectItem><SelectItem value="member">Member</SelectItem></SelectContent>
+                                        <SelectContent align="end"><RoleOption role="admin" /><RoleOption role="member" /></SelectContent>
                                       </Select>
                                     )}
-                                    {member.allowed_actions.includes('transfer_owner') && capabilities.can_transfer_owner && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmation({ action: 'transfer_owner', member })}><Crown className="mr-2 h-4 w-4" />Make owner</Button>
+                                    {hasMenu && (
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button size="icon" variant="ghost" className="h-9 w-9" disabled={busy} aria-label={`More actions for ${member.email}`}>
+                                            {rowPasswordBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-56">
+                                          {accessActions && (
+                                            <DropdownMenuGroup>
+                                              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Access</DropdownMenuLabel>
+                                              {allows('suspend') && (
+                                                <DropdownMenuItem onSelect={() => setConfirmation({ action: 'suspend', member })}>Suspend</DropdownMenuItem>
+                                              )}
+                                              {allows('reactivate') && (
+                                                <DropdownMenuItem onSelect={() => setConfirmation({ action: 'reactivate', member })}>Reactivate</DropdownMenuItem>
+                                              )}
+                                            </DropdownMenuGroup>
+                                          )}
+                                          {signInActions && (
+                                            <DropdownMenuGroup>
+                                              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Sign-in</DropdownMenuLabel>
+                                              {allows('reset_password') && (
+                                                <DropdownMenuItem onSelect={() => setConfirmation({ action: 'reset_password', member })}>Reset password</DropdownMenuItem>
+                                              )}
+                                              {allows('retry_password') && (
+                                                <DropdownMenuItem onSelect={() => void issueTemporaryPassword({ mode: 'retry', member })}>Generate password</DropdownMenuItem>
+                                              )}
+                                              {allows('retry_invite') && (
+                                                <DropdownMenuItem onSelect={() => actionMutation.mutate({ action: 'retry_invite', member })}>Retry invite</DropdownMenuItem>
+                                              )}
+                                            </DropdownMenuGroup>
+                                          )}
+                                          {dangerActions && (
+                                            <>
+                                              {(accessActions || signInActions) && <DropdownMenuSeparator />}
+                                              <DropdownMenuGroup>
+                                                {allows('transfer_owner') && capabilities.can_transfer_owner && (
+                                                  <DropdownMenuItem onSelect={() => setConfirmation({ action: 'transfer_owner', member })}>
+                                                    <Crown className="mr-2 h-4 w-4" />Make owner
+                                                  </DropdownMenuItem>
+                                                )}
+                                                {allows('revoke') && (
+                                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmation({ action: 'revoke', member })}>
+                                                    <Trash2 className="mr-2 h-4 w-4" />Remove
+                                                  </DropdownMenuItem>
+                                                )}
+                                              </DropdownMenuGroup>
+                                            </>
+                                          )}
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
                                     )}
-                                    {member.allowed_actions.includes('suspend') && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmation({ action: 'suspend', member })}><PauseCircle className="mr-2 h-4 w-4" />Suspend</Button>
-                                    )}
-                                    {member.allowed_actions.includes('reactivate') && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmation({ action: 'reactivate', member })}><PlayCircle className="mr-2 h-4 w-4" />Reactivate</Button>
-                                    )}
-                                    {member.allowed_actions.includes('revoke') && <Button size="sm" variant="outline" className="text-destructive" disabled={busy} onClick={() => setConfirmation({ action: 'revoke', member })}><Trash2 className="mr-2 h-4 w-4" />Remove</Button>}
                                   </div>
-                                ) : <span className="text-sm text-muted-foreground">No actions</span>}
+                                ) : null}
                               </TableCell>
                             </TableRow>
                           )
@@ -1370,6 +1551,20 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
+                  {canCloseWorkspace && workspace && (
+                    <section
+                      id="danger-zone"
+                      className="min-w-0 scroll-mt-28 space-y-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-5 sm:p-6"
+                      aria-labelledby="danger-zone-title"
+                    >
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-destructive">Irreversible</p>
+                        <h2 id="danger-zone-title" className="mt-1 text-2xl font-semibold tracking-tight">Danger zone</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Nothing here can be undone from inside the app.</p>
+                      </div>
+                      <WorkspaceDeletionCard workspaceId={workspace.id} workspaceName={workspace.name} />
+                    </section>
+                  )}
                 </div>
               </div>
             </div>
@@ -1379,19 +1574,13 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       {body}
 
-      {canCloseWorkspace && workspace && (
-        <div className="mt-8">
-          <WorkspaceDeletionCard workspaceId={workspace.id} workspaceName={workspace.name} />
-        </div>
-      )}
-
       <Dialog open={inviteOpen} onOpenChange={(open) => !inviteBusy && setInviteOpen(open)}>
         <DialogContent
           onEscapeKeyDown={(event) => { if (inviteBusy) event.preventDefault() }}
           onPointerDownOutside={(event) => { if (inviteBusy) event.preventDefault() }}
         >
           <DialogHeader>
-            <DialogTitle>Add a workspace user</DialogTitle>
+            <DialogTitle>Add a team member</DialogTitle>
             <DialogDescription>
               {canGeneratePassword
                 ? 'Choose how this person will receive their first sign-in credential.'
@@ -1401,7 +1590,14 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
           <div className="space-y-4">
             <div className="space-y-2"><Label htmlFor="staff-name">Full name</Label><Input id="staff-name" value={invite.full_name || ''} maxLength={120} disabled={inviteBusy} onChange={(event) => setInvite((current) => ({ ...current, full_name: event.target.value }))} /></div>
             <div className="space-y-2"><Label htmlFor="staff-email">Email</Label><Input id="staff-email" type="email" value={invite.email} maxLength={254} autoComplete="off" disabled={inviteBusy} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></div>
-            <div className="space-y-2"><Label htmlFor="staff-role">Role</Label><Select value={invite.role} disabled={inviteBusy} onValueChange={(role: 'admin' | 'member') => setInvite((current) => ({ ...current, role }))}><SelectTrigger id="staff-role"><SelectValue /></SelectTrigger><SelectContent>{allowedInviteRoles.map((role) => <SelectItem key={role} value={role} className="capitalize">{role}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2">
+              <Label htmlFor="staff-role">Role</Label>
+              <Select value={invite.role} disabled={inviteBusy} onValueChange={(role: 'admin' | 'member') => setInvite((current) => ({ ...current, role }))}>
+                <SelectTrigger id="staff-role"><SelectValue /></SelectTrigger>
+                <SelectContent>{allowedInviteRoles.map((role) => <RoleOption key={role} role={role} />)}</SelectContent>
+              </Select>
+              <RolesCaption roles={[...allowedInviteRoles, 'owner']} />
+            </div>
             {canGeneratePassword && (
               <div className="space-y-2">
                 <Label htmlFor="staff-sign-in">Sign-in setup</Label>
@@ -1416,6 +1612,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   {inviteMethod === 'temporary_password'
                     ? 'No invitation email is sent. The password is shown once so you can share it through a secure channel.'
                     : 'They will receive an email invitation to create their account.'}
+                </p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Use a temporary password when their inbox cannot receive our invitation, or when you are setting them up in person.
                 </p>
               </div>
             )}
@@ -1490,6 +1689,12 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     <Copy className="mr-2 h-4 w-4" />{credentialCopied ? 'Copied' : 'Copy'}
                   </Button>
                 </div>
+                {/* The whole message, not just the secret: where to go, which
+                    account, and that the password is a one-off. Pasting the
+                    password alone left the person guessing the rest. */}
+                <Button type="button" variant="outline" size="sm" onClick={() => void copySignInInstructions()}>
+                  <ClipboardList className="mr-2 h-4 w-4" />{instructionsCopied ? 'Sign-in instructions copied' : 'Copy sign-in instructions'}
+                </Button>
               </div>
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 This user must replace the temporary password at first sign-in before accessing workspace data.

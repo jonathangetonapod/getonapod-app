@@ -119,12 +119,14 @@ export default function Resources() {
   const featuredResources = filteredResources.filter((resource) => resource.featured)
   const regularResources = filteredResources.filter((resource) => !resource.featured)
   const categoryCount = new Set(resources.map((resource) => resource.category)).size
-  const lastUpdated =
-    resources.length > 0
-      ? new Date(
-          Math.max(...resources.map((resource) => new Date(resource.updated_at).getTime()))
-        ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : 'Building now'
+  const lastUpdated = new Date(
+    Math.max(0, ...resources.map((resource) => new Date(resource.updated_at).getTime()))
+  ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  // Only categories that have something in them are worth a card; "0 available"
+  // six times over is a library announcing that it is empty.
+  const stockedCategories = Object.entries(categoryInfo).filter(
+    ([key]) => resources.some((resource) => resource.category === key)
+  )
 
   const openResource = (resource: GuestResource) => {
     if (resource.type === 'article' && resource.content) {
@@ -225,13 +227,105 @@ export default function Resources() {
     )
   }
 
+  const seo = (
+    <PageSEO
+      title="Podcast Guest Resources | Get On A Pod"
+      description="Free podcast guest resources from Get On A Pod: preparation guides, setup checklists, promotion templates and examples we give our own clients."
+      path="/resources"
+    />
+  )
+
+  const closingBand = (
+    <section className="px-4 pb-16 md:pb-24">
+      <div className="container mx-auto">
+        <div className="overflow-hidden rounded-[34px] border border-[#0d1b2a]/10 bg-[#081a2b] px-6 py-8 text-[#f7fafc] shadow-[0_24px_60px_rgba(13,27,42,0.18)] md:px-8 md:py-10">
+          <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-end">
+            <div className="max-w-2xl">
+              <p className="section-kicker text-[#8cb0dd]">Need more than templates?</p>
+              <h2 className="mt-3 font-editorial text-4xl leading-[0.94] tracking-[-0.05em] text-[#f7fafc] sm:text-5xl">
+                If you want the bookings, not just the homework, we handle that too.
+              </h2>
+              <p className="mt-4 text-base leading-8 text-[#d6e5f5] md:text-lg">
+                Use the free resources to sharpen your own process. Or have Get On A Pod build the shortlist, pitch the shows and handle the follow-up for $500 a month. Most clients have 2–4 bookings a month once outreach ramps up.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
+              <Button variant="heroOutline" size="xl" className="rounded-full bg-[#f7fafc] px-8 text-[#0d1b2a]" asChild>
+                <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
+                  Book a 30-minute call
+                </a>
+              </Button>
+              <Button variant="ghost" size="xl" className="rounded-full border border-white/12 text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc]" asChild>
+                <Link to="/what-to-expect">See what to expect</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+
+  /*
+   * The library is gated on having something in it. A hero promising
+   * "preparation guides, setup checklists, promotion templates" over a grid
+   * of zeros is a page that argues with itself, so until the first resource
+   * is published (or while the load is failing) the page is one paragraph
+   * that says so, and the offer.
+   */
+  if (isLoading || isError || resources.length === 0) {
+    return (
+      <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+        {seo}
+        <Navbar />
+
+        <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-44 sm:pt-40 md:pb-16 md:pt-36">
+          <div className="container relative mx-auto">
+            <p className="section-kicker">Resource library</p>
+            {isLoading ? (
+              <div className="mt-6 max-w-2xl" role="status" aria-label="Loading resources">
+                <div className="h-10 w-3/4 animate-pulse rounded bg-[#e6edf6]" />
+                <div className="mt-4 h-4 w-full animate-pulse rounded bg-[#eef4ff]" />
+                <div className="mt-3 h-4 w-5/6 animate-pulse rounded bg-[#eef4ff]" />
+              </div>
+            ) : isError ? (
+              // A failed load is not an empty library; say so and offer a retry.
+              <div className="mt-6 max-w-2xl" role="alert">
+                <h1 className="font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                  The resources could not be loaded.
+                </h1>
+                <p className="mt-4 text-base leading-8 text-[#4c5d73]">
+                  Something went wrong on our side. Try again in a moment.
+                </p>
+                <div className="mt-7">
+                  <Button variant="hero" className="rounded-full px-7" onClick={() => refetch()}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-6 max-w-2xl">
+                <h1 className="font-editorial text-[clamp(2.4rem,6vw,4.4rem)] leading-[0.95] tracking-[-0.045em] text-[#0d1b2a] text-balance">
+                  The guest library is being written.
+                </h1>
+                <p className="mt-6 text-lg leading-8 text-[#4c5d73]">
+                  It is the same prep material our clients get before they record. Want it when it is ready?
+                  Email <a href="mailto:jonathan@getonapod.com" className="font-medium text-[#0d1b2a] underline underline-offset-4">jonathan@getonapod.com</a>
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {closingBand}
+        <Footer />
+      </main>
+    )
+  }
+
   return (
     <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
-      <PageSEO
-        title="Podcast Guest Resources | Get On A Pod"
-        description="Free podcast guest resources from Get On A Pod: preparation guides, setup checklists, promotion templates and examples we give our own clients."
-        path="/resources"
-      />
+      {seo}
 
       <Navbar />
 
@@ -297,7 +391,7 @@ export default function Resources() {
               </h2>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {Object.entries(categoryInfo).map(([key, info]) => {
+                {stockedCategories.map(([key, info]) => {
                   const CategoryIcon = info.icon
                   const count = resources.filter((resource) => resource.category === key).length
 
@@ -397,39 +491,7 @@ export default function Resources() {
 
       <section className="px-4 pb-16 md:pb-24">
         <div className="container mx-auto">
-          {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="rounded-[28px] border border-[#0d1b2a]/8 bg-white/88 p-6 shadow-[0_16px_34px_rgba(13,27,42,0.08)]"
-                >
-                  <div className="h-5 w-28 animate-pulse rounded bg-[#e6edf6]" />
-                  <div className="mt-5 h-8 w-3/4 animate-pulse rounded bg-[#e6edf6]" />
-                  <div className="mt-4 space-y-3">
-                    <div className="h-4 w-full animate-pulse rounded bg-[#eef4ff]" />
-                    <div className="h-4 w-5/6 animate-pulse rounded bg-[#eef4ff]" />
-                    <div className="h-4 w-2/3 animate-pulse rounded bg-[#eef4ff]" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : isError ? (
-            // A failed load is not an empty library; say so and offer a retry.
-            <div className="rounded-[32px] border border-[#0d1b2a]/8 bg-white/88 p-8 text-center shadow-[0_16px_34px_rgba(13,27,42,0.08)] sm:p-10" role="alert">
-              <h2 className="font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
-                The resources could not be loaded.
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-base leading-8 text-[#4c5d73]">
-                Something went wrong on our side. Try again in a moment.
-              </p>
-              <div className="mt-7 flex justify-center">
-                <Button variant="hero" className="rounded-full px-7" onClick={() => refetch()}>
-                  Retry
-                </Button>
-              </div>
-            </div>
-          ) : filteredResources.length === 0 ? (
+          {filteredResources.length === 0 ? (
             <div className="rounded-[32px] border border-[#0d1b2a]/8 bg-white/88 p-8 text-center shadow-[0_16px_34px_rgba(13,27,42,0.08)] sm:p-10">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#eef4ff] text-[#2d6df6]">
                 <BookOpen className="h-6 w-6" />
@@ -495,34 +557,7 @@ export default function Resources() {
         </div>
       </section>
 
-      <section className="px-4 pb-16 md:pb-24">
-        <div className="container mx-auto">
-          <div className="overflow-hidden rounded-[34px] border border-[#0d1b2a]/10 bg-[#081a2b] px-6 py-8 text-[#f7fafc] shadow-[0_24px_60px_rgba(13,27,42,0.18)] md:px-8 md:py-10">
-            <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-end">
-              <div className="max-w-2xl">
-                <p className="section-kicker text-[#8cb0dd]">Need more than templates?</p>
-                <h2 className="mt-3 font-editorial text-4xl leading-[0.94] tracking-[-0.05em] text-[#f7fafc] sm:text-5xl">
-                  If you want the bookings, not just the homework, we handle that too.
-                </h2>
-                <p className="mt-4 text-base leading-8 text-[#d6e5f5] md:text-lg">
-                  Use the free resources to sharpen your own process. Or have Get On A Pod build the shortlist, pitch the shows and handle the follow-up for $500 a month — most clients have 2–4 bookings a month once outreach ramps up.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
-                <Button variant="heroOutline" size="xl" className="rounded-full bg-[#f7fafc] px-8 text-[#0d1b2a]" asChild>
-                  <a href="https://cal.com/jonathan-garces-x5v8tl/30min" target="_blank" rel="noopener noreferrer">
-                    Book a 30-minute call
-                  </a>
-                </Button>
-                <Button variant="ghost" size="xl" className="rounded-full border border-white/12 text-[#f7fafc] hover:bg-white/10 hover:text-[#f7fafc]" asChild>
-                  <Link to="/what-to-expect">See what to expect</Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {closingBand}
 
       <Footer />
 

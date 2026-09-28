@@ -12,6 +12,8 @@
 import { whiteLabelOnboardingSender } from './workspaceOnboarding.ts'
 import { workspaceLinkOrigin } from './workspaceOrigin.ts'
 
+// deno-lint-ignore no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any
 
 export type ClientNotificationKind =
@@ -274,7 +276,7 @@ export async function notifyShortlistReady(
     greetingName: recipient.name,
     body: [
       `We researched ${shows} that look like a strong fit for you and added them to your review list.`,
-      'Take a look and mark the ones you would like us to pitch. We only reach out to shows you approve.',
+      'Take a look and mark the ones you are interested in. We only reach out to shows you pick.',
     ],
     ctaLabel: 'Review the shows',
     ctaUrl: url,
@@ -312,15 +314,18 @@ export async function notifyBookingConfirmed(
   const show = input.podcastName?.trim() || 'a podcast'
   const when = formatDate(input.recordingDate)
   const host = input.hostName?.trim()
+  // A client with a portal has a calendar to look at; one without only has
+  // this email, so it has to say where the details will come from instead.
   const body = [
     when
       ? `You are booked on ${show}${host ? ` with ${host}` : ''}. The recording is set for ${when}.`
-      : `You are booked on ${show}${host ? ` with ${host}` : ''}. We are confirming the recording date and will add it to your calendar as soon as it is set.`,
-    'It is on your calendar in the portal, along with everything else in flight.',
+      : `You are booked on ${show}${host ? ` with ${host}` : ''}. We are confirming the recording date and will let you know as soon as it is set.`,
+    ...(recipient.portalUrl ? ['It is on your portal calendar with everything else in flight.'] : []),
+    'Your team will send the recording link and any prep notes before the date.',
   ]
   const { html, text } = renderEmail({
     workspaceName: recipient.workspaceName,
-    heading: `You're booked on ${show}`,
+    heading: `You are booked on ${show}`,
     greetingName: recipient.name,
     body,
     ctaLabel: recipient.portalUrl ? 'Open your calendar' : null,
@@ -334,7 +339,7 @@ export async function notifyBookingConfirmed(
     eventKey: `booking:${input.bookingId}:booked`,
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
-    subject: `You're booked on ${show}`,
+    subject: `You are booked on ${show}`,
     html,
     text,
     metadata: { booking_id: input.bookingId, recording_date: input.recordingDate || null },

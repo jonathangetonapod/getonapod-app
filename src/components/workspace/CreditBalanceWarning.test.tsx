@@ -9,10 +9,13 @@ vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceBillingOverview: vi.fn
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 
-const renderWarning = (canManageBilling = true) => render(
+const renderWarning = (
+  canManageBilling = true,
+  autoRefill?: { thresholdCredits: number; packCredits: number },
+) => render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <CreditBalanceWarning workspaceId={workspaceId} canManageBilling={canManageBilling} />
+      <CreditBalanceWarning workspaceId={workspaceId} canManageBilling={canManageBilling} autoRefill={autoRefill} />
     </MemoryRouter>
   </QueryClientProvider>,
 )
@@ -41,7 +44,32 @@ describe('CreditBalanceWarning', () => {
     renderWarning()
 
     expect(await screen.findByText(/15 credits left/i)).toBeInTheDocument()
+    expect(screen.getByText(/research, contact finding and prospect page builds/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Top up' })).toHaveAttribute('href', '/app/settings/billing')
+  })
+
+  // Someone who has already agreed to be topped up automatically is told when
+  // that happens, not asked to do it by hand.
+  it('says when the automatic top-up will run instead of asking for a manual one', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue(
+      overview({ balance: 15, refill_threshold_credits: 10, refill_pack_credits: 300 }) as never,
+    )
+    renderWarning()
+
+    expect(await screen.findByText(
+      '15 credits left. Automatic top-up will buy 300 credits when you reach 10.',
+    )).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Top up' })).not.toBeInTheDocument()
+  })
+
+  it('takes the automatic top-up settings from the caller when it has them', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue(overview({ balance: 15 }) as never)
+    renderWarning(true, { thresholdCredits: 25, packCredits: 100 })
+
+    expect(await screen.findByText(
+      '15 credits left. Automatic top-up will buy 100 credits when you reach 25.',
+    )).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Top up' })).not.toBeInTheDocument()
   })
 
   it('says what has stopped once the balance is empty', async () => {

@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Bot, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
+import { SetupChecklist } from '@/components/workspace/SetupChecklist'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -239,6 +240,17 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
           )}
         </div>
 
+        {/* The landing route is where a new workspace decides whether the
+            product hangs together; the six things it must set up were spread
+            over six screens with nothing saying which were done. */}
+        {showManagementControls && workspaceId && (
+          <SetupChecklist
+            workspaceId={workspaceId}
+            baseHref={platformWorkspace?.baseHref || MY_WORKSPACE_BASE_HREF}
+            canManage={showManagementControls}
+          />
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />{mode === 'research' ? 'Choose a client' : 'Your clients'}</CardTitle>
@@ -267,7 +279,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                 <div>
                   <p className="font-medium">{mode === 'research' ? 'No active clients' : 'No clients yet'}</p>
                   <p className="text-sm text-muted-foreground">
-                    {mode === 'research' ? 'Add or reactivate a client before starting podcast research.' : 'Add your first client to begin.'}
+                    {mode === 'research' ? 'Add or reactivate a client before starting podcast research.' : 'Add the first client to start a shortlist.'}
                   </p>
                 </div>
                 {showManagementControls ? (
@@ -287,7 +299,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
             ) : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>AI SDR Profile</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Reply brief</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {clients.map((client) => {
                       const clientDetailHref = `${clientBaseHref}/clients/${encodeURIComponent(client.id)}`

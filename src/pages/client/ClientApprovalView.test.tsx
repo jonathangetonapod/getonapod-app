@@ -157,8 +157,9 @@ describe('ClientApprovalView', () => {
     expect(screen.getAllByText('Northstar Advisory').length).toBeGreaterThan(0)
     expect(screen.getByAltText('Northstar Advisory logo')).toBeInTheDocument()
     expect(screen.queryByText('Get On A Pod')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Choose 10 shows' })).toBeInTheDocument()
-    const firstBatch = screen.getByRole('heading', { name: 'Choose 10 shows' }).closest('aside')
+    // Ten, or the whole list when it is shorter than ten.
+    expect(screen.getByRole('heading', { name: 'Choose 2 shows' })).toBeInTheDocument()
+    const firstBatch = screen.getByRole('heading', { name: 'Choose 2 shows' }).closest('aside')
     expect(firstBatch).not.toBeNull()
     expect(within(firstBatch as HTMLElement).getByText('1', { selector: 'span' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Top matches 2/i })).toHaveAttribute('aria-selected', 'true')
@@ -168,6 +169,61 @@ describe('ClientApprovalView', () => {
     expect(screen.queryByText('Your Podcast Opportunities')).not.toBeInTheDocument()
     expect(screen.queryByText('AI Ready')).not.toBeInTheDocument()
     expect(screen.getByText('Your picks become a campaign—not another spreadsheet.')).toBeInTheDocument()
+    expect(screen.getByText('You get the link and a ready-to-share note.')).toBeInTheDocument()
+    expect(screen.queryByText('Available add-on')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Clips & analytics/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open your portal' }))
+      .toHaveAttribute('href', '/portal/login?b=dallas-fontaine-a0fd037530f8577cc03eb87b')
+  })
+
+  // The page explains itself; the walkthrough waits under "How it works".
+  it('does not open the walkthrough on a first visit', async () => {
+    renderDashboard()
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    expect(screen.queryByRole('dialog', { name: 'How this works' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: /How it works/i })[0])
+    const tour = await screen.findByRole('dialog', { name: 'How this works' })
+    expect(within(tour).getByRole('button', { name: 'Skip' })).toBeInTheDocument()
+    expect(tour.textContent).not.toMatch(/!/u)
+  })
+
+  // The last decision is a state of the page, not a toast that disappears.
+  it('says what happens next once every show has a decision', async () => {
+    renderDashboard()
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+    expect(screen.queryByText(/You have reviewed all/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Not a fit' })[1])
+
+    expect(await screen.findByText('You have reviewed all 2 shows')).toBeInTheDocument()
+    expect(screen.getByText(/Northstar Advisory will start outreach on your 1 pick\./)).toBeInTheDocument()
+    expect(screen.getByText(/There is nothing to submit/)).toBeInTheDocument()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('offers a way back when opened from the portal', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <HelmetProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter
+            initialEntries={['/client/dallas-fontaine-a0fd037530f8577cc03eb87b?from=portal']}
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
+            <Routes>
+              <Route path="/client/:slug" element={<ClientApprovalView />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </HelmetProvider>,
+    )
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+
+    expect(screen.getByRole('link', { name: /Back to your portal/ })).toHaveAttribute('href', '/portal/dashboard')
+    expect(screen.getByRole('link', { name: 'Open your portal' })).toHaveAttribute('href', '/portal/dashboard')
   })
 
   it('keeps positive choices in My picks and uses direct decision language', async () => {

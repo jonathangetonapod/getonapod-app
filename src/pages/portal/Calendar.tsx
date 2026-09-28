@@ -80,6 +80,9 @@ export default function PortalCalendar() {
   const { client } = useClientPortal()
   const overviewQuery = usePortalExperience()
   const [addOpen, setAddOpen] = useState(false)
+  // On a phone the month grid is a wall of tiny chips; the list of what is
+  // next answers the question first, and the grid opens on request.
+  const [monthOpen, setMonthOpen] = useState(false)
   const today = new Date()
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const [year, setYear] = useState(today.getFullYear())
@@ -177,6 +180,9 @@ export default function PortalCalendar() {
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
                 {summary.nextRecording ? summary.nextRecording.booking.podcast_name : 'Your team will add dates as they book them.'}
               </p>
+              {summary.nextRecording && (
+                <p className="mt-0.5 text-xs text-muted-foreground">Time to be confirmed by your team</p>
+              )}
             </div>
             <div className="rounded-xl border bg-card p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recordings ahead</p>
@@ -194,8 +200,18 @@ export default function PortalCalendar() {
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
-            <Card className="overflow-hidden">
+          <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+            <Button
+              type="button"
+              variant="outline"
+              className="lg:hidden"
+              aria-expanded={monthOpen}
+              onClick={() => setMonthOpen((open) => !open)}
+            >
+              <CalendarDays className="mr-2 h-4 w-4" />
+              {monthOpen ? 'Hide month' : 'Show month'}
+            </Button>
+            <Card className={cn('overflow-hidden', !monthOpen && 'hidden lg:block')}>
               <CardHeader className="flex-row items-center justify-between space-y-0 border-b bg-muted/20 py-4">
                 <CardTitle className="text-lg">{monthTitle(year, month)}</CardTitle>
                 <div className="flex items-center gap-1">
@@ -287,7 +303,7 @@ export default function PortalCalendar() {
               </CardContent>
             </Card>
 
-            <Card className="h-fit">
+            <Card className="order-first h-fit lg:order-none">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Next up</CardTitle>
                 <CardDescription>Your upcoming recordings and releases.</CardDescription>
@@ -330,6 +346,12 @@ export default function PortalCalendar() {
                                   {meta.label}{event.planned ? ' (planned)' : ''} · {displayDate(event.date)}
                                 </span>
                               </span>
+                              {/* Dates here are days, never clock times; a
+                                  recording row should say so rather than
+                                  leave the client guessing when to be ready. */}
+                              {event.kind === 'recording' && (
+                                <span className="mt-0.5 block text-[11px] text-muted-foreground">Time to be confirmed by your team</span>
+                              )}
                             </span>
                             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
                               {relativeDay(event.date, todayIso)}

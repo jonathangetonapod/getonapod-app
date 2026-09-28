@@ -298,7 +298,7 @@ serve(async (req) => {
     )
   } catch (error) {
     console.error('[Create Sheet] Error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    const errorMessage = error instanceof Error ? error.message : 'Something went wrong on our side. Try again in a moment'
     const errorStack = error instanceof Error ? error.stack : undefined
 
     console.error('[Create Sheet] Error message:', errorMessage)

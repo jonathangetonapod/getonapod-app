@@ -55,16 +55,22 @@ const ChangeInitialPassword = () => {
       setError('The temporary-password account could not be found.')
       return
     }
-    if (password.length < 12 || new TextEncoder().encode(password).length > 72) {
-      setError('Use at least 12 characters and no more than 72 UTF-8 bytes.')
+    if (password.length < 12) {
+      setError('Passwords need at least 12 characters.')
+      return
+    }
+    // The server measures bytes (bcrypt's limit), which only differs from
+    // characters outside plain ASCII; "characters" is what a person counts.
+    if (new TextEncoder().encode(password).length > 72) {
+      setError('Passwords can be at most 72 characters.')
       return
     }
     if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-      setError('Use uppercase, lowercase, number, and symbol characters.')
+      setError('Passwords need at least one capital letter, one lowercase letter, one number and one symbol.')
       return
     }
     if (password.startsWith('Tmp-')) {
-      setError('Choose a new password instead of reusing a temporary password.')
+      setError('Choose a password that does not start with Tmp-.')
       return
     }
     if (password !== confirmation) {
@@ -81,9 +87,13 @@ const ChangeInitialPassword = () => {
       })
       setPassword('')
       setConfirmation('')
+      const email = user.email
       await supabase.auth.signOut({ scope: 'local' })
       queryClient.clear()
-      navigate('/login', { replace: true, state: { passwordChanged: true } })
+      // The email goes along so the login form can prefill it: the person is
+      // signing in to the account they just secured, and typing it again is
+      // where a typo would lock them out of it.
+      navigate('/login', { replace: true, state: { passwordChanged: true, email } })
     } catch (caught) {
       if (caught instanceof Error && caught.name === 'REAUTHENTICATION_REQUIRED') {
         setPassword('')
@@ -110,9 +120,9 @@ const ChangeInitialPassword = () => {
 
   if (accountState !== 'password_change_required' || !membership) {
     const message = accountState === 'expired'
-      ? 'This temporary password has expired. Ask a platform administrator for a replacement.'
+      ? 'This temporary password has expired. Ask whoever set up your account for a new one.'
       : accountState === 'suspended'
-        ? 'This workspace account is suspended. Contact a platform administrator.'
+        ? 'This workspace account is suspended. Ask your workspace owner.'
         : accountError || 'This account cannot complete temporary password setup.'
     return (
       <AuthShell
@@ -142,7 +152,7 @@ const ChangeInitialPassword = () => {
       description="Choose a private password before entering your workspace."
       path="/change-password"
       heading="Replace your temporary password."
-      standfirst="Choose a private password before entering your workspace. You will sign in again after this change."
+      standfirst="Choose a private password before entering your workspace. For security you will sign in once more with your new password."
       footer={<>Wrong account? <Link to="/login">Sign in as someone else</Link></>}
     >
       <form className="gp-form" onSubmit={submit}>
@@ -174,7 +184,7 @@ const ChangeInitialPassword = () => {
             </button>
           </div>
           <span id="password-requirements" className="gp-field-hint">
-            12+ characters with uppercase, lowercase, a number, and a symbol; 72 UTF-8 bytes maximum.
+            12 to 72 characters, with at least one capital letter, one number and one symbol.
           </span>
         </div>
 

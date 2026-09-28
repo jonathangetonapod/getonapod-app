@@ -154,6 +154,22 @@
 .dfy-hero h1 span { display: block; }
 .dfy-hero-lead { font-size: 17px; line-height: 28px; max-width: 58ch; margin-top: 36px; }
 .dfy-cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+/* What the call is, and that it leaves the site: said in sight, not only to a
+   screen reader. */
+.dfy-cta-note { font-size: 13.5px; line-height: 22px; color: var(--neutral-700); margin-top: 14px; max-width: 58ch; }
+/* The terms, in the kicker's voice, one row with a dot between each fact. */
+.dfy-facts { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 28px 0 0; color: var(--neutral-700); }
+.dfy-facts span + span::before { content: "·"; margin: 0 10px; color: var(--accent); }
+/* Six faces and one line, pointing at the testimonials. */
+.dfy-page .dfy-proof {
+  display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 22px;
+  min-height: 44px; text-decoration: none; color: var(--text); font-size: 14px;
+}
+.dfy-page .dfy-proof:hover { color: var(--accent-700); }
+.dfy-proof-faces { display: flex; }
+.dfy-proof-faces .dfy-portrait { width: 46px; height: 46px; border: 2px solid var(--bg); box-sizing: content-box; }
+.dfy-proof-faces .dfy-portrait + .dfy-portrait { margin-left: -12px; }
+.dfy-proof-faces .dfy-portrait-initials { font-size: 14px; }
 
 /* — client wordmarks — */
 .dfy-wordmarks { overflow: hidden; mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent); }
@@ -170,7 +186,7 @@
 }
 
 /* — lists — */
-.dfy-list-mark { width: 8px; height: 8px; flex: none; border: 1px solid var(--accent); align-self: center; }
+.dfy-list-mark { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--accent); align-self: center; }
 
 /* — how it works — */
 .dfy-how-row {
@@ -181,6 +197,8 @@
 .dfy-how-n { font-family: var(--heading); font-weight: var(--heading-weight); font-size: 15px; line-height: 28px; }
 .dfy-how-title { font-size: 24px; line-height: 28px; }
 .dfy-how-copy { font-size: 15.5px; line-height: 28px; color: var(--neutral-800); max-width: 52ch; }
+.dfy-how-more { font-size: 14px; margin-top: 8px; }
+.dfy-how-more a { display: inline-flex; align-items: center; min-height: 44px; }
 @media (max-width: 880px) {
   .dfy-how-row { grid-template-columns: 1fr; gap: 14px; }
 }
@@ -360,7 +378,7 @@
 
 /* — footer — */
 .dfy-footer { max-width: 1200px; margin: 0 auto; padding: 70px var(--gutter) 42px; }
-.dfy-footer-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 3fr) minmax(0, 3fr); gap: 42px var(--col-gap); align-items: start; }
+.dfy-footer-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 2fr) minmax(0, 3fr) minmax(0, 2fr); gap: 42px var(--col-gap); align-items: start; }
 .dfy-page .dfy-footer .dfy-brand { font-size: 30px; margin-right: 0; }
 .dfy-footer-tagline { font-size: 14px; line-height: 24px; color: var(--neutral-700); margin-top: 14px; max-width: 36ch; }
 .dfy-footer-col { display: flex; flex-direction: column; gap: 8px; }
@@ -373,6 +391,10 @@
 }
 .dfy-footer-foot .dfy-copy-italic { margin-left: auto; }
 @media (max-width: 1080px) {
+  .dfy-footer-grid { grid-template-columns: 1fr 1fr; }
+  .dfy-footer-grid > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
   .dfy-footer-grid { grid-template-columns: 1fr; }
 }
 
@@ -382,7 +404,12 @@
   .dfy-section-tight { padding: 48px 0 56px; }
   .dfy-hero { padding: 56px 0; }
   .dfy-hero h1 { font-size: clamp(36px, 10vw, 84px); }
+  /* At this width a forced break leaves one word alone on a line; let the
+     headline wrap where it falls. */
+  .dfy-hero h1 span { display: inline; }
   .dfy-hero-lead { font-size: 16px; line-height: 26px; margin-top: 24px; }
+  .dfy-facts { margin-top: 22px; font-size: 12px; }
+  .dfy-facts span + span::before { margin: 0 8px; }
   .dfy-cta-row { margin-top: 24px; }
   .dfy-cta-row .dfy-btn { min-height: 44px; }
   .dfy-shows-title { font-size: 28px; line-height: 36px; margin-bottom: 24px; }

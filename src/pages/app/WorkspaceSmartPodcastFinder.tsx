@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { normalizePodscanQuery } from '@/lib/podcastResearch'
+import { CREDIT_COSTS, creditCostSuffix, creditsLabel } from '@/lib/creditCosts'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
@@ -284,6 +285,17 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const [minEpisodes, setMinEpisodes] = useState('')
 
   const scanning = phase !== 'idle' && phase !== 'done'
+  /*
+   * What the click can cost, said on the button. Scoring is charged per
+   * request of SCORING_BATCH_SIZE, and the scan scores at most MAX_SCORED, so
+   * the ceiling is known before anything runs. Drafting the AI strategy is one
+   * more credit, only when the scan has to draft it itself.
+   */
+  const scoringUnits = Math.ceil(MAX_SCORED / SCORING_BATCH_SIZE)
+  const draftsStrategy = includeAiStrategy && aiQueries.length === 0 && !aiStrategyLoaded
+  const scanCostSuffix = draftsStrategy
+    ? `· up to ${creditsLabel(CREDIT_COSTS.compatibility_scoring * scoringUnits + CREDIT_COSTS.query_generation)}`
+    : creditCostSuffix('compatibility_scoring', { units: scoringUnits })
   const activeFilterCount = [
     language !== 'en',
     region !== 'any',
@@ -622,6 +634,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                     : selectedClient
                       ? `Scan podcasts for ${selectedClient.name}`
                       : 'Scan podcasts'}
+                {!scanning && <span className="ml-1.5 font-normal opacity-70">{scanCostSuffix}</span>}
               </Button>
             </div>
               <div className="space-y-5 rounded-xl border border-border/70 bg-muted/20 p-4">
@@ -885,6 +898,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                 <Progress value={Math.round((progress.completed / progress.total) * 100)} />
               )}
               {statusMessage && <p className="text-xs text-muted-foreground">{statusMessage}</p>}
+              <p className="text-xs text-muted-foreground">About a minute.</p>
             </CardContent>
           </Card>
         )}

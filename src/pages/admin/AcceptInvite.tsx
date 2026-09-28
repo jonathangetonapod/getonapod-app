@@ -61,16 +61,22 @@ const AcceptInvite = () => {
       toast.error('No pending invitation was found for this account.')
       return
     }
-    if (password.length < 12 || new TextEncoder().encode(password).length > 72) {
-      toast.error('Use at least 12 characters and no more than 72 UTF-8 bytes.')
+    if (password.length < 12) {
+      toast.error('Passwords need at least 12 characters.')
+      return
+    }
+    // The server's cap is 72 bytes of UTF-8. Said in characters, which is
+    // what people count; only an accented password is ever off by a few.
+    if (new TextEncoder().encode(password).length > 72) {
+      toast.error('Passwords can be at most 72 characters.')
       return
     }
     if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-      toast.error('Use uppercase, lowercase, number, and symbol characters.')
+      toast.error('Include a capital letter, a lowercase letter, a number and a symbol.')
       return
     }
     if (password.startsWith('Tmp-')) {
-      toast.error('Choose a new password instead of using a temporary-password format.')
+      toast.error('Choose a password that does not start with Tmp-.')
       return
     }
     if (password !== confirmPassword) {
@@ -126,12 +132,12 @@ const AcceptInvite = () => {
         description="Open a Get On A Pod workspace invitation."
         path="/accept-invite"
         tone="notice"
-        heading="Open your invitation."
+        heading="Sign in to open your invitation."
         footer={<>No invitation yet? <Link to="/register">Request to join</Link></>}
       >
         <p className="gp-auth-reason">
-          You are not signed in. Open the button in your invitation email, or sign in with the address
-          it was sent to. If the link has already been used, signing in is all that is left to do.
+          Use the button in your invitation email, or sign in with the address it was sent to. If you
+          already used the link, just sign in.
         </p>
         <div className="gp-auth-actions">
           <Link className="gp-btn gp-btn-primary" to="/login">Go to sign in</Link>
@@ -234,7 +240,7 @@ const AcceptInvite = () => {
           {/* The rules are stated before the attempt, not returned as an error
               after one. */}
           <span id="invite-password-requirements" className="gp-field-hint">
-            12+ characters with uppercase, lowercase, a number, and a symbol; 72 UTF-8 bytes maximum.
+            12 to 72 characters, with at least one capital letter, one number and one symbol.
           </span>
         </div>
 

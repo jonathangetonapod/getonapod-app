@@ -154,7 +154,7 @@ function contactLabel(item: ClientPodcastSystemItem): string {
 }
 
 /**
- * Master Inbox, opened on the thread that belongs to this host where one is
+ * The inbox, opened on the thread that belongs to this host where one is
  * known. The client-scoped link was the only route, which meant landing in a
  * hundred conversations and searching for the show already on screen.
  */
@@ -755,7 +755,7 @@ function SelectedClientView({
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline"><Link to={`${baseHref}/clients/${encodeURIComponent(client.id)}`}><UserRound className="mr-2 h-4 w-4" />Client account</Link></Button>
             <Button asChild variant="outline"><Link to={`${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`}><Megaphone className="mr-2 h-4 w-4" />Campaign</Link></Button>
-            <Button asChild variant="outline"><Link to={`${baseHref}/master-inbox?client=${encodeURIComponent(client.id)}`}><Inbox className="mr-2 h-4 w-4" />Master Inbox</Link></Button>
+            <Button asChild variant="outline"><Link to={`${baseHref}/master-inbox?client=${encodeURIComponent(client.id)}`}><Inbox className="mr-2 h-4 w-4" />Inbox</Link></Button>
             <Button asChild><Link to={`${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button>
           </div>
         </div>
@@ -796,7 +796,7 @@ function SelectedClientView({
               <CardContent className="space-y-5">
                 <ProfileProgress client={client} />
                 <div className="rounded-xl border px-4">
-                  <DetailRow label="AI SDR context" value={client.profile.ready ? <span className="text-emerald-700">Ready</span> : 'Needs context'} />
+                  <DetailRow label="Reply brief" value={client.profile.ready ? <span className="text-emerald-700">Ready</span> : 'Needs context'} />
                   <DetailRow label="Onboarding" value={canManage ? onboardingLabel(client) : 'Owner/admin only'} />
                   <DetailRow label="Approval dashboard" value={client.dashboard_configured ? 'Configured' : 'Not configured'} />
                   <DetailRow label="Booking calendar" value={client.profile.has_calendar ? 'Added' : 'Missing'} />
@@ -811,7 +811,7 @@ function SelectedClientView({
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Outreach and conversations</CardTitle><CardDescription>Real campaign activity for this client, with replies handled in Master Inbox.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Outreach and conversations</CardTitle><CardDescription>Real campaign activity for this client, with replies handled in the inbox.</CardDescription></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <MiniMetric label="Preparing" value={rollup.preparation} />
@@ -921,7 +921,7 @@ function OpportunityDetail({
         <section><div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-semibold">Host-ready research</h2><Badge variant="outline">{item.analysis.source === 'normalized' ? 'Current analysis' : item.analysis.source === 'legacy_cache' ? 'Legacy analysis' : 'Not researched'}</Badge></div>{item.analysis.clean_description ? <p className="mt-3 rounded-xl border bg-muted/15 p-4 text-sm leading-6 text-muted-foreground">{item.analysis.clean_description}</p> : <div className="mt-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">No client-specific research is available yet.</div>}{item.analysis.fit_reasons.length > 0 && <div className="mt-4"><h3 className="text-sm font-semibold">Why the guest fits</h3><ul className="mt-2 space-y-2">{item.analysis.fit_reasons.map((reason, index) => <li key={`${reason}-${index}`} className="flex gap-2 text-sm leading-6 text-muted-foreground"><CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-600" /><span>{reason}</span></li>)}</ul></div>}</section>
         {item.booking && <section><h2 className="text-lg font-semibold">Booking milestones</h2><div className="mt-3 grid gap-3 sm:grid-cols-3"><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Scheduled</p><p className="mt-1 text-sm font-semibold">{formattedDate(item.booking.scheduled_date)}</p></div><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Recording</p><p className="mt-1 text-sm font-semibold">{formattedDate(item.booking.recording_date)}</p></div><div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Publication</p><p className="mt-1 text-sm font-semibold">{formattedDate(item.booking.publish_date)}</p></div></div></section>}
         <Separator />
-        <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`${baseHref}/clients/${encodeURIComponent(item.client.id)}?tab=approval`}><UserRound className="mr-2 h-4 w-4" />Client shortlist</Link></Button><Button asChild variant="outline"><Link to={`${baseHref}/client-campaigns/${encodeURIComponent(item.client.id)}`}><Megaphone className="mr-2 h-4 w-4" />Client campaign</Link></Button><Button asChild variant={item.conversation?.thread_key ? 'default' : 'outline'}><Link to={inboxHref(baseHref, item)}><Inbox className="mr-2 h-4 w-4" />{item.conversation?.thread_key ? 'Open conversation' : 'Master Inbox'}</Link></Button>{canManage && <Button type="button" onClick={onLogPlacement}><CalendarPlus className="mr-2 h-4 w-4" />{item.booking ? 'Update placement' : 'Log placement'}</Button>}{safeExternalUrl(item.podcast.url) && <Button asChild variant="ghost"><a href={safeExternalUrl(item.podcast.url) || undefined} target="_blank" rel="noreferrer">Podcast page<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}{safeExternalUrl(item.booking?.episode_url) && <Button asChild><a href={safeExternalUrl(item.booking?.episode_url) || undefined} target="_blank" rel="noreferrer">Listen to episode<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}</div>
+        <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`${baseHref}/clients/${encodeURIComponent(item.client.id)}?tab=approval`}><UserRound className="mr-2 h-4 w-4" />Client shortlist</Link></Button><Button asChild variant="outline"><Link to={`${baseHref}/client-campaigns/${encodeURIComponent(item.client.id)}`}><Megaphone className="mr-2 h-4 w-4" />Client campaign</Link></Button><Button asChild variant={item.conversation?.thread_key ? 'default' : 'outline'}><Link to={inboxHref(baseHref, item)}><Inbox className="mr-2 h-4 w-4" />{item.conversation?.thread_key ? 'Open conversation' : 'Inbox'}</Link></Button>{canManage && <Button type="button" onClick={onLogPlacement}><CalendarPlus className="mr-2 h-4 w-4" />{item.booking ? 'Update placement' : 'Log a placement'}</Button>}{safeExternalUrl(item.podcast.url) && <Button asChild variant="ghost"><a href={safeExternalUrl(item.podcast.url) || undefined} target="_blank" rel="noreferrer">Podcast page<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}{safeExternalUrl(item.booking?.episode_url) && <Button asChild><a href={safeExternalUrl(item.booking?.episode_url) || undefined} target="_blank" rel="noreferrer">Listen to episode<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}</div>
         {!canManage && <div className="flex gap-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground"><XCircle className="mt-0.5 h-4 w-4 shrink-0" /><p>You can view this client overview. Owners and admins manage client decisions, campaign preparation, and delivery actions.</p></div>}
       </div>
     </>
@@ -964,7 +964,7 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
   const selectedRollup = UUID_PATTERN.test(requestedClientId)
     ? rollups.find((rollup) => rollup.client.id === requestedClientId) || null
     : null
-  // Arriving from a reply in Master Inbox: open the placement that reply
+  // Arriving from a reply in the inbox: open the placement that reply
   // belongs to, resolved by the show, since the inbox knows the podcast and
   // not the shortlist row.
   const requestedPodcastId = (searchParams.get('podcast') || '').trim().toLowerCase()
@@ -1009,7 +1009,7 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
     setSearchParams(next, { replace: true })
   }, [requestedClientId, searchParams, selectedRollup, setSearchParams, system])
 
-  // A deep link naming a show this client's list does not carry — an inbound
+  // A deep link naming a show this client's shortlist does not carry — an inbound
   // "View placement" for a show never shortlisted here — must not sit silently
   // in the address while the page looks like nothing happened.
   useEffect(() => {

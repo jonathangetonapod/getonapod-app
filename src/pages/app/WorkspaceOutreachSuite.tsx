@@ -54,7 +54,7 @@ interface SuiteItem {
 }
 
 interface ModuleConfig extends SuiteItem {
-  eyebrow: string
+  eyebrow?: string
   description: string
 }
 
@@ -66,7 +66,7 @@ const suiteItems = [
   },
   {
     module: 'master-inbox',
-    name: 'Master Inbox',
+    name: 'Inbox',
     icon: Inbox,
   },
   {
@@ -79,13 +79,11 @@ const suiteItems = [
 const moduleConfigs: Record<OutreachWorkspaceModule, ModuleConfig> = {
   'client-campaigns': {
     ...suiteItems[0],
-    eyebrow: 'Outreach command center',
     description: 'Plan, launch, and monitor Instantly-powered outreach without losing the client context behind each campaign.',
   },
   'master-inbox': {
     ...suiteItems[1],
-    eyebrow: 'AI SDR command center',
-    description: 'See every reply in one place, resolve it to the right client and campaign, and give each conversation the correct client AI SDR context and response policy.',
+    description: 'See every reply in one place, match it to the right client and campaign, and answer it with that client’s reply brief.',
   },
   mailboxes: {
     ...suiteItems[2],
@@ -174,7 +172,7 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
       }
     : undefined
 
-  // Same key the Master Inbox itself uses, so the badge and the panel below it
+  // Same key the inbox itself uses, so the badge and the panel below it
   // can never disagree. It used to be a static element that said "not
   // connected" whenever this module was open — including above a list of
   // replies it had just loaded from Instantly.

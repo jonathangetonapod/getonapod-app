@@ -401,7 +401,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
     }
     return new Response(
       JSON.stringify({
-        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
         ...(error instanceof HttpError ? { code: error.code } : {}),
       }),
       { status: error instanceof HttpError ? error.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

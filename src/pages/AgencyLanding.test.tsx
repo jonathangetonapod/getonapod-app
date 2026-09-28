@@ -53,6 +53,16 @@ describe('AgencyLanding', () => {
 
   // Three controls used to compute to "Request access"; the submit button now
   // says what it does, so a rotor can tell them apart.
+  // The plan's unit is derived from the ledger prices, so the page cannot
+  // drift from what a click actually costs.
+  it('prices the plans in shortlists, from the credit table', () => {
+    renderPage()
+    expect(screen.getByText(/about 4 client shortlists a month, at 25 credits each/iu)).toBeInTheDocument()
+    expect(screen.getByText(/about 12 client shortlists a month, at 25 credits each/iu)).toBeInTheDocument()
+    expect(screen.getByText(/start on founding member; upgrading keeps everything/iu)).toBeInTheDocument()
+    expect(screen.getByText(/built from the outreach we run for our own clients/iu)).toBeInTheDocument()
+  })
+
   it('gives the submit button a name of its own', () => {
     renderPage()
     expect(screen.getAllByRole('link', { name: 'Request to join' }).length).toBeGreaterThan(0)

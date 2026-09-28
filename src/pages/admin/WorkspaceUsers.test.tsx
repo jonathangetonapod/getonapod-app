@@ -116,7 +116,7 @@ describe('WorkspaceUsers manual account flow', () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem')
     const queryClient = renderPage()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-    fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create with a temporary password' }))
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Owner Name' } })
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Acme Workspace' } })
@@ -129,6 +129,18 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['platform'] })
     expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Open workspace' })).toBeDisabled()
+
+    // One paste for the owner being set up: where, who, the password, and
+    // that it is a one-off.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy sign-in instructions' }))
+    const expiry = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date('2026-07-28T00:00:00Z'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(
+      `Sign in at ${window.location.origin}/login with owner@example.com and this temporary password: Tmp-Abcd2345_Abcd2345_Abcd\n`
+      + `You will be asked to choose your own password straight away. This temporary one stops working on ${expiry}.`,
+    ))
+    expect(await screen.findByRole('button', { name: 'Sign-in instructions copied' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('I saved this password in a secure place.'))
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
@@ -210,7 +222,7 @@ describe('WorkspaceUsers manual account flow', () => {
     const queryClient = renderPage()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-    fireEvent.click(screen.getByRole('button', { name: /create workspace/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create with a temporary password' }))
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace & generate password' }))
 
@@ -344,6 +356,79 @@ describe('WorkspaceUsers manual account flow', () => {
     expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reactivate' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /verify auth/i })).not.toBeInTheDocument()
+  })
+
+  it('describes each account by what it is waiting for, in the words the team page uses', async () => {
+    const day = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
+    mockedList.mockResolvedValue([
+      // A temporary password handed over in person, still within its window.
+      {
+        ...manualUser,
+        invited_at: '2099-01-01T00:00:00Z',
+        invite_expires_at: '2099-01-08T00:00:00Z',
+      },
+      // An emailed invite, still open.
+      {
+        ...manualUser,
+        id: '41111111-1111-4111-8111-111111111111',
+        email: 'emailed@example.com',
+        provisioning_method: 'email_invite',
+        password_change_required: false,
+        invited_at: '2099-02-01T00:00:00Z',
+        invite_expires_at: '2099-02-08T00:00:00Z',
+      },
+      // An emailed invite nobody opened in time.
+      {
+        ...manualUser,
+        id: '51111111-1111-4111-8111-111111111111',
+        email: 'late@example.com',
+        provisioning_method: 'email_invite',
+        password_change_required: false,
+        invited_at: '2026-07-01T00:00:00Z',
+        invite_expires_at: '2026-07-08T00:00:00Z',
+      },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('Waiting for first sign-in')).toBeInTheDocument()
+    expect(screen.getByText(`Issued ${day('2099-01-01T00:00:00Z')} · expires ${day('2099-01-08T00:00:00Z')}`)).toBeInTheDocument()
+    expect(screen.getByText('Invited')).toBeInTheDocument()
+    expect(screen.getByText(`Email sent ${day('2099-02-01T00:00:00Z')} · expires ${day('2099-02-08T00:00:00Z')}`)).toBeInTheDocument()
+    expect(screen.getByText('Invite expired')).toBeInTheDocument()
+    expect(screen.getByText(`Expired ${day('2026-07-08T00:00:00Z')}`)).toBeInTheDocument()
+    expect(screen.queryByText(/password change required/i)).not.toBeInTheDocument()
+  })
+
+  it('narrows the list to workspaces or owners matching the search', async () => {
+    mockedList.mockResolvedValue([
+      { ...manualUser, status: 'active', password_change_required: false },
+      {
+        ...manualUser,
+        id: '41111111-1111-4111-8111-111111111111',
+        email: 'nina@northstar.example',
+        full_name: 'Nina North',
+        status: 'active',
+        password_change_required: false,
+        workspace: { id: '52222222-2222-4222-8222-222222222222', name: 'Northstar Advisory' },
+      },
+    ])
+
+    renderPage()
+    expect(await screen.findByText('Northstar Advisory')).toBeInTheDocument()
+    expect(screen.getByText('Acme Workspace')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'north' } })
+    expect(screen.getByText('Northstar Advisory')).toBeInTheDocument()
+    expect(screen.queryByText('Acme Workspace')).not.toBeInTheDocument()
+
+    // Owner name and email count too, not only the workspace name.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'owner@example' } })
+    expect(screen.getByText('Acme Workspace')).toBeInTheDocument()
+    expect(screen.queryByText('Northstar Advisory')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'nobody' } })
+    expect(screen.getByText(/No workspaces match/)).toBeInTheDocument()
   })
 
   it('hides interrupted invitation deletion from the account UX', async () => {

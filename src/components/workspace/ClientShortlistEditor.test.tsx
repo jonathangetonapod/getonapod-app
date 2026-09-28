@@ -211,7 +211,7 @@ describe('ClientShortlistEditor', () => {
   it('shows the client-visible list, feedback, featured order, and archived dedupe history', async () => {
     renderEditor()
 
-    expect(await screen.findByRole('heading', { name: 'Client podcast list' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Shortlist' })).toBeInTheDocument()
     expect(screen.getAllByText('Founder Stories').length).toBeGreaterThan(0)
     expect(screen.getByText('Operator Weekly')).toBeInTheDocument()
     expect(screen.getByText('This one looks great.', { exact: false })).toBeInTheDocument()
@@ -453,10 +453,10 @@ describe('ClientShortlistEditor', () => {
     expect(billingLink).toHaveAttribute('href', '/app/settings/billing')
     expect(billingLink).toHaveAttribute('target', '_blank')
     expect(screen.getByText(/Billing opens in a new tab so this pitch stays here/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Start direct email search' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Start direct email search/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
     expect(screen.getByText(/reopening this podcast returns to the same job/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Start direct email search' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Start direct email search/ })).not.toBeInTheDocument()
     expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument()
@@ -741,11 +741,11 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
 
-    expect(screen.getByRole('button', { name: 'Regenerate' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^Regenerate/ })).toHaveAttribute(
       'title',
       'Runs every research stage using the saved prompt for each stage, then writes the sequence',
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Regenerate/ }))
 
     expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
     expect(screen.getByText('Reading the podcast profile · 0 of 6 prompts complete')).toBeInTheDocument()
@@ -832,7 +832,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getAllByText('0 additional credits').length).toBeGreaterThan(0)
     expect(screen.getByText(/permanently available to every workspace/i)).toBeInTheDocument()
     expect(screen.queryByText('direct@founderstories.fm')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Start direct email search' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Start direct email search/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -874,7 +874,7 @@ describe('ClientShortlistEditor', () => {
     renderEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Write Pitch for Founder Stories' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Try waterfall enrichment' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start direct email search' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Start direct email search/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -931,7 +931,7 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByText('You were not charged')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
     expect(screen.getByText('No verified direct email · No charge')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Try search again' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Try search again/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
   })
 
@@ -1564,7 +1564,7 @@ describe('ClientShortlistEditor', () => {
       },
     ])
     renderEditor()
-    await screen.findByRole('heading', { name: 'Client podcast list' })
+    await screen.findByRole('heading', { name: 'Shortlist' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Quick add' }))
     fireEvent.change(screen.getByPlaceholderText('Search by podcast or publisher…'), { target: { value: 'new show' } })
@@ -1603,7 +1603,7 @@ describe('ClientShortlistEditor', () => {
       query === 'first' ? [catalogRow('podcast-first', 'The First Show')] : [catalogRow('podcast-second', 'The Second Show')]
     ))
     renderEditor()
-    await screen.findByRole('heading', { name: 'Client podcast list' })
+    await screen.findByRole('heading', { name: 'Shortlist' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Quick add' }))
     const search = screen.getByLabelText('Search the podcast catalog')
@@ -1631,7 +1631,7 @@ describe('ClientShortlistEditor', () => {
   it('saves workspace-only notes from the podcast detail view', async () => {
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast({ operator_notes: 'Strong fit for the launch.' }))
     renderEditor()
-    await screen.findByRole('heading', { name: 'Client podcast list' })
+    await screen.findByRole('heading', { name: 'Shortlist' })
 
     fireEvent.click(screen.getByRole('button', { name: 'View details for Founder Stories' }))
     fireEvent.change(screen.getByLabelText('Internal notes'), { target: { value: 'Strong fit for the launch.' } })

@@ -70,20 +70,26 @@ describe('PortalOutreach', () => {
     expect(screen.getByText('Podcasts contacted').nextElementSibling).toHaveTextContent('18')
     expect(screen.getByText('Meetings booked').nextElementSibling).toHaveTextContent('2')
     expect(screen.getByText('Founder Stories')).toBeInTheDocument()
-    expect(screen.getByText(/First message sent Jul 20, 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/First pitch sent Jul 20, 2026/)).toBeInTheDocument()
     // Appears as both a stage badge and a pipeline row label.
     expect(screen.getAllByText('Host replied').length).toBeGreaterThan(0)
-    expect(screen.getByText('Your personalized pitch is being prepared')).toBeInTheDocument()
+    expect(screen.getAllByText('Pitch sent').length).toBeGreaterThan(0)
+    expect(screen.getByText('Your personalized pitch is being written')).toBeInTheDocument()
     expect(screen.getByText(/5 opens · 1 reply/)).toBeInTheDocument()
   })
 
+  // The stage words are the shared client vocabulary, not the workspace's.
   it('summarizes the pipeline from outreach stages and booking statuses', async () => {
     render(<PortalOutreach />)
 
-    const pipeline = await screen.findByLabelText('Placement pipeline')
-    expect(pipeline).toHaveTextContent('Message sent')
+    const pipeline = await screen.findByLabelText('Your pipeline')
+    expect(pipeline).toHaveTextContent('Pitch being written')
+    expect(pipeline).toHaveTextContent('Pitch sent')
     expect(pipeline).toHaveTextContent('Host replied')
-    expect(pipeline).toHaveTextContent('Published')
+    expect(pipeline).toHaveTextContent('Talking to the host')
+    expect(pipeline).toHaveTextContent('Live')
+    expect(pipeline).not.toHaveTextContent('Published')
+    expect(pipeline).not.toHaveTextContent('Message sent')
     expect(screen.getByLabelText('Bar chart of outreach messages sent per month')).toBeInTheDocument()
   })
 

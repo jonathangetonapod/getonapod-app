@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CreditBalanceChip } from '@/components/workspace/CreditBalanceChip'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
@@ -43,6 +43,23 @@ describe('CreditBalanceChip', () => {
     const link = await screen.findByRole('link', { name: /850 credits remaining/i })
     expect(link).toHaveAttribute('href', '/app/settings/billing')
     expect(screen.getByText('850')).toBeInTheDocument()
+  })
+
+  // The number needs a one-line answer to "what is this" beside it; the long
+  // version lives on the billing page the chip links to.
+  it('explains what credits are without leaving the chip', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue(overview({}) as never)
+    renderChip()
+
+    await screen.findByRole('link', { name: /850 credits remaining/i })
+    const info = screen.getByRole('button', { name: 'What credits are' })
+    fireEvent.pointerMove(info)
+    fireEvent.focus(info)
+    expect((await screen.findAllByText(
+      'Credits pay for AI and data work. Monthly credits renew with your plan; purchased credits never expire.',
+    )).length).toBeGreaterThan(0)
+    // The link is still the chip's destination.
+    expect(screen.getByRole('link', { name: /850 credits remaining/i })).toHaveAttribute('href', '/app/settings/billing')
   })
 
   it('turns the chip itself into the warning when the balance is low', async () => {

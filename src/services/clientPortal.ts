@@ -80,11 +80,11 @@ export async function validateSession(sessionToken: string): Promise<ClientPorta
 
   if (error) {
     console.error('Failed to validate session:', error)
-    throw await toFunctionError(error, 'Session expired or invalid.')
+    throw await toFunctionError(error, 'Your portal session has ended. Sign in again to continue.')
   }
 
   if (!data.success) {
-    throw new Error(data.error || 'Session expired or invalid')
+    throw new Error(data.error || 'Your portal session has ended. Sign in again to continue')
   }
 
   return { client: data.client, branding: parsePortalBranding(data.branding) }

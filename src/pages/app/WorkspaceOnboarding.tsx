@@ -442,7 +442,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       await refresh()
       setConfirmation(null)
       if (variables.action === 'purge' && selectedInstanceId === variables.instance.id) setSelectedInstanceId(null)
-      toast.success(variables.action === 'revoke' ? 'Secure link revoked.' : variables.action === 'archive' ? 'Onboarding archived.' : 'Onboarding PII permanently purged; the client record was retained.')
+      toast.success(variables.action === 'revoke' ? 'Secure link revoked.' : variables.action === 'archive' ? 'Onboarding archived.' : 'Onboarding answers and files permanently deleted. The client record was kept.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update onboarding.'),
   })
@@ -742,7 +742,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                                 {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'revoke', instance })}>Revoke link</DropdownMenuItem>}
                                 <DropdownMenuSeparator />
                                 {!instance.archived_at && <DropdownMenuItem onClick={() => setConfirmation({ action: 'archive', instance })}><Archive className="mr-2 h-4 w-4" />Archive</DropdownMenuItem>}
-                                {instance.archived_at && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'purge', instance })}>Permanently purge onboarding PII</DropdownMenuItem>}
+                                {instance.archived_at && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'purge', instance })}>Permanently delete their answers and files</DropdownMenuItem>}
                               </DropdownMenuContent></DropdownMenu>}</div></TableCell>
                             </TableRow>
                           ))}</TableBody>
@@ -755,7 +755,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               </TabsContent>
 
               {canManage && <TabsContent value="templates">
-                <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Reusable form templates</h2><p className="text-sm text-muted-foreground">Edit drafts freely; every publish creates a new immutable version.</p></div><Button variant="outline" onClick={() => { setEditingTemplate(null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />New template</Button></div>
+                <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Reusable form templates</h2><p className="text-sm text-muted-foreground">Editing never changes a form a client already has. Publishing creates the next version for new links.</p></div><Button variant="outline" onClick={() => { setEditingTemplate(null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />New template</Button></div>
                 <div className="grid gap-4 lg:grid-cols-2">{data.templates.map((template) => (
                   <Card key={template.id} className={template.status === 'archived' ? 'opacity-60' : undefined}>
                     <CardHeader><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle>{template.name}</CardTitle>{template.is_default && <Badge>Default</Badge>}<Badge variant="outline" className="capitalize">{template.status}</Badge></div><CardDescription className="mt-2">{template.description || 'No internal description'}</CardDescription></div></div></CardHeader>
@@ -815,7 +815,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               <section className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2"><Label htmlFor="expiry-days">Link expires in days</Label><Input id="expiry-days" type="number" min={1} max={90} value={startForm.expires_in_days} onChange={(event) => setStartForm((current) => ({ ...current, expires_in_days: event.target.value }))} /></div>
                 <label className="flex items-center gap-2 self-end pb-2 text-sm"><Checkbox checked={startForm.send_email} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><span>Email this invitation to the client</span></label>
-                {data?.assignable_members.length ? <div className="space-y-2 sm:col-span-2"><Label>Assign read-only team members</Label><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></div> : null}
+                {data?.assignable_members.length ? <div className="space-y-2 sm:col-span-2"><Label>Let these teammates view it</Label><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></div> : null}
               </section>
             </div>
 
@@ -883,7 +883,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
       <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !lifecycleMutation.isPending) setConfirmation(null) }}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>{confirmation?.action === 'purge' ? 'Permanently purge onboarding PII?' : confirmation?.action === 'archive' ? 'Archive this onboarding?' : 'Revoke this secure link?'}</AlertDialogTitle><AlertDialogDescription>{confirmation?.action === 'purge' ? 'This permanently deletes every onboarding draft, immutable answer revision, review note, AI draft, notification record, and private upload. It cannot be undone. The separate client record remains.' : confirmation?.action === 'archive' ? 'Archiving removes this record from active work, revokes any live client link, and is required before permanent PII purge. The draft and uploads remain retained.' : 'The client will immediately lose access to this link. Their existing draft and files remain retained.'}</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>{confirmation?.action === 'purge' ? 'Permanently delete their answers and files?' : confirmation?.action === 'archive' ? 'Archive this onboarding?' : 'Revoke this secure link?'}</AlertDialogTitle><AlertDialogDescription>{confirmation?.action === 'purge' ? 'This permanently deletes every onboarding draft, saved answer revision, review note, AI draft, notification record, and private upload. It cannot be undone. The separate client record remains.' : confirmation?.action === 'archive' ? 'Archiving removes this record from active work, revokes any live client link, and is required before their answers and files can be permanently deleted. The draft and uploads remain retained.' : 'The client will immediately lose access to this link. Their existing draft and files remain retained.'}</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel disabled={lifecycleMutation.isPending}>Cancel</AlertDialogCancel><AlertDialogAction className={confirmation?.action === 'archive' ? undefined : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'} disabled={lifecycleMutation.isPending} onClick={(event) => { event.preventDefault(); if (confirmation) lifecycleMutation.mutate(confirmation) }}>{lifecycleMutation.isPending ? 'Working…' : confirmation?.action === 'purge' ? 'Permanently purge' : confirmation?.action === 'archive' ? 'Archive' : 'Revoke link'}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

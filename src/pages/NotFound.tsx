@@ -1,31 +1,39 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
-import PageSEO from "@/components/seo/PageSEO";
+import { useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 
+import { AuthShell } from '@/components/landing/AuthShell'
+import { CALL_LABEL, CALL_URL } from '@/lib/landingContent'
+
+/**
+ * The page for an address that is nothing. It wears the auth frame, which
+ * keeps it out of the index (AuthShell's PageSEO is always noindex) and gives
+ * a lost reader the same two doors as every other dead end.
+ */
 const NotFound = () => {
-  const location = useLocation();
+  const location = useLocation()
 
   useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
-  }, [location.pathname]);
+    console.error('404 Error: User attempted to access non-existent route:', location.pathname)
+  }, [location.pathname])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <PageSEO
-        title="Page not found | Get On A Pod"
-        description="There is nothing at this address."
-        path={location.pathname}
-        noindex
-      />
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">There is nothing at this address.</p>
-        <a href="/" className="text-primary underline hover:text-primary/90">
-          Go to the Get On A Pod homepage
+    <AuthShell
+      title="Page not found | Get On A Pod"
+      description="There is nothing at this address."
+      path={location.pathname}
+      tone="notice"
+      heading="Nothing at this address."
+      footer={<>Looking for your portal? <Link to="/portal/login">Client sign-in</Link></>}
+    >
+      <p className="gp-auth-reason">The link may be old or mistyped.</p>
+      <div className="gp-auth-actions">
+        <Link className="gp-btn gp-btn-primary" to="/">Go to the homepage</Link>
+        <a className="gp-btn gp-btn-quiet" href={CALL_URL} target="_blank" rel="noopener noreferrer">
+          {CALL_LABEL}
         </a>
       </div>
-    </div>
-  );
-};
+    </AuthShell>
+  )
+}
 
-export default NotFound;
+export default NotFound

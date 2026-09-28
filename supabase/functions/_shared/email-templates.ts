@@ -51,7 +51,7 @@ export function getPortalInvitationEmail(clientName: string, portalUrl: string):
     </div>
 
     <p style="color: #6b7280; font-size: 14px;">
-      If you have any questions, feel free to reach out!
+      Reply to this email with any questions.
     </p>
 
     <p style="color: #4b5563; margin-bottom: 0;">
@@ -61,7 +61,7 @@ export function getPortalInvitationEmail(clientName: string, portalUrl: string):
   </div>
 
   <div style="text-align: center; padding: 20px; color: #9ca3af; font-size: 12px;">
-    <p style="margin: 0;">This link will remain active. Bookmark it for easy access!</p>
+    <p style="margin: 0;">This link will remain active.</p>
   </div>
 </body>
 </html>
@@ -80,13 +80,13 @@ Your portal gives you real-time access to:
 - Episode links once they're live
 - Status updates on each placement
 
-If you have any questions, feel free to reach out!
+Reply to this email with any questions.
 
 Best,
 The Get On A Pod Team
 
 ---
-This link will remain active. Bookmark it for easy access!
+This link will remain active.
   `.trim()
 
   return { subject, html, text }

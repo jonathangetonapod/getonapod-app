@@ -328,7 +328,7 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     renderPage(`/app/client-podcast-system?client=${clientId}&podcast=${ready.podcast.podscan_id}`)
 
-    fireEvent.click(await screen.findByRole('button', { name: /log placement/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /log a placement/i }))
 
     expect(await screen.findByText(`seeded shortlist row ${ready.id}`)).toBeInTheDocument()
     // The id the constraint rejects.
@@ -350,7 +350,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect((await screen.findAllByText('Host replied')).length).toBeGreaterThan(0)
   })
 
-  it('opens the placement a reply belongs to when Master Inbox links back', async () => {
+  it('opens the placement a reply belongs to when the inbox links back', async () => {
     mockedGetSystem.mockResolvedValue({
       ...response,
       items: [{ ...ready, conversation: null }],
@@ -386,7 +386,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.getByRole('heading', { name: 'Guest and account readiness' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Outreach and conversations' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Needs attention' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
+    expect(screen.getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Placements/ }), { button: 0 })
     expect(screen.getByText('Scale Notes')).toBeInTheDocument()
@@ -412,7 +412,7 @@ describe('WorkspaceClientPodcastSystem', () => {
       'href',
       `/app/client-campaigns/${clientId}`,
     )
-    expect(within(details).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute(
+    expect(within(details).getByRole('link', { name: 'Inbox' })).toHaveAttribute(
       'href',
       `/app/master-inbox?client=${clientId}`,
     )

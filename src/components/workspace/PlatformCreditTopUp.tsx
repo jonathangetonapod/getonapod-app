@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { listGrantableWorkspaces } from '@/services/adminWorkspaces'
@@ -33,12 +34,27 @@ export function PlatformCreditTopUp({ actorEmail }: PlatformCreditTopUpProps) {
   // rows it returns are every workspace, not just this one.
   const { workspace } = useAuth()
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('')
+  // The credits chip in a tenant's shell links here with that tenant in the
+  // address, so the admin lands on the agency they were just looking at.
+  const [searchParams] = useSearchParams()
+  const requestedWorkspaceId = (searchParams.get('workspace') || '').trim().toLowerCase()
+  const seededFromAddress = useRef(false)
 
   const workspacesQuery = useQuery({
     queryKey: ['platform-credit-topup', 'workspaces'],
     queryFn: listGrantableWorkspaces,
     staleTime: 60_000,
   })
+
+  // Only once, and only for a workspace that can actually be credited: an
+  // address naming the default workspace, or a stale id, seeds nothing.
+  useEffect(() => {
+    if (seededFromAddress.current || !requestedWorkspaceId || !workspacesQuery.data) return
+    seededFromAddress.current = true
+    if (workspacesQuery.data.some((candidate) => candidate.id.toLowerCase() === requestedWorkspaceId)) {
+      setSelectedWorkspaceId((current) => current || requestedWorkspaceId)
+    }
+  }, [requestedWorkspaceId, workspacesQuery.data])
 
   // The owner's name and email come from the roster the grant card shows them
   // in, rather than a second source that could disagree with it. A workspace

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { KeyRound, Loader2, MailCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,56 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import PageSEO from '@/components/seo/PageSEO'
+import { supabase } from '@/lib/supabase'
+import { currentHostname } from '@/lib/workspaceHost'
 import { requestPortalPasswordReset } from '@/services/clientPortal'
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
+
+interface LinkBranding {
+  name: string
+  logo_url: string | null
+  primary_color: string | null
+}
+
+/*
+ * The agency behind a ?b= link, for the tab title and icon. The page has no
+ * session to read branding from, so it asks for the public metadata the login
+ * page already uses; it is cosmetic, and the neutral page stays fully usable
+ * when the lookup fails. ResetPassword carries the same lookup: a page file
+ * cannot export a hook without breaking fast refresh.
+ */
+function useLinkBranding(brandingSlug: string): LinkBranding | null {
+  const [linkBranding, setLinkBranding] = useState<LinkBranding | null>(null)
+
+  useEffect(() => {
+    if (!brandingSlug || !SLUG_PATTERN.test(brandingSlug) || brandingSlug.length > 180) return
+    let cancelled = false
+    supabase.functions
+      .invoke('public-client-dashboard', { body: { action: 'metadata', slug: brandingSlug.toLowerCase(), hostname: currentHostname() } })
+      .then(({ data, error }) => {
+        if (cancelled || error) return
+        const workspace = data?.metadata?.workspace
+        if (workspace && typeof workspace.name === 'string' && workspace.name.trim()) {
+          setLinkBranding({
+            name: workspace.name.trim(),
+            logo_url: typeof workspace.logo_url === 'string' ? workspace.logo_url : null,
+            primary_color: typeof workspace.primary_color === 'string' && /^#[0-9a-f]{6}$/iu.test(workspace.primary_color)
+              ? workspace.primary_color
+              : null,
+          })
+        }
+      })
+      .catch(() => {
+        // Branding is cosmetic; the neutral page stays fully functional.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [brandingSlug])
+
+  return linkBranding
+}
 
 export default function PortalForgotPassword() {
   const [email, setEmail] = useState('')
@@ -16,6 +65,7 @@ export default function PortalForgotPassword() {
   const [searchParams] = useSearchParams()
   const brandingSlug = searchParams.get('b') || ''
   const loginHref = brandingSlug ? `/portal/login?b=${encodeURIComponent(brandingSlug)}` : '/portal/login'
+  const linkBranding = useLinkBranding(brandingSlug)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -33,7 +83,16 @@ export default function PortalForgotPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <PageSEO title="Reset Portal Password" description="Request a client portal password reset link." path="/portal/forgot" noindex />
+      <PageSEO
+        title="Reset your portal password"
+        description="Request a client portal password reset link."
+        path="/portal/forgot"
+        noindex
+        whiteLabel
+        brandName={linkBranding?.name || 'Client portal'}
+        favicon={linkBranding?.logo_url}
+        themeColor={linkBranding?.primary_color || undefined}
+      />
       <Card className="w-full max-w-md">
         {requested ? (
           <>
@@ -60,13 +119,13 @@ export default function PortalForgotPassword() {
               </div>
               <h1 className="text-2xl font-semibold leading-none tracking-tight">Reset your password</h1>
               <CardDescription>
-                Enter your portal email and we'll send you a reset link.
+                Enter your portal email and we will send you a reset link.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">Email address</Label>
                   <Input
                     id="email"
                     type="email"

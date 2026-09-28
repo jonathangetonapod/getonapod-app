@@ -58,6 +58,7 @@ import { checkPitchCopy } from '@/lib/pitchQuality'
 import { campaignErrorGuidance, campaignErrorReport, errorCode, errorStatus } from '@/lib/campaignErrorGuidance'
 import { MY_WORKSPACE_BASE_HREF, workspaceModuleHref } from '@/lib/workspaceRoutes'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { CREDIT_COSTS, creditCostSuffix, creditsLabel } from '@/lib/creditCosts'
 import {
   type ClientShortlistEmailUnlockStageId,
   type ClientShortlistPodcast,
@@ -1856,7 +1857,7 @@ export function ClientCampaignPrepDialog({
                               <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700">{emailAlreadyUnlocked ? <CheckCircle2 className="h-5 w-5" /> : emailSearchRunning ? <Loader2 className="h-5 w-5 animate-spin" /> : emailSearchHasNoResult ? <AlertCircle className="h-5 w-5" /> : <Search className="h-5 w-5" />}</div>
                               <div className="flex flex-col items-end gap-1.5">
                                 <Badge className={contactIsStale ? 'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100' : 'border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100'}>{contactIsStale ? 'Needs re-check' : emailAlreadyUnlocked ? 'Globally unlocked' : emailSearchRunning ? 'Global search in progress' : emailSearchHasNoResult ? 'No result yet' : 'Recommended'}</Badge>
-                                <span className={contactIsStale ? 'text-[11px] font-semibold text-amber-900' : 'text-[11px] font-semibold text-violet-800'}>{contactIsStale ? 'Re-check costs 0 credits' : emailAlreadyUnlocked ? '0 additional credits' : emailSearchRunning ? 'Safe to close' : emailSearchHasNoResult ? 'You were not charged' : '1 credit on success'}</span>
+                                <span className={contactIsStale ? 'text-[11px] font-semibold text-amber-900' : 'text-[11px] font-semibold text-violet-800'}>{contactIsStale ? 'Re-check costs 0 credits' : emailAlreadyUnlocked ? '0 additional credits' : emailSearchRunning ? 'Safe to close' : emailSearchHasNoResult ? 'You were not charged' : `${creditsLabel(CREDIT_COSTS.email_unlock_verify)} on success`}</span>
                               </div>
                             </div>
                             <h4 className="mt-4 font-semibold">{emailAlreadyUnlocked ? 'Use the direct host email' : emailSearchRunning ? 'Finding the direct host email' : emailSearchHasNoResult ? 'No direct email found yet' : "Find the host's direct email"}</h4>
@@ -1900,11 +1901,11 @@ export function ClientCampaignPrepDialog({
                               <p className="mt-4 rounded-xl border border-violet-200 bg-background/80 px-3 py-2.5 text-xs leading-5 text-violet-900">No credit was used. A future retry is charged only if it becomes the first successful direct-contact unlock across the entire platform.</p>
                             ) : (
                               <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host</span>
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_identify')}</span></span>
                                 <ArrowRight className="h-3 w-3 text-violet-400" />
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity</span>
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_find')}</span></span>
                                 <ArrowRight className="h-3 w-3 text-violet-400" />
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email</span>
+                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_verify')}</span></span>
                               </div>
                             )}
                             <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">
@@ -1960,7 +1961,7 @@ export function ClientCampaignPrepDialog({
                           </div>
                         ) : emailSearchHasNoResult ? (
                           <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">No verified direct email · No charge</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-900/75">Try again, use the free Podscan inbox, or enter an address manually. A credit is eligible only for the first successful global unlock.</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 border-amber-200 bg-background text-amber-950" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}>Try search again</Button></div>
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">No verified direct email · No charge</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-900/75">Try again, use the free Podscan inbox, or enter an address manually. A credit is eligible only for the first successful global unlock.</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 border-amber-200 bg-background text-amber-950" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}>Try search again<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify')}</span></Button></div>
                           </div>
                         ) : (
                           <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
@@ -1969,7 +1970,7 @@ export function ClientCampaignPrepDialog({
                                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
                                 <div><p className="text-sm font-semibold text-violet-950">Robust lookup · 1 credit on first global success</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We check the global contact network first. Only a true global miss starts host identification and verification; no verified direct email means no credit is charged.</p></div>
                               </div>
-                              <div className="flex shrink-0 flex-wrap gap-2"><Button asChild variant="outline" size="sm" className="border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to={billingHref} target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button><Button type="button" size="sm" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />Start direct email search</Button></div>
+                              <div className="flex shrink-0 flex-wrap gap-2"><Button asChild variant="outline" size="sm" className="border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to={billingHref} target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button><Button type="button" size="sm" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />Start direct email search<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify')}</span></Button></div>
                             </div>
                             <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium leading-5 text-violet-800">Once successfully unlocked in the Database, this podcast never costs another direct-email credit. Billing opens in a new tab so this pitch stays here.</p>
                           </div>
@@ -1997,7 +1998,7 @@ export function ClientCampaignPrepDialog({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">Step 2</Badge>
-                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">2 credits per run</Badge>
+                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">{creditsLabel(CREDIT_COSTS.research_run)} per run</Badge>
                           </div>
                           <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Research and Pitch</h3>
                           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Review the show, its audience, and the strongest reasons to feature {clientName} before choosing the angle for the pitch.</p>
@@ -2037,6 +2038,9 @@ export function ClientCampaignPrepDialog({
                                   : researchWorking
                                     ? 'Research running'
                                     : researchProgress ? 'Regenerate' : 'Run research'}
+                                {!researchRegenerating && !researchWorking && (
+                                  <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('research_run')}</span>
+                                )}
                               </Button>
                             )}
                             {canCustomizePrompts && (
@@ -2125,6 +2129,7 @@ export function ClientCampaignPrepDialog({
                                 </div>
                               </li>
                             </ol>
+                            <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">Usually 2 to 4 minutes.</p>
                             {inspectedStage && inspectedPromptId && (
                               <div id="campaign-research-stage-inspector" className="border-t bg-background px-4 py-4">
                                 <div className="flex flex-wrap items-start justify-between gap-2">

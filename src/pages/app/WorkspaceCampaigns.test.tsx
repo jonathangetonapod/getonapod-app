@@ -246,7 +246,7 @@ describe('WorkspaceCampaigns', () => {
     expect(await screen.findByText('Campaigns could not be loaded')).toBeInTheDocument()
     // The connection card renders its own retry too; at least one must exist.
     expect(screen.getAllByRole('button', { name: 'Try again' }).length).toBeGreaterThan(0)
-    expect(screen.queryByText('No Instantly campaigns assigned yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('No campaigns yet.')).not.toBeInTheDocument()
   })
 
   // Rows display the campaign's real name; the search used to look only at
@@ -297,13 +297,13 @@ describe('WorkspaceCampaigns', () => {
     })
     renderCampaigns()
 
-    // Writing a pitch happens in the finder, not on the campaign page.
+    // Writing a pitch happens on the client's shortlist, not on the campaign page.
     const table = await screen.findByRole('table')
     expect(within(table).getByRole('link', { name: 'Write 3 pitches' }))
-      .toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+      .toHaveAttribute('href', `/app/clients/${clientId}?tab=approval`)
   })
 
-  it('points a launch step at the podcast list inside the campaign', async () => {
+  it('points a launch step at the campaign options, where the launch button is', async () => {
     mockedOverview.mockResolvedValue({
       ...campaignOverview,
       integration: connectedIntegration,
@@ -316,7 +316,7 @@ describe('WorkspaceCampaigns', () => {
 
     const table = await screen.findByRole('table')
     expect(within(table).getByRole('link', { name: 'Launch 2 staged pitches' }))
-      .toHaveAttribute('href', `/app/client-campaigns/${clientId}?tab=leads`)
+      .toHaveAttribute('href', `/app/client-campaigns/${clientId}?tab=options`)
   })
 
   // Pitches added to a live campaign send on the next window with nobody
@@ -576,7 +576,7 @@ describe('WorkspaceCampaigns', () => {
 
     renderCampaigns()
 
-    expect(await screen.findByRole('heading', { name: 'No Instantly campaigns assigned yet' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No campaigns yet.' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'New campaign' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect Instantly' })).not.toBeInTheDocument()
   })

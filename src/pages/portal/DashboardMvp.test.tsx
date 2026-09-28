@@ -175,8 +175,8 @@ describe('PortalDashboardMvp', () => {
     renderPage()
 
     // The shared hook retries once with backoff before erroring.
-    expect(await screen.findByText(/couldn.t load your placements/i, {}, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.queryByText('Total placements')).not.toBeInTheDocument()
+    expect(await screen.findByText(/could not load your shows/i, {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByText('Shows in progress')).not.toBeInTheDocument()
     expect(screen.queryByText('Combined audience')).not.toBeInTheDocument()
   })
 
@@ -234,15 +234,17 @@ describe('PortalDashboardMvp', () => {
     // The stale data stays on screen, owned by the banner — not by a
     // session-expired card contradicting it below.
     expect(screen.getByText('Combined audience')).toBeInTheDocument()
-    expect(screen.queryByText(/could not load your placements/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/could not load your shows/i)).not.toBeInTheDocument()
   })
 
   it('renders the review call-to-action with live counts and the journey stats', async () => {
     renderPage()
 
     expect(await screen.findByText('4 podcasts are waiting for your review')).toBeInTheDocument()
+    // The review page reads ?from=portal and offers a way back.
     expect(screen.getByRole('link', { name: /review shortlist/i }))
-      .toHaveAttribute('href', '/client/taylor-ab12cd34ef')
+      .toHaveAttribute('href', '/client/taylor-ab12cd34ef?from=portal')
+    expect(screen.getByText(/Mark the shows you are interested in/)).toHaveTextContent('You have picked 2 so far.')
     expect(screen.getByText('Podcasts contacted').nextElementSibling).toHaveTextContent('18')
     expect(screen.getByText('Replies').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('Your podcast tour at a glance.')).toBeInTheDocument()
@@ -508,7 +510,46 @@ describe('PortalDashboardMvp', () => {
 
     renderPage()
 
-    expect(await screen.findByText(/Shortlist reviewed — 6 approved/)).toBeInTheDocument()
+    expect(await screen.findByText(/Shortlist reviewed: 6 picks/)).toBeInTheDocument()
     expect(screen.queryByText(/waiting for your review/)).not.toBeInTheDocument()
+  })
+
+  it('names the booking stages in client words', async () => {
+    const data = overview()
+    data.bookings.push({
+      ...data.bookings[0],
+      id: 'b-convo',
+      podcast_name: 'Early Talks',
+      status: 'in_progress',
+      scheduled_date: localDay(20),
+      recording_date: null,
+    })
+    mockedGetExperience.mockResolvedValue(data)
+
+    renderPage()
+
+    expect(await screen.findByText('Your shows')).toBeInTheDocument()
+    expect(screen.getByText('Talking to the host')).toBeInTheDocument()
+    expect(screen.queryByText('In progress')).not.toBeInTheDocument()
+    expect(screen.queryByText(/placements/i)).not.toBeInTheDocument()
+  })
+
+  /*
+   * The first week: nothing booked and nothing to review. Zero tiles over an
+   * empty list read as a broken page; one card saying the research is under
+   * way is the truth.
+   */
+  it('shows one preparing card instead of zero tiles before the shortlist exists', async () => {
+    const fresh = overview()
+    fresh.bookings = []
+    fresh.review = { ...fresh.review, total_visible: 0, awaiting_count: 0, approved_count: 0 }
+    mockedGetExperience.mockResolvedValue(fresh)
+
+    renderPage()
+
+    expect(await screen.findByText('Your shortlist is being prepared')).toBeInTheDocument()
+    expect(screen.getByText(/the Resources tab has prep material/)).toBeInTheDocument()
+    expect(screen.queryByText('Podcasts contacted')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your shows')).not.toBeInTheDocument()
   })
 })

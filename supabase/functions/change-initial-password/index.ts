@@ -124,7 +124,7 @@ async function releaseCredentialClaim(
     p_execution_id: executionId,
   })
   if (error || data !== true) {
-    throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+    throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
   }
 }
 
@@ -326,7 +326,7 @@ serve(async (req) => {
           new HttpError(503, 'PASSWORD_CHANGE_RETRY_REQUIRED', 'The password change could not be verified. Try again'),
         )
       }
-      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
     }
     const workspaceIsSafe = workspaceData?.id === claimedMembership.workspace_id
       && workspaceData.status === 'active'
@@ -343,7 +343,7 @@ serve(async (req) => {
           new HttpError(503, 'PASSWORD_CHANGE_RETRY_REQUIRED', 'The password change could not be verified. Try again'),
         )
       }
-      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
     }
     if (!manualIdentityMatches(currentUser, claimedMembership)) {
       if (!recovering) {
@@ -354,7 +354,7 @@ serve(async (req) => {
           new HttpError(409, 'ACCOUNT_IDENTITY_UNSAFE', 'The account identity requires administrator review'),
         )
       }
-      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
     }
     if (!claimedMembershipIsSafe || !workspaceIsSafe) {
       if (!recovering) {
@@ -365,7 +365,7 @@ serve(async (req) => {
           new HttpError(403, 'PASSWORD_CHANGE_NOT_ALLOWED', 'This account cannot complete temporary password setup'),
         )
       }
-      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
     }
 
     let providerUser: typeof currentUser | null = currentUser
@@ -407,12 +407,12 @@ serve(async (req) => {
         || providerUser.app_metadata?.workspace_password_change_required !== false
         || providerUser.app_metadata?.workspace_credential_version !== currentVersion
       ) {
-        throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+        throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
       }
 
       const { error: signOutError } = await admin.auth.admin.signOut(authContext.accessToken, 'global')
       if (signOutError) {
-        throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+        throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
       }
       await completeInitialPasswordChange(admin, {
         membershipId: claimedMembership.id,
@@ -433,7 +433,7 @@ serve(async (req) => {
         && metadataUuid(providerMetadata.workspace_credential_attempt_id) === claim.attemptId
       )
     ) {
-      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
     }
 
     const currentVersion = credentialVersion(providerMetadata.workspace_credential_version)
@@ -468,7 +468,7 @@ serve(async (req) => {
       || providerUser.app_metadata?.workspace_credential_version !== nextVersion
       || providerUser.app_metadata?.workspace_password_change_required !== false
     ) {
-      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'The password change requires administrator review')
+      throw new HttpError(503, 'PASSWORD_CHANGE_RECONCILIATION_REQUIRED', 'Your password could not be changed safely, and nothing was changed. Contact support')
     }
 
     await completeInitialPasswordChange(admin, {

@@ -198,7 +198,7 @@ export function WorkspaceDomainsCard({ workspaces }: Props) {
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value)
-      toast.success('Copied.')
+      toast.success('DNS value copied.')
     } catch {
       toast.error('Copying was blocked. Select the value and copy it manually.')
     }

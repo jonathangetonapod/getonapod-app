@@ -462,7 +462,7 @@ CUTTING PATTERNS - DELETE THESE IF THEY APPEAR:
     )
   } catch (error) {
     console.error('[Generate Sequence] Error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    const errorMessage = error instanceof Error ? error.message : 'Something went wrong on our side. Try again in a moment'
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

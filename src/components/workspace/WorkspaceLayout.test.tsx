@@ -9,47 +9,65 @@ import {
   type PlatformWorkspaceConfig,
 } from '@/components/workspace/WorkspaceLayout'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
+import { getWorkspaceClients } from '@/services/clients'
+import { readWorkingClient, writeWorkingClient } from '@/lib/workingClient'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
   WorkspaceSwitcher: () => <div>Workspace switcher</div>,
 }))
 vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceBillingOverview: vi.fn() }))
+vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedBillingOverview = vi.mocked(getWorkspaceBillingOverview)
+const mockedClients = vi.mocked(getWorkspaceClients)
 const signOut = vi.fn()
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 // Somebody else's workspace, so a balance read against the viewer's own would
 // be visible as the wrong id rather than passing by coincidence.
 const viewedWorkspaceId = '22222222-2222-4222-8222-222222222222'
+const clientId = '44444444-4444-4444-8444-444444444444'
+const otherClientId = '55555555-5555-4555-8555-555555555555'
+const workspaceClients = [
+  { id: clientId, workspace_id: workspaceId, name: 'Dallas Fontaine', status: 'active' },
+  { id: otherClientId, workspace_id: workspaceId, name: 'Priya Natarajan', status: 'active' },
+  // Not offered: nobody is working on a churned client.
+  { id: '66666666-6666-4666-8666-666666666666', workspace_id: workspaceId, name: 'Former Client', status: 'churned' },
+]
+// The daily loop first, then setup and reference pages.
 const expectedNavigation = [
-  'Onboarding',
-  'Podcast Finder',
-  'Prospect Studio',
-  'Podcast Database',
-  'Client Command Center',
   'Clients',
+  'Client Command Center',
+  'Podcast Finder',
+  'Podcast Database',
   'Client Campaigns',
+  'Inbox',
   'Relationships',
-  'Master Inbox',
+  'Prospect Studio',
+  'Client intake',
   'Mailboxes',
   'University',
   'Billing & credits',
   'Settings',
 ]
 
-function renderLayout(platformWorkspace?: PlatformWorkspaceConfig) {
+function renderLayout(platformWorkspace?: PlatformWorkspaceConfig, initialEntry?: string) {
   // The shell reads the credit balance now, so it needs the app's query client
   // the same way every other data-reading component does.
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[platformWorkspace ? `${platformWorkspace.baseHref}/clients` : '/app/clients']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry || (platformWorkspace ? `${platformWorkspace.baseHref}/clients` : '/app/clients')]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <WorkspaceLayout platformWorkspace={platformWorkspace}><div>Module content</div></WorkspaceLayout>
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+function chooseWorkingClient(label: string) {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Working client' }))
+  fireEvent.click(screen.getByRole('option', { name: label }))
 }
 
 describe('WorkspaceLayout', () => {
@@ -58,6 +76,7 @@ describe('WorkspaceLayout', () => {
     window.localStorage.clear()
     window.sessionStorage.clear()
     signOut.mockResolvedValue(undefined)
+    mockedClients.mockResolvedValue(workspaceClients as never)
     mockedUseAuth.mockReturnValue({
       user: {
         id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -81,10 +100,11 @@ describe('WorkspaceLayout', () => {
 
   it('drops billing while a platform admin is viewing somebody else\'s workspace', () => {
     renderLayout({
-      baseHref: `/app/workspaces/${workspaceId}`,
+      workspaceId: viewedWorkspaceId,
+      baseHref: `/app/workspaces/${viewedWorkspaceId}`,
       workspaceName: 'Acme Workspace',
       logoUrl: null,
-    } as never)
+    })
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     // That route is not workspace-scoped, so showing it would link to a page
@@ -110,35 +130,54 @@ describe('WorkspaceLayout', () => {
       '/app/settings',
     )
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
-    expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute('href', '/app/onboarding')
+    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', '/app/onboarding')
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
     expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', '/app/podcast-database')
     expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute('href', '/app/client-podcast-system')
     expect(within(navigation).getByRole('link', { name: 'Prospect Studio' })).toHaveAttribute('href', '/app/prospects')
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
-    expect(within(navigation).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute('href', '/app/master-inbox')
+    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/app/master-inbox')
     expect(within(navigation).getByRole('link', { name: 'Mailboxes' })).toHaveAttribute('href', '/app/mailboxes')
 
-    const disabledModules = within(navigation).getAllByRole('button').filter((button) => button.hasAttribute('disabled'))
+    const disabledModules = within(navigation).queryAllByRole('button').filter((button) => button.hasAttribute('disabled'))
     expect(disabledModules).toHaveLength(0)
     expect(screen.getAllByText('Acme Workspace')).toHaveLength(4)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
   })
 
+  // "Workspace dashboard" under the name was filler on every page. The page
+  // the person is actually on is worth the space; nothing is, when no module
+  // matches.
+  it('names the active module under the workspace name', () => {
+    const { unmount } = renderLayout(undefined, '/app/master-inbox')
+
+    const header = screen.getByRole('banner')
+    expect(within(header).getAllByText('Inbox')).toHaveLength(2)
+    expect(screen.queryByText('Workspace dashboard')).not.toBeInTheDocument()
+    unmount()
+
+    renderLayout(undefined, '/app/manage-workspaces')
+    expect(within(screen.getByRole('banner')).queryByText('Inbox')).not.toBeInTheDocument()
+    expect(screen.queryByText('Workspace dashboard')).not.toBeInTheDocument()
+  })
+
   it('restores and resets a navigation order saved for this owner and workspace', () => {
     const storageKey = `workspace-nav-order-v2:${workspaceId}:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`
-    window.localStorage.setItem(storageKey, JSON.stringify(['clients', 'podcast-finder', 'onboarding']))
+    window.localStorage.setItem(storageKey, JSON.stringify(['prospects', 'podcast-finder', 'onboarding']))
     renderLayout()
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getAllByRole('listitem').slice(0, 3).map((item) => (
       item.querySelector('span')?.textContent
-    ))).toEqual(['Clients', 'Podcast Finder', 'Onboarding'])
+    ))).toEqual(['Prospect Studio', 'Podcast Finder', 'Client intake'])
 
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' }))
+    // Reordering lives in the sidebar footer now, not as a block above the nav.
+    expect(within(navigation).queryByRole('button', { name: 'Reorder' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder' }))
     expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(expectedNavigation.length)
     expect(within(navigation).getByText(/changes save automatically/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reorder' })).not.toBeInTheDocument()
 
     fireEvent.click(within(navigation).getByRole('button', { name: 'Reset' }))
     expect(within(navigation).getAllByRole('listitem').map((item) => (
@@ -147,7 +186,101 @@ describe('WorkspaceLayout', () => {
     expect(window.localStorage.getItem(storageKey)).toBeNull()
 
     fireEvent.click(within(navigation).getByRole('button', { name: 'Done' }))
-    expect(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reorder' })).toBeInTheDocument()
+  })
+
+  // A complete order saved under the previous default keeps every position the
+  // person chose; the new default order only applies to people who never
+  // arranged theirs.
+  it('keeps a saved custom order intact across the default reorder', () => {
+    const storageKey = `workspace-nav-order-v2:${workspaceId}:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`
+    const savedOrder = [
+      'onboarding', 'podcast-finder', 'prospects', 'podcast-database', 'client-podcast-system',
+      'clients', 'outreach-platform', 'relationships', 'unibox', 'mailboxes', 'university',
+      'billing', 'settings',
+    ]
+    window.localStorage.setItem(storageKey, JSON.stringify(savedOrder))
+    renderLayout()
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).getAllByRole('listitem').map((item) => (
+      item.querySelector('span')?.textContent
+    ))).toEqual([
+      'Client intake', 'Podcast Finder', 'Prospect Studio', 'Podcast Database', 'Client Command Center',
+      'Clients', 'Client Campaigns', 'Relationships', 'Inbox', 'Mailboxes', 'University',
+      'Billing & credits', 'Settings',
+    ])
+  })
+
+  /*
+   * One choice in the header instead of re-picking the same person on every
+   * page. The modules that filter by client open on them; the ones that do
+   * not are left alone, so no page carries a parameter it ignores.
+   */
+  it('opens every client-scoped module on the working client', async () => {
+    renderLayout()
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    expect(combobox).toHaveTextContent('All clients')
+    await waitFor(() => expect(mockedClients).toHaveBeenCalledWith(workspaceId))
+
+    chooseWorkingClient('Dallas Fontaine')
+
+    expect(combobox).toHaveTextContent('Dallas Fontaine')
+    expect(readWorkingClient(workspaceId)).toBe(clientId)
+    expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', `/app/podcast-database?client=${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
+    expect(within(navigation).getByRole('link', { name: 'Relationships' })).toHaveAttribute('href', '/app/relationships')
+    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', '/app/onboarding')
+    expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page')
+
+    chooseWorkingClient('All clients')
+
+    expect(combobox).toHaveTextContent('All clients')
+    expect(readWorkingClient(workspaceId)).toBeNull()
+    expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
+    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
+    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/app/master-inbox')
+  })
+
+  it('offers only active clients and remembers the choice for the tab', async () => {
+    writeWorkingClient(workspaceId, otherClientId)
+    renderLayout()
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${otherClientId}`)
+
+    fireEvent.click(combobox)
+    expect(screen.getByRole('option', { name: 'Dallas Fontaine' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Former Client' })).not.toBeInTheDocument()
+  })
+
+  // A page opened with ?client= (a link from another module, a bookmark) is a
+  // choice too, and the header follows it rather than arguing.
+  it('adopts the client a scoped page was opened on', async () => {
+    renderLayout(undefined, `/app/client-podcast-system?client=${otherClientId}`)
+
+    await waitFor(() => expect(readWorkingClient(workspaceId)).toBe(otherClientId))
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${otherClientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Client Command Center' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('drops a working client that is no longer active', async () => {
+    writeWorkingClient(workspaceId, '66666666-6666-4666-8666-666666666666')
+    renderLayout()
+
+    await waitFor(() => expect(readWorkingClient(workspaceId)).toBeNull())
+    expect(screen.getByRole('combobox', { name: 'Working client' })).toHaveTextContent('All clients')
   })
 
   it('keeps the sidebar scroll position stable when the layout remounts during navigation', () => {
@@ -229,7 +362,7 @@ describe('WorkspaceLayout', () => {
       </QueryClientProvider>,
     )
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/app/settings')
-    expect(screen.queryByRole('button', { name: 'Reorder sidebar pages' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reorder' })).not.toBeInTheDocument()
 
     unmount()
     mockedUseAuth.mockReturnValue({
@@ -246,7 +379,7 @@ describe('WorkspaceLayout', () => {
     const settings = within(navigation).getByText('Settings').closest('button')
     expect(settings).toBeDisabled()
     expect(within(settings as HTMLElement).getByText('Owner/Admin')).toBeInTheDocument()
-    expect(within(navigation).queryByRole('button', { name: 'Reorder sidebar pages' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reorder' })).not.toBeInTheDocument()
   })
 
   /*
@@ -277,7 +410,8 @@ describe('WorkspaceLayout', () => {
     })
 
     const chip = await screen.findByRole('link', { name: /850 credits remaining/i })
-    expect(chip).toHaveAttribute('href', '/app/platform/billing')
+    // With the tenant named, so the top-up screen opens on this agency.
+    expect(chip).toHaveAttribute('href', `/app/platform/billing?workspace=${viewedWorkspaceId}`)
     // Theirs, not the admin's own.
     expect(mockedBillingOverview).toHaveBeenCalledWith(viewedWorkspaceId)
     expect(mockedBillingOverview).not.toHaveBeenCalledWith(workspaceId)
@@ -308,7 +442,7 @@ describe('WorkspaceLayout', () => {
       'href',
       `/app/workspaces/${workspaceId}/clients`,
     )
-    expect(within(navigation).getByRole('link', { name: 'Onboarding' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute(
       'href',
       `/app/workspaces/${workspaceId}/onboarding`,
     )
@@ -328,7 +462,7 @@ describe('WorkspaceLayout', () => {
       'href',
       `/app/workspaces/${workspaceId}/client-campaigns`,
     )
-    expect(within(navigation).getByRole('link', { name: 'Master Inbox' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute(
       'href',
       `/app/workspaces/${workspaceId}/master-inbox`,
     )
@@ -341,14 +475,56 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher').closest('header')).not.toBeNull()
-    expect(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' })).toBeInTheDocument()
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Reorder sidebar pages' }))
+    expect(screen.getByRole('button', { name: 'Reorder' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder' }))
     expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/manage-workspaces')
+    expect(screen.getByRole('link', { name: 'Manage workspaces' })).toHaveAttribute('href', '/app/manage-workspaces')
     expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-transparent')
     expect(screen.getByTestId('workspace-logo-sidebar')).not.toHaveClass('bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
+  })
+
+  /*
+   * A tenant's shell looks exactly like the admin's own, which is the point of
+   * it and also how an admin edits the wrong agency. The strip stays on screen
+   * for as long as they are inside somebody else's, and never in their own.
+   */
+  it('keeps a platform admin told whose workspace they are inside', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { email: 'platform@example.com' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
+      membership: null,
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+    renderLayout({
+      workspaceId: viewedWorkspaceId,
+      workspaceName: 'Northwind Agency',
+      logoUrl: null,
+      baseHref: `/app/workspaces/${viewedWorkspaceId}`,
+    })
+
+    const strip = screen.getByTestId('platform-tenant-strip')
+    expect(strip).toHaveTextContent('You are viewing Northwind Agency as platform admin. Changes here are live for their team.')
+    expect(within(strip).getByRole('link', { name: 'Back to Manage workspaces' })).toHaveAttribute('href', '/app/manage-workspaces')
+    expect(strip.className).toMatch(/amber/)
+    // The working client is the tenant's, not the admin's own.
+    await waitFor(() => expect(mockedClients).toHaveBeenCalledWith(viewedWorkspaceId))
+    expect(mockedClients).not.toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('shows no tenant strip in the admin own workspace', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { email: 'platform@example.com' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
+      membership: { full_name: 'Owner Name', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+    renderLayout()
+
+    expect(screen.queryByTestId('platform-tenant-strip')).not.toBeInTheDocument()
   })
 
   it('shows Jonathan the workspace switcher in his own workspace without changing his feature role', () => {

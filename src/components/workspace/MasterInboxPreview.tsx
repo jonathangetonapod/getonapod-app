@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { describeWait, sortThreadsForAttention, waitIsOverdue } from '@/lib/inboxAttention'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
+import { creditCostSuffix } from '@/lib/creditCosts'
 import {
   AlertCircle,
   Archive,
-  ArrowRight,
+  ArrowLeft,
   Ban,
   Bot,
   BookUser,
@@ -22,7 +23,6 @@ import {
   ShieldCheck,
   Sparkles,
   UserRound,
-  Waypoints,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -109,29 +109,6 @@ const statusPill: Partial<Record<WorkspaceInboxThreadStatus, { label: string; cl
   archived: { label: 'Archived', className: 'bg-muted text-muted-foreground' },
 }
 
-const aiRoutingSteps = [
-  {
-    title: 'Reply received',
-    detail: 'Keep the Instantly thread and sender identity intact.',
-    icon: MailOpen,
-  },
-  {
-    title: 'Client resolved',
-    detail: 'Campaign and podcast records identify the exact client.',
-    icon: Waypoints,
-  },
-  {
-    title: 'Client AI SDR loaded',
-    detail: 'Use that client’s approved positioning, topics, proof, listener value, and booking details.',
-    icon: Bot,
-  },
-  {
-    title: 'Review or act',
-    detail: 'Draft, reply, or help book according to the approved policy.',
-    icon: CalendarCheck2,
-  },
-] as const
-
 interface MasterInboxPreviewProps {
   workspaceId: string
   clients: WorkspaceClient[]
@@ -163,8 +140,8 @@ function ClientSdrContextPanel({
     return (
       <div className="mx-auto flex min-h-96 max-w-lg flex-col items-center justify-center px-6 text-center">
         <AlertCircle className="h-8 w-8 text-amber-600" />
-        <h2 className="mt-4 text-lg font-semibold">AI SDR context unavailable</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{error?.message || 'This client context could not be loaded.'}</p>
+        <h2 className="mt-4 text-lg font-semibold">Reply brief unavailable</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{error?.message || 'The client’s reply brief could not be loaded. Try again.'}</p>
         <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onRetry}>Try again</Button>
       </div>
     )
@@ -177,7 +154,7 @@ function ClientSdrContextPanel({
           <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Bot className="h-5 w-5" /></div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold">{context.client_name} AI SDR context</h2>
+              <h2 className="text-lg font-semibold">{context.client_name} reply brief</h2>
               <Badge
                 variant="outline"
                 className={context.safe_to_draft
@@ -192,12 +169,12 @@ function ClientSdrContextPanel({
               </Badge>
             </div>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              This is the exact client-scoped context Master Inbox will attach after a mapped reply resolves to {context.client_name}.
+              This is the exact client context the inbox attaches once a reply is matched to {context.client_name}.
             </p>
           </div>
         </div>
         <Button asChild variant="outline" size="sm" className="shrink-0">
-          <Link to={`${baseHref}/clients/${encodeURIComponent(client.id)}?tab=ai-sdr`}><Bot className="mr-2 h-4 w-4" />Edit AI SDR Profile</Link>
+          <Link to={`${baseHref}/clients/${encodeURIComponent(client.id)}?tab=ai-sdr`}><Bot className="mr-2 h-4 w-4" />Edit reply brief</Link>
         </Button>
       </div>
 
@@ -414,6 +391,22 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
     // an answer leads; recency only orders what is already handled.
     return sortThreadsForAttention(filtered, (item) => threadStatus(item, sentThreadIds))
   }, [threads, scope, search, selectedClient, filter, sentThreadIds])
+  // What is waiting on us, for the pane shown before a conversation is opened.
+  // Scoped to the client filter but not to the Interested/Other toggle: a host
+  // waiting in the other bucket is still waiting.
+  const waitingThreads = useMemo(() => {
+    const waiting = threads.filter((thread) => {
+      if (selectedClient && thread.campaign?.client?.id !== selectedClient.id) return false
+      const status = threadStatus(thread, sentThreadIds)
+      return status === 'needs_reply' || status === 'review'
+    })
+    return sortThreadsForAttention(waiting, (item) => threadStatus(item, sentThreadIds))
+  }, [threads, selectedClient, sentThreadIds])
+  const oldestWaitingAt = waitingThreads.reduce<string | null>(
+    (oldest, thread) => (thread.received_at && (!oldest || thread.received_at < oldest) ? thread.received_at : oldest),
+    null,
+  )
+  const oldestWait = describeWait(oldestWaitingAt)?.replace(/^waiting /u, '') ?? null
   const linkedThread = requestedThreadKey
     ? threads.find((thread) => thread.thread_key === requestedThreadKey) || null
     : null
@@ -611,7 +604,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
     }),
     onSuccess: (_result, thread) => {
       setSentThreadIds((current) => new Set([...current, thread.id]))
-      toast.success('Reply sent through Instantly.')
+      toast.success('Reply sent.')
       void inboxQuery.refetch()
     },
     onError: (error) => {
@@ -640,7 +633,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
       void leadDetailQuery.refetch()
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'The lead status could not be updated.')
+      toast.error(error instanceof Error ? error.message : 'The host’s status could not be updated.')
     },
   })
   // The reply in front of the operator is often the only place an opt-out is
@@ -808,6 +801,17 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
     }
   }
 
+  // Back from a conversation on a phone. Clearing the thread param too:
+  // without that the deep-link fallback re-selected the same thread at once.
+  const closeThread = () => {
+    persistDraftEdit.flush()
+    setSelectedThreadId(null)
+    if (requestedThreadKey) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('thread')
+      setSearchParams(next, { replace: true })
+    }
+  }
   const selectClient = (clientId: string) => {
     const next = new URLSearchParams(searchParams)
     if (clientId === 'all-clients') next.delete('client')
@@ -879,12 +883,12 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
           <Badge variant="outline" className="w-fit gap-2 text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5" />
             {clientsLoading
-              ? 'Loading client AI SDR profiles'
+              ? 'Loading client reply briefs'
               : clientsError
-                ? 'Client AI SDR profiles unavailable'
+                ? 'Client reply briefs unavailable'
                 : activeClients.length === 0
-                  ? 'Add a client to create an AI SDR profile'
-                  : `${readyClientCount} of ${activeClients.length} client AI SDR${activeClients.length === 1 ? '' : 's'} ready`}
+                  ? 'Add a client to create a reply brief'
+                  : `${readyClientCount} of ${activeClients.length} client reply brief${activeClients.length === 1 ? '' : 's'} ready`}
           </Badge>
         </div>
 
@@ -947,7 +951,11 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
         </div>
       ) : (
       <div className="grid h-[max(520px,calc(100vh-260px))] md:grid-cols-[21rem_minmax(0,1fr)]">
-        <aside className={cn('min-h-0 flex-col border-r bg-muted/10', selectedClient ? 'hidden md:flex' : 'flex')}>
+        {/* Below md only one pane fits, and which one follows whether a
+            conversation is open: the list until one is, then the thread with
+            a way back. It used to follow the client filter, which left the
+            list unreachable on a phone once a client was chosen. */}
+        <aside className={cn('min-h-0 flex-col border-r bg-muted/10', selectedThread ? 'hidden md:flex' : 'flex')}>
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold">Conversations</h2>
@@ -1083,11 +1091,18 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
             overflow-y-auto below never gets a constrained parent to scroll
             against and the Card's overflow-hidden clips the rest out of reach.
             The conversation list beside it already carries the same guard. */}
-        <section className={cn('min-h-0 min-w-0 flex-col bg-background', selectedClient ? 'flex' : 'hidden md:flex')}>
+        <section className={cn('min-h-0 min-w-0 flex-col bg-background', selectedThread ? 'flex' : 'hidden md:flex')}>
+          {selectedThread && (
+            <div className="border-b px-3 py-2 md:hidden">
+              <Button type="button" variant="ghost" size="sm" onClick={closeThread}>
+                <ArrowLeft className="mr-2 h-4 w-4" />Back to conversations
+              </Button>
+            </div>
+          )}
           <div className="flex items-center justify-between border-b px-5 py-3.5">
             <div>
-              <h2 className="text-sm font-semibold">{selectedThread ? 'Conversation' : selectedClient ? 'Client AI SDR profile' : 'Conversation thread'}</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">{selectedThread ? (selectedThread.campaign?.campaign_name || 'Reply from outreach') : selectedClient ? 'Preview the exact context available to mapped inbox replies.' : 'Open a reply to see its history and client AI SDR state.'}</p>
+              <h2 className="text-sm font-semibold">{selectedThread ? 'Conversation' : selectedClient ? 'Client reply brief' : 'Conversation thread'}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{selectedThread ? (selectedThread.campaign?.campaign_name || 'Reply from outreach') : selectedClient ? 'Preview the exact context available to matched inbox replies.' : 'Open a reply to see its history and the client’s reply brief.'}</p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               {selectedThread && canManage && (
@@ -1162,7 +1177,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                     ) : threadMessagesQuery.error ? (
                       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
                         <p className="text-xs text-destructive">The conversation history could not be loaded.</p>
-                        <Button type="button" variant="outline" size="sm" onClick={() => void threadMessagesQuery.refetch()}>Retry</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void threadMessagesQuery.refetch()}>Try again</Button>
                       </div>
                     ) : (threadMessagesQuery.data ?? []).length === 0 ? (
                       <p className="rounded-xl border border-dashed p-3 text-xs text-muted-foreground">
@@ -1204,7 +1219,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                 ) : !selectedThread.campaign?.client ? (
                   <div className="mt-4 space-y-3">
                     <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs leading-5 text-amber-900">
-                      <span className="font-semibold">No client match, no AI response.</span> This reply is not mapped to a client campaign, so drafting is disabled by policy.
+                      This reply is not linked to a client, so AI drafting is off. Link it to a client campaign to draft a reply.
                     </div>
                     {/* Suppression needs only the address, so an opt-out on an
                         unmapped thread is still actionable here. The banner
@@ -1228,7 +1243,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                     {threadClient && !threadClient.ai_sdr_profile_ready && (
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs leading-5 text-amber-900">
                         <span>
-                          <span className="font-semibold">{selectedThread.campaign.client.name}&rsquo;s AI SDR profile is not ready.</span>{' '}
+                          <span className="font-semibold">{selectedThread.campaign.client.name}&rsquo;s reply brief is not ready.</span>{' '}
                           {missingSdrFields.length > 0
                             ? `AI drafting is off until ${missingSdrFields.length === 1 ? 'one core field is' : `${missingSdrFields.length} core fields are`} filled in: ${missingSdrFields.join(', ')}. You can still reply manually below.`
                             : threadSdrQuery.isLoading
@@ -1258,19 +1273,19 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                       </div>
                     )}
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">Reply as {selectedThread.campaign.client.name}&rsquo;s SDR</p>
+                      <p className="text-sm font-semibold">Reply for {selectedThread.campaign.client.name}</p>
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
                         disabled={!canManage || draftMutation.isPending || Boolean(threadClient && !threadClient.ai_sdr_profile_ready)}
                         title={threadClient && !threadClient.ai_sdr_profile_ready
-                          ? 'Complete the AI SDR profile to draft with AI — manual replies work now'
+                          ? 'Complete the reply brief to draft with AI. Manual replies work now.'
                           : undefined}
                         onClick={() => draftMutation.mutate(selectedThread)}
                       >
                         {draftMutation.isPending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}
-                        {draftedForThread === selectedThread.id ? 'Redraft with AI' : 'Draft with AI'}
+                        {draftedForThread === selectedThread.id ? `Draft again ${creditCostSuffix('query_generation')}` : `Draft reply ${creditCostSuffix('query_generation')}`}
                       </Button>
                     </div>
                     {/* A disabled control has to say why where it sits. The
@@ -1279,7 +1294,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                     {threadClient && !threadClient.ai_sdr_profile_ready && (
                       <p className="-mt-1 text-xs leading-5 text-muted-foreground">
                         <span className="font-medium text-foreground">Drafting is off</span> because{' '}
-                        {threadClient.name}&rsquo;s AI SDR profile is incomplete
+                        {threadClient.name}&rsquo;s reply brief is incomplete
                         {missingSdrFields.length > 0 ? ` (${missingSdrFields.join(', ')})` : ''}. Writing a reply
                         yourself still works.
                       </p>
@@ -1301,7 +1316,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                         setDraftBody(event.target.value)
                         persistDraftEdit(selectedThread, event.target.value)
                       }}
-                      placeholder="Draft with AI, or write the reply yourself…"
+                      placeholder="Draft a reply with AI, or write it yourself."
                       aria-label="Reply body"
                       className="min-h-36"
                     />
@@ -1583,7 +1598,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                 onRetry={() => void sdrContextQuery.refetch()}
               />
             ) : (
-            <div className="w-full max-w-4xl p-5 text-center lg:p-8">
+            <div className="w-full max-w-xl p-5 text-center lg:p-8">
               {/* A deep link whose conversation has scrolled out of the reply
                   window used to land here with no explanation at all — the
                   relationship book keeps threads forever, the provider window
@@ -1597,50 +1612,58 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <MessageSquare className="h-7 w-7" />
               </div>
-              <h2 className="mt-5 text-lg font-semibold">Every reply reaches the right client AI SDR</h2>
-              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                The Master Inbox resolves the outreach owner before any AI work begins, then loads only that client’s approved context and response policy.
-              </p>
-
-              <div role="list" aria-label="AI SDR reply routing" className="mt-7 grid gap-2 text-left sm:grid-cols-2 xl:grid-cols-4">
-                {aiRoutingSteps.map((step, index) => {
-                  const Icon = step.icon
-                  return (
-                    <div key={step.title} role="listitem" className="relative min-w-0">
-                      <div className="h-full rounded-xl border bg-muted/15 p-3.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg border bg-background text-primary shadow-sm">
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">0{index + 1}</span>
-                        </div>
-                        <p className="mt-3 text-xs font-semibold">{step.title}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.detail}</p>
-                      </div>
-                      {index < aiRoutingSteps.length - 1 && (
-                        <div className="absolute -right-2.5 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground xl:flex" aria-hidden="true">
-                          <ArrowRight className="h-3 w-3" />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="mx-auto mt-4 flex max-w-2xl items-start gap-2.5 rounded-xl border border-dashed bg-background px-4 py-3 text-left">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <p className="text-xs leading-5 text-muted-foreground">
-                  <span className="font-semibold text-foreground">No client match, no AI response.</span>{' '}
-                  Ambiguous replies stop for routing review instead of borrowing another client’s identity or context.
-                </p>
-              </div>
+              {waitingThreads.length === 0 ? (
+                <>
+                  <h2 className="mt-5 text-lg font-semibold">No conversations waiting</h2>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                    Every reply has an answer. Open a conversation from the list to read it again.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="mt-5 text-lg font-semibold">
+                    {waitingThreads.length === 1 ? '1 conversation waiting' : `${waitingThreads.length} conversations waiting`}
+                    {oldestWait ? `, oldest ${oldestWait}` : ''}
+                  </h2>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                    The host who has waited longest is first. Open one to read it and draft a reply.
+                  </p>
+                  <ul className="mt-5 space-y-2 text-left" aria-label="Conversations waiting longest">
+                    {waitingThreads.slice(0, 3).map((thread) => {
+                      const wait = describeWait(thread.received_at)
+                      return (
+                        <li key={thread.id}>
+                          <button
+                            type="button"
+                            aria-label={`Open the conversation with ${thread.from_email || thread.lead_email || 'an unknown sender'}`}
+                            onClick={() => openThread(thread.id)}
+                            className="w-full rounded-xl border bg-background px-4 py-3 text-left transition-colors hover:bg-muted/40"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="truncate text-sm font-medium">{thread.from_email || thread.lead_email || 'Unknown sender'}</span>
+                              {wait && (
+                                <span className={cn('shrink-0 text-xs font-medium tabular-nums', waitIsOverdue(thread.received_at) ? 'text-amber-700' : 'text-muted-foreground')}>
+                                  {wait}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {thread.subject || '(no subject)'}{thread.campaign?.client ? ` · ${thread.campaign.client.name}` : ''}
+                            </p>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </>
+              )}
             </div>
             )}
           </div>
 
           <div className="border-t bg-muted/10 p-3">
             <div className="flex items-center justify-between rounded-lg border border-dashed bg-background px-4 py-3 text-xs text-muted-foreground">
-              <span>{selectedClient ? 'Choose All clients to return to inbox routing, or open this client to edit its approved context.' : 'AI draft, review, reply, and booking controls appear with a selected conversation.'}</span>
+              <span>{selectedClient ? 'Choose All clients to see every conversation, or open this client to edit its reply brief.' : 'Drafting, reply, and booking controls appear once a conversation is open.'}</span>
               <Send className="h-4 w-4" />
             </div>
           </div>

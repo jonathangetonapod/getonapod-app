@@ -46,9 +46,9 @@ class ErrorBoundary extends React.Component<
                   <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
                 </div>
                 <div>
-                  <CardTitle>Something went wrong</CardTitle>
+                  <CardTitle>This page could not be shown</CardTitle>
                   <CardDescription>
-                    We've been notified and are working on a fix
+                    Reload it; if that fails, sign in again.
                   </CardDescription>
                 </div>
               </div>
@@ -68,18 +68,18 @@ class ErrorBoundary extends React.Component<
                   variant="default"
                 >
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Reload Page
+                  Reload page
                 </Button>
                 <Button
                   onClick={this.handleReset}
                   className="flex-1"
                   variant="outline"
                 >
-                  Try Again
+                  Try again
                 </Button>
               </div>
               <p className="text-xs text-center text-muted-foreground">
-                If this problem persists, please contact support
+                If this keeps happening, contact support.
               </p>
             </CardContent>
           </Card>

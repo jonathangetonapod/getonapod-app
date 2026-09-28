@@ -27,19 +27,23 @@ import { Switch } from '@/components/ui/switch'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { usePortalExperience } from '@/hooks/usePortalExperience'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { placementStatusLabel } from '@/lib/placementStatus'
 import { setPortalNotifications, type PortalExperienceBooking } from '@/services/clientPortal'
 
-const statusPresentation: Record<string, { label: string; className: string }> = {
-  conversation_started: { label: 'In conversation', className: 'bg-sky-50 text-sky-700 border-sky-200' },
-  in_progress: { label: 'In progress', className: 'bg-sky-50 text-sky-700 border-sky-200' },
-  booked: { label: 'Booked', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  recorded: { label: 'Recorded', className: 'bg-violet-50 text-violet-700 border-violet-200' },
-  published: { label: 'Live', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  cancelled: { label: 'Cancelled', className: 'bg-muted text-muted-foreground' },
+// The words come from the shared table; only the colours live here.
+const statusClassName: Record<string, string> = {
+  conversation_started: 'bg-sky-50 text-sky-700 border-sky-200',
+  in_progress: 'bg-sky-50 text-sky-700 border-sky-200',
+  booked: 'bg-amber-50 text-amber-800 border-amber-200',
+  recorded: 'bg-violet-50 text-violet-700 border-violet-200',
+  published: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  cancelled: 'bg-muted text-muted-foreground',
 }
 
-const bookingStatus = (status: string) =>
-  statusPresentation[status] ?? { label: status.replace(/_/gu, ' '), className: 'bg-muted text-muted-foreground' }
+const bookingStatus = (status: string) => ({
+  label: placementStatusLabel(status),
+  className: statusClassName[status] ?? 'bg-muted text-muted-foreground',
+})
 
 const displayDate = (value: string | null | undefined) => {
   if (!value) return null
@@ -102,7 +106,8 @@ interface JourneyStat {
 }
 
 export default function PortalDashboardMvp() {
-  const { client } = useClientPortal()
+  const { client, branding } = useClientPortal()
+  const brandName = branding?.name?.trim() || 'Your team'
   const overviewQuery = usePortalExperience()
   const queryClient = useQueryClient()
   const [detailBooking, setDetailBooking] = useState<PortalExperienceBooking | null>(null)
@@ -174,6 +179,17 @@ export default function PortalDashboardMvp() {
   const outreach = overview?.outreach ?? null
   const pitchProfile = overview?.pitch_profile ?? null
   const mediaKitUrl = overview?.profile.media_kit_url ? safeExternalUrl(overview.profile.media_kit_url) : null
+  const reviewHref = client?.dashboard_slug
+    ? `/client/${encodeURIComponent(client.dashboard_slug)}?from=portal`
+    : null
+  /*
+   * The first week: nothing booked and nothing to review yet. A row of zero
+   * tiles over an empty list reads as a broken page; the true state is that
+   * the team is still researching, and that is worth one card saying so.
+   */
+  const awaitingShortlist = Boolean(overview)
+    && bookings.length === 0
+    && (!review || review.total_visible === 0)
 
   /*
    * The value story, not just the activity story. The counts say how busy the
@@ -204,7 +220,7 @@ export default function PortalDashboardMvp() {
         { label: 'Published episodes', value: String(published.length), icon: Radio },
       ]
       : [
-        { label: 'Total placements', value: String(activeBookings.length), icon: Mic2 },
+        { label: 'Shows in progress', value: String(activeBookings.length), icon: Mic2 },
         { label: 'Upcoming / in progress', value: String(activeBookings.length - published.length), icon: CalendarDays },
         { label: 'Published episodes', value: String(published.length), icon: Radio },
       ]),
@@ -251,7 +267,7 @@ export default function PortalDashboardMvp() {
           </div>
         )}
 
-        {client?.dashboard_slug && review && review.awaiting_count > 0 && (
+        {reviewHref && review && review.awaiting_count > 0 && (
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -261,12 +277,12 @@ export default function PortalDashboardMvp() {
                     : `${review.awaiting_count} podcasts are waiting for your review`}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Approve the shows you like and your team starts the outreach.
-                  {review.approved_count > 0 ? ` You have approved ${review.approved_count} so far.` : ''}
+                  Mark the shows you are interested in and your team starts the outreach.
+                  {review.approved_count > 0 ? ` You have picked ${review.approved_count} so far.` : ''}
                 </p>
               </div>
               <Button asChild>
-                <a href={`/client/${encodeURIComponent(client.dashboard_slug)}`}>
+                <a href={reviewHref}>
                   Review shortlist
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </a>
@@ -274,16 +290,29 @@ export default function PortalDashboardMvp() {
             </CardContent>
           </Card>
         )}
-        {client?.dashboard_slug && review && review.awaiting_count === 0 && review.total_visible > 0 && (
+        {reviewHref && review && review.awaiting_count === 0 && review.total_visible > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-sm">
             <p className="flex items-center gap-2 text-muted-foreground">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Shortlist reviewed — {review.approved_count} approved. New shows appear here first.
+              Shortlist reviewed: {review.approved_count} {review.approved_count === 1 ? 'pick' : 'picks'}. New shows appear here first.
             </p>
-            <a className="font-medium text-primary hover:underline" href={`/client/${encodeURIComponent(client.dashboard_slug)}`}>
+            <a className="font-medium text-primary hover:underline" href={reviewHref}>
               Open your shortlist
             </a>
           </div>
+        )}
+
+        {awaitingShortlist && (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+              <Sparkles className="h-8 w-8 text-muted-foreground" />
+              <p className="text-lg font-semibold">Your shortlist is being prepared</p>
+              <p className="max-w-md text-sm leading-6 text-muted-foreground">
+                {brandName} is researching shows that fit you; you will get an email when they are ready to review.
+                Meanwhile, the Resources tab has prep material.
+              </p>
+            </CardContent>
+          </Card>
         )}
 
         {/* The moment this whole service works toward, while it is still news.
@@ -350,7 +379,7 @@ export default function PortalDashboardMvp() {
             these tiles asserted "0" of everything during loading and kept
             asserting it after a failed fetch — a confidently wrong dashboard
             above an error card that said the numbers could not be loaded. */}
-        {overview && (
+        {overview && !awaitingShortlist && (
         <div className={statsGridClass}>
           {journeyStats.map((stat) => (
             <Card key={stat.label}>
@@ -430,24 +459,25 @@ export default function PortalDashboardMvp() {
           </div>
         )}
 
+        {!awaitingShortlist && (
         <Card>
           <CardHeader>
-            <CardTitle>Podcast placements</CardTitle>
+            <CardTitle>Your shows</CardTitle>
             <CardDescription>Every show on your journey, from first conversation to published episode.</CardDescription>
           </CardHeader>
           <CardContent>
             {/* The error card only when there is nothing better to show: a
                 background refresh failing after data loaded used to put "your
                 session may have expired" under panels still rendering the
-                stale data — the banner above owns that state now. */}
+                stale data; the banner above owns that state now. */}
             {overviewQuery.isLoading && !overview ? (
               <div className="flex min-h-40 items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" /> Loading your placements…
+                <Loader2 className="h-5 w-5 animate-spin" /> Loading your shows…
               </div>
             ) : overviewQuery.error && !overview ? (
               <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-destructive">
-                  We couldn’t load your placements right now. Try again in a moment, or sign in again if it keeps happening.
+                  We could not load your shows right now. Try again in a moment, or sign in again if it keeps happening.
                 </p>
                 <Button variant="outline" onClick={() => overviewQuery.refetch()}>
                   <RefreshCw className="mr-2 h-4 w-4" /> Try again
@@ -456,8 +486,8 @@ export default function PortalDashboardMvp() {
             ) : bookings.length === 0 ? (
               <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
                 <Headphones className="h-9 w-9" />
-                <p className="font-medium text-foreground">No placements yet</p>
-                <p className="text-sm">Your placements will appear here as soon as your team books them.</p>
+                <p className="font-medium text-foreground">No shows yet</p>
+                <p className="text-sm">They appear here as your team books them.</p>
               </div>
             ) : (
               <div className="divide-y">
@@ -533,6 +563,7 @@ export default function PortalDashboardMvp() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {pitchProfile && (
           <Card>

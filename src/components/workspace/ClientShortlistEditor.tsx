@@ -337,7 +337,7 @@ export function ClientShortlistEditor({
       } else if (result.skipped > 0) {
         toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} and skipped ${result.skipped} duplicate${result.skipped === 1 ? '' : 's'}.`)
       } else {
-        toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${clientName}’s approval list.`)
+        toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${clientName}’s shortlist.`)
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Podcasts could not be added.')
@@ -390,7 +390,7 @@ export function ClientShortlistEditor({
   if (shortlistQuery.error) {
     return (
       <Card id="client-podcast-list" className="border-destructive/30">
-        <CardHeader><CardTitle>Client podcast list unavailable</CardTitle><CardDescription>{shortlistQuery.error instanceof Error ? shortlistQuery.error.message : 'The podcast list could not be loaded.'}</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Shortlist unavailable</CardTitle><CardDescription>{shortlistQuery.error instanceof Error ? shortlistQuery.error.message : 'The shortlist could not be loaded.'}</CardDescription></CardHeader>
         <CardContent><Button variant="outline" onClick={() => void shortlistQuery.refetch()}>Try again</Button></CardContent>
       </Card>
     )
@@ -402,8 +402,8 @@ export function ClientShortlistEditor({
         <CardHeader className="border-b bg-muted/20">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <CardTitle id="client-podcast-list-heading" className="flex items-center gap-2 text-xl"><Library className="h-5 w-5 text-primary" />Client podcast list</CardTitle>
-              <CardDescription className="mt-2 max-w-2xl">Control exactly what {clientName} sees without leaving the Approval Dashboard. Archived shows stay in campaign history and weekly dedupe.</CardDescription>
+              <CardTitle id="client-podcast-list-heading" className="flex items-center gap-2 text-xl"><Library className="h-5 w-5 text-primary" />Shortlist</CardTitle>
+              <CardDescription className="mt-2 max-w-2xl">Control exactly what {clientName} sees. Archived shows stay in campaign history and weekly dedupe.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline"><Link to={databaseHref}><Database className="mr-2 h-4 w-4" />Browse database</Link></Button>

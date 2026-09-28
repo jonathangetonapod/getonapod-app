@@ -265,7 +265,7 @@ serve(async (req) => {
     const action = typeof body.action === 'string' ? body.action : ''
     const context = await requireAuthenticatedUser(req)
     if (!workspaceCredentialIsFresh(context)) {
-      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
     }
     const { admin, user, tokenIssuedAt } = context
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
@@ -410,7 +410,7 @@ serve(async (req) => {
       if (capabilityCheck.error) {
         const message = (capabilityCheck.error.message ?? '').toLowerCase()
         if (capabilityCheck.error.code === 'P0002' || message.includes('not found')) {
-          throw new HttpError(409, 'ONBOARDING_LINK_CHANGED', 'The saved link can no longer be reconstructed. Rotate it once to create a new link')
+          throw new HttpError(409, 'ONBOARDING_LINK_CHANGED', 'This onboarding link can no longer be opened. Create a new link and send it to the client')
         }
         rpcError(capabilityCheck.error)
       }

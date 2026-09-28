@@ -45,7 +45,7 @@ serve(async (req) => {
     }
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim()
     if (!stripeKey) {
-      throw new HttpError(500, 'SERVER_MISCONFIGURED', 'Credit purchases are not configured')
+      throw new HttpError(500, 'SERVER_MISCONFIGURED', 'Buying credits is not available yet. Contact support to add credits')
     }
 
     const body = await parseJsonObject(req)
@@ -152,7 +152,7 @@ serve(async (req) => {
         signal: AbortSignal.timeout(20_000),
       })
     } catch (_error) {
-      throw new HttpError(503, 'STRIPE_UNAVAILABLE', 'The payment provider is unreachable right now')
+      throw new HttpError(503, 'STRIPE_UNAVAILABLE', 'Payments are temporarily unavailable. Try again in a few minutes')
     }
     const payload = await response.json().catch(() => null) as
       | { id?: string; url?: string; error?: { message?: string } }

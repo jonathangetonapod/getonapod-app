@@ -117,7 +117,7 @@ describe('OutreachSuppressionsDialog', () => {
     mockedList.mockResolvedValue([])
     renderDialog()
 
-    expect(await screen.findByText('Nobody is suppressed')).toBeInTheDocument()
+    expect(await screen.findByText('No addresses on the do-not-contact list.')).toBeInTheDocument()
     expect(screen.getByText(/stops for every client/i)).toBeInTheDocument()
   })
 })

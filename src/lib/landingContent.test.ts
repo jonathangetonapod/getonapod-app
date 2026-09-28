@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { CLIENT_NAMES, initials } from './landingContent'
+import { CLIENT_NAMES, CLIENT_QUOTES, initials } from './landingContent'
 
 describe('initials', () => {
   it('skips articles and stops at two letters', () => {
@@ -11,8 +11,13 @@ describe('initials', () => {
 })
 
 describe('CLIENT_NAMES', () => {
-  it('stays empty until there are real clients to name', () => {
-    // The design's marquee scrolled invented companies. Nothing invented ships.
-    expect(CLIENT_NAMES).toEqual([])
+  it('names only clients who are quoted on the page', () => {
+    // The design's marquee scrolled invented companies. Nothing invented
+    // ships: every name here belongs to someone quoted, by name, further down.
+    expect(CLIENT_NAMES.length).toBeGreaterThan(0)
+    for (const name of CLIENT_NAMES) {
+      expect(CLIENT_QUOTES.some((quote) => quote.role.endsWith(`, ${name}`))).toBe(true)
+    }
+    expect(new Set(CLIENT_NAMES).size).toBe(CLIENT_NAMES.length)
   })
 })

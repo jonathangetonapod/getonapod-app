@@ -203,7 +203,7 @@ describe('WorkspaceOutreachSuite', () => {
 
   it.each([
     ['client-campaigns', 'Client Campaigns', 'No active clients'],
-    ['master-inbox', 'Master Inbox', 'No replies yet'],
+    ['master-inbox', 'Inbox', 'No replies yet'],
   ] as const)('renders the %s workspace foundation without invented provider data', async (module, title, emptyState) => {
     renderPage(module)
 
@@ -394,7 +394,7 @@ describe('WorkspaceOutreachSuite', () => {
     mockedMailboxes.mockResolvedValueOnce({
       connected: false,
       reason: 'key_rejected',
-      provider_workspace_name: 'GOAP Sending',
+      provider_workspace_name: 'Get On A Pod Sending',
       accounts: [],
       last_synced_at: null,
       analytics_errors: [],
@@ -417,7 +417,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(screen.queryByText('Not connected')).not.toBeInTheDocument()
   })
 
-  it('visualizes deterministic client AI SDR routing without fake replies', async () => {
+  it('summarizes what is waiting instead of diagramming routing when nothing is open', async () => {
     renderPage('master-inbox')
 
     const scope = screen.getByRole('radiogroup', { name: 'Inbox scope' })
@@ -431,13 +431,10 @@ describe('WorkspaceOutreachSuite', () => {
     expect(screen.getByRole('heading', { name: 'Conversations' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Conversation thread' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Conversation context' })).not.toBeInTheDocument()
-    expect(await screen.findByText('Add a client to create an AI SDR profile')).toBeInTheDocument()
-    const routing = screen.getByRole('list', { name: 'AI SDR reply routing' })
-    expect(within(routing).getByText('Reply received')).toBeInTheDocument()
-    expect(within(routing).getByText('Client resolved')).toBeInTheDocument()
-    expect(within(routing).getByText('Client AI SDR loaded')).toBeInTheDocument()
-    expect(within(routing).getByText('Review or act')).toBeInTheDocument()
-    expect(screen.getByText('No client match, no AI response.')).toBeInTheDocument()
+    expect(await screen.findByText('Add a client to create a reply brief')).toBeInTheDocument()
+    // An empty inbox says so; the four-step routing diagram is gone.
+    expect(await screen.findByRole('heading', { name: 'No conversations waiting' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Conversations waiting longest' })).not.toBeInTheDocument()
     expect(screen.queryByText('Your master inbox is ready')).not.toBeInTheDocument()
 
     fireEvent.click(within(scope).getByRole('radio', { name: /other replies/i }))
@@ -448,7 +445,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(screen.getByLabelText('Conversation filters')).toHaveTextContent('Archived')
   })
 
-  it('loads the selected client AI SDR context inside Master Inbox without send authority', async () => {
+  it('loads the selected client reply brief inside the inbox without send authority', async () => {
     const clientId = '22222222-2222-4222-8222-222222222222'
     mockedClients.mockResolvedValueOnce([{
       id: clientId,
@@ -496,11 +493,11 @@ describe('WorkspaceOutreachSuite', () => {
 
     renderPage('master-inbox', undefined, `?client=${clientId}`)
 
-    expect(await screen.findByRole('heading', { name: 'Dallas Fontaine AI SDR context' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Dallas Fontaine reply brief' })).toBeInTheDocument()
     expect(screen.getByText('Ready for review drafts')).toBeInTheDocument()
     expect(screen.getByText('Dallas is a practical AI implementation and B2B sales leader.')).toBeInTheDocument()
     expect(screen.getByText('Delivery authority is off.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Edit AI SDR Profile' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Edit reply brief' })).toHaveAttribute(
       'href',
       `/app/clients/${clientId}?tab=ai-sdr`,
     )
@@ -545,7 +542,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(await screen.findByText(/This address is on the do-not-contact list/i)).toBeInTheDocument()
     // The composer is gone entirely, not merely disabled.
     expect(screen.queryByRole('button', { name: 'Send reply' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Draft with AI' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Draft reply/ })).not.toBeInTheDocument()
     // And it is already suppressed, so it is stated rather than offered again.
     expect(screen.queryByRole('button', { name: /add to do not contact/i })).not.toBeInTheDocument()
   })
@@ -855,7 +852,7 @@ describe('WorkspaceOutreachSuite', () => {
     ).toHaveAttribute('aria-checked', 'true'))
   })
 
-  it('saves a selected Master Inbox conversation to its host relationship', async () => {
+  it('saves a selected inbox conversation to its host relationship', async () => {
     const clientId = '22222222-2222-4222-8222-222222222222'
     vi.mocked(getWorkspaceInboxThreads).mockResolvedValue({
       connected: true,

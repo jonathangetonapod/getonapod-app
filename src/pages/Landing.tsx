@@ -3,8 +3,8 @@ import { Link, useLocation } from 'react-router-dom'
 
 import PageSEO from '@/components/seo/PageSEO'
 import {
-  CALL_LABEL, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, HERO, HERO_SECONDARY, MONTHLY_PRICE,
-  PODCAST_CATALOG, PLAN_INCLUDES, initials,
+  CALL_LABEL, CALL_NOTE, CALL_PROMISE, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, HERO, HERO_SECONDARY,
+  MINIMUM_MONTHS, MONTHLY_PRICE, PODCAST_CATALOG, PLAN_INCLUDES, WEEKLY_MINUTES, initials,
 } from '@/lib/landingContent'
 import '@/styles/landing.css'
 
@@ -18,6 +18,7 @@ const Brand = () => (
   <>Get<i>on</i>a<i>Pod</i><b>.</b></>
 )
 
+/** A filled dot: the hollow square it replaced read as an unticked checkbox. */
 const Mark = () => <span className="dfy-list-mark" aria-hidden="true" />
 
 /** A link that leaves the site in a new tab, and says so to a screen reader. */
@@ -50,6 +51,20 @@ const Hero = () => (
       <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
       <a className="dfy-btn dfy-btn-ghost" href="#how">{HERO_SECONDARY}</a>
     </div>
+    <p className="dfy-cta-note">{CALL_PROMISE} {CALL_NOTE}</p>
+    {/* The terms, before anyone scrolls to the pricing section that states them. */}
+    <p className="dfy-kicker dfy-facts">
+      <span>${MONTHLY_PRICE} a month</span>
+      <span>{MINIMUM_MONTHS}-month minimum</span>
+      <span>about {WEEKLY_MINUTES} minutes a week of your time</span>
+      <span>you approve every show</span>
+    </p>
+    <a className="dfy-proof" href="#quotes">
+      <span className="dfy-proof-faces" aria-hidden="true">
+        {CLIENT_QUOTES.map((q) => <Portrait key={q.name} name={q.name} src={q.portrait} />)}
+      </span>
+      <span>Six founders, on camera, on why it worked</span>
+    </a>
   </section>
 )
 
@@ -90,6 +105,7 @@ const PodcastsHow = () => (
       <h2 className="dfy-how-title">You show up and talk</h2>
       <p className="dfy-how-copy">Most clients record their first episode within 3–5 weeks. Every booking lands on your calendar with a prep brief: the host, the audience, the angle and the one thing to plug.</p>
     </div>
+    <p className="dfy-how-more"><Link to="/what-to-expect">See the week-by-week plan</Link></p>
   </section>
 )
 
@@ -225,6 +241,7 @@ const Quotes = () => {
   return (
     <>
       <section
+        id="quotes"
         className="dfy-section-tight"
         aria-roledescription="carousel"
         aria-label="Testimonials"
@@ -380,7 +397,7 @@ const Landing = () => {
           <a className="dfy-nav-link" href="#how">How it works</a>
           <a className="dfy-nav-link" href="#pricing">Pricing</a>
           <a className="dfy-nav-link" href="#faq">FAQ</a>
-          <Link className="dfy-nav-link" to="/login">Sign in</Link>
+          <Link className="dfy-nav-link" to="/portal/login">Client sign-in</Link>
         </div>
         <a className="dfy-btn dfy-btn-primary dfy-nav-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call<NewTab /></a>
       </nav>
@@ -401,11 +418,12 @@ const Landing = () => {
 
       <section id="book" className="dfy-book">
         <div className="dfy-book-in">
-          <h2><span>Your next customer</span><span>is listening right now.</span></h2>
-          <p className="dfy-book-copy">In 30 minutes we show you the kinds of shows we would pitch you to, and tell you honestly how many bookings to expect in your niche — including if the number is lower than you hoped.</p>
+          <h2><span>See the shows</span><span>we would pitch you to.</span></h2>
+          <p className="dfy-book-copy">{CALL_PROMISE} We also tell you honestly how many bookings to expect in your niche, including if the number is lower than you hoped.</p>
           <div className="dfy-cta-row">
             <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
           </div>
+          <p className="dfy-cta-note">{CALL_NOTE}</p>
         </div>
       </section>
 
@@ -427,6 +445,14 @@ const Landing = () => {
             <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
             <a href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
             <Link to="/platform">For agencies</Link>
+          </div>
+          <div className="dfy-footer-col">
+            <span className="dfy-footer-head">Also</span>
+            <Link to="/what-to-expect">What to expect</Link>
+            <Link to="/portal/login">Client sign-in</Link>
+            <Link to="/login">Agency sign-in</Link>
+            <Link to="/privacy">Privacy</Link>
+            <Link to="/terms">Terms</Link>
           </div>
         </div>
         <div className="dfy-footer-foot">

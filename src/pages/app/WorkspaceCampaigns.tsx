@@ -155,16 +155,18 @@ function summarizeCampaign(
   const stagedCount = campaign?.target_counts.staged || 0
   const stagedSendingCount = campaign?.target_counts.staged_sending || 0
   // Podcasts tab for work on leads already in the campaign; Options for a
-  // provider fault; the finder for writing a pitch, which is where Write Pitch
-  // lives — a podcast reaches the campaign only from there.
+  // provider fault and for launching, which is where the launch button lives;
+  // the client's shortlist for writing a pitch, since Write Pitch sits on
+  // each shortlisted show.
   const podcastsHref = `${baseHref}/client-campaigns/${client.id}?tab=leads`
-  const writeHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
+  const optionsHref = `${baseHref}/client-campaigns/${client.id}?tab=options`
+  const writeHref = `${baseHref}/clients/${client.id}?tab=approval`
   const nextAction: CampaignNextAction = campaign?.last_error
-    ? { label: 'Resolve campaign issue', href: `${baseHref}/client-campaigns/${client.id}?tab=options` }
+    ? { label: 'Resolve campaign issue', href: optionsHref }
     : stagedSendingCount > 0
       ? { label: `${stagedSendingCount} pitch${stagedSendingCount === 1 ? '' : 'es'} already sending`, href: podcastsHref }
       : stagedCount > 0
-      ? { label: `Launch ${stagedCount} staged pitch${stagedCount === 1 ? '' : 'es'}`, href: podcastsHref }
+      ? { label: `Launch ${stagedCount} staged pitch${stagedCount === 1 ? '' : 'es'}`, href: optionsHref }
       : readyCount > 0
       ? { label: `Launch ${readyCount} approved pitch${readyCount === 1 ? '' : 'es'}`, href: podcastsHref }
       : needsPitchCount > 0
@@ -379,7 +381,7 @@ const WorkspaceCampaigns = ({
     mutationFn: () => refreshWorkspaceInstantly(workspaceId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-      toast.success('Instantly connection refreshed.')
+      toast.success('Connection refreshed.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Instantly could not be refreshed.'),
   })
@@ -520,6 +522,16 @@ const WorkspaceCampaigns = ({
   ), 0)
   const assignedClientIds = new Set(providerBackedCampaigns.map((campaign) => campaign.client_id))
   const availableCampaignClients = activeClients.filter((client) => !assignedClientIds.has(client.id))
+  // A disabled New campaign button has to say why where it sits.
+  const newCampaignBlockedReason = clientsLoading || campaignOverviewQuery.isLoading
+    ? null
+    : !integration?.connected
+      ? 'Connect Instantly first'
+      : activeClients.length === 0
+        ? 'Add an active client first'
+        : availableCampaignClients.length === 0
+          ? 'Every active client already has a campaign'
+          : null
   const selectedProviderCampaign = selectedProviderCampaignId === 'new'
     ? null
     : unassignedProviderCampaigns.find((campaign) => campaign.id === selectedProviderCampaignId) || null
@@ -533,7 +545,7 @@ const WorkspaceCampaigns = ({
       await connectWorkspaceInstantly(workspaceId, apiKey)
       setConnectionOpen(false)
       await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-      toast.success('Instantly connected. Campaign launching is ready.')
+      toast.success('Instantly connected. You can create and launch campaigns.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Instantly could not be connected.')
     } finally {
@@ -708,9 +720,16 @@ const WorkspaceCampaigns = ({
                 Refresh totals
               </Button>
             )}
-            <Button onClick={() => setCreateOpen(true)} disabled={clientsLoading || campaignOverviewQuery.isLoading || !integration?.connected || availableCampaignClients.length === 0}>
-              <Plus className="mr-2 h-4 w-4" />New campaign
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                onClick={() => setCreateOpen(true)}
+                disabled={clientsLoading || campaignOverviewQuery.isLoading || Boolean(newCampaignBlockedReason)}
+                title={newCampaignBlockedReason ?? undefined}
+              >
+                <Plus className="mr-2 h-4 w-4" />New campaign
+              </Button>
+              {newCampaignBlockedReason && <p className="text-xs text-muted-foreground">{newCampaignBlockedReason}</p>}
+            </div>
           </div>
         )}
       </div>
@@ -851,8 +870,8 @@ const WorkspaceCampaigns = ({
         ) : summaries.length === 0 ? (
           <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
             <PlugZap className="h-8 w-8 text-muted-foreground/50" />
-            <h3 className="mt-3 font-semibold">No Instantly campaigns assigned yet</h3>
-            <p className="mt-1 max-w-md text-sm text-muted-foreground">Create a new campaign in Instantly or assign an existing Instantly campaign to a client.</p>
+            <h3 className="mt-3 font-semibold">No campaigns yet.</h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">Create one for a client; it is created in Instantly for you.</p>
             {canManageCampaigns && integration?.connected && availableCampaignClients.length > 0 && <Button className="mt-4" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />New campaign</Button>}
           </div>
         ) : filteredSummaries.length === 0 ? (
@@ -883,7 +902,7 @@ const WorkspaceCampaigns = ({
                       <div><p className="text-xs text-muted-foreground">Progress</p><p className="mt-1 font-medium">{metrics.progress === null ? '—' : `${metrics.progress}%`}</p></div>
                       <div><p className="text-xs text-muted-foreground">Sent</p><p className="mt-1 font-medium">{metrics.sent.toLocaleString()}</p></div>
                       <div className="col-span-2"><p className="text-xs text-muted-foreground">Replies</p><p className="mt-1 font-medium">{metrics.replies === null ? '—' : `${metrics.replies.toLocaleString()}${metrics.positiveReplies === null ? '' : ` · ${metrics.positiveReplies.toLocaleString()} interested`}`}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Staged in Instantly</p><p className={metrics.stagedSending > 0 ? 'mt-1 font-semibold text-amber-700' : 'mt-1 font-medium'}>{metrics.staged === 0 ? '—' : metrics.staged}{metrics.stagedSending > 0 ? ` · ${metrics.stagedSending} sending` : ''}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Waiting in Instantly</p><p className={metrics.stagedSending > 0 ? 'mt-1 font-semibold text-amber-700' : 'mt-1 font-medium'}>{metrics.staged === 0 ? '—' : metrics.staged}{metrics.stagedSending > 0 ? ` · ${metrics.stagedSending} sending` : ''}</p></div>
                     </div>
                     <Link to={summary.nextAction.href} className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm font-medium text-primary hover:bg-muted">
                       <span><span className="block text-xs font-normal text-muted-foreground">Next step</span>{summary.nextAction.label}</span>

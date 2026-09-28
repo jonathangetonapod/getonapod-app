@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Loader2, Lock, Eye, EyeOff } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import PageSEO from '@/components/seo/PageSEO'
 import { supabase } from '@/lib/supabase'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { currentHostname } from '@/lib/workspaceHost'
+import '@/styles/agencyLanding.css'
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
 
@@ -18,12 +15,20 @@ interface LoginBranding {
   logo_url: string | null
 }
 
+/**
+ * The client portal's door.
+ *
+ * It wears the same frame as the workspace sign-in, so the two doors read as
+ * one product, but it stands alone: no dark panel selling the workspace, and
+ * under an agency's link (?b=slug) the agency's own logo and name, never ours.
+ * The auth itself is the portal's own session, not Supabase Auth.
+ */
 export default function PortalLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<'empty' | 'mismatch' | 'offline' | null>(null)
   const [linkBranding, setLinkBranding] = useState<LoginBranding | null>(null)
 
   const { loginWithPassword, client, branding, loading: portalLoading } = useClientPortal()
@@ -69,15 +74,22 @@ export default function PortalLogin() {
 
   if (portalLoading || client) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-7 w-7 animate-spin text-primary" aria-label="Loading portal" />
+      <div className="gp-page gp-auth-loading" role="status">
+        <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+        <span className="sr-only">Loading portal</span>
       </div>
     )
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
+    // The button stays pressable; the form says what is missing instead of
+    // going grey and leaving someone to guess why.
+    if (!email.trim() || !password) {
+      setError('empty')
+      return
+    }
+    setError(null)
     setLoading(true)
 
     try {
@@ -85,7 +97,11 @@ export default function PortalLogin() {
       // Context will handle navigation
     } catch (err) {
       console.error('Failed to login:', err)
-      setError(err instanceof Error ? err.message : 'Login failed. Please check your credentials and try again.')
+      // One sentence for every verdict the server reaches, so the form never
+      // says whether the address exists. Only a request that never got there
+      // says something else, because that is about the connection.
+      const message = err instanceof Error ? err.message : ''
+      setError(/failed to fetch|networkerror|load failed/iu.test(message) ? 'offline' : 'mismatch')
     } finally {
       setLoading(false)
     }
@@ -95,131 +111,117 @@ export default function PortalLogin() {
   const agencyLogoUrl = linkBranding?.logo_url ? safeExternalUrl(linkBranding.logo_url) : null
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+    <div className="gp-page gp-auth-split gp-auth-solo">
       <PageSEO
-        title="Client Portal Login"
-        description="Log in to your client portal to review approvals, outreach activity, bookings, and live episodes."
+        title="Client portal sign-in"
+        description="Sign in to your client portal to review approvals, outreach activity, bookings, and live episodes."
         path="/portal/login"
         noindex
       />
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center space-y-2">
-          {agencyLogoUrl ? (
-            <img
-              src={agencyLogoUrl}
-              alt={`${agencyName || 'Agency'} logo`}
-              className="mx-auto mb-2 h-16 w-16 rounded-2xl object-contain"
-            />
-          ) : (
-            <div className="mx-auto mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70">
-              <Lock className="h-8 w-8 text-primary-foreground" />
-            </div>
-          )}
-          <h1 className="text-2xl font-semibold leading-none tracking-tight">
-            {agencyName ? `${agencyName} Client Portal` : 'Client Portal'}
-          </h1>
-          <CardDescription>
-            Sign in with your email and password
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {passwordReset && (
-            <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
-              Password updated. Sign in with your new password.
-            </p>
-          )}
-          {sessionExpired && !passwordReset && (
-            <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
-              Your session ended. Sign in again to continue.
-            </p>
-          )}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
-              <Input
+
+      <div className="gp-auth-col">
+        {agencyName ? (
+          // An agency's client sees the agency, not us. Nothing here links out
+          // to the marketing site.
+          <span className="gp-mark">
+            {agencyLogoUrl ? (
+              <img src={agencyLogoUrl} alt="" className="gp-auth-logo" />
+            ) : (
+              <span className="gp-mark-dot" aria-hidden="true"><i /></span>
+            )}
+            {agencyName}
+          </span>
+        ) : (
+          <Link className="gp-mark" to="/">
+            <span className="gp-mark-dot" aria-hidden="true"><i /></span>
+            Get On A Pod
+          </Link>
+        )}
+
+        <main className="gp-auth-main">
+          <h1>Sign in to your portal.</h1>
+          <p className="gp-auth-standfirst">
+            {agencyName
+              ? `The ${agencyName} client portal: approvals, bookings and live episodes in one place.`
+              : 'Approvals, bookings and live episodes, in one place.'}
+          </p>
+
+          <form className="gp-form" onSubmit={handleSubmit} noValidate>
+            {passwordReset && (
+              <p className="gp-auth-status" role="status">
+                Password updated. Sign in with your new password.
+              </p>
+            )}
+            {sessionExpired && !passwordReset && (
+              <p className="gp-auth-status" role="status">
+                Your session ended. Sign in again to continue.
+              </p>
+            )}
+
+            <div className="gp-field">
+              <label htmlFor="email">Email</label>
+              <input
                 id="email"
                 name="email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
                 disabled={loading}
-                className="w-full h-11"
+                onChange={(e) => { setEmail(e.target.value); setError(null) }}
                 autoFocus
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
+            <div className="gp-field">
+              <div className="gp-field-head">
+                <label htmlFor="password">Password</label>
+                <Link to={forgotHref} className="gp-auth-link">Forgot password?</Link>
+              </div>
+              <div className="gp-field-with-toggle">
+                <input
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
                   disabled={loading}
-                  className="w-full h-11 pr-10"
+                  onChange={(e) => { setPassword(e.target.value); setError(null) }}
                 />
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label="Toggle password visibility"
+                  className="gp-reveal"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </Button>
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
               </div>
             </div>
 
-            {error && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md">
-                {error}
-              </div>
-            )}
+            <button type="submit" className="gp-btn gp-btn-primary gp-btn-block" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
 
-            <Button
-              type="submit"
-              className="w-full h-11"
-              disabled={loading || !email || !password}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Logging in...
-                </>
-              ) : (
-                <>
-                  <Lock className="mr-2 h-4 w-4" />
-                  Login
-                </>
-              )}
-            </Button>
-            <Link to={forgotHref} className="mx-auto block text-center text-sm text-primary hover:underline">
-              Forgot password?
-            </Link>
+            {error && (
+              <p className="gp-form-error" role="alert">
+                {error === 'empty' && 'Enter your email and password.'}
+                {error === 'offline' && 'Could not reach the server. Try again.'}
+                {error === 'mismatch' && (
+                  <>That email and password do not match. Try again, or <Link to={forgotHref}>reset your password</Link>.</>
+                )}
+              </p>
+            )}
           </form>
 
-          <div className="mt-6 text-center text-xs text-muted-foreground border-t pt-4">
-            <p>
-              {agencyName
-                ? `Need help signing in? Contact your ${agencyName} team.`
-                : 'Need help signing in? Contact your agency team.'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+          <p className="gp-auth-foot">
+            {agencyName
+              ? <>Need help? Contact your {agencyName} team.</>
+              : <>Need help? <a href="mailto:jonathan@getonapod.com">jonathan@getonapod.com</a></>}
+          </p>
+        </main>
+
+        <p className="gp-auth-copyright">© {new Date().getFullYear()} {agencyName || 'Get On A Pod'}</p>
+      </div>
     </div>
   )
 }

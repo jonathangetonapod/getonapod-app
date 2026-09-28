@@ -92,7 +92,8 @@ describe('PortalCalendar', () => {
     fireEvent.click(items[items.length - 1])
 
     expect(await screen.findByText('Hosted by Jamie Rivera')).toBeInTheDocument()
-    expect(screen.getByLabelText('Placement timeline')).toBeInTheDocument()
+    expect(screen.getByLabelText('Progress')).toBeInTheDocument()
+    expect(screen.getByText('Talking to the host')).toBeInTheDocument()
   })
 
   it('offers a Google Calendar link for the dates on a placement', async () => {
@@ -101,7 +102,7 @@ describe('PortalCalendar', () => {
     const items = await screen.findAllByText('Founder Stories')
     fireEvent.click(items[items.length - 1])
 
-    const link = (await screen.findByText('Add to your calendar'))
+    const link = (await screen.findByText('Save to your calendar app'))
       .closest('div')!
       .querySelector('a') as HTMLAnchorElement
     const url = new URL(link.href)
@@ -111,6 +112,37 @@ describe('PortalCalendar', () => {
     expect(url.searchParams.get('details')).toContain('Jamie Rivera')
     // The client leaves the portal to confirm the save on Google's side.
     expect(link.target).toBe('_blank')
+  })
+
+  // Google is one link; every other calendar app takes a file.
+  it('offers an .ics file beside each Google link', async () => {
+    render(<PortalCalendar />)
+
+    const items = await screen.findAllByText('Founder Stories')
+    fireEvent.click(items[items.length - 1])
+
+    const ics = await screen.findByRole('link', { name: 'Apple / Outlook (.ics)' })
+    expect(ics.getAttribute('href')).toMatch(/^data:text\/calendar;charset=utf-8,/)
+    expect(ics.getAttribute('download')).toMatch(/\.ics$/)
+    const file = decodeURIComponent(ics.getAttribute('href')!.split(',')[1])
+    expect(file).toContain('SUMMARY:Recording: Founder Stories')
+    expect(file).toContain('DTSTART;VALUE=DATE:')
+  })
+
+  // On a phone the list comes first and the month grid opens on request.
+  it('puts the month grid behind a toggle', async () => {
+    render(<PortalCalendar />)
+
+    const toggle = await screen.findByRole('button', { name: 'Show month' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(toggle)
+    expect(screen.getByRole('button', { name: 'Hide month' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('says a recording time is still to come', async () => {
+    render(<PortalCalendar />)
+
+    expect((await screen.findAllByText('Time to be confirmed by your team')).length).toBeGreaterThan(0)
   })
 
   // Driven through the dialog rather than the page: a cancelled placement is
@@ -127,7 +159,7 @@ describe('PortalCalendar', () => {
     render(<BookingDetailDialog booking={cancelled} onOpenChange={() => {}} />)
 
     expect(screen.getByText('Dropped Show')).toBeInTheDocument()
-    expect(screen.queryByText('Add to your calendar')).not.toBeInTheDocument()
+    expect(screen.queryByText('Save to your calendar app')).not.toBeInTheDocument()
   })
 
   it('navigates between months', async () => {

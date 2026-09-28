@@ -42,7 +42,7 @@ const Footer = () => {
                 <Link to="/platform" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">For agencies</Link>
                 <Link to="/resources" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Resources</Link>
                 <Link to="/blog" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Blog</Link>
-                <Link to="/login" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Workspace sign-in</Link>
+                <Link to="/login" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Agency sign-in</Link>
                 <Link to="/portal/login" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Client portal sign-in</Link>
               </nav>
             </div>

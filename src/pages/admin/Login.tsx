@@ -22,16 +22,22 @@ const Login = () => {
   } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [email, setEmail] = useState('')
+  const locationState = location.state as {
+    from?: { pathname?: string; search?: string; hash?: string }
+    /** Left by the password-change page, so the address need not be typed twice. */
+    email?: string
+    passwordChanged?: boolean
+    signInAgain?: boolean
+  } | null
+  const [email, setEmail] = useState(typeof locationState?.email === 'string' ? locationState.email : '')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [resetRequested, setResetRequested] = useState(false)
-  const locationState = location.state as {
-    from?: { pathname?: string; search?: string; hash?: string }
-    passwordChanged?: boolean
-    signInAgain?: boolean
-  } | null
+  /* Said under the button, where the eye already is, not in a toast that
+     leaves before it is read. Google failures stay a toast: that flow leaves
+     the page, and there is no form to put the sentence under. */
+  const [formError, setFormError] = useState<string | null>(null)
   // Keep the query and hash: ?client= style deep links are part of the destination.
   const attemptedPath = locationState?.from?.pathname
     ? `${locationState.from.pathname}${locationState.from.search ?? ''}${locationState.from.hash ?? ''}`
@@ -85,11 +91,12 @@ const Login = () => {
   const handlePasswordSignIn = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!email || !password) {
-      toast.error('Enter your email and password.')
+      setFormError('Enter your email and password.')
       return
     }
 
     setIsSubmitting(true)
+    setFormError(null)
     try {
       await signInWithPassword(email.trim(), password)
     } catch (error) {
@@ -102,8 +109,8 @@ const Login = () => {
       // connection and not about the account.
       const message = error instanceof Error ? error.message : ''
       const neverReachedServer = /failed to fetch|networkerror|load failed/iu.test(message)
-      toast.error(neverReachedServer
-        ? 'Could not reach the server. Check your connection and try again.'
+      setFormError(neverReachedServer
+        ? 'Could not reach the server. Try again.'
         : 'Invalid email or password.')
     } finally {
       setIsSubmitting(false)
@@ -112,10 +119,11 @@ const Login = () => {
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      toast.error('Enter your email above, then choose Forgot password.')
+      setFormError('Enter your email above, then choose Forgot password.')
       return
     }
     setIsSubmitting(true)
+    setFormError(null)
     try {
       const appOrigin = import.meta.env.VITE_APP_URL || window.location.origin
       await supabase.auth.resetPasswordForEmail(email.trim(), {
@@ -179,6 +187,12 @@ const Login = () => {
       standfirst="Use the email from your invitation, or the account an administrator created for you."
       footer={<>No workspace yet? <Link to="/register">Request to join</Link></>}
     >
+      {/* This is the agency door. A client who followed a link here has a
+          portal of their own, and its sign-in is a different page. */}
+      <p className="gp-auth-status gp-auth-status-quiet">
+        Are you a client of Get On A Pod or of an agency using it?{' '}
+        <Link to="/portal/login">Sign in to your client portal.</Link>
+      </p>
       <form className="gp-form" onSubmit={handlePasswordSignIn}>
         {(passwordChanged || signInAgain) && (
           <p className="gp-auth-status" role="status">
@@ -202,6 +216,7 @@ const Login = () => {
               // exactly what someone does when it went to the wrong one, so
               // changing it offers the control again.
               setResetRequested(false)
+              setFormError(null)
             }}
           />
         </div>
@@ -230,7 +245,7 @@ const Login = () => {
               autoComplete="current-password"
               value={password}
               disabled={isSubmitting}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => { setPassword(event.target.value); setFormError(null) }}
             />
             <button
               type="button"
@@ -254,14 +269,17 @@ const Login = () => {
         <button type="submit" className="gp-btn gp-btn-primary gp-btn-block" disabled={isSubmitting}>
           {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
+
+        {formError && <p className="gp-form-error" role="alert">{formError}</p>}
       </form>
 
       <div className="gp-auth-alt">
-        <span className="gp-auth-rule">Admin sign-in</span>
+        <span className="gp-auth-rule">Get On A Pod staff</span>
         <button type="button" className="gp-btn gp-btn-quiet gp-btn-block" onClick={handleGoogleSignIn}>
           <Chrome className="h-4 w-4" aria-hidden="true" />
           Continue with Google
         </button>
+        <p className="gp-auth-note">Workspace members sign in with email and password above.</p>
       </div>
     </AuthShell>
   )

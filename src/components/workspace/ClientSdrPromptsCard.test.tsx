@@ -155,7 +155,7 @@ describe('ClientSdrPromptsCard inbox model', () => {
     expect(screen.queryByRole('button', { name: /Edit Reply instructions/i })).not.toBeInTheDocument()
 
     mockedPrompts.mockResolvedValueOnce({})
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('button', { name: /Edit Reply instructions/i })).toBeInTheDocument()
   })
 

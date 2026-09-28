@@ -68,7 +68,7 @@ export function AddCalendarEventDialog({ open, onOpenChange, clientId, onAdded }
     <Dialog open={open} onOpenChange={(next) => { if (!addMutation.isPending) onOpenChange(next) }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add to your calendar</DialogTitle>
+          <DialogTitle>Add a date</DialogTitle>
           <DialogDescription>
             Booked a show yourself, or know when an episode goes live? Add it here so your
             calendar stays complete. Your team sees it too.

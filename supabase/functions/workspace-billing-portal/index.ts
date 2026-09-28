@@ -73,11 +73,11 @@ async function stripePost(
       signal: AbortSignal.timeout(20_000),
     })
   } catch (_error) {
-    throw new HttpError(503, 'STRIPE_UNAVAILABLE', 'The payment provider is unreachable right now')
+    throw new HttpError(503, 'STRIPE_UNAVAILABLE', 'Payments are temporarily unavailable. Try again in a few minutes')
   }
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null
   if (!response.ok || !payload) {
-    throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+    throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
   }
   return payload
 }
@@ -90,11 +90,11 @@ async function stripeGet(path: string, key: string): Promise<Record<string, unkn
       signal: AbortSignal.timeout(20_000),
     })
   } catch (_error) {
-    throw new HttpError(503, 'STRIPE_UNAVAILABLE', 'The payment provider is unreachable right now')
+    throw new HttpError(503, 'STRIPE_UNAVAILABLE', 'Payments are temporarily unavailable. Try again in a few minutes')
   }
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null
   if (!response.ok || !payload) {
-    throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+    throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
   }
   return payload
 }
@@ -180,7 +180,7 @@ async function handlePlanAdministration(
   const plan = plans.find((candidate) => candidate.plan_key === planKey)
   if (!plan) throw new HttpError(404, 'PLAN_NOT_FOUND', 'No such plan')
   if (!plan.is_purchasable) {
-    throw new HttpError(400, 'PLAN_NOT_PURCHASABLE', 'That plan is assigned rather than sold')
+    throw new HttpError(400, 'PLAN_NOT_PURCHASABLE', 'This plan is set up by us rather than bought here. Contact support to change to it')
   }
   // Saving the price a plan already carries is not a no-op: the portal sync
   // happens after the price is recorded, so a save that failed on the sync
@@ -220,7 +220,7 @@ async function handlePlanAdministration(
       }), stripeKey)
       productId = typeof product.id === 'string' ? product.id : ''
     }
-    if (!productId) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+    if (!productId) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
 
     const price = await stripePost('prices', new URLSearchParams({
       product: productId,
@@ -230,7 +230,7 @@ async function handlePlanAdministration(
       'metadata[plan_key]': planKey,
     }), stripeKey)
     priceId = typeof price.id === 'string' ? price.id : ''
-    if (!priceId) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+    if (!priceId) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
 
     // Recorded together: the amount is only a description of what the Price
     // charges, and the two disagreeing is how a screen starts lying about money.
@@ -359,7 +359,7 @@ serve(async (req) => {
       const customer = await stripePost('customers', customerParams, stripeKey)
       customerId = typeof customer.id === 'string' ? customer.id : ''
       if (!customerId) {
-        throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+        throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
       }
       // Recording the id is not the same as recording a subscription: it only
       // says which Stripe customer this workspace is, so the next portal
@@ -388,7 +388,7 @@ serve(async (req) => {
         stripeKey,
       )
       const url = typeof session.url === 'string' ? session.url : ''
-      if (!url) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+      if (!url) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
       await writeAudit(admin, {
         workspaceId,
         actorUserId: authContext.user.id,
@@ -407,7 +407,7 @@ serve(async (req) => {
     }
     const priceId = plan.stripe_price_id?.trim()
     if (!priceId) {
-      throw new HttpError(500, 'PLAN_NOT_CONFIGURED', 'That plan has no price configured in Stripe')
+      throw new HttpError(500, 'PLAN_NOT_CONFIGURED', 'This plan cannot be bought yet. Contact support')
     }
 
     const session = await stripePost('checkout/sessions', new URLSearchParams({
@@ -426,7 +426,7 @@ serve(async (req) => {
       'subscription_data[metadata][plan_key]': planKey,
     }), stripeKey)
     const url = typeof session.url === 'string' ? session.url : ''
-    if (!url) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment provider rejected the request')
+    if (!url) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
 
     await writeAudit(admin, {
       workspaceId,

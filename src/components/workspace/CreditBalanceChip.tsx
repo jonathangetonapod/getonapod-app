@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Coins } from 'lucide-react'
+import { Coins, Info } from 'lucide-react'
+
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { creditHealth } from '@/lib/creditHealth'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
@@ -21,6 +23,8 @@ interface CreditBalanceChipProps {
   /** Where the number leads — a platform admin acts from the platform screen. */
   billingHref: string
 }
+
+export const CREDIT_TOOLTIP = 'Credits pay for AI and data work. Monthly credits renew with your plan; purchased credits never expire.'
 
 /**
  * The balance, where it can be seen without going to look for it.
@@ -53,16 +57,36 @@ export function CreditBalanceChip({ workspaceId, canViewBalance, billingHref }: 
     : health.className
 
   return (
-    <Link
-      to={billingHref}
-      aria-label={`${overview.balance.toLocaleString()} credits remaining — open billing`}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${tone}`}
-    >
-      <Coins className="h-3.5 w-3.5" />
-      <span>{overview.balance.toLocaleString()}</span>
-      {/* The word only appears where there is room for it; the coin and the
-          number carry it on a phone. */}
-      <span className="hidden sm:inline">credits</span>
-    </Link>
+    <span className="inline-flex shrink-0 items-center gap-1">
+      <Link
+        to={billingHref}
+        aria-label={`${overview.balance.toLocaleString()} credits remaining — open billing`}
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${tone}`}
+      >
+        <Coins className="h-3.5 w-3.5" />
+        <span>{overview.balance.toLocaleString()}</span>
+        {/* The word only appears where there is room for it; the coin and the
+            number carry it on a phone. */}
+        <span className="hidden sm:inline">credits</span>
+      </Link>
+      {/* The one-sentence answer to "what is this number", where the number
+          is. The billing page has the long version. */}
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="What credits are"
+              className="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Info className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs text-xs">
+            {CREDIT_TOOLTIP}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </span>
   )
 }

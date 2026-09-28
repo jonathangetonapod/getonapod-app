@@ -173,8 +173,8 @@ export function JoinRequestsCard() {
           )}
         </CardTitle>
         <CardDescription>
-          People who asked to join from the landing page. Nothing here has an account — issue an
-          invitation from Owner accounts above once you have decided.
+          People who asked to join from the landing page. Nothing here has an account. Sending an
+          invitation creates their workspace and emails them a link to set a password.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -197,7 +197,7 @@ export function JoinRequestsCard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Who</TableHead>
-                  <TableHead>Runs</TableHead>
+                  <TableHead>They are</TableHead>
                   <TableHead>Clients</TableHead>
                   <TableHead>Waiting</TableHead>
                   <TableHead>Status</TableHead>

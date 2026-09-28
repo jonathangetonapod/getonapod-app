@@ -63,7 +63,7 @@ serve(async (req) => {
         || !client?.portal_access_enabled
         || client.workspace?.status !== 'active'
       ) {
-        throw new HttpError(401, 'INVALID_PORTAL_SESSION', 'Session expired or invalid')
+        throw new HttpError(401, 'INVALID_PORTAL_SESSION', 'Your portal session has ended. Sign in again to continue')
       }
     } else {
       // No portal token means this is the explicit operator impersonation path.

@@ -57,7 +57,7 @@ serve(async (req) => {
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('[LOGIN] Missing environment variables!')
       return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
+        JSON.stringify({ error: 'Sign-in is temporarily unavailable. Try again in a few minutes' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -369,7 +369,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in login-with-password:', error)
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: 'Sign-in is temporarily unavailable. Try again in a few minutes' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

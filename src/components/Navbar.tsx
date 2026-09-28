@@ -11,7 +11,8 @@ const navLinks = [
   { href: '/#pricing', label: 'Pricing' },
   { href: '/#faq', label: 'FAQ' },
   { href: '/platform', label: 'For agencies' },
-  { href: '/resources', label: 'Resources' },
+  // The resource library is still being written; it comes back here when it
+  // has something to read. The footer keeps the link meanwhile.
   { href: '/login', label: 'Sign in' },
 ];
 
@@ -30,14 +31,16 @@ const Navbar = () => {
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50">
-      <div className="border-b border-[#0d1b2a]/8 bg-[#f4ede4]/88 px-4 py-2 backdrop-blur-sm">
+      {/* The terms strip. On a phone it would push the bar past 64px, and the
+          homepage states the same facts under its hero. */}
+      <div className="hidden border-b border-[#0d1b2a]/8 bg-[#f4ede4]/88 px-4 py-2 backdrop-blur-sm sm:block">
         <div className="container flex items-center justify-center gap-4 text-center text-[10px] uppercase leading-5 tracking-[0.18em] text-[#7a6554] sm:justify-between sm:text-left sm:text-[11px] sm:tracking-[0.22em]">
           <span className="font-mono">Done-for-you podcast guesting · $500 a month</span>
           <span className="hidden font-mono sm:block">You approve every show · about 15 minutes a week</span>
         </div>
       </div>
 
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-2 sm:pt-3">
         <div className="container mx-auto">
           <div
             className={`transition-all duration-300 ${
@@ -46,12 +49,12 @@ const Navbar = () => {
                 : 'rounded-[28px] border border-[#ffffff]/70 bg-[#fffdf9]/72 backdrop-blur-md'
             }`}
           >
-            <div className="flex items-center justify-between gap-6 px-5 py-4 md:px-6 md:py-5">
+            <div className="flex items-center justify-between gap-6 px-5 py-2.5 md:px-6 md:py-5">
               <Link to="/" className="min-w-0">
                 <div className="font-display text-2xl font-semibold leading-none tracking-[-0.05em] text-[#0d1b2a]">
                   Get On A Pod
                 </div>
-                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.22em] text-[#7a6554]">
+                <div className="mt-1 hidden font-mono text-[10px] uppercase tracking-[0.22em] text-[#7a6554] md:block">
                   Booked by hand, not by blast
                 </div>
               </Link>

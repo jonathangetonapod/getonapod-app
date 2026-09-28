@@ -110,7 +110,9 @@ describe('OnboardingTemplateBuilder', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
     expect(screen.getByDisplayValue('Podcast Guest Onboarding')).toBeInTheDocument()
+    expect(screen.getByText('Your team sees the name and note. Clients only see the form.')).toBeInTheDocument()
     expect(screen.getByText('Clients never see this note.')).toBeInTheDocument()
+    expect(screen.queryByText('Share it your way')).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/Reminder days/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }))
@@ -149,6 +151,85 @@ describe('OnboardingTemplateBuilder', () => {
     expect(savedDraft.definition.sections[0].questions).toHaveLength(3)
     expect(savedDraft.definition.sections[0].questions[1].mapping).toBeNull()
     expect(savedDraft.reminder_days).toEqual([])
+  })
+
+  it('starts a new question without a title, and will not publish until it has one', () => {
+    const onSave = renderBuilder()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add question to this section' }))
+    // The outline names the gap; the field itself is empty and asks.
+    expect(screen.getByRole('button', { name: /Untitled question/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByPlaceholderText('What do you want to ask?')).toHaveValue('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save and publish' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('1 question still needs a title.')
+    expect(onSave).not.toHaveBeenCalled()
+
+    // A draft may be saved half-written. The server refuses an empty label,
+    // so the placeholder stands in until there is a real one.
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    const [savedDraft, publish] = onSave.mock.calls[0]
+    expect(publish).toBe(false)
+    expect(savedDraft.definition.sections[0].questions[2].label).toBe('Untitled question')
+  })
+
+  it('blocks publishing a section whose title is still the placeholder', () => {
+    const onSave = renderBuilder()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add section' }))
+    expect(screen.getByPlaceholderText('Section title')).toHaveValue('')
+    fireEvent.change(screen.getByPlaceholderText('What do you want to ask?'), { target: { value: 'Favourite topic' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save and publish' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Every section needs a title.')
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('explains what a profile mapping does and nudges toward requiring it', () => {
+    renderBuilder()
+
+    // Full name is mapped and required: the explanation, no nudge.
+    expect(screen.getByLabelText('Also save this answer to the client’s profile')).toHaveTextContent('Client name')
+    expect(screen.getByText('When you approve the form, this answer fills that field on the client record.')).toBeInTheDocument()
+    expect(screen.queryByText('Usually worth requiring, so the profile field is never left empty.')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Require an answer'))
+    expect(screen.getByText('Usually worth requiring, so the profile field is never left empty.')).toBeInTheDocument()
+
+    // Typed answers the form never validates say so beside the type.
+    expect(screen.queryByText('Not checked for format.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Email address/ }))
+    expect(screen.getByText('Not checked for format.')).toBeInTheDocument()
+  })
+
+  it('says which version clients receive and what each save button does to it', () => {
+    renderBuilder()
+
+    expect(screen.getByTestId('template-version-status')).toHaveTextContent(
+      'Clients currently receive version 1. Save draft keeps them on it; Save and publish creates version 2.',
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+    expect(screen.getByRole('switch', { name: 'Use as default' })).toBeEnabled()
+  })
+
+  it('holds the default switch back until the template has been published', () => {
+    render(
+      <OnboardingTemplateBuilder
+        open
+        template={null}
+        workspaceName="Iveth Gonzalez"
+        workspaceLogoUrl={null}
+        saving={false}
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByTestId('template-version-status')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+    expect(screen.getByRole('switch', { name: 'Use as default' })).toBeDisabled()
+    expect(screen.getByText('Applies when you publish.')).toBeInTheDocument()
   })
 
   // The choices textarea rebuilt its value from the parsed options, and the

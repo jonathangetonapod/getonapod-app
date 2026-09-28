@@ -67,7 +67,7 @@ interface PromptSpec {
 const PROMPT_GROUPS: Array<{ title: string; detail: string; prompts: PromptSpec[] }> = [
   {
     title: 'Inbox replies',
-    detail: 'What the AI SDR does when a host responds.',
+    detail: 'What the reply drafter does when a host responds.',
     prompts: [
       {
         id: 'inbox_reply',
@@ -118,6 +118,11 @@ const PROMPT_GROUPS: Array<{ title: string; detail: string; prompts: PromptSpec[
     ],
   },
 ]
+
+/** The prompt's own name, for a toast that says which one was saved. */
+function promptTitle(id: ResearchPromptId): string {
+  return PROMPT_GROUPS.flatMap((group) => group.prompts).find((prompt) => prompt.id === id)?.title ?? 'Prompt'
+}
 
 interface ClientSdrPromptsCardProps {
   workspaceId: string
@@ -207,7 +212,7 @@ export const ClientSdrPromptsCard = ({
       setWorkspacePromptModel(workspaceId, INBOX_MODEL_OWNER, model),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace-research-prompts', workspaceId] })
-      toast.success('Inbox model saved for the workspace.')
+      toast.success('AI reply settings saved for this workspace.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The model could not be saved.')
@@ -249,9 +254,9 @@ export const ClientSdrPromptsCard = ({
   const saveMutation = useMutation({
     mutationFn: (input: { id: ResearchPromptId; content: string }) =>
       setClientSdrPrompt(workspaceId, clientId, input.id, input.content),
-    onSuccess: () => {
+    onSuccess: (_result, input) => {
       void queryClient.invalidateQueries({ queryKey: promptsKey })
-      toast.success(`Saved for ${clientName}.`)
+      toast.success(`${promptTitle(input.id)} prompt saved for ${clientName}.`)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The prompt could not be saved.')
@@ -262,7 +267,7 @@ export const ClientSdrPromptsCard = ({
     onSuccess: (_result, id) => {
       setDrafts((current) => ({ ...current, [id]: workspaceFallback(id) }))
       void queryClient.invalidateQueries({ queryKey: promptsKey })
-      toast.success('Reset to the workspace default.')
+      toast.success('Prompt reset to the workspace default.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The prompt could not be reset.')
@@ -291,7 +296,7 @@ export const ClientSdrPromptsCard = ({
     <Card aria-labelledby="client-sdr-prompts-heading">
       <CardHeader>
         <CardTitle id="client-sdr-prompts-heading" className="flex items-center gap-2">
-          <MessageSquareText className="h-4 w-4 text-muted-foreground" />AI SDR prompts
+          <MessageSquareText className="h-4 w-4 text-muted-foreground" />Reply prompts
         </CardTitle>
         <CardDescription>
           Every prompt {clientName}’s AI uses — inbox replies, follow-up nudges, research, and
@@ -310,7 +315,7 @@ export const ClientSdrPromptsCard = ({
               {loadError instanceof Error ? loadError.message : 'The prompts could not be loaded.'}
             </p>
             <Button type="button" variant="outline" size="sm" onClick={retryLoad}>
-              <RefreshCw className="mr-2 h-4 w-4" />Retry
+              <RefreshCw className="mr-2 h-4 w-4" />Try again
             </Button>
           </div>
         ) : (
@@ -412,7 +417,7 @@ export const ClientSdrPromptsCard = ({
                           className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
                           onClick={() => void promptModelsQuery.refetch()}
                         >
-                          Retry
+                          Try again
                         </button>
                       )}
                     </div>

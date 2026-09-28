@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   closestCenter,
   DndContext,
@@ -50,7 +51,16 @@ import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getWorkspaceClients } from '@/services/clients'
 import { cn } from '@/lib/utils'
+import {
+  CLIENT_SCOPED_SEGMENTS,
+  clientScopedHref,
+  normalizeWorkingClientId,
+  readWorkingClient,
+  writeWorkingClient,
+} from '@/lib/workingClient'
 import { memberAvatarUrl, workspaceLogoUrl } from '@/lib/workspaceLogo'
 
 interface WorkspaceNavItem {
@@ -61,16 +71,19 @@ interface WorkspaceNavItem {
   enabled: boolean
 }
 
+// Default order follows the daily loop: pick a client, see where they stand,
+// find and vet shows, run outreach, answer replies. Setup and reference pages
+// come after. Ids and segments are stable; only labels and positions move.
 const workspaceNavItems: WorkspaceNavItem[] = [
-  { id: 'onboarding', name: 'Onboarding', segment: 'onboarding', icon: ClipboardList, enabled: true },
-  { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
-  { id: 'prospects', name: 'Prospect Studio', segment: 'prospects', icon: Share2, enabled: true },
-  { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: true },
-  { id: 'client-podcast-system', name: 'Client Command Center', segment: 'client-podcast-system', icon: Calendar, enabled: true },
   { id: 'clients', name: 'Clients', segment: 'clients', icon: Users, enabled: true },
+  { id: 'client-podcast-system', name: 'Client Command Center', segment: 'client-podcast-system', icon: Calendar, enabled: true },
+  { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
+  { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: true },
   { id: 'outreach-platform', name: 'Client Campaigns', segment: 'client-campaigns', icon: Megaphone, enabled: true },
+  { id: 'unibox', name: 'Inbox', segment: 'master-inbox', icon: Inbox, enabled: true },
   { id: 'relationships', name: 'Relationships', segment: 'relationships', icon: BookUser, enabled: true },
-  { id: 'unibox', name: 'Master Inbox', segment: 'master-inbox', icon: Inbox, enabled: true },
+  { id: 'prospects', name: 'Prospect Studio', segment: 'prospects', icon: Share2, enabled: true },
+  { id: 'onboarding', name: 'Client intake', segment: 'onboarding', icon: ClipboardList, enabled: true },
   { id: 'mailboxes', name: 'Mailboxes', segment: 'mailboxes', icon: Mailbox, enabled: true },
   { id: 'university', name: 'University', segment: 'university', icon: GraduationCap, enabled: true },
   // Billing sits in the main navigation rather than only inside Settings:
@@ -80,6 +93,9 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'billing', name: 'Billing & credits', segment: 'settings/billing', icon: CreditCard, enabled: false },
   { id: 'settings', name: 'Settings', segment: 'settings', icon: Settings, enabled: false },
 ]
+
+// Radix Select needs a non-empty value for the "no client" choice.
+const ALL_CLIENTS = 'all-clients'
 
 const WORKSPACE_NAV_ORDER_STORAGE_PREFIX = 'workspace-nav-order-v2'
 const WORKSPACE_NAV_SCROLL_STORAGE_PREFIX = 'workspace-nav-scroll-v1'
@@ -414,6 +430,77 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  const managesWorkspace = Boolean(
+    isPlatformAdmin || platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin',
+  )
+  const isNavItemActive = (item: WorkspaceNavItem) => {
+    // Only the most specific matching item is active, so Settings does not
+    // light up alongside Billing on /settings/billing.
+    const pathHref = `${baseHref}/${item.segment}`
+    return matchesPath(pathHref) && !visibleNavItems.some((other) => (
+      other !== item && other.segment.length > item.segment.length && matchesPath(`${baseHref}/${other.segment}`)
+    ))
+  }
+  const activeNavItem = visibleNavItems.find(isNavItemActive)
+  /*
+   * Under the workspace name: the page the person is on, which is the thing
+   * the old "Workspace dashboard" filler pretended to be. When the alias "My
+   * Workspace" is shown, the real name stays as the fallback so the platform
+   * owner can still see which workspace that is.
+   */
+  const workspaceSubtitle = activeNavItem?.name
+    || (workspaceDisplayName === workspaceName ? '' : workspaceName)
+
+  /*
+   * The working client. One choice in the header that every client-scoped
+   * module then opens on, instead of re-picking the same person on each page.
+   * Keyed on the workspace on screen, which for a platform admin is the tenant
+   * being viewed and not their own.
+   */
+  const workingClientWorkspaceId = (platformWorkspace?.workspaceId || workspace?.id || '').toLowerCase()
+  const [workingClientId, setWorkingClientId] = useState<string | null>(() => readWorkingClient(workingClientWorkspaceId))
+  const requestedClientId = normalizeWorkingClientId(new URLSearchParams(location.search).get('client'))
+  const currentSegmentReadsClient = Array.from(CLIENT_SCOPED_SEGMENTS)
+    .some((segment) => matchesPath(`${baseHref}/${segment}`))
+  const clientsQuery = useQuery({
+    queryKey: ['workspace-working-client', workingClientWorkspaceId, 'clients'],
+    queryFn: () => getWorkspaceClients(workingClientWorkspaceId),
+    enabled: Boolean(workingClientWorkspaceId),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const workingClients = useMemo(
+    () => (clientsQuery.data ?? []).filter((client) => client.status === 'active'),
+    [clientsQuery.data],
+  )
+  const workingClient = workingClients.find((client) => client.id.toLowerCase() === workingClientId) ?? null
+
+  useEffect(() => {
+    setWorkingClientId(readWorkingClient(workingClientWorkspaceId))
+  }, [workingClientWorkspaceId])
+
+  // A page opened with ?client= (from a link, a bookmark, another module's
+  // handoff) is a choice too, and the header follows it rather than arguing.
+  useEffect(() => {
+    if (!workingClientWorkspaceId || !currentSegmentReadsClient || !requestedClientId) return
+    writeWorkingClient(workingClientWorkspaceId, requestedClientId)
+    setWorkingClientId(requestedClientId)
+  }, [currentSegmentReadsClient, requestedClientId, workingClientWorkspaceId])
+
+  // A client that has since been paused or churned drops out of the list, and
+  // links should stop carrying them the moment that is known.
+  useEffect(() => {
+    if (!workingClientId || !clientsQuery.isSuccess) return
+    if (workingClients.some((client) => client.id.toLowerCase() === workingClientId)) return
+    writeWorkingClient(workingClientWorkspaceId, null)
+    setWorkingClientId(null)
+  }, [clientsQuery.isSuccess, workingClientId, workingClientWorkspaceId, workingClients])
+
+  const handleWorkingClientChange = (value: string) => {
+    const next = value === ALL_CLIENTS ? null : normalizeWorkingClientId(value)
+    writeWorkingClient(workingClientWorkspaceId, next)
+    setWorkingClientId(next)
+  }
 
   useLayoutEffect(() => {
     const navigation = navigationRef.current
@@ -548,9 +635,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             />
             <div className="mt-3 min-w-0 px-1">
               <p className="truncate text-base font-bold tracking-tight">{workspaceDisplayName}</p>
-              <p className="truncate text-xs font-medium text-muted-foreground">
-                {workspaceDisplayName === workspaceName ? 'Workspace dashboard' : workspaceName}
-              </p>
+              {workspaceSubtitle && (
+                <p className="truncate text-xs font-medium text-muted-foreground">{workspaceSubtitle}</p>
+              )}
             </div>
           </div>
 
@@ -586,18 +673,6 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 </div>
               )}
             </div>
-            {canOrganizeNavigation && !isOrganizing && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mb-3 w-full justify-start border-dashed text-muted-foreground hover:text-foreground"
-                onClick={() => setIsOrganizing(true)}
-              >
-                <GripVertical className="mr-2 h-4 w-4" />
-                Reorder sidebar pages
-              </Button>
-            )}
             {isOrganizing && (
               <p className="mb-2 px-1 text-xs text-muted-foreground">Drag pages into your preferred order. Changes save automatically.</p>
             )}
@@ -605,26 +680,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
               <SortableContext items={visibleNavItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-1">
                   {visibleNavItems.map((item) => {
-                    const href = `${baseHref}/${item.segment}`
-                    // Only the most specific matching item is active, so
-                    // Settings does not light up alongside Billing on
-                    // /settings/billing.
-                    const isActive = matchesPath(href) && !visibleNavItems.some((other) => (
-                      other !== item && other.segment.length > item.segment.length && matchesPath(`${baseHref}/${other.segment}`)
-                    ))
                     const isSettings = item.id === 'settings'
                     const isBilling = item.id === 'billing'
-                    const managesWorkspace = Boolean(
-                      isPlatformAdmin || platformWorkspace || membership?.role === 'owner' || membership?.role === 'admin',
-                    )
                     const itemEnabled = isSettings || isBilling ? managesWorkspace : item.enabled
 
                     return (
                       <SortableWorkspaceNavItem
                         key={item.id}
                         item={item}
-                        href={href}
-                        isActive={isActive}
+                        href={clientScopedHref(baseHref, item.segment, workingClientId)}
+                        isActive={item === activeNavItem}
                         isEnabled={itemEnabled}
                         isOrganizing={isOrganizing}
                         restrictedLabel={isSettings || isBilling ? 'Owner/Admin' : 'Soon'}
@@ -651,14 +716,29 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
               </div>
               {viewerRole && <Badge variant="outline" className="capitalize">{viewerRole}</Badge>}
             </div>
-            <Button
-              onClick={() => void handleSignOut()}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              <LogOut className="mr-2 h-4 w-4" />Sign out
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => void handleSignOut()}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                <LogOut className="mr-2 h-4 w-4" />Sign out
+              </Button>
+              {/* Reordering is a once-a-quarter thing, so it lives down here
+                  with the other housekeeping instead of above the nav. */}
+              {canOrganizeNavigation && !isOrganizing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setIsOrganizing(true)}
+                >
+                  <GripVertical className="mr-1 h-3.5 w-3.5" />Reorder
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </aside>
@@ -676,25 +756,45 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           </Button>
           <div className="hidden min-w-0 lg:block">
             <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {workspaceDisplayName === workspaceName ? 'Workspace dashboard' : workspaceName}
-            </p>
+            {workspaceSubtitle && <p className="truncate text-xs text-muted-foreground">{workspaceSubtitle}</p>}
           </div>
           <div className="min-w-0 flex-1 lg:hidden">
             <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
-            <p className="truncate text-xs text-muted-foreground">Workspace dashboard</p>
+            {workspaceSubtitle && <p className="truncate text-xs text-muted-foreground">{workspaceSubtitle}</p>}
           </div>
+          {workingClientWorkspaceId && (
+            <div className="flex min-w-0 shrink items-center gap-2 lg:ml-4">
+              <span className="hidden whitespace-nowrap text-xs font-medium text-muted-foreground md:inline">Working on</span>
+              <Select value={workingClientId ?? ALL_CLIENTS} onValueChange={handleWorkingClientChange}>
+                <SelectTrigger aria-label="Working client" className="h-9 w-40 sm:w-52">
+                  {/* The name is known once the list loads; before that the
+                      trigger says so rather than sitting blank. */}
+                  <SelectValue placeholder="All clients">
+                    {workingClientId ? workingClient?.name || 'Selected client' : 'All clients'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_CLIENTS}>All clients</SelectItem>
+                  {workingClients.map((client) => (
+                    <SelectItem key={client.id} value={client.id.toLowerCase()}>{client.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
             {/* Next to the workspace it belongs to. A platform admin viewing a
                 tenant sees it too — supporting an agency means knowing whether
                 they are about to run out — but it leads to the platform billing
                 screen, because acting on somebody else's balance happens there
-                and not on their own billing page. */}
+                and not on their own billing page. The tenant rides along in
+                the address so the top-up lands on the agency whose number was
+                just clicked. */}
             {platformWorkspace ? (
               <CreditBalanceChip
                 workspaceId={platformWorkspace.workspaceId}
                 canViewBalance={isPlatformAdmin}
-                billingHref="/app/platform/billing"
+                billingHref={`/app/platform/billing?workspace=${platformWorkspace.workspaceId.toLowerCase()}`}
               />
             ) : workspace?.id && (
               <CreditBalanceChip
@@ -741,6 +841,25 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             workspaceId={workspace.id}
             canManageBilling={membership?.role === 'owner' || membership?.role === 'admin'}
           />
+        )}
+
+        {/* A tenant's shell looks exactly like the admin's own, which is the
+            point of it, and also how an admin edits the wrong agency. This
+            stays on screen for as long as they are inside somebody else's. */}
+        {platformWorkspace && (
+          <div
+            role="status"
+            data-testid="platform-tenant-strip"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 sm:px-6"
+          >
+            <span>
+              You are viewing <strong className="font-semibold">{platformWorkspace.workspaceName}</strong> as platform admin.
+              Changes here are live for their team.
+            </span>
+            <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-4 hover:text-amber-950">
+              Back to Manage workspaces
+            </Link>
+          </div>
         )}
 
         <main className="min-w-0 p-4 sm:p-6">{children}</main>

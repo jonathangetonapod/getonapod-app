@@ -97,7 +97,7 @@ serve(async (req) => {
     )
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500
-    const message = error instanceof HttpError ? error.message : 'Internal server error'
+    const message = error instanceof HttpError ? error.message : 'Something went wrong on our side. Try again in a moment'
     console.error('[Get Blog Categories] Request failed')
 
     return new Response(

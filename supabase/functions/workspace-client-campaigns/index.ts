@@ -1335,7 +1335,7 @@ async function addCampaignTargets(
     throw new HttpError(
       400,
       "CAMPAIGN_TARGET_INVALID",
-      "Every selected podcast must be visible on this client shortlist",
+      "One or more selected podcasts are no longer on this client's shortlist. Refresh the list and select again",
     );
   }
 
@@ -3418,7 +3418,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "INSTANTLY_WORKSPACE_ALREADY_CONNECTED",
-          "This Instantly workspace is already connected to another GOAP workspace",
+          "This Instantly account is already connected to another Get On A Pod workspace. Each Instantly account can be connected once",
         );
       }
       const encrypted = await encryptInstantlyApiKey(apiKey);
@@ -3620,7 +3620,7 @@ serve(async (req) => {
       // platform key cannot, or fewer.
       const modelsKey = await resolveAiKey(context.admin, workspaceId, "anthropic");
       if (!modelsKey) {
-        throw new HttpError(503, "PROMPTS_UNAVAILABLE", "No Anthropic credential is configured, so the model list cannot be read");
+        throw new HttpError(503, "PROMPTS_UNAVAILABLE", "AI settings are not available for this workspace yet. Everything else on this page still saves");
       }
       try {
         return jsonResponse(req, METHODS, 200, { models: await fetchPromptModels(modelsKey.apiKey) });
@@ -5350,7 +5350,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "CAMPAIGN_LEAD_NOT_STAGED",
-          "This podcast has no lead in Instantly yet, so there is no delivery status to read",
+          "Outreach has not started for this podcast, so there is no delivery status yet",
         );
       }
       const connection = await readConnection(context.admin, workspaceId);
@@ -5390,7 +5390,7 @@ serve(async (req) => {
         throw new HttpError(
           502,
           "INSTANTLY_RESPONSE_INVALID",
-          "Instantly returned a lead this build could not read",
+          "The delivery status could not be read. Try again later",
         );
       }
       // Fold the fresh counts back in, so the table stops disagreeing with the

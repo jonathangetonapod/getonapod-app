@@ -86,7 +86,7 @@ serve(async (req) => {
         throw new HttpError(
           403,
           'RESTORE_REQUIRES_PLATFORM_ADMIN',
-          'Ask us to restore this workspace',
+          'Contact Get On A Pod support to restore this workspace',
         )
       }
 

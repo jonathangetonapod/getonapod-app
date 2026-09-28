@@ -67,7 +67,7 @@ export function WorkspaceDeletionCard({ workspaceId, workspaceName }: WorkspaceD
   })
 
   return (
-    <Card className="border-destructive/30">
+    <Card className="border-destructive/40 bg-background">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <AlertTriangle className="h-5 w-5 text-destructive" aria-hidden="true" />

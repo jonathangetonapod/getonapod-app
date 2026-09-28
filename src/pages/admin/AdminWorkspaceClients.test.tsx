@@ -11,6 +11,7 @@ vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
   WorkspaceSwitcher: () => <div>Workspace switcher</div>,
 }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
+vi.mock('@/components/workspace/SetupChecklist', () => ({ SetupChecklist: () => null }))
 vi.mock('@/services/clients', () => ({
   createWorkspaceClient: vi.fn(),
   deleteWorkspaceClient: vi.fn(),
@@ -123,7 +124,11 @@ describe('AdminWorkspaceClients', () => {
       workspaceId,
       expect.objectContaining({ name: 'New Platform Client' }),
     ))
-    expect(screen.getByRole('link', { name: /manage workspaces/i })).toHaveAttribute('href', '/app/manage-workspaces')
+    // The sidebar link and the tenant strip's "Back to Manage workspaces" both
+    // point home; either is fine, both must exist.
+    const manageLinks = screen.getAllByRole('link', { name: /manage workspaces/i })
+    expect(manageLinks.length).toBeGreaterThanOrEqual(1)
+    manageLinks.forEach((link) => expect(link).toHaveAttribute('href', '/app/manage-workspaces'))
     expect(screen.queryByText('Default Workspace')).not.toBeInTheDocument()
     expect(mockedView).toHaveBeenCalledWith(workspaceId, expect.any(AbortSignal))
   })

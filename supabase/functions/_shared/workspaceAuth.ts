@@ -232,7 +232,7 @@ export async function requireWorkspaceFeatureAccess(
   workspaceId: string,
 ): Promise<WorkspaceFeatureAccess> {
   if (!workspaceCredentialIsFresh(context)) {
-    throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+    throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
   }
 
   const { data: workspaceData, error: workspaceError } = await context.admin
@@ -242,7 +242,7 @@ export async function requireWorkspaceFeatureAccess(
     .maybeSingle()
 
   if (workspaceError) {
-    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Workspace access could not be verified')
+    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Your workspace access could not be checked right now. Try again in a moment')
   }
   if (!workspaceData || workspaceData.status !== 'active') {
     throw new HttpError(404, 'WORKSPACE_NOT_FOUND', 'The selected workspace is unavailable')
@@ -271,7 +271,7 @@ export async function requireWorkspaceFeatureAccess(
     .maybeSingle()
 
   if (targetMembershipError) {
-    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Workspace access could not be verified')
+    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Your workspace access could not be checked right now. Try again in a moment')
   }
 
   const targetMembership = targetMembershipData as WorkspaceFeatureMembership | null
@@ -316,7 +316,7 @@ export async function requireWorkspaceFeatureAccess(
     .limit(2)
 
   if (homeMembershipError) {
-    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Workspace access could not be verified')
+    throw new HttpError(500, 'WORKSPACE_ACCESS_UNAVAILABLE', 'Your workspace access could not be checked right now. Try again in a moment')
   }
   // Still exactly one. Two active memberships on the single default workspace
   // is ambiguous data, not a supported arrangement, and the identity it would
@@ -676,7 +676,7 @@ export function errorResponse(req: Request, methods: readonly string[], error: u
   // Do not serialize database/Auth errors or request data into responses/logs.
   console.error('Workspace function failed with an unexpected error')
   return jsonResponse(req, methods, 500, {
-    error: 'Internal server error',
+    error: 'Something went wrong on our side. Try again in a moment',
     code: 'INTERNAL_ERROR',
   })
 }

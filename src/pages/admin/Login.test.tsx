@@ -61,6 +61,29 @@ describe('Login', () => {
     expect(screen.getByRole('link', { name: 'Request to join' })).toHaveAttribute('href', '/register')
   })
 
+  // Clients of an agency have their own door; a client who followed a link
+  // here used to see a form that could never let them in.
+  it('points clients at the portal sign-in', () => {
+    renderLogin()
+    expect(screen.getByRole('link', { name: 'Sign in to your client portal.' })).toHaveAttribute('href', '/portal/login')
+    expect(screen.getByText('Get On A Pod staff')).toBeInTheDocument()
+    expect(screen.getByText(/workspace members sign in with email and password above/iu)).toBeInTheDocument()
+  })
+
+  // The password-change page already knows the address; typing it twice is a
+  // chore and a chance for a typo.
+  it('prefills the email the password-change page handed over', () => {
+    render(
+      <HelmetProvider>
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { passwordChanged: true, email: 'dana@example.com' } }]}>
+          <Login />
+        </MemoryRouter>
+      </HelmetProvider>,
+    )
+    expect(screen.getByLabelText('Email')).toHaveValue('dana@example.com')
+    expect(screen.getByRole('status')).toHaveTextContent(/password changed/iu)
+  })
+
   // The toggle used to claim "Show password" while the password was showing.
   it('says what the reveal toggle will do, not what it already did', () => {
     renderLogin()
@@ -132,23 +155,28 @@ describe('Login', () => {
 
     expect(supabase.auth.resetPasswordForEmail).not.toHaveBeenCalled()
     expect(screen.queryByText(/if that email has an account/iu)).toBeNull()
-    expect(toast.error).toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/enter your email above/iu)
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   // Supabase distinguishes "wrong password" from "no such user"; surfacing that
   // difference would turn the sign-in form into an enumeration oracle.
   it('says the same thing for a wrong password and an unknown account', async () => {
     renderLogin()
+    const said: string[] = []
     for (const reason of ['Invalid login credentials', 'User not found', 'Email not confirmed']) {
       auth.signInWithPassword.mockRejectedValueOnce(new Error(reason))
+      // Typing clears the last verdict, so each attempt's alert is its own.
       fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'dana@example.com' } })
-      fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'whatever' } })
+      fireEvent.change(screen.getByLabelText('Password'), { target: { value: `whatever-${reason}` } })
+      expect(screen.queryByRole('alert')).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
-      await waitFor(() => expect(toast.error).toHaveBeenCalled())
+      said.push((await screen.findByRole('alert')).textContent)
     }
-    const said = vi.mocked(toast.error).mock.calls.map((call) => call[0])
     expect(said).toHaveLength(3)
-    expect(new Set(said).size).toBe(1)
+    expect(new Set(said)).toEqual(new Set(['Invalid email or password.']))
+    // Said under the button, where the eye is, not in a toast that leaves.
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   // A request that never reached a server is about the connection, not about
@@ -160,9 +188,15 @@ describe('Login', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'whatever' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
-      'Could not reach the server. Check your connection and try again.',
-    ))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the server. Try again.')
+  })
+
+  it('still reports a Google failure as a toast, since that flow leaves the page', async () => {
+    auth.signInWithGoogle.mockRejectedValueOnce(new Error('popup closed'))
+    renderLogin()
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/iu }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
   })
 
   // A deep link like /app/clients?client=abc was bounced to sign-in and came

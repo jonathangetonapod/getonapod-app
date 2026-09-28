@@ -107,9 +107,12 @@ export function PortalLayout({ children }: PortalLayoutProps) {
                 </span>
               </div>
             )}
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-semibold">{agencyName}</h1>
-              <p className="text-xs text-muted-foreground">Client Portal</p>
+            {/* The agency's name stays on the phone too, where the branding
+                matters most; it truncates rather than pushing the menu off
+                the edge. */}
+            <div className="min-w-0">
+              <h1 className="max-w-[40vw] truncate text-lg font-semibold sm:max-w-none">{agencyName}</h1>
+              <p className="hidden text-xs text-muted-foreground sm:block">Client portal</p>
             </div>
           </div>
 

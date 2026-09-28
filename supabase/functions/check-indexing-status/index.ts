@@ -234,7 +234,7 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         message: 'Failed to check indexing status',
-        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
       }),
       {
         status: 500,

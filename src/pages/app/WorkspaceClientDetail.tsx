@@ -55,6 +55,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getWorkspaceProspects } from '@/services/prospectDashboards'
 import { useAuth } from '@/contexts/AuthContext'
+import { creditCostSuffix } from '@/lib/creditCosts'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
@@ -630,11 +631,11 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     try {
       await setWorkspaceClientSdrMode(workspaceId, client.id, mode)
       toast.success(mode === 'auto_draft'
-        ? 'Auto-draft is on — every new reply gets a staged review package. Nothing sends.'
-        : 'Automation is off — drafts run when you ask for them.')
+        ? 'Automatic reply drafting is on. Every new reply gets a draft to review. Nothing sends on its own.'
+        : 'Automatic reply drafting is off. Drafts are written when you ask for them.')
       await detailQuery.refetch()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The AI SDR mode could not be saved.')
+      toast.error(error instanceof Error ? error.message : 'The reply drafting setting could not be saved.')
     } finally {
       setSdrModeBusy(false)
     }
@@ -799,10 +800,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       setSdrDraftDirty(false)
       setSdrEditorFieldId(null)
       toast.success(updated.ai_sdr_readiness.ready
-        ? 'AI SDR profile saved and ready for Master Inbox drafts.'
-        : 'AI SDR profile draft saved.')
+        ? 'Reply brief saved and ready for inbox drafts.'
+        : 'Reply brief draft saved.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The AI SDR profile could not be updated.'
+      const message = error instanceof Error ? error.message : 'The reply brief could not be updated.'
       setSdrError(message)
       if (/changed since you opened/i.test(message)) await detailQuery.refetch()
     } finally {
@@ -885,12 +886,13 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
         <Tabs value={activeTab} onValueChange={selectClientDetailTab} className="space-y-5">
           <div className="overflow-x-auto pb-1">
             <TabsList aria-label="Client command center sections" className="h-auto min-w-max justify-start gap-1 p-1">
+              {/* Tab ids are stable: ?tab= links elsewhere depend on them. */}
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="ai-sdr"><Bot className="mr-1.5 h-4 w-4" />AI SDR Profile</TabsTrigger>
-              <TabsTrigger value="approval">Approval dashboard</TabsTrigger>
-              <TabsTrigger value="portal">Client portal</TabsTrigger>
+              <TabsTrigger value="ai-sdr"><Bot className="mr-1.5 h-4 w-4" />Reply brief</TabsTrigger>
+              <TabsTrigger value="approval">Shortlist</TabsTrigger>
               <TabsTrigger value="podcasts">Podcast activity</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
+              <TabsTrigger value="portal">Client portal</TabsTrigger>
               <TabsTrigger value="files">Onboarding &amp; files</TabsTrigger>
             </TabsList>
           </div>
@@ -983,7 +985,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 <CardHeader><CardTitle>Client readiness</CardTitle><CardDescription>The systems needed to run this account.</CardDescription></CardHeader>
                 <CardContent>
                   <DetailRow label="Approval dashboard" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
-                  <DetailRow label="AI SDR profile" value={<Badge variant="outline" className={sdrReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{sdrReadiness.ready ? 'Context ready' : `${sdrReadiness.completed_fields} of ${sdrReadiness.total_fields}`}</Badge>} />
+                  <DetailRow label="Reply brief" value={<Badge variant="outline" className={sdrReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{sdrReadiness.ready ? 'Context ready' : `${sdrReadiness.completed_fields} of ${sdrReadiness.total_fields}`}</Badge>} />
                   <DetailRow label="Client portal" value={<Badge variant="outline" className={client.portal_access_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{client.portal_access_enabled ? 'Enabled' : 'Disabled'}</Badge>} />
                   <DetailRow label="Onboarding" value={onboarding ? labelForStatus(onboarding.status) : 'Not started'} />
                   <DetailRow label="Podcast review" value={dashboard.podcast_count > 0 ? `${dashboard.reviewed_count} of ${dashboard.podcast_count}` : 'No shortlist yet'} />
@@ -1009,17 +1011,17 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                       </Badge>
                       {client.ai_sdr_profile_updated_at && <Badge variant="secondary">Updated {formatDate(client.ai_sdr_profile_updated_at)}</Badge>}
                     </div>
-                    <h2 className="text-2xl font-bold tracking-tight">{client.name} AI SDR Profile</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">{client.name} reply brief</h2>
                     <p className="mt-2 max-w-2xl leading-6 text-muted-foreground">
-                      The host-ready context Master Inbox loads after a reply is resolved to this client. It explains why they are a compelling guest, what they can discuss, what listeners gain, and how to book them.
+                      What the inbox knows about this client when it drafts a reply to a host. It explains why they are a compelling guest, what they can discuss, what listeners gain, and how to book them.
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <Button asChild variant="outline"><Link to={masterInboxHref}><Mail className="mr-2 h-4 w-4" />Open Master Inbox</Link></Button>
+                    <Button asChild variant="outline"><Link to={masterInboxHref}><Mail className="mr-2 h-4 w-4" />Open inbox</Link></Button>
                     {canManage && !sdrReadiness.ready && (
                       <Button type="button" variant="outline" disabled={sdrDrafting || (client.bio ?? '').trim().length < 40} title={(client.bio ?? '').trim().length < 40 ? 'Add a client bio of at least 40 characters first — the draft is built from it.' : undefined} onClick={() => void draftSdrProfileWithAi()}>
                         {sdrDrafting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                        {sdrDrafting ? 'Drafting…' : 'Draft with AI'}
+                        {sdrDrafting ? 'Drafting…' : `Draft profile ${creditCostSuffix('pitch_profile')}`}
                       </Button>
                     )}
                     {canManage && (
@@ -1062,10 +1064,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">SDR mode</CardTitle>
+                <CardTitle className="text-base">Reply drafting</CardTitle>
                 <CardDescription>
                   Choose how replies for {client.name} are handled. Every reply is sent by a
-                  person — the AI only classifies and drafts.
+                  person. The AI only classifies and drafts.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -1073,12 +1075,12 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   {
                     id: 'manual' as const,
                     title: 'Manual',
-                    detail: 'The team classifies and drafts on demand with Draft with AI.',
+                    detail: 'Drafts are written only when you press Draft reply in the inbox.',
                   },
                   {
                     id: 'auto_draft' as const,
-                    title: 'Auto-draft',
-                    detail: 'Replies marked Interested in Instantly are classified and a reply + nudge package is staged for review automatically. Nothing sends.',
+                    title: 'Automatic',
+                    detail: 'Replies marked Interested in Instantly are classified and a reply is drafted for review automatically. Nothing sends on its own.',
                   },
                 ]).map((option) => {
                   const selected = (client.ai_sdr_mode ?? 'manual') === option.id
@@ -1089,7 +1091,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                       type="button"
                       aria-pressed={selected}
                       disabled={!canManage || sdrModeBusy || autoBlocked}
-                      title={autoBlocked ? 'Complete the core AI SDR profile first' : undefined}
+                      title={autoBlocked ? 'Complete the core reply brief first' : undefined}
                       onClick={() => void changeSdrMode(option.id)}
                       className={`rounded-xl border p-4 text-left transition-colors ${selected ? 'border-primary ring-1 ring-primary' : 'hover:bg-muted/20'} ${autoBlocked ? 'opacity-60' : ''}`}
                     >
@@ -1098,7 +1100,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                         {selected && <CheckCircle2 className="h-4 w-4 text-primary" />}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.detail}</p>
-                      {autoBlocked && <p className="mt-1.5 text-[11px] font-medium text-amber-700">Requires a complete core AI SDR profile.</p>}
+                      {autoBlocked && <p className="mt-1.5 text-[11px] font-medium text-amber-700">Requires a complete core reply brief.</p>}
                     </button>
                   )
                 })}
@@ -1187,7 +1189,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             <section aria-labelledby="review-progress-heading">
               <div className="mb-3">
                 <h3 id="review-progress-heading" className="text-xl font-semibold">Shortlist decisions</h3>
-                <p className="text-sm text-muted-foreground">Client feedback from the current approval list, summarized here.</p>
+                <p className="text-sm text-muted-foreground">Client feedback from the current shortlist, summarized here.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard icon={Mic2} label="Shortlisted" value={dashboard.podcast_count} iconClassName="bg-slate-100 text-slate-700" />
@@ -1305,7 +1307,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
 
           <TabsContent value="podcasts" className="mt-0 space-y-6">
             <section aria-labelledby="podcast-activity-heading">
-              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h2 id="podcast-activity-heading" className="text-xl font-semibold">Podcast activity</h2><p className="text-sm text-muted-foreground">Confirmed booking and publishing milestones. Use the Command Center for the complete client workflow.</p></div><div className="flex items-center gap-2"><Badge variant="outline">{bookings.length} total</Badge>{canManage && <Button size="sm" onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a conversation</Button>}<Button asChild variant="outline" size="sm"><Link to={podcastSystemHref}>Open Command Center<ArrowRight className="ml-2 h-4 w-4" /></Link></Button></div></div>
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h2 id="podcast-activity-heading" className="text-xl font-semibold">Podcast activity</h2><p className="text-sm text-muted-foreground">Confirmed booking and publishing milestones. Use the Command Center for the complete client workflow.</p></div><div className="flex items-center gap-2"><Badge variant="outline">{bookings.length} total</Badge>{canManage && <Button size="sm" onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a placement</Button>}<Button asChild variant="outline" size="sm"><Link to={podcastSystemHref}>Open Command Center<ArrowRight className="ml-2 h-4 w-4" /></Link></Button></div></div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricCard icon={CalendarDays} label="Booked" value={progress.booked} iconClassName="bg-emerald-50 text-emerald-600" />
                 <MetricCard icon={Clock3} label="In progress" value={progress.inProgress} iconClassName="bg-amber-50 text-amber-600" />
@@ -1318,7 +1320,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               <CardHeader className="flex flex-row items-start justify-between gap-4"><div><CardTitle>All placements</CardTitle><CardDescription>Booked, in progress, recorded, published, and cancelled appearances.</CardDescription></div><Button asChild variant="outline" size="sm"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find more</Link></Button></CardHeader>
               <CardContent>
                 {bookings.length === 0 ? (
-                  <div className="flex min-h-44 flex-col items-center justify-center text-center"><CheckCircle2 className="mb-3 h-9 w-9 text-muted-foreground/50" /><p className="font-medium">No placements yet</p><p className="text-sm text-muted-foreground">Log the first conversation as soon as a host replies, then move it along as it progresses.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{canManage && <Button onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a conversation</Button>}<Button asChild variant="outline"><Link to={podcastSystemHref}>Open Command Center</Link></Button><Button asChild variant="outline"><Link to={finderHref}>Open Podcast Finder</Link></Button></div></div>
+                  <div className="flex min-h-44 flex-col items-center justify-center text-center"><CheckCircle2 className="mb-3 h-9 w-9 text-muted-foreground/50" /><p className="font-medium">No placements yet</p><p className="text-sm text-muted-foreground">Log the first placement as soon as a host says yes, then move it along as it progresses.</p><div className="mt-4 flex flex-wrap justify-center gap-2">{canManage && <Button onClick={() => { setEditingBooking(null); setBookingDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Log a placement</Button>}<Button asChild variant="outline"><Link to={podcastSystemHref}>Open Command Center</Link></Button><Button asChild variant="outline"><Link to={finderHref}>Open Podcast Finder</Link></Button></div></div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
@@ -1366,7 +1368,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 <ConnectedResource icon={Activity} title="Media kit" description="Approved bio, positioning, and speaking assets shared with hosts." status={mediaKitUrl ? 'Connected' : 'Not connected'} statusClassName={mediaKitUrl ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
                   {mediaKitUrl ? <Button asChild variant="ghost" size="sm" className="-ml-3 h-8"><a href={mediaKitUrl} target="_blank" rel="noreferrer">Open media kit<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button> : <span className="text-xs text-muted-foreground">No file connected</span>}
                 </ConnectedResource>
-                <ConnectedResource icon={LayoutDashboard} title="Original prospect page" description="The pre-client sales dashboard remains separate from active delivery." status={prospectDashboardHref ? 'Linked' : 'Not linked'} statusClassName={prospectDashboardHref ? 'border-sky-200 bg-sky-50 text-sky-800' : undefined}>
+                <ConnectedResource icon={LayoutDashboard} title="Original prospect page" description="The pre-client prospect page remains separate from active delivery." status={prospectDashboardHref ? 'Linked' : 'Not linked'} statusClassName={prospectDashboardHref ? 'border-sky-200 bg-sky-50 text-sky-800' : undefined}>
                   <div className="flex flex-wrap items-center gap-2">
                     {prospectDashboardHref && (
                       <Button asChild variant="ghost" size="sm" className="-ml-3 h-8">
@@ -1542,7 +1544,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 </div>
                 <div className={`rounded-xl border px-4 py-3 text-xs leading-5 ${sdrDraftReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                   {sdrDraftReadiness.ready
-                    ? 'Saving this section keeps all four core sections ready for Master Inbox review drafts.'
+                    ? 'Saving this section keeps all four core sections ready for inbox review drafts.'
                     : `This profile can still be saved as a draft. ${sdrDraftReadiness.missing_core_fields.length} core section${sdrDraftReadiness.missing_core_fields.length === 1 ? '' : 's'} will remain before drafting is ready.`}
                 </div>
                 {sdrError && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{sdrError}</p>}
@@ -1838,7 +1840,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             {prospectsQuery.error && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
                 <p className="text-sm text-destructive">Prospect pages could not be loaded.</p>
-                <Button type="button" variant="outline" size="sm" onClick={() => void prospectsQuery.refetch()}>Retry</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => void prospectsQuery.refetch()}>Try again</Button>
               </div>
             )}
             {!prospectsQuery.isLoading && !prospectsQuery.error && prospectMatches.length === 0 && (

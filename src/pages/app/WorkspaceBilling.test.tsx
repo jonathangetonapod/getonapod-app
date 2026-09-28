@@ -36,6 +36,7 @@ const overviewFixture = {
   monthly_credit_allowance: 100,
   enforcement_enabled: false,
   has_subscription: false,
+  current_period_end: '2026-10-01T00:00:00.000Z',
   balance: 42,
   expiring_credits: 25,
   next_expiry_at: '2026-09-01T00:00:00.000Z',
@@ -123,14 +124,17 @@ describe('WorkspaceBilling', () => {
     mockedOverview.mockResolvedValue(overviewFixture as never)
     renderPage()
 
-    const research = (await screen.findByText('AI research runs')).closest('tr')!
+    // The price list names the same operations, so the usage lookups are
+    // scoped to the table.
+    const usage = within(await screen.findByRole('table'))
+    const research = usage.getByText('Research a podcast').closest('tr')!
     // 4 runs, none on their own key, at 10 credits each.
     expect(within(research).getByText('4')).toBeInTheDocument()
     expect(within(research).getByText('10')).toBeInTheDocument()
     expect(within(research).getByText('40')).toBeInTheDocument()
 
     // 3 dashboard builds, 1 on their own key and therefore free, at 5 each.
-    const dashboards = screen.getByText('Prospect dashboard builds').closest('tr')!
+    const dashboards = usage.getByText('Build a prospect page').closest('tr')!
     expect(within(dashboards).getByText(/1 on your own key, free/i)).toBeInTheDocument()
     expect(within(dashboards).getByText('10')).toBeInTheDocument()
 
@@ -180,9 +184,63 @@ describe('WorkspaceBilling', () => {
     mockedSubscribe.mockResolvedValue('https://checkout.stripe.com/session/test')
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Choose a plan' }))
+    // The button names the plan and the price it will start, not "a plan".
+    fireEvent.click(await screen.findByRole('button', { name: 'Start the Founding member plan · $39/month' }))
     expect(mockedSubscribe).toHaveBeenCalledWith(workspaceId, 'founding_member')
     expect(mockedPortal).not.toHaveBeenCalled()
+  })
+
+  // Nobody could find out what a credit was for, or what anything cost,
+  // without spending one first.
+  it('explains what credits are for, with the plan figures filled in', async () => {
+    asOwner()
+    mockedOverview.mockResolvedValue(overviewFixture as never)
+    renderPage()
+
+    expect(await screen.findByText(
+      'Credits pay for the AI and data work in your workspace. '
+      + 'Your plan includes 100 credits every month; monthly credits you do not use expire at the end of the following month. '
+      + 'Credits you buy never expire and are only used once the monthly ones are gone. '
+      + 'When the balance reaches zero, research, contact finding and prospect page builds pause until Oct 1, 2026 or until you buy more. '
+      + 'Anything that runs on your own AI keys is free.',
+    )).toBeInTheDocument()
+    expect(screen.getByText('Next monthly credits: 100 on Oct 1, 2026')).toBeInTheDocument()
+  })
+
+  it('drops the renewal date from the explainer when it is not known', async () => {
+    asOwner()
+    mockedOverview.mockResolvedValue({ ...overviewFixture, current_period_end: null } as never)
+    renderPage()
+
+    expect(await screen.findByText(/prospect page builds pause until you buy more\. Anything/)).toBeInTheDocument()
+    expect(screen.getByText('Next monthly credits: 100')).toBeInTheDocument()
+  })
+
+  it('lists the price of every operation, preferring the live price', async () => {
+    asOwner()
+    mockedOverview.mockResolvedValue(overviewFixture as never)
+    renderPage()
+
+    const card = (await screen.findByRole('heading', { name: 'What credits pay for' })).closest('div')!.parentElement!
+    // The fixture prices research at 10; the seeded table says 2. Live wins.
+    expect(within(card).getByText('Research a podcast').nextElementSibling).toHaveTextContent('10 credits')
+    // No live price for scoring, so the seeded one shows.
+    expect(within(card).getByText('Score podcasts for fit (per 20)').nextElementSibling).toHaveTextContent('1 credit')
+    // A free step says so rather than showing a zero.
+    expect(within(card).getByText("Find a host's email").nextElementSibling).toHaveTextContent('Included')
+    expect(within(card).getByRole('heading', { name: 'Mailboxes' })).toBeInTheDocument()
+    expect(within(card).getByText('Buy a sending domain').nextElementSibling).toHaveTextContent('20 credits')
+    expect(within(card).getByText('Run a mailbox for a month').nextElementSibling).toHaveTextContent('5 credits')
+  })
+
+  it('says what has paused and until when once the balance is empty', async () => {
+    asOwner()
+    mockedOverview.mockResolvedValue({ ...overviewFixture, enforcement_enabled: true, balance: 0 } as never)
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You have no credits left. Research, contact finding and prospect page builds are paused until Oct 1, 2026, or until you buy a pack.',
+    )
   })
 
   // Platform administration is a different job for a different person. It used

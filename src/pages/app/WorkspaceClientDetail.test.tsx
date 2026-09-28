@@ -313,7 +313,7 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('heading', { name: 'Upcoming episode releases' })).toBeInTheDocument()
     expect(screen.getByText('Goes live Oct 1, 2099')).toBeInTheDocument()
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Shortlist' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
     expect(screen.getAllByText('Podcasts selected for Taylor’s operating expertise.')).toHaveLength(1)
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
@@ -346,7 +346,6 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
     expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View full profile' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Reorder sidebar pages' })).toBeInTheDocument()
     expect(mockedDetail).toHaveBeenCalledWith(workspaceId, clientId)
   })
 
@@ -363,15 +362,15 @@ describe('WorkspaceClientDetail', () => {
     expect(mockedDetail).toHaveBeenCalledTimes(1)
   })
 
-  it('edits each client-scoped AI SDR section in a focused modal for Master Inbox', async () => {
+  it('edits each client-scoped reply brief section in a focused modal for the inbox', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'AI SDR Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Reply brief' }), { button: 0 })
 
-    expect(screen.getByRole('heading', { name: 'Taylor Client AI SDR Profile' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
     expect(screen.getByText('Context ready')).toBeInTheDocument()
     expect(screen.getByText('A practical framework for diagnosing and fixing the bottleneck behind stalled growth.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open Master Inbox' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open inbox' })).toHaveAttribute(
       'href',
       `/app/master-inbox?client=${clientId}`,
     )
@@ -392,19 +391,19 @@ describe('WorkspaceClientDetail', () => {
     ))
   })
 
-  it('opens directly to the AI SDR profile from its stable client deep link', async () => {
+  it('opens directly to the reply brief from its stable client deep link', async () => {
     renderPage(`/app/clients/${clientId}?tab=ai-sdr`)
 
-    expect(await screen.findByRole('heading', { name: 'Taylor Client AI SDR Profile' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'AI SDR Profile' })).toHaveAttribute('data-state', 'active')
+    expect(await screen.findByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Reply brief' })).toHaveAttribute('data-state', 'active')
     expect(screen.queryByRole('heading', { name: 'Campaign snapshot' })).not.toBeInTheDocument()
   })
 
-  it('keeps AI SDR profile editing manager-only', async () => {
+  it('keeps reply brief editing manager-only', async () => {
     mockedDetail.mockResolvedValueOnce({ ...detail, viewer_role: 'member', can_manage: false })
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'AI SDR Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Reply brief' }), { button: 0 })
 
     expect(screen.getByText('Sustainable scale, founder leverage, and the operator systems behind durable growth.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument()
@@ -502,7 +501,7 @@ describe('WorkspaceClientDetail', () => {
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Approval dashboard' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Shortlist' }), { button: 0 })
 
     expect(screen.getAllByText('Live').length).toBeGreaterThan(0)
     expect(screen.queryByText('Not shared')).not.toBeInTheDocument()

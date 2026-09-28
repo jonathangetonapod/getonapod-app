@@ -72,9 +72,10 @@ describe('ResetPassword', () => {
   it('refuses a password the policy rejects, without calling the server', async () => {
     renderPage()
     for (const [password, confirmation, expected] of [
-      ['short', 'short', /at least 12 characters/iu],
+      ['short', 'short', /passwords need at least 12 characters/iu],
+      [`${'Pässwörd-Ünïcödé-9!'.repeat(4)}A`, `${'Pässwörd-Ünïcödé-9!'.repeat(4)}A`, /at most 72 characters/iu],
       ['Tmp-Something-9!', 'Tmp-Something-9!', /does not start with Tmp-/iu],
-      ['alllowercase123!', 'alllowercase123!', /uppercase, lowercase, a digit, and a symbol/iu],
+      ['alllowercase123!', 'alllowercase123!', /a capital letter, a lowercase letter, a number and a symbol/iu],
       ['Correct-Horse-9!', 'Correct-Horse-8!', /do not match/iu],
     ] as Array<[string, string, RegExp]>) {
       fill(password, confirmation)
@@ -99,7 +100,8 @@ describe('ResetPassword', () => {
     auth.user = null
     renderPage()
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/reset link expired/iu)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('This reset link no longer works.')
+    expect(screen.getByText(/links last one hour/iu)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to sign in/iu })).toHaveAttribute('href', '/login')
     expect(screen.queryByLabelText('New password')).toBeNull()
   })

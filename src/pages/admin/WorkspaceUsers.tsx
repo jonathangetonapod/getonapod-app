@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { Copy, Eye, EyeOff, KeyRound, Loader2, PauseCircle, PlayCircle, RefreshCw, Send, Settings2, Trash2, UserPlus, Users } from 'lucide-react'
+import { ClipboardList, Copy, Eye, EyeOff, KeyRound, Loader2, PauseCircle, PlayCircle, RefreshCw, Search, Send, Settings2, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +49,68 @@ function formatAccountDate(value: string | null): string {
   return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString()
 }
 
+function formatAccountDay(value: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? 'Unknown'
+    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
+}
+
+interface OwnerState {
+  label: string
+  tone: 'default' | 'secondary' | 'destructive'
+  detail: string | null
+}
+
+/**
+ * The same words the workspace settings page uses for its own team, so an
+ * operator reading both screens is not translating between two vocabularies.
+ */
+function ownerState(user: ManagedWorkspaceUser): OwnerState {
+  if (user.status === 'active') return { label: 'Active', tone: 'default', detail: null }
+  if (user.status === 'suspended') return { label: 'Suspended', tone: 'destructive', detail: null }
+  if (user.status === 'provisioning') return { label: 'Setting up', tone: 'secondary', detail: null }
+  if (user.status === 'revoked') return { label: 'Removed', tone: 'destructive', detail: null }
+  if (isExpiredInvite(user)) {
+    return { label: 'Invite expired', tone: 'destructive', detail: `Expired ${formatAccountDay(user.invite_expires_at)}` }
+  }
+  const expiry = user.invite_expires_at ? ` · expires ${formatAccountDay(user.invite_expires_at)}` : ''
+  if (user.provisioning_method === 'admin_temporary_password') {
+    return {
+      label: 'Waiting for first sign-in',
+      tone: 'secondary',
+      detail: user.invited_at ? `Issued ${formatAccountDay(user.invited_at)}${expiry}` : null,
+    }
+  }
+  return {
+    label: 'Invited',
+    tone: 'secondary',
+    detail: user.invited_at ? `Email sent ${formatAccountDay(user.invited_at)}${expiry}` : null,
+  }
+}
+
+/**
+ * What the operator pastes to the owner they are setting up: the address, the
+ * account, the password, and that it is a one-off.
+ */
+function signInInstructions(credential: ManualWorkspaceCredential): string {
+  const origin = String(import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/+$/u, '')
+  const expiry = credential.membership.invite_expires_at
+    ? formatAccountDay(credential.membership.invite_expires_at)
+    : null
+  return `Sign in at ${origin}/login with ${credential.email} and this temporary password: ${credential.temporary_password}\n`
+    + 'You will be asked to choose your own password straight away.'
+    + (expiry ? ` This temporary one stops working on ${expiry}.` : '')
+}
+
+function matchesSearch(user: ManagedWorkspaceUser, search: string): boolean {
+  const needle = search.trim().toLowerCase()
+  if (!needle) return true
+  return [user.workspace?.name, user.full_name, user.email]
+    .some((value) => (value || '').toLowerCase().includes(needle))
+}
+
 function reconciliationReady(value: string | null): boolean {
   if (!value) return false
   const reviewAt = Date.parse(value)
@@ -71,7 +133,9 @@ const WorkspaceUsers = () => {
   const [credential, setCredential] = useState<(ManualWorkspaceCredential & { workspaceName?: string }) | null>(null)
   const [credentialVisible, setCredentialVisible] = useState(false)
   const [credentialCopied, setCredentialCopied] = useState(false)
+  const [instructionsCopied, setInstructionsCopied] = useState(false)
   const [credentialSaved, setCredentialSaved] = useState(false)
+  const [search, setSearch] = useState('')
   const [credentialBusyId, setCredentialBusyId] = useState<string | null>(null)
   const [credentialConfirmation, setCredentialConfirmation] = useState<ManagedWorkspaceUser | null>(null)
   const [confirmation, setConfirmation] = useState<{ user: ManagedWorkspaceUser; action: PendingAction } | null>(null)
@@ -145,6 +209,7 @@ const WorkspaceUsers = () => {
     setCredential(null)
     setCredentialVisible(false)
     setCredentialCopied(false)
+    setInstructionsCopied(false)
     setCredentialSaved(false)
     setManualError(null)
   }
@@ -153,6 +218,7 @@ const WorkspaceUsers = () => {
     setCredential({ ...result, workspaceName: result.workspace?.name || fallbackWorkspaceName })
     setCredentialVisible(false)
     setCredentialCopied(false)
+    setInstructionsCopied(false)
     setCredentialSaved(false)
     setManualError(null)
     setManualOpen(true)
@@ -231,7 +297,20 @@ const WorkspaceUsers = () => {
     }
   }
 
+  const copySignInInstructions = async () => {
+    if (!credential) return
+    try {
+      await navigator.clipboard.writeText(signInInstructions(credential))
+      setInstructionsCopied(true)
+      setManualError(null)
+    } catch {
+      setCredentialVisible(true)
+      setManualError('Clipboard access is unavailable. Select and copy the visible password manually.')
+    }
+  }
+
   const users = (usersQuery.data || []).filter((managedUser) => managedUser.status !== 'revoked')
+  const visibleUsers = users.filter((managedUser) => matchesSearch(managedUser, search))
   const domainWorkspaces = (workspacesQuery.data || [])
     .map((workspace) => ({ id: workspace.id, name: workspace.name }))
     .sort((left, right) => left.name.localeCompare(right.name))
@@ -240,19 +319,33 @@ const WorkspaceUsers = () => {
     <WorkspaceLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><h1 className="text-3xl font-bold tracking-tight">Workspace owners</h1><p className="text-muted-foreground">Create workspaces and manage each owner's sign-in access.</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">Workspaces</h1><p className="text-muted-foreground">Create workspaces and manage each owner's sign-in access.</p></div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => { clearCredential(); setManualOpen(true) }}>
-              <KeyRound className="mr-2 h-4 w-4" />Create workspace
+              <KeyRound className="mr-2 h-4 w-4" />Create with a temporary password
             </Button>
-            <Button onClick={() => setInviteOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Invite agency owner</Button>
+            <Button onClick={() => setInviteOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Invite an owner by email</Button>
           </div>
         </div>
 
         <JoinRequestsCard />
 
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Owner accounts</CardTitle><CardDescription>Reset an owner's password here or open their workspace settings to manage the full team. New passwords are shown once and must be replaced at the owner's next sign-in.</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Workspaces</CardTitle>
+            <CardDescription>Reset an owner's password here or open their workspace settings to manage the full team. New passwords are shown once and must be replaced at the owner's next sign-in.</CardDescription>
+            <div className="relative max-w-sm pt-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 mt-1 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                type="search"
+                aria-label="Search workspaces"
+                placeholder="Search by workspace, name or email"
+                className="pl-9"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+          </CardHeader>
           <CardContent>
             {usersQuery.isLoading ? (
               <div className="flex min-h-40 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div>
@@ -266,12 +359,14 @@ const WorkspaceUsers = () => {
               </div>
             ) : users.length === 0 ? (
               <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center"><Send className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No workspace accounts</p><p className="text-sm text-muted-foreground">Create a workspace manually or invite its agency owner.</p></div></div>
+            ) : visibleUsers.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">No workspaces match &ldquo;{search.trim()}&rdquo;.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Workspace</TableHead><TableHead>Status</TableHead><TableHead>Invited</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Workspace</TableHead><TableHead>Status</TableHead><TableHead>Added</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {users.map((managedUser) => {
+                    {visibleUsers.map((managedUser) => {
                       const inviteExpired = isExpiredInvite(managedUser)
                       const isManualAccount = managedUser.provisioning_method === 'admin_temporary_password'
                       const credentialReviewReady = reconciliationReady(
@@ -297,24 +392,20 @@ const WorkspaceUsers = () => {
                       const inviteBlocked = managedUser.invite_reconciliation_pending && !inviteReviewReady
                       const manualSetupRetryBlocked = managedUser.invite_reconciliation_pending
                         || rotationBlocked
-                      const statusLabel = inviteExpired
-                          ? 'expired'
-                          : managedUser.password_change_required
-                            ? 'password change required'
-                            : managedUser.status
+                      const state = ownerState(managedUser)
                       return (
                       <TableRow key={managedUser.id}>
                         <TableCell><p className="font-medium">{managedUser.full_name || managedUser.email}</p><p className="text-xs text-muted-foreground">{managedUser.email}</p></TableCell>
                         <TableCell>{managedUser.workspace?.name || 'Private workspace'}</TableCell>
-                        <TableCell><Badge variant={managedUser.status === 'active' ? 'default' : managedUser.status === 'suspended' || managedUser.status === 'revoked' || inviteExpired ? 'destructive' : 'secondary'} className="capitalize">{statusLabel}</Badge></TableCell>
                         <TableCell>
-                          <p>{formatAccountDate(managedUser.invited_at)}</p>
-                          {managedUser.invite_expires_at && (
-                            <p className={inviteExpired ? 'text-xs font-medium text-destructive' : 'text-xs text-muted-foreground'}>
-                              {inviteExpired ? 'Expired' : 'Expires'} {formatAccountDate(managedUser.invite_expires_at)}
+                          <Badge variant={state.tone}>{state.label}</Badge>
+                          {state.detail && (
+                            <p className={inviteExpired ? 'mt-1 max-w-48 text-xs font-medium text-destructive' : 'mt-1 max-w-48 text-xs text-muted-foreground'}>
+                              {state.detail}
                             </p>
                           )}
                         </TableCell>
+                        <TableCell>{formatAccountDate(managedUser.invited_at)}</TableCell>
                         <TableCell className="text-right">
                           {managedUser.status === 'active' && <div className="inline-flex flex-col items-end gap-2"><div className="inline-flex flex-wrap justify-end gap-2">{managedUser.workspace?.id && <><Button size="sm" variant="outline" asChild><Link to={workspaceModuleHref(selectedWorkspaceBaseHref(managedUser.workspace.id), 'clients')}><Eye className="mr-2 h-4 w-4" />Open workspace</Link></Button><Button size="sm" variant="outline" asChild><Link to={workspaceModuleHref(selectedWorkspaceBaseHref(managedUser.workspace.id), 'settings')}><Settings2 className="mr-2 h-4 w-4" />Manage users</Link></Button></>}<Button size="sm" variant="outline" disabled={passwordResetBlocked} onClick={() => setCredentialConfirmation(managedUser)}>{credentialOperationBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}Reset password</Button><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'suspend' })}><PauseCircle className="mr-2 h-4 w-4" />Suspend</Button></div>{(managedUser.auth_reconciliation_pending || managedUser.credential_reconciliation_pending) && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
                           {managedUser.status === 'suspended' && <div className="inline-flex flex-col items-end gap-2"><Button size="sm" variant="outline" disabled={managedUser.auth_reconciliation_pending} onClick={() => setConfirmation({ user: managedUser, action: 'reactivate' })}><PlayCircle className="mr-2 h-4 w-4" />Reactivate</Button>{managedUser.auth_reconciliation_pending && <p className="max-w-64 text-xs font-medium text-destructive">Account actions are temporarily unavailable. Operator review is required.</p>}</div>}
@@ -395,6 +486,11 @@ const WorkspaceUsers = () => {
                       <Copy className="mr-2 h-4 w-4" />{credentialCopied ? 'Copied' : 'Copy'}
                     </Button>
                   </div>
+                  {/* The whole message, not just the secret: where to go,
+                      which account, and that the password is a one-off. */}
+                  <Button type="button" variant="outline" size="sm" onClick={() => void copySignInInstructions()}>
+                    <ClipboardList className="mr-2 h-4 w-4" />{instructionsCopied ? 'Sign-in instructions copied' : 'Copy sign-in instructions'}
+                  </Button>
                 </div>
                 <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                   The account cannot access workspace data until this password is replaced at first sign-in.
@@ -493,7 +589,7 @@ const WorkspaceUsers = () => {
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Invite an agency owner</DialogTitle><DialogDescription>Confirm production invite email delivery is configured before sending. The invitee receives a private workspace as its owner and can add their agency team after activation.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Invite an owner by email</DialogTitle><DialogDescription>The invitee receives a private workspace as its owner and can add their agency team after activation.</DialogDescription></DialogHeader>
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); inviteMutation.mutate() }}>
             <div className="space-y-2"><Label htmlFor="invite-email">Email</Label><Input id="invite-email" type="email" required autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="invite-name">Full name</Label><Input id="invite-name" value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>

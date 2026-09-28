@@ -1102,7 +1102,7 @@ serve(async (req) => {
     }
     const context = await requireAuthenticatedUser(req)
     if (!workspaceCredentialIsFresh(context)) {
-      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
     }
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
     const access = await requireWorkspaceFeatureAccess(context, workspaceId)

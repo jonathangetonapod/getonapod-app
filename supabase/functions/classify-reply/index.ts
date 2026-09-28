@@ -236,7 +236,7 @@ Respond with EXACTLY this JSON format (no other text):
     return new Response(
       JSON.stringify({
         success: false,
-        error: (error instanceof Error ? error.message : String(error)) || 'Internal server error',
+        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
       }),
       {
         status: 500,

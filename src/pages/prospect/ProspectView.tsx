@@ -13,7 +13,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
-import confetti from 'canvas-confetti'
 import { toast } from 'sonner'
 import {
   Mic,
@@ -56,9 +55,9 @@ import {
   Rocket,
   Quote,
   Calendar,
-  DollarSign,
   FileText,
-  RefreshCw
+  RefreshCw,
+  RotateCcw,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -71,16 +70,7 @@ import { openExternalUrl } from '@/lib/externalUrl'
 import { currentHostname } from '@/lib/workspaceHost'
 
 export default function ProspectView() {
-  return (
-    <>
-      <PageSEO
-        title="Private podcast shortlist"
-        description="A private, personalized podcast shortlist."
-        noindex
-      />
-      <ProspectViewContent />
-    </>
-  )
+  return <ProspectViewContent />
 }
 
 interface ProspectDashboard {
@@ -252,10 +242,7 @@ function testimonialRole(testimonial: ProspectTestimonial): string {
 
 function ProspectViewContent() {
   const { slug } = useParams<{ slug: string }>()
-  const [searchParams] = useSearchParams()
-  const forceTour = searchParams.get('tour') === '1'
   const queryClient = useQueryClient()
-
 
   // UI state
   const [searchQuery, setSearchQuery] = useState('')
@@ -289,9 +276,6 @@ function ProspectViewContent() {
   // Cache for analyses and demographics
   const [analysisCache, setAnalysisCache] = useState<Map<string, PodcastFitAnalysis>>(new Map())
   const [demographicsCache, setDemographicsCache] = useState<Map<string, PodcastDemographics | null>>(new Map())
-
-  // Preloading state
-  const [preloadingAnalyses, setPreloadingAnalyses] = useState(false)
 
   // Personalized tagline state
   const [personalizedTagline, setPersonalizedTagline] = useState<string | null>(null)
@@ -369,6 +353,24 @@ function ProspectViewContent() {
   const bookingLink = bookingLinkUrl(workspaceBrand?.booking_url)
   const bookingEmbedUrl = schedulerEmbedUrl(workspaceBrand?.booking_url)
   const bookingProvider = schedulerName(workspaceBrand?.booking_url)
+  const brandName = workspaceBrand?.brand_name?.trim() || 'Your booking team'
+
+  /*
+   * The tab, its icon and its colour belong to the agency whose page this is.
+   * A shared link used to preview with our name on it, which is the one thing
+   * a white-label page must never do.
+   */
+  const seo = (
+    <PageSEO
+      title={`Your podcast shortlist | ${brandName}`}
+      description="A private, personalized podcast shortlist."
+      noindex
+      whiteLabel
+      brandName={brandName}
+      favicon={workspaceBrand?.logo_url ?? null}
+      themeColor={primaryColor}
+    />
+  )
 
   /*
    * Only the testimonials somebody chose for this dashboard, and deliberately
@@ -416,18 +418,18 @@ function ProspectViewContent() {
         'Each one was matched against your background, the audience you are trying to reach, and whether the format actually gives a guest room to talk. The reason a show made your list is written on its card.',
     },
     {
-      question: 'What happens when I approve a show?',
-      answer: `It joins the outreach list. ${faqTeamName} pitches you to the host with an angle drawn from your own work, then handles the follow-up and the scheduling. Nothing is ever sent to a show you have not approved.`,
+      question: 'What happens when I mark a show as interested?',
+      answer: `It joins your picks. ${faqTeamName} pitches you to the host with an angle drawn from your own work, then handles the follow-up and the scheduling. Nothing is ever sent to a show you have not picked.`,
     },
     {
       question: 'What if a show is not right for me?',
       answer:
-        'Pass on it. A decline is as useful as an approval — it says something about what you want, and the next set of suggestions is sharper for it.',
+        'Mark it not a fit. That is as useful as a pick: it says something about what you want, and the next set of suggestions is sharper for it.',
     },
     {
-      question: 'Am I committing to anything by approving?',
+      question: 'Am I committing to anything by marking a show as interested?',
       answer:
-        'No. Approving marks which rooms are worth a pitch. It is not a booking and it is not a contract, and you can change your mind on any show before it is pitched.',
+        'No. It marks which rooms are worth a pitch. It is not a booking and it is not a contract, and you can change your mind on any show before it is pitched.',
     },
     {
       question: 'What do you need from me?',
@@ -556,14 +558,8 @@ function ProspectViewContent() {
     setPersonalizedTagline(dashboard?.personalized_tagline ?? null)
   }, [dashboard?.personalized_tagline])
 
-  // The dashboard is designed to be self-explanatory. The guided tour remains
-  // available from Help and via ?tour=1, but never interrupts a first visit.
-  useEffect(() => {
-    if (!dashboard || loading || !forceTour) return
-    const timer = setTimeout(() => setShowTutorial(true), 500)
-    return () => clearTimeout(timer)
-  }, [dashboard, loading, forceTour])
-
+  // The dashboard is designed to be self-explanatory. The walkthrough is
+  // there behind the help button and never opens on its own.
   const closeTutorial = () => {
     setShowTutorial(false)
     setTutorialStep(0)
@@ -664,37 +660,11 @@ function ProspectViewContent() {
     }
   }, [selectedFeedbackNotes, selectedPodcast])
 
-
-  // Confetti celebration for approvals
-  const triggerConfetti = () => {
-    const count = 200
-    const defaults = {
-      origin: { y: 0.7 },
-      zIndex: 9999,
-    }
-
-    function fire(particleRatio: number, opts: confetti.Options) {
-      confetti({
-        ...defaults,
-        ...opts,
-        particleCount: Math.floor(count * particleRatio),
-      })
-    }
-
-    fire(0.25, { spread: 26, startVelocity: 55 })
-    fire(0.2, { spread: 60 })
-    fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8 })
-    fire(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 })
-    fire(0.1, { spread: 120, startVelocity: 45 })
-  }
-
-  // Save feedback (approve/reject/notes)
+  // Save feedback (interested / not a fit / notes)
   const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string) => {
     if (!dashboard) return
 
-    // Check if this is a new approval (not already approved)
     const existingFeedback = feedbackMap.get(podcastId)
-    const isNewApproval = status === 'approved' && existingFeedback?.status !== 'approved'
 
     setIsSavingFeedback(true)
     try {
@@ -736,11 +706,6 @@ function ProspectViewContent() {
         const rest = (current.feedback ?? []).filter((feedback) => feedback.podcast_id !== podcastId)
         return { ...current, feedback: [...rest, savedFeedback] }
       })
-
-      // Trigger confetti for new approvals
-      if (isNewApproval) {
-        triggerConfetti()
-      }
     } catch (err) {
       console.error('Error saving feedback:', err)
       toast.error(err instanceof Error ? err.message : 'Unable to save your feedback. Please try again.')
@@ -753,6 +718,7 @@ function ProspectViewContent() {
   if (loading) {
     return (
       <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+        {seo}
         <section className="paper-noise px-4 py-16 md:py-20">
           <div className="container mx-auto">
             <div className="grid gap-10 xl:grid-cols-[1.02fr_0.98fr]">
@@ -799,6 +765,7 @@ function ProspectViewContent() {
   if (isUpdating) {
     return (
       <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+        {seo}
         <section className="paper-noise flex min-h-screen items-center justify-center px-4 py-16">
           <Card className="w-full max-w-md border border-[#0d1b2a]/8 bg-white/84 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm">
             <CardContent className="space-y-4 px-6 pb-8 pt-8 text-center">
@@ -835,6 +802,7 @@ function ProspectViewContent() {
   if (error || !dashboard) {
     return (
       <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+        {seo}
         <section className="paper-noise flex min-h-screen items-center justify-center px-4 py-16">
           <Card className="max-w-md w-full border border-[#0d1b2a]/8 bg-white/84 shadow-[0_20px_42px_rgba(13,27,42,0.08)] backdrop-blur-sm">
             <CardContent className="pt-8 pb-8 text-center space-y-4">
@@ -996,9 +964,23 @@ function ProspectViewContent() {
   const approvedCountTotal = Array.from(feedbackMap.values()).filter(f => f.status === 'approved').length
   const progressPercent = uniquePodcasts.length > 0 ? (reviewedCountTotal / uniquePodcasts.length) * 100 : 0
   const prospectFirstName = dashboard.prospect_name.trim().split(/\s+/)[0] || dashboard.prospect_name
+  // Every show has a decision. The page should say so where the list was,
+  // not leave the reader hunting for a submit button that does not exist.
+  const reviewComplete = !loadingPodcasts && !podcastsError
+    && uniquePodcasts.length > 0
+    && feedbackStats.notReviewed === 0
+  // The one call link this page has: the dashboard's own when it is a
+  // booking link, otherwise the workspace scheduler, and nothing when the
+  // dashboard turned its call-to-action off.
+  const callLink = dashboard.cta_type === 'none'
+    ? null
+    : dashboard.cta_type === 'book_call' && dashboard.cta_url
+      ? dashboard.cta_url
+      : bookingLink
 
   return (
     <main className="homepage-shell min-h-screen bg-transparent text-[#0d1b2a]">
+      {seo}
       <a
         href="#opportunities"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-[#0d1b2a] focus:px-4 focus:py-2 focus:text-sm focus:text-[#f7fafc]"
@@ -1036,7 +1018,7 @@ function ProspectViewContent() {
           <div className="ml-auto flex items-center gap-3">
             {approvedCountTotal > 0 && (
               <span className="hidden text-[13px] text-[#5d7188] sm:inline">
-                {approvedCountTotal} of {uniquePodcasts.length} approved
+                {approvedCountTotal} {approvedCountTotal === 1 ? 'pick' : 'picks'}
               </span>
             )}
             {bookingLink && (
@@ -1047,7 +1029,7 @@ function ProspectViewContent() {
                 className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-5 text-sm font-semibold shadow-[0_8px_20px_rgba(13,27,42,0.18)] transition-transform hover:-translate-y-px"
               >
                 <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                Book a 15-min call
+                Book a short call
               </button>
             )}
           </div>
@@ -1067,7 +1049,7 @@ function ProspectViewContent() {
                 {workspaceBrand?.logo_url && (
                   <img src={workspaceBrand.logo_url} alt={`${workspaceBrand.brand_name} logo`} className="mr-1 h-9 max-w-28 object-contain" />
                 )}
-                <p className="section-kicker">Prospect dashboard</p>
+                <p className="section-kicker">Your podcast shortlist</p>
                 <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f6f9fc] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-[#5d7188]">
                   Built for {prospectFirstName}
                 </span>
@@ -1084,7 +1066,7 @@ function ProspectViewContent() {
                   </div>
                 )}
                 <p className="max-w-xl text-sm leading-6 text-[#4c5d73]">
-                  Review the best-fit shows, approve the ones you want, and we handle the outreach and booking workflow from there.
+                  Review the best-fit shows, mark the ones you are interested in, and we handle the outreach and booking from there.
                 </p>
               </div>
 
@@ -1100,7 +1082,7 @@ function ProspectViewContent() {
                   : podcastsError
                     ? 'Your profile is ready, but the shortlist needs a quick refresh.'
                     : personalizedTagline
-                      || `Every show below was matched to your expertise and the audience you want in front of you${totalReach > 0 ? ` — ${formatNumber(totalReach)} combined listeners` : ''}. Approve the ones that feel right; we do everything after that.`}
+                      || `Every show below was matched to your expertise and the audience you want in front of you${totalReach > 0 ? `, ${formatNumber(totalReach)} combined listeners` : ''}. Mark the ones you are interested in; we do everything after that.`}
               </p>
 
               {/*
@@ -1137,7 +1119,7 @@ function ProspectViewContent() {
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Button variant="hero" size="xl" className="rounded-full px-8 text-base" asChild>
-                  <a href="#opportunities">Review Opportunities</a>
+                  <a href="#opportunities">Review opportunities</a>
                 </Button>
                 {dashboard.media_kit_url && (
                   <Button
@@ -1147,7 +1129,7 @@ function ProspectViewContent() {
                     onClick={() => openExternalUrl(dashboard.media_kit_url!)}
                   >
                     <FileText className="mr-2 h-4 w-4" />
-                    View My Media Kit
+                    View my media kit
                   </Button>
                 )}
                 {dashboard.cta_url && (dashboard.cta_type === 'book_call' || dashboard.cta_type === 'learn_more') && (
@@ -1164,18 +1146,19 @@ function ProspectViewContent() {
               </div>
 
               {/*
-               * Four figures on a baseline rather than three boxed tiles, as
-               * drawn. mt-auto because the panel beside this column is taller:
-               * the leftover height collects above these rather than under
-               * them, so the two columns finish level. Side by side only —
-               * stacked there is no leftover height to take up.
+               * Three figures on a baseline rather than boxed tiles, as drawn,
+               * and only figures this page can stand behind: a time to first
+               * booking is a promise, not a stat. mt-auto because the panel
+               * beside this column is taller: the leftover height collects
+               * above these rather than under them, so the two columns finish
+               * level. Side by side only; stacked there is no leftover height
+               * to take up.
                */}
               <div className="mt-8 flex flex-wrap gap-x-8 gap-y-5 lg:mt-auto lg:pt-8">
                 {[
                   { value: totalReach > 0 ? `${formatNumber(totalReach)}+` : '—', label: 'combined listeners' },
                   { value: podcastsError ? '—' : String(uniquePodcasts.length), label: 'shows matched' },
                   { value: avgRating > 0 ? `${avgRating.toFixed(1)}★` : '—', label: 'average rating' },
-                  { value: '2–4 wks', label: 'to first booking' },
                 ].map((stat) => (
                   <div key={stat.label}>
                     <p className="text-[28px] font-semibold tracking-[-0.04em] text-[#0d1b2a]">{stat.value}</p>
@@ -1193,7 +1176,7 @@ function ProspectViewContent() {
                   repeating it. */}
               <p className="section-kicker">Start here</p>
               <h2 className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
-                Approve the shows you want us to pitch.
+                Mark the shows you are interested in.
               </h2>
 
               <div className="mt-5 rounded-[22px] border border-[#0d1b2a]/8 bg-white p-4">
@@ -1203,11 +1186,11 @@ function ProspectViewContent() {
                     <p className="mt-1 text-sm leading-6 text-[#4c5d73]">
                       {reviewedCountTotal > 0
                         ? `${reviewedCountTotal} of ${uniquePodcasts.length} reviewed so far`
-                        : 'Start by approving the rooms that feel strongest for your story.'}
+                        : 'Start with the rooms that feel strongest for your story.'}
                     </p>
                   </div>
                   <span className="rounded-full border border-[#0d1b2a]/10 bg-[#f6f9fc] px-3 py-1.5 text-sm font-semibold text-[#0d1b2a]">
-                    {approvedCountTotal} approved
+                    {approvedCountTotal} {approvedCountTotal === 1 ? 'pick' : 'picks'}
                   </span>
                 </div>
                 <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#e5edf6]">
@@ -1220,9 +1203,9 @@ function ProspectViewContent() {
 
               <div className="mt-5 space-y-3">
                 {[
-                  'Open any show to see the fit logic, audience signals, and suggested angles.',
-                  'Approve the shows you want pursued, reject the ones that are off, and leave notes where useful.',
-                  'Once approved, our team handles the pitching, follow-up, and booking workflow.',
+                  'Open any show to see why it fits, who listens, and what you could talk about.',
+                  'Mark the shows you are interested in, mark the rest not a fit, and leave notes where useful.',
+                  `${brandName} handles the pitching, follow-up, and booking for the shows you picked.`,
                 ].map((step, index) => (
                   <div key={step} className="flex gap-3 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-3">
                     <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#eef4ff] text-xs font-semibold text-[#2d6df6]">
@@ -1263,22 +1246,11 @@ function ProspectViewContent() {
                 ) : (
                   <div className="rounded-[22px] border border-[#0d1b2a]/8 bg-white px-4 py-4">
                     <p className="text-sm leading-6 text-[#4c5d73]">
-                      Use the shortlist below to decide which rooms feel most aligned with your voice, offer, and audience. A short note on any approval helps our team pitch more sharply.
+                      Use the shortlist below to decide which rooms feel most aligned with your voice, offer, and audience. A short note on any pick helps our team pitch more sharply.
                     </p>
                   </div>
                 )}
               </div>
-
-              {preloadingAnalyses && analysisCache.size < uniquePodcasts.length && (
-                <div className="mt-4 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-3 text-sm text-[#4c5d73]">
-                  AI insights ready: {analysisCache.size}/{uniquePodcasts.length}
-                </div>
-              )}
-              {analysisCache.size >= uniquePodcasts.length && analysisCache.size > 0 && (
-                <div className="mt-4 rounded-[20px] border border-[#0d1b2a]/8 bg-white px-4 py-3 text-sm text-[#4c5d73]">
-                  All AI fit insights are loaded and ready.
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1298,10 +1270,10 @@ function ProspectViewContent() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[999px] bg-[#0d1b2a] py-2.5 pl-6 pr-2.5 text-[#f7fafc] shadow-[0_20px_45px_rgba(13,27,42,0.35)]">
             <p className="text-sm" role="status">
               <strong className="font-semibold">
-                {approvedCountTotal} {approvedCountTotal === 1 ? 'show' : 'shows'} approved
+                {approvedCountTotal} {approvedCountTotal === 1 ? 'pick' : 'picks'}.
               </strong>
               <span className="text-[#f7fafc]/65">
-                {' '}&mdash; {workspaceBrand?.brand_name?.trim() || 'we'} will start with these.
+                {' '}{brandName} will start with these.
               </span>
             </p>
             <button
@@ -1316,43 +1288,10 @@ function ProspectViewContent() {
         </div>
       )}
 
-      {/*
-       * What happens next, in three steps, across the full width. It used to be
-       * a panel in the hero's right column, where it competed with the shortlist
-       * for the reader's first look and made that column taller than the one
-       * beside it — which is where the gap under the greeting came from.
-       */}
-      <section className="px-4 pb-6 pt-2">
-        <div className="mx-auto grid max-w-[1320px] gap-4 md:grid-cols-3">
-          {[
-            { step: '1', lead: 'Browse the shortlist.', body: 'Open any show to see why it fits you and what you would talk about.' },
-            { step: '2', lead: 'Approve your favourites.', body: 'One tap. Pass on anything that feels off — that helps too.' },
-            { step: '3', lead: 'We take it from there.', body: 'Pitching, follow-up, scheduling, prep — handled for you.' },
-          ].map((item) => (
-            <div
-              key={item.step}
-              className="flex items-start gap-4 rounded-[22px] border border-[#0d1b2a]/8 bg-white/70 px-5 py-5 backdrop-blur-[4px]"
-            >
-              <span
-                className="font-editorial text-[28px] leading-none"
-                style={{ color: accentColor }}
-                aria-hidden="true"
-              >
-                {item.step}
-              </span>
-              <p className="text-sm leading-[23px] text-[#4c5d73]">
-                <strong className="font-semibold text-[#0d1b2a]">{item.lead}</strong>{' '}
-                {item.body}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Featured Podcasts Section */}
       <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8" id="opportunities">
         <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 text-center">
-          Featured Opportunities
+          Featured opportunities
         </p>
         <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 sm:grid sm:grid-cols-3 sm:overflow-visible scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0">
           {/* Highest Reach */}
@@ -1454,12 +1393,6 @@ function ProspectViewContent() {
             </Card>
           )}
         </div>
-
-        {/* Scroll Down Indicator */}
-        <div className="flex justify-center items-center gap-4 mt-6">
-          <ChevronDown className="h-5 w-5 text-muted-foreground/50 animate-bounce" />
-          <ChevronDown className="h-5 w-5 text-muted-foreground/50 animate-bounce" style={{ animationDelay: '150ms' }} />
-        </div>
       </div>
 
       {/* Podcast Grid */}
@@ -1475,10 +1408,39 @@ function ProspectViewContent() {
             Every room, and why it&rsquo;s yours.
           </h2>
           <p className="mt-3 max-w-xl text-[15px] leading-[25px] text-[#4c5d73]">
-            Open any show to see why it fits and what you would talk about. Approve the ones
-            you want and we start reaching out on your behalf.
+            Open any show to see why it fits and what you would talk about. Mark the ones you
+            are interested in and we start reaching out on your behalf.
           </p>
         </div>
+
+        {reviewComplete && (
+          <div
+            role="status"
+            className="mb-6 rounded-[28px] border border-[#0d1b2a]/8 bg-white px-6 py-6 shadow-[0_18px_38px_rgba(13,27,42,0.08)] sm:mb-8 sm:px-8"
+          >
+            <p className="font-mono text-[11px] uppercase tracking-[0.24em]" style={{ color: accentColor }}>
+              Done for now
+            </p>
+            <h3 className="mt-2 font-editorial text-2xl leading-tight tracking-[-0.03em] text-[#0d1b2a] sm:text-3xl">
+              You have reviewed all {uniquePodcasts.length} shows
+            </h3>
+            <p className="mt-2 max-w-2xl text-[15px] leading-[25px] text-[#4c5d73]">
+              {brandName} will start outreach on your {approvedCountTotal} {approvedCountTotal === 1 ? 'pick' : 'picks'}.
+              There is nothing to submit. You will hear from us when the first host replies.
+            </p>
+            {callLink && (
+              <button
+                type="button"
+                onClick={() => openExternalUrl(callLink)}
+                style={{ backgroundColor: primaryColor, color: primaryTextColor }}
+                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold shadow-[0_8px_20px_rgba(13,27,42,0.18)] transition-transform hover:-translate-y-px"
+              >
+                <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                Book a short call
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Search */}
         <div className="flex justify-center mb-6">
@@ -1520,8 +1482,8 @@ function ProspectViewContent() {
                   : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-green-500 hover:text-green-600"
               )}
             >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Approved ({loadingPodcasts || podcastsError ? '-' : feedbackStats.approved})
+              <ThumbsUp className="h-3.5 w-3.5" />
+              Interested ({loadingPodcasts || podcastsError ? '-' : feedbackStats.approved})
             </button>
             <button
               onClick={() => setFeedbackFilter('rejected')}
@@ -1532,8 +1494,8 @@ function ProspectViewContent() {
                   : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-red-500 hover:text-red-600"
               )}
             >
-              <X className="h-3.5 w-3.5" />
-              Rejected ({loadingPodcasts || podcastsError ? '-' : feedbackStats.rejected})
+              <ThumbsDown className="h-3.5 w-3.5" />
+              Not a fit ({loadingPodcasts || podcastsError ? '-' : feedbackStats.rejected})
             </button>
             <button
               onClick={() => setFeedbackFilter('not_reviewed')}
@@ -1544,7 +1506,7 @@ function ProspectViewContent() {
                   : "bg-white dark:bg-slate-900 text-muted-foreground border-slate-200 dark:border-slate-700 hover:border-slate-500"
               )}
             >
-              To Review ({loadingPodcasts || podcastsError ? '-' : feedbackStats.notReviewed})
+              To review ({loadingPodcasts || podcastsError ? '-' : feedbackStats.notReviewed})
             </button>
           </div>
         </div>
@@ -1707,9 +1669,9 @@ function ProspectViewContent() {
           <Card className="border-0 shadow-md">
             <CardContent className="p-8 sm:p-12 text-center">
               <Radio className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3 sm:mb-4" />
-              <h3 className="text-base sm:text-lg font-semibold mb-2">Podcasts Coming Soon</h3>
+              <h3 className="text-base sm:text-lg font-semibold mb-2">Your shortlist is being prepared</h3>
               <p className="text-sm text-muted-foreground">
-                We're curating the perfect podcast opportunities for you. Check back soon!
+                {brandName} is researching shows that fit you. Check back soon.
               </p>
             </CardContent>
           </Card>
@@ -1787,21 +1749,20 @@ function ProspectViewContent() {
                     )}>
                       {feedbackMap.get(podcast.podcast_id)?.status === 'approved' ? (
                         <>
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span className="hidden sm:inline">Approved</span>
+                          <ThumbsUp className="h-3 w-3" />
+                          <span className="hidden sm:inline">Interested</span>
                         </>
                       ) : (
                         <>
-                          <X className="h-3 w-3" />
-                          <span className="hidden sm:inline">Rejected</span>
+                          <ThumbsDown className="h-3 w-3" />
+                          <span className="hidden sm:inline">Not a fit</span>
                         </>
                       )}
                     </div>
                   )}
 
-                  {/* Top-left badges: Quality & AI Ready */}
+                  {/* Top-left badge: quality, based on audience + episodes */}
                   <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex flex-col gap-1.5">
-                    {/* Quality Badge - based on audience + episodes */}
                     {(() => {
                       const hasHighAudience = podcast.audience_size && podcast.audience_size >= 50000
                       const hasGoodEpisodes = podcast.episode_count && podcast.episode_count >= 100
@@ -1809,19 +1770,12 @@ function ProspectViewContent() {
                         return (
                           <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-500 hover:to-orange-500 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5 shadow-lg">
                             <Award className="h-3 w-3 mr-1" />
-                            Top Pick
+                            Top pick
                           </Badge>
                         )
                       }
                       return null
                     })()}
-                    {/* AI Insights Ready */}
-                    {analysisCache.has(podcast.podcast_id) && (
-                      <Badge className="bg-purple-600/90 hover:bg-purple-600/90 text-white border-0 backdrop-blur-sm text-xs px-2 py-0.5">
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        AI Ready
-                      </Badge>
-                    )}
                   </div>
 
                   {/* Bottom badges: Audience & Rating */}
@@ -1922,52 +1876,53 @@ function ProspectViewContent() {
                 </div>
                 </button>
 
-                {/* Quick Actions & View Details */}
+                {/*
+                 * The decision, in words, at a size a thumb can hit. The old
+                 * 28px icon buttons were the same pair the review page had
+                 * already replaced: nobody could tell which was which, or that
+                 * they were buttons at all.
+                 */}
                 <div className="px-3 pb-3 sm:px-4 sm:pb-4">
-                  <div className="flex items-center justify-between mt-2 sm:mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    {/* Quick Approve/Reject Buttons */}
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const currentStatus = feedbackMap.get(podcast.podcast_id)?.status
-                          saveFeedback(podcast.podcast_id, currentStatus === 'approved' ? null : 'approved')
-                        }}
-                        className={cn(
-                          "p-1.5 rounded-full transition-all duration-200",
-                          feedbackMap.get(podcast.podcast_id)?.status === 'approved'
-                            ? "bg-green-500 text-white shadow-md"
-                            : "hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600"
-                        )}
-                        title={feedbackMap.get(podcast.podcast_id)?.status === 'approved' ? "Click to unselect" : "Approve"}
-                        disabled={isSavingFeedback}
-                      >
-                        <ThumbsUp className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const currentStatus = feedbackMap.get(podcast.podcast_id)?.status
-                          saveFeedback(podcast.podcast_id, currentStatus === 'rejected' ? null : 'rejected')
-                        }}
-                        className={cn(
-                          "p-1.5 rounded-full transition-all duration-200",
-                          feedbackMap.get(podcast.podcast_id)?.status === 'rejected'
-                            ? "bg-red-500 text-white shadow-md"
-                            : "hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600"
-                        )}
-                        title={feedbackMap.get(podcast.podcast_id)?.status === 'rejected' ? "Click to unselect" : "Reject"}
-                        disabled={isSavingFeedback}
-                      >
-                        <ThumbsDown className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    {/* View Details */}
-                    <span className="text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                      Details
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </span>
+                  <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2 border-t border-slate-100 pt-3 dark:border-slate-800 sm:mt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isSavingFeedback}
+                      onClick={() => saveFeedback(podcast.podcast_id, 'approved')}
+                      className={cn(
+                        'min-h-11 gap-2 rounded-xl border-[#d8dfda] text-xs font-bold sm:text-sm',
+                        feedbackMap.get(podcast.podcast_id)?.status === 'approved'
+                          ? 'border-[#668b78] bg-[#668b78] text-white hover:bg-[#587765] hover:text-white'
+                          : 'bg-[#f4f8f5] text-[#476b59] hover:border-[#789486] hover:bg-[#e7f0ea]',
+                      )}
+                    >
+                      <ThumbsUp className="h-4 w-4" />
+                      Interested
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isSavingFeedback}
+                      onClick={() => saveFeedback(podcast.podcast_id, 'rejected')}
+                      className={cn(
+                        'min-h-11 gap-2 rounded-xl border-[#ddd5cd] text-xs font-bold sm:text-sm',
+                        feedbackMap.get(podcast.podcast_id)?.status === 'rejected'
+                          ? 'border-[#78685f] bg-[#78685f] text-white hover:bg-[#665850] hover:text-white'
+                          : 'bg-[#fbf8f4] text-[#6c625c] hover:border-[#a99588] hover:bg-[#f1ebe4]',
+                      )}
+                    >
+                      <ThumbsDown className="h-4 w-4" />
+                      Not a fit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setSelectedPodcast(podcast)}
+                      className="min-h-11 rounded-xl px-3 text-[#62707c] hover:bg-[#f2ede6] hover:text-[#0d1b2a]"
+                      aria-label={`Why ${podcast.podcast_name} fits`}
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -2111,17 +2066,16 @@ function ProspectViewContent() {
                   The no-pressure next step
                 </p>
                 <h2 className="mt-3 font-editorial text-4xl leading-[0.96] tracking-[-0.045em] sm:text-5xl">
-                  Fifteen minutes. That&rsquo;s it.
+                  A short call, no pressure.
                 </h2>
                 {/*
                  * Says what the call is rather than asking for it. "Ready to
                  * turn your shortlist into conversations?" is a question with
                  * one acceptable answer, which is a sales move; this describes
-                 * the fifteen minutes and what somebody leaves with even if
-                 * they say no.
+                 * the call and what somebody leaves with even if they say no.
                  */}
                 <p className="mt-4 max-w-xl text-base leading-7 text-white/72">
-                  Bring your approved shows — or none at all. We will walk through which rooms to
+                  Bring your picks, or none at all. We will walk through which rooms to
                   pitch first, what your angle would be, and what a realistic first month looks
                   like. If it is not a fit, you leave with a sharper shortlist anyway.
                 </p>
@@ -2545,8 +2499,8 @@ function ProspectViewContent() {
                             <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-sm sm:text-base text-amber-900 dark:text-amber-100">Why This Is Perfect For You</h3>
-                            <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-300">AI-powered analysis</p>
+                            <h3 className="font-bold text-sm sm:text-base text-amber-900 dark:text-amber-100">Why this show fits you</h3>
+                            <p className="text-[10px] sm:text-xs text-amber-700 dark:text-amber-300">Based on your background and the show's recent episodes</p>
                           </div>
                         </div>
 
@@ -2582,7 +2536,7 @@ function ProspectViewContent() {
                             <Target className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                           </div>
                           <div>
-                            <h3 className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100">Suggested Pitch Angles</h3>
+                            <h3 className="font-bold text-sm sm:text-base text-purple-900 dark:text-purple-100">What you could talk about</h3>
                             <p className="text-[10px] sm:text-xs text-purple-700 dark:text-purple-300">Ways to approach this podcast</p>
                           </div>
                         </div>
@@ -2952,84 +2906,15 @@ function ProspectViewContent() {
                     </div>
                   )}
 
-                  {/* Feedback Section */}
+                  {/* Notes. The decision itself is pinned at the foot of the
+                      sheet, where it stays reachable however far the reader
+                      has scrolled. */}
                   <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
                     <h3 className="text-[10px] sm:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
                       <MessageSquare className="h-3 w-3" />
-                      Your Feedback
+                      Note for your team
                     </h3>
 
-                    {/* Current Status Display */}
-                    {(() => {
-                      const feedback = feedbackMap.get(selectedPodcast.podcast_id)
-                      if (feedback?.status) {
-                        return (
-                          <div className={cn(
-                            "mb-4 p-3 rounded-lg border",
-                            feedback.status === 'approved'
-                              ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                              : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
-                          )}>
-                            <div className="flex items-center gap-2">
-                              {feedback.status === 'approved' ? (
-                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                              ) : (
-                                <X className="h-4 w-4 text-red-600 dark:text-red-400" />
-                              )}
-                              <span className={cn(
-                                "text-sm font-medium",
-                                feedback.status === 'approved'
-                                  ? "text-green-700 dark:text-green-300"
-                                  : "text-red-700 dark:text-red-300"
-                              )}>
-                                {feedback.status === 'approved' ? 'You approved this podcast' : 'You rejected this podcast'}
-                              </span>
-                            </div>
-                          </div>
-                        )
-                      }
-                      return null
-                    })()}
-
-                    {/* Approve/Reject Buttons */}
-                    <div className="flex gap-3 mb-4">
-                      <Button
-                        variant={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved' ? 'default' : 'outline'}
-                        className={cn(
-                          "flex-1 gap-2",
-                          feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
-                            ? "bg-green-600 hover:bg-green-700 text-white"
-                            : "hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30"
-                        )}
-                        onClick={() => {
-                          const currentStatus = feedbackMap.get(selectedPodcast.podcast_id)?.status
-                          saveFeedback(selectedPodcast.podcast_id, currentStatus === 'approved' ? null : 'approved')
-                        }}
-                        disabled={isSavingFeedback}
-                      >
-                        <ThumbsUp className="h-4 w-4" />
-                        {feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved' ? 'Approved ✓' : 'Approve'}
-                      </Button>
-                      <Button
-                        variant={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected' ? 'default' : 'outline'}
-                        className={cn(
-                          "flex-1 gap-2",
-                          feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected'
-                            ? "bg-red-600 hover:bg-red-700 text-white"
-                            : "hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/30"
-                        )}
-                        onClick={() => {
-                          const currentStatus = feedbackMap.get(selectedPodcast.podcast_id)?.status
-                          saveFeedback(selectedPodcast.podcast_id, currentStatus === 'rejected' ? null : 'rejected')
-                        }}
-                        disabled={isSavingFeedback}
-                      >
-                        <ThumbsDown className="h-4 w-4" />
-                        {feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected' ? 'Rejected ✓' : 'Reject'}
-                      </Button>
-                    </div>
-
-                    {/* Notes Section */}
                     <div className="space-y-2">
                       <label htmlFor="prospect-podcast-notes" className="text-xs font-medium text-muted-foreground">
                         Add a note (optional)
@@ -3056,13 +2941,63 @@ function ProspectViewContent() {
                         ) : (
                           <Check className="h-4 w-4" />
                         )}
-                        Save Note
+                        Save note
                       </Button>
                     </div>
                   </div>
                 </div>
               </ScrollArea>
 
+              <div className="flex-shrink-0 border-t border-slate-200 bg-white p-3 shadow-[0_-12px_28px_rgba(13,27,42,.06)] dark:border-slate-700 dark:bg-slate-900 sm:p-4">
+                <div className="mb-2 flex min-h-6 items-center justify-between px-1 text-xs">
+                  <span className="font-semibold text-[#5d7188]">Would you want to be a guest?</span>
+                  {feedbackMap.get(selectedPodcast.podcast_id)?.status ? (
+                    <button
+                      type="button"
+                      disabled={isSavingFeedback}
+                      onClick={() => saveFeedback(selectedPodcast.podcast_id, null)}
+                      className="inline-flex min-h-9 items-center gap-1.5 font-semibold text-[#7b858d] hover:text-[#0d1b2a]"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Clear choice
+                    </button>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSavingFeedback}
+                    onClick={() => saveFeedback(selectedPodcast.podcast_id, 'rejected')}
+                    className={cn(
+                      'min-h-12 gap-2 rounded-xl border-[#d8cec4] font-bold',
+                      feedbackMap.get(selectedPodcast.podcast_id)?.status === 'rejected'
+                        ? 'border-[#78685f] bg-[#78685f] text-white hover:bg-[#665850] hover:text-white'
+                        : 'bg-[#fbf8f4] text-[#665d57] hover:bg-[#f2ece5]',
+                    )}
+                  >
+                    <ThumbsDown className="h-4 w-4" />
+                    Not a fit
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isSavingFeedback}
+                    onClick={() => saveFeedback(selectedPodcast.podcast_id, 'approved')}
+                    style={feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
+                      ? undefined
+                      : { backgroundColor: primaryColor, color: primaryTextColor }}
+                    className={cn(
+                      'min-h-12 gap-2 rounded-xl font-bold',
+                      feedbackMap.get(selectedPodcast.podcast_id)?.status === 'approved'
+                        ? 'bg-[#668b78] text-white hover:bg-[#587765]'
+                        : 'hover:brightness-95',
+                    )}
+                  >
+                    {isSavingFeedback ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}
+                    Interested
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </SheetContent>
@@ -3080,129 +3015,52 @@ function ProspectViewContent() {
         <HelpCircle className="h-5 w-5 sm:h-6 sm:w-6" />
       </button>
 
-      {/* Tutorial Stepper Modal */}
+      {/*
+       * Three steps and no more, none of which opens on its own. The five-step
+       * tour it replaces sold the page ("Fit Score", "Pro Tip") rather than
+       * explaining it, and asked people to click on a phone.
+       */}
       <Dialog open={showTutorial} onOpenChange={(open) => !open && closeTutorial()}>
         <DialogContent className="w-[calc(100%-2rem)] max-w-lg p-0 overflow-hidden rounded-2xl">
           <VisuallyHidden>
-            <DialogTitle>How to Use Your Dashboard</DialogTitle>
+            <DialogTitle>How this works</DialogTitle>
           </VisuallyHidden>
 
-          {/* Step Content */}
           <div className="relative">
-            {/* Step 0: Welcome */}
-            {tutorialStep === 0 && (
-              <div className="p-5 sm:p-8 text-center">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-                  <Sparkles className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-2">Welcome to Your Dashboard!</h2>
-                <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
-                  We've hand-picked podcasts that are a perfect fit for your expertise and goals. Let us show you how to make the most of it.
-                </p>
-                <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span>Takes about 1 minute</span>
-                </div>
-              </div>
-            )}
-
-            {/* Step 1: Browse Podcasts */}
-            {tutorialStep === 1 && (
-              <div className="p-5 sm:p-8 text-center">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                  <Search className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-2">Browse Your Podcasts</h2>
-                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
-                  Scroll through your curated list of podcasts. Each card shows key info like audience size, ratings, and categories.
-                </p>
-                <div className="bg-muted/50 rounded-xl p-3 sm:p-4 text-left space-y-2">
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
-                    <span>Use the search bar to find specific podcasts</span>
+            {[
+              {
+                icon: MousePointerClick,
+                iconClass: 'from-blue-500 to-cyan-500',
+                title: 'Open a show to see why it fits',
+                body: 'Every card says why the show made your list. Tap it for the audience, the recent episodes, and what you could talk about.',
+              },
+              {
+                icon: ListChecks,
+                iconClass: 'from-green-500 to-emerald-500',
+                title: 'Mark it Interested or Not a fit',
+                body: 'One tap on each show. Not a fit is as useful as Interested; it sharpens the next set. Add a note if there is something your team should know.',
+              },
+              {
+                icon: Rocket,
+                iconClass: 'from-orange-500 to-red-500',
+                title: `${brandName} pitches the shows you picked`,
+                body: 'There is nothing to submit. Your picks go straight to outreach, and you hear from us when the first host replies.',
+              },
+            ].map((step, index) => (
+              tutorialStep === index ? (
+                <div key={step.title} className="p-5 sm:p-8 text-center">
+                  <div className={cn('w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br flex items-center justify-center', step.iconClass)}>
+                    <step.icon className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
                   </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <Tag className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary shrink-0" />
-                    <span>Filter by category to narrow your selection</span>
-                  </div>
+                  <h2 className="text-xl sm:text-2xl font-bold mb-2">{step.title}</h2>
+                  <p className="text-sm sm:text-base text-muted-foreground">{step.body}</p>
                 </div>
-              </div>
-            )}
-
-            {/* Step 2: View AI Insights */}
-            {tutorialStep === 2 && (
-              <div className="p-5 sm:p-8 text-center">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                  <MousePointerClick className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-2">Tap for AI Insights</h2>
-                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
-                  Click on any podcast card to open a detailed side panel with AI-powered analysis.
-                </p>
-                <div className="bg-muted/50 rounded-xl p-3 sm:p-4 text-left space-y-2">
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 shrink-0" />
-                    <span><strong>Fit Score</strong> — How well you match this show</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500 shrink-0" />
-                    <span><strong>Pitch Angles</strong> — Topics to discuss</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 shrink-0" />
-                    <span><strong>Audience Insights</strong> — Who you'll reach</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Approve or Reject */}
-            {tutorialStep === 3 && (
-              <div className="p-5 sm:p-8 text-center">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-                  <ListChecks className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-2">Share Your Feedback</h2>
-                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
-                  For each podcast, let us know if it's a good fit for you.
-                </p>
-                <div className="flex justify-center gap-3 sm:gap-4 mb-3 sm:mb-4">
-                  <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-                    <ThumbsUp className="h-4 w-4 sm:h-5 sm:w-5" />
-                    <span className="text-sm sm:text-base font-medium">Approve</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
-                    <ThumbsDown className="h-4 w-4 sm:h-5 sm:w-5" />
-                    <span className="text-sm sm:text-base font-medium">Reject</span>
-                  </div>
-                </div>
-                <p className="text-xs sm:text-sm text-muted-foreground">
-                  You can also add notes to explain your preference — this helps us find even better matches!
-                </p>
-              </div>
-            )}
-
-            {/* Step 4: What's Next */}
-            {tutorialStep === 4 && (
-              <div className="p-5 sm:p-8 text-center">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-                  <Rocket className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-2">We'll Take It From Here!</h2>
-                <p className="text-sm sm:text-base text-muted-foreground mb-3 sm:mb-4">
-                  Once you've reviewed your podcasts, our team will start crafting personalized pitches for your approved shows.
-                </p>
-                <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 rounded-xl p-3 sm:p-4 border border-primary/20">
-                  <p className="text-xs sm:text-sm font-medium text-primary">
-                    Pro Tip: The more podcasts you review, the faster we can get you booked!
-                  </p>
-                </div>
-              </div>
-            )}
+              ) : null
+            ))}
 
             {/* Progress Dots */}
             <div className="flex justify-center gap-2 pb-4">
-              {[0, 1, 2, 3, 4].map((step) => (
+              {[0, 1, 2].map((step) => (
                 <button
                   key={step}
                   type="button"
@@ -3219,28 +3077,35 @@ function ProspectViewContent() {
             </div>
 
             {/* Navigation Buttons */}
-            <div className="flex items-center justify-between p-4 border-t bg-muted/30">
+            <div className="flex items-center justify-between gap-2 p-4 border-t bg-muted/30">
               <Button
                 variant="ghost"
                 onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
                 disabled={tutorialStep === 0}
-                className="gap-1"
+                className="min-h-11 gap-1"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Back
               </Button>
 
-              {tutorialStep < 4 ? (
-                <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="gap-1">
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button onClick={closeTutorial} className="gap-1 bg-green-600 hover:bg-green-700">
-                  Get Started
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {tutorialStep < 2 ? (
+                  <Button variant="ghost" onClick={closeTutorial} className="min-h-11 text-muted-foreground">
+                    Skip
+                  </Button>
+                ) : null}
+                {tutorialStep < 2 ? (
+                  <Button onClick={() => setTutorialStep(tutorialStep + 1)} className="min-h-11 gap-1">
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button onClick={closeTutorial} className="min-h-11 gap-1">
+                    Start reviewing
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </DialogContent>

@@ -121,7 +121,7 @@ serve(async (req) => {
      * and the only write a non-admin can make is their own watch mark.
      */
     if (!workspaceCredentialIsFresh(context)) {
-      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Sign in again with the newest account credentials')
+      throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
     }
     const admin = context.admin
     const body = await parseJsonObject(req, MAX_BODY_BYTES)

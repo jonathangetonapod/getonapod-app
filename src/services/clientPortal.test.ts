@@ -188,8 +188,9 @@ describe('getClientBookings', () => {
     })
     mockedInvoke.mockResolvedValue({ data: null, error: Object.assign(new Error('Edge Function returned a non-2xx status code'), { context }) } as never)
 
+    // The code rides on the error's name, not in the text a client reads.
     await expect(getClientBookings('22222222-2222-4222-8222-222222222222'))
-      .rejects.toThrow('Session expired (SESSION_EXPIRED)')
+      .rejects.toMatchObject({ message: 'Session expired', name: 'SESSION_EXPIRED' })
   })
 
   it('fails cleanly when the function returns no body at all', async () => {

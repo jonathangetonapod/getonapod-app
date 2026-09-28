@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Loader2, Trash2 } from 'lucide-react'
+import { ExternalLink, KeyRound, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,14 +24,33 @@ import {
   type WorkspaceAiKeyStatus,
 } from '@/services/workspaceStaff'
 
-const PROVIDERS = [
-  { id: 'anthropic' as const, label: 'Anthropic (Claude)', placeholder: 'sk-ant-…' },
-  { id: 'openai' as const, label: 'OpenAI', placeholder: 'sk-…' },
+type KeyProvider = 'anthropic' | 'openai'
+
+// What each key is actually spent on, and where to get one, so the choice to
+// bring a key is made knowing what it changes.
+const PROVIDERS: Array<{ id: KeyProvider; label: string; placeholder: string; usedFor: string; consoleUrl: string }> = [
+  {
+    id: 'anthropic',
+    label: 'Anthropic (Claude)',
+    placeholder: 'sk-ant-…',
+    usedFor: 'Podcast research, pitch writing and inbox replies.',
+    consoleUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    placeholder: 'sk-…',
+    usedFor: 'Searching the podcast database.',
+    consoleUrl: 'https://platform.openai.com/api-keys',
+  },
 ]
 
 export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: string; queryScope: readonly unknown[] }) {
   const queryClient = useQueryClient()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  // Removing a key silently moves the workspace back onto platform credits, so
+  // it is confirmed rather than done on one click.
+  const [removing, setRemoving] = useState<KeyProvider | null>(null)
   const queryKey = [...queryScope, 'workspace-ai-keys']
 
   const keysQuery = useQuery({
@@ -64,9 +93,9 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><KeyRound className="h-5 w-5" />AI API keys</CardTitle>
         <CardDescription>
-          Bring your own provider keys. AI operations that run on your keys are billed to your provider
-          account directly and never consume platform credits. Keys are stored encrypted and can't be
-          viewed after saving.
+          Optional. Without a key, these run on your credits. AI operations that run on your keys are
+          billed to your provider account directly and never consume platform credits. Keys are stored
+          encrypted and can't be viewed after saving.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -89,6 +118,17 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
                     <Badge variant="outline">Using platform credits</Badge>
                   )}
                 </div>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Used for</span> {provider.usedFor}{' '}
+                  <a
+                    href={provider.consoleUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    Get a key<ExternalLink className="h-3 w-3" />
+                  </a>
+                </p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <div className="flex-1">
                     <Label htmlFor={`ai-key-${provider.id}`} className="sr-only">{provider.label} API key</Label>
@@ -114,7 +154,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
                       type="button"
                       variant="outline"
                       disabled={busy}
-                      onClick={() => removeMutation.mutate(provider.id)}
+                      onClick={() => setRemoving(provider.id)}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />Remove
                     </Button>
@@ -125,6 +165,29 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
           })
         )}
       </CardContent>
+      <AlertDialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Remove the {PROVIDERS.find((provider) => provider.id === removing)?.label ?? ''} key?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Research and pitch writing will start using platform credits again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep the key</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (removing) removeMutation.mutate(removing)
+                setRemoving(null)
+              }}
+            >
+              Remove key
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

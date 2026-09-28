@@ -83,7 +83,7 @@ serve(async (req) => {
       .limit(2)
 
     if (userMembershipError) {
-      throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
+      throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Your account details could not be loaded. Refresh the page, or sign in again')
     }
 
     let memberships = (userMemberships ?? []) as unknown as MembershipRow[]
@@ -100,7 +100,7 @@ serve(async (req) => {
         .limit(2)
 
       if (pendingError) {
-        throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
+        throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Your account details could not be loaded. Refresh the page, or sign in again')
       }
       memberships = (pendingMemberships ?? []) as unknown as MembershipRow[]
     }
@@ -126,7 +126,7 @@ serve(async (req) => {
           .select('id,is_default')
           .in('id', memberships.map((membership) => membership.workspace_id))
         if (workspaceRowsError) {
-          throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
+          throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Your account details could not be loaded. Refresh the page, or sign in again')
         }
         const defaultIds = new Set(
           ((workspaceRows ?? []) as Array<{ id: string; is_default: boolean }>)
@@ -137,7 +137,7 @@ serve(async (req) => {
         if (own.length === 1) resolved = own[0]
       }
       if (!resolved) {
-        throw new HttpError(409, 'MULTIPLE_WORKSPACES', 'The account has an ambiguous workspace assignment')
+        throw new HttpError(409, 'MULTIPLE_WORKSPACES', 'This account belongs to more than one workspace and needs to be fixed by us. Contact support')
       }
       memberships = [resolved]
     }
@@ -159,7 +159,7 @@ serve(async (req) => {
       .maybeSingle()
 
     if (workspaceError || !workspaceData) {
-      throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
+      throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Your account details could not be loaded. Refresh the page, or sign in again')
     }
     const workspace = workspaceData as unknown as WorkspaceRow
     const workspaceAccessNotBefore = Number(workspace.access_not_before_epoch)
@@ -207,7 +207,7 @@ serve(async (req) => {
         ? 'active'
         : 'reauthentication_required'
     } else {
-      throw new HttpError(500, 'INVALID_ACCOUNT_STATE', 'Account context is unavailable')
+      throw new HttpError(500, 'INVALID_ACCOUNT_STATE', 'Your account details could not be loaded. Refresh the page, or sign in again')
     }
 
     return jsonResponse(req, METHODS, 200, {

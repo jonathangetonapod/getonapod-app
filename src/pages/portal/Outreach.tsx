@@ -15,17 +15,19 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePortalExperience } from '@/hooks/usePortalExperience'
+import { OUTREACH_STAGE_LABELS, PLACEMENT_STATUS_LABELS } from '@/lib/placementStatus'
 import type { PortalOutreachTarget } from '@/services/clientPortal'
 
 // Chart hues validated with the dataviz palette checker (light surface).
 const MESSAGES_COLOR = '#4F46E5'
 const EPISODES_COLOR = '#059669'
 
-const stageMeta: Record<PortalOutreachTarget['stage'], { label: string; className: string }> = {
-  preparing: { label: 'Preparing outreach', className: 'bg-muted text-muted-foreground' },
-  contacted: { label: 'Message sent', className: 'bg-sky-50 text-sky-700 border-sky-200' },
-  replied: { label: 'Host replied', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  completed: { label: 'Conversation done', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+// The words come from the shared table; only the colours live here.
+const stageClassName: Record<PortalOutreachTarget['stage'], string> = {
+  preparing: 'bg-muted text-muted-foreground',
+  contacted: 'bg-sky-50 text-sky-700 border-sky-200',
+  replied: 'bg-amber-50 text-amber-800 border-amber-200',
+  completed: 'bg-emerald-50 text-emerald-800 border-emerald-200',
 }
 
 const displayDate = (value: string | null) => {
@@ -104,13 +106,13 @@ export default function PortalOutreach() {
     const stageCount = (stage: PortalOutreachTarget['stage']) => targets.filter((target) => target.stage === stage).length
     const bookingCount = (statuses: string[]) => bookings.filter((booking) => statuses.includes(booking.status)).length
     return [
-      { label: 'Preparing outreach', count: stageCount('preparing') },
-      { label: 'Message sent', count: stageCount('contacted') },
-      { label: 'Host replied', count: stageCount('replied') + stageCount('completed') },
-      { label: 'In conversation', count: bookingCount(['conversation_started', 'in_progress']) },
-      { label: 'Booked', count: bookingCount(['booked']) },
-      { label: 'Recorded', count: bookingCount(['recorded']) },
-      { label: 'Published', count: bookingCount(['published']) },
+      { label: OUTREACH_STAGE_LABELS.preparing, count: stageCount('preparing') },
+      { label: OUTREACH_STAGE_LABELS.contacted, count: stageCount('contacted') },
+      { label: OUTREACH_STAGE_LABELS.replied, count: stageCount('replied') + stageCount('completed') },
+      { label: PLACEMENT_STATUS_LABELS.conversation_started, count: bookingCount(['conversation_started', 'in_progress']) },
+      { label: PLACEMENT_STATUS_LABELS.booked, count: bookingCount(['booked']) },
+      { label: PLACEMENT_STATUS_LABELS.recorded, count: bookingCount(['recorded']) },
+      { label: PLACEMENT_STATUS_LABELS.published, count: bookingCount(['published']) },
     ]
   }, [targets, bookings])
   const pipelineMax = Math.max(1, ...pipeline.map((row) => row.count))
@@ -163,15 +165,15 @@ export default function PortalOutreach() {
             <Card>
               <CardHeader>
                 <CardTitle>Where everything stands</CardTitle>
-                <CardDescription>Your placement pipeline right now, from first message to published episode.</CardDescription>
+                <CardDescription>Your pipeline right now, from first pitch to live episode.</CardDescription>
               </CardHeader>
               <CardContent>
                 {!pipelineHasData ? (
                   <p className="text-sm text-muted-foreground">
-                    Your pipeline fills in as soon as your team starts outreach for approved shows.
+                    Your pipeline fills in as soon as your team starts outreach for the shows you picked.
                   </p>
                 ) : (
-                  <ul className="space-y-2.5" aria-label="Placement pipeline">
+                  <ul className="space-y-2.5" aria-label="Your pipeline">
                     {pipeline.map((row) => (
                       <li key={row.label} className="grid grid-cols-[9.5rem,1fr,2rem] items-center gap-3">
                         <span className="text-sm text-muted-foreground">{row.label}</span>
@@ -241,18 +243,21 @@ export default function PortalOutreach() {
             <Card>
               <CardHeader>
                 <CardTitle>Outreach activity</CardTitle>
-                <CardDescription>Show by show — when the message went out and what happened next.</CardDescription>
+                <CardDescription>Show by show: when the pitch went out and what happened next.</CardDescription>
               </CardHeader>
               <CardContent>
                 {targets.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Outreach activity appears here once your team starts contacting the shows you approved.
+                    Outreach activity appears here once your team starts contacting the shows you picked.
                   </p>
                 ) : (
                   <>
                     <ul className="divide-y">
                       {visibleTargets.map((target) => {
-                        const meta = stageMeta[target.stage]
+                        const meta = {
+                          label: OUTREACH_STAGE_LABELS[target.stage] ?? String(target.stage).replace(/_/gu, ' '),
+                          className: stageClassName[target.stage] ?? 'bg-muted text-muted-foreground',
+                        }
                         const sent = displayDate(target.first_message_at)
                         const activity = displayDate(target.last_activity_at)
                         return (
@@ -270,7 +275,7 @@ export default function PortalOutreach() {
                                 <Badge variant="outline" className={`shrink-0 ${meta.className}`}>{meta.label}</Badge>
                               </div>
                               <p className="mt-0.5 text-sm text-muted-foreground">
-                                {sent ? `First message sent ${sent}` : 'Your personalized pitch is being prepared'}
+                                {sent ? `First pitch sent ${sent}` : 'Your personalized pitch is being written'}
                                 {activity && activity !== sent ? ` · Latest activity ${activity}` : ''}
                               </p>
                             </div>

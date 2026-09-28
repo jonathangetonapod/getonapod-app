@@ -474,7 +474,7 @@ serve(async (req) => {
     )
   } catch (error) {
     console.error('[Prospect Sheet] Error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    const errorMessage = error instanceof Error ? error.message : 'Something went wrong on our side. Try again in a moment'
 
     return new Response(
       JSON.stringify({

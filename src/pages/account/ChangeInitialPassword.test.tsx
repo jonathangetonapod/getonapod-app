@@ -20,7 +20,12 @@ const mockedLocalSignOut = vi.mocked(supabase.auth.signOut)
 
 const Location = () => {
   const location = useLocation()
-  return <div data-testid="location">{location.pathname}</div>
+  return (
+    <>
+      <div data-testid="location">{location.pathname}</div>
+      <div data-testid="location-state">{JSON.stringify(location.state)}</div>
+    </>
+  )
 }
 
 function renderPage() {
@@ -75,6 +80,35 @@ describe('ChangeInitialPassword', () => {
     })))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'))
     expect(mockedLocalSignOut).toHaveBeenCalledWith({ scope: 'local' })
+    // The login form prefills the account that was just secured.
+    expect(JSON.parse(screen.getByTestId('location-state').textContent || '{}')).toEqual({
+      passwordChanged: true,
+      email: 'owner@example.com',
+    })
+  })
+
+  it('explains the rules in plain words, before and after a wrong guess', () => {
+    authState('password_change_required')
+    renderPage()
+
+    expect(screen.getByText('12 to 72 characters, with at least one capital letter, one number and one symbol.')).toBeInTheDocument()
+    expect(screen.getByText(/For security you will sign in once more with your new password\./)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'Short1!' } })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'Short1!' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Passwords need at least 12 characters.')
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'Tmp-Private Password 42!' } })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'Tmp-Private Password 42!' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose a password that does not start with Tmp-.')
+
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: `Aa1!${'x'.repeat(80)}` } })
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: `Aa1!${'x'.repeat(80)}` } })
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Passwords can be at most 72 characters.')
+    expect(mockedChange).not.toHaveBeenCalled()
   })
 
   it('clears a stale credential session when the backend requires reauthentication', async () => {
@@ -96,7 +130,7 @@ describe('ChangeInitialPassword', () => {
     authState('expired')
     renderPage()
 
-    expect(screen.getByText(/temporary password has expired/i)).toBeInTheDocument()
+    expect(screen.getByText(/temporary password has expired\. Ask whoever set up your account for a new one\./i)).toBeInTheDocument()
     // The old assertion was toBeEnabled(), which could never fail: the button's
     // disabled prop is `submitting`, and that is false at first render. Assert
     // the outcome a person would notice — leaving the dead end for sign-in —

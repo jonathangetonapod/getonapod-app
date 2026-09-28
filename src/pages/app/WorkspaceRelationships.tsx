@@ -464,7 +464,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   )
   const selectedState = detail?.derived?.state || openRow?.derived_state || 'none'
   /*
-   * The reply happens in Master Inbox; this page only knows about it. The
+   * The reply happens in the inbox; this page only knows about it. The
    * quiet band and the saved threads named the conversation and stopped one
    * click short of the place a follow-up is actually written — the inbox
    * already links here, and this is the way back.
@@ -644,7 +644,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
               <p className="text-sm text-destructive">The relationship book could not be loaded.</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => void bookQuery.refetch()}>Retry</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void bookQuery.refetch()}>Try again</Button>
             </CardContent>
           </Card>
         )}
@@ -742,7 +742,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                     {detailQuery.error && (
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
                         <p className="text-sm text-destructive">The relationship history could not be loaded.</p>
-                        <Button type="button" variant="outline" size="sm" onClick={() => void detailQuery.refetch()}>Retry</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void detailQuery.refetch()}>Try again</Button>
                       </div>
                     )}
                     {detail && (
@@ -773,7 +773,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                           {detail.threads[0] && (
                             <Button asChild size="sm" variant="outline">
                               <Link to={inboxThreadHref(detail.threads[0])}>
-                                <Inbox className="mr-2 h-4 w-4" />Reply in Master Inbox
+                                <Inbox className="mr-2 h-4 w-4" />Reply in the inbox
                               </Link>
                             </Button>
                           )}
@@ -1015,7 +1015,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div>
                               <p className="text-sm font-medium">Saved inbox threads</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">Conversations deliberately saved from Master Inbox.</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">Conversations deliberately saved from the inbox.</p>
                             </div>
                             {detail.threads.length > 1 && (
                               <div className="relative w-full sm:w-64">
@@ -1031,7 +1031,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                             )}
                           </div>
                           {detail.threads.length === 0
-                            ? <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No Master Inbox conversation has been saved yet.</p>
+                            ? <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No inbox conversation has been saved yet.</p>
                             : visibleThreads.length === 0
                               ? <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No saved threads match that search.</p>
                             : (
@@ -1050,7 +1050,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                                       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                                         {formatDate(thread.latest_message_at)}
                                         <Link to={inboxThreadHref(thread)} className="font-medium text-primary hover:underline">
-                                          Open in Master Inbox
+                                          Open in the inbox
                                         </Link>
                                       </span>
                                     </div>
@@ -1154,7 +1154,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
               <DialogHeader>
                 <DialogTitle>Add a relationship</DialogTitle>
                 <DialogDescription>
-                  Add a host before outreach exists. Their email lets GOAP connect this context to a future canonical show when the match is unambiguous.
+                  Add a host before outreach exists. Their email lets Get On A Pod connect this context to a future canonical show when the match is unambiguous.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">

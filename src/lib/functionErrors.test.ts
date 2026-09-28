@@ -16,40 +16,33 @@ describe('toFunctionError', () => {
     })
 
     const result = await toFunctionError({ context }, 'Podscan request failed.') as Error & {
+      code?: string | null
       status?: number
       retryAfterSeconds?: number
       concurrencyLimit?: number
     }
 
-    // The code is in the visible text: roughly thirty distinct refusals share
-    // one status, and the console can only ever print the status.
-    expect(result.message).toBe('Podscan concurrency limit reached (PODSCAN_CONCURRENCY_LIMIT)')
+    // The code lives on `name` and `code` for callers that branch on it; the
+    // message stays as the server wrote it so the toast reads as a sentence.
+    expect(result.message).toBe('Podscan concurrency limit reached')
     expect(result.name).toBe('PODSCAN_CONCURRENCY_LIMIT')
+    expect(result.code).toBe('PODSCAN_CONCURRENCY_LIMIT')
     expect(result.status).toBe(429)
     expect(result.retryAfterSeconds).toBe(7)
     expect(result.concurrencyLimit).toBe(15)
   })
 
-  it('leaves a coded refusal identifiable from the message alone', async () => {
+  it('keeps the code off the message and on the error object', async () => {
     const context = new Response(JSON.stringify({
-      error: 'This host has already replied. Continue the conversation in the Master Inbox instead of editing the pitch.',
+      error: 'This host has already replied. Continue the conversation in the inbox instead of editing the pitch.',
       code: 'CAMPAIGN_PITCH_LOCKED',
     }), { status: 409, headers: { 'Content-Type': 'application/json' } })
 
-    const result = await toFunctionError({ context }, 'The pitch could not be sent.')
+    const result = await toFunctionError({ context }, 'The pitch could not be sent.') as Error & { code?: string | null }
 
-    expect(result.message).toBe('This host has already replied. Continue the conversation in the Master Inbox instead of editing the pitch. (CAMPAIGN_PITCH_LOCKED)')
-  })
-
-  it('does not print the code twice when the message already names it', async () => {
-    const context = new Response(JSON.stringify({
-      error: 'Refused by CAMPAIGN_CONTACT_SUPPRESSED',
-      code: 'CAMPAIGN_CONTACT_SUPPRESSED',
-    }), { status: 409, headers: { 'Content-Type': 'application/json' } })
-
-    const result = await toFunctionError({ context }, 'Failed.')
-
-    expect(result.message).toBe('Refused by CAMPAIGN_CONTACT_SUPPRESSED')
+    expect(result.message).toBe('This host has already replied. Continue the conversation in the inbox instead of editing the pitch.')
+    expect(result.name).toBe('CAMPAIGN_PITCH_LOCKED')
+    expect(result.code).toBe('CAMPAIGN_PITCH_LOCKED')
   })
 
   // Network failures and non-JSON responses carry no code to report, and a
@@ -59,6 +52,7 @@ describe('toFunctionError', () => {
 
     expect(result.message).toBe('Failed to fetch')
     expect(result.name).toBe('EdgeFunctionError')
+    expect((result as Error & { code?: string | null }).code).toBeNull()
   })
 
   it('falls back without a code when the body is not JSON', async () => {
