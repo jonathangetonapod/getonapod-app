@@ -344,7 +344,7 @@ function ClientApprovalViewContent() {
   })
 
   // React Query: Fetch feedback (refreshes more often)
-  const { data: feedbackData = [], error: feedbackError } = useQuery({
+  const { data: feedbackData = [], error: feedbackError, refetch: refetchFeedback } = useQuery({
     queryKey: ['client-feedback', dashboard?.id],
     queryFn: async () => {
       if (!dashboard?.id || !slug) return []
@@ -375,6 +375,13 @@ function ClientApprovalViewContent() {
   // card about a page that actually loaded.
   const error = dashboardError?.message || null
   const secondaryError = podcastsError?.message || feedbackError?.message || null
+  const secondaryErrorMessage = podcastsError
+    ? 'Your shows could not be loaded just now. Everything you have already approved is safe.'
+    : 'Your choices could not be loaded just now. They are saved; the page just could not read them back.'
+  const retrySecondary = () => {
+    if (podcastsError) void refetchPodcasts()
+    if (feedbackError) void refetchFeedback()
+  }
 
   // Debounce search query for better performance
   useEffect(() => {
@@ -573,6 +580,12 @@ function ClientApprovalViewContent() {
   const saveFeedback = async (podcastId: string, status: 'approved' | 'rejected' | null, notes?: string, podcastName?: string) => {
     if (!dashboard) return false
 
+    // An admin previewing the page must not write feedback or trigger the client's nudge email.
+    if (isAdminPreview) {
+      toast.info('Preview only. Choices are not saved.')
+      return true
+    }
+
     // Check if this is a new approval (not already approved)
     const existingFeedback = feedbackMap.get(podcastId)
     const isNewApproval = status === 'approved' && existingFeedback?.status !== 'approved'
@@ -587,7 +600,7 @@ function ClientApprovalViewContent() {
         podcast_id: podcastId,
         podcast_name: podcastName || selectedPodcast?.podcast_name || null,
         status,
-        notes: notes !== undefined ? notes : (currentNotes || null),
+        notes: notes !== undefined ? notes : (selectedPodcast?.podcast_id === podcastId && currentNotes.trim() ? currentNotes : (feedbackMap.get(podcastId)?.notes ?? null)),
       }
 
       const response = await invokePublicClientDashboard<{ feedback: PodcastFeedback }>(feedbackData)
@@ -1172,6 +1185,12 @@ function ClientApprovalViewContent() {
         </div>
       </header>
 
+      {isAdminPreview ? (
+        <div role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-900">
+          Admin preview. Choices made here are not saved and the client is not notified.
+        </div>
+      ) : null}
+
       <main id="podcast-shortlist" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <section aria-labelledby="shortlist-heading">
           <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
@@ -1277,12 +1296,12 @@ function ClientApprovalViewContent() {
 
           {secondaryError && !loadingPodcasts && (
             <div className="mt-7 flex flex-col items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
-              <p>Your shows could not be loaded just now. Everything you have already approved is safe.</p>
+              <p>{secondaryErrorMessage}</p>
               <Button
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                onClick={() => { void refetchPodcasts() }}
+                onClick={retrySecondary}
               >
                 Try again
               </Button>
@@ -1956,6 +1975,7 @@ function ClientApprovalViewContent() {
         <SheetContent className="!w-full overflow-hidden overflow-x-hidden border-l-0 bg-[#fbf8f3] p-0 shadow-2xl sm:!max-w-xl">
           {selectedPodcast && (
             <div className="flex h-full flex-col">
+              <SheetTitle className="sr-only">{selectedPodcast.podcast_name}</SheetTitle>
               {/* Hero Header with Image */}
               <div className="relative h-44 sm:h-64 overflow-hidden flex-shrink-0">
                 <PodcastArtwork podcast={selectedPodcast} className="h-full w-full" />
@@ -2117,10 +2137,7 @@ function ClientApprovalViewContent() {
                             ))}
                           </ul>
                         ) : (
-                          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-sm">Analyzing fit...</span>
-                          </div>
+                          <p className="text-sm text-amber-800 dark:text-amber-200">No fit analysis yet. Your team will add one.</p>
                         )}
                       </div>
 
@@ -2165,10 +2182,7 @@ function ClientApprovalViewContent() {
                             ))}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-sm">Generating pitch ideas...</span>
-                          </div>
+                          <p className="text-sm text-purple-800 dark:text-purple-200">No pitch ideas yet. They will appear once the fit analysis is ready.</p>
                         )}
                       </div>
                     </>
@@ -2716,6 +2730,8 @@ function ClientApprovalViewContent() {
               {[0, 1, 2, 3, 4].map((step) => (
                 <button
                   key={step}
+                  type="button"
+                  aria-label={`Go to step ${step + 1}`}
                   onClick={() => setTutorialStep(step)}
                   className={cn(
                     "w-2 h-2 rounded-full transition-all",

@@ -210,6 +210,14 @@ serve(async (req) => {
       )
     }
 
+    if (!podcasts || !Array.isArray(podcasts) || podcasts.length === 0) {
+      console.error('❌ [ERROR] Podcasts array is empty or invalid')
+      return new Response(
+        JSON.stringify({ error: 'Podcasts array is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     /*
      * Charged here rather than on arrival. Every check between the old charge
      * site and this line — the client still being active, the prospect not
@@ -234,14 +242,6 @@ serve(async (req) => {
         chargedForRefund = { workspaceId: metering.workspaceId, entryId: scoringCharge.entryId }
         refundAdmin = metering.admin
       }
-    }
-
-    if (!podcasts || !Array.isArray(podcasts) || podcasts.length === 0) {
-      console.error('❌ [ERROR] Podcasts array is empty or invalid')
-      return new Response(
-        JSON.stringify({ error: 'Podcasts array is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
     }
 
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
@@ -337,7 +337,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
             return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' as const }
           }
         } catch (error) {
-          console.error(`❌ [ERROR] Scoring ${podcast.podcast_name.substring(0, 50)}:`, error)
+          console.error(`❌ [ERROR] Scoring ${String(podcast.podcast_name ?? '').slice(0, 50)}:`, error)
           errorCount++
           return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' as const }
         }

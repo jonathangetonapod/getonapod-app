@@ -215,7 +215,7 @@
 .dfy-show-name { display: block; font-family: var(--heading); font-weight: var(--heading-weight); font-size: 21px; line-height: 1.2; }
 .dfy-show-about { display: block; font-size: 13.5px; line-height: 21px; color: var(--neutral-700); margin-top: 4px; }
 .dfy-show-reach { display: block; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-700); margin-top: 8px; }
-.dfy-shows-note { font-size: 13px; line-height: 22px; color: var(--neutral-600); margin-top: 28px; font-style: italic; }
+.dfy-shows-note { font-size: 13px; line-height: 22px; color: var(--neutral-700); margin-top: 28px; font-style: italic; }
 @media (max-width: 600px) {
   .dfy-tabs { flex-wrap: nowrap; overflow-x: auto; gap: 22px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .dfy-tabs::-webkit-scrollbar { display: none; }

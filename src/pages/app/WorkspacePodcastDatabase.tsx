@@ -39,6 +39,7 @@ import { addClientShortlistPodcasts, type ClientShortlistPodcastInput } from '@/
 import {
   addWorkspaceProspectPodcasts,
   getWorkspaceProspects,
+  PartialShortlistAddError,
   type ProspectShortlistPodcastInput,
 } from '@/services/prospectDashboards'
 import { getWorkspaceClients } from '@/services/clients'
@@ -335,10 +336,9 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         } else {
           toast.info('Those podcasts are already on this prospect dashboard.')
         }
-        // Adding to a published dashboard takes it back to review rather than
-        // changing what a prospect is looking at while they look at it.
-        if ('unpublished_for_review' in result && result.unpublished_for_review) {
-          toast.warning('The public link is offline until you publish this dashboard again.', { duration: 8000 })
+        // A live dashboard stays live; the additions wait hidden for review.
+        if ('hidden_pending_review' in result && result.hidden_pending_review) {
+          toast.warning('Added hidden. Open the prospect’s New tab to show them.', { duration: 8000 })
         }
       } else {
         const client = clientsQuery.data?.find((candidate) => candidate.id === selectedClientId)
@@ -354,6 +354,10 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       void catalogQuery.refetch()
     },
     onError: (error) => {
+      // The batch is sent in chunks; say how far it got before the failure.
+      if (error instanceof PartialShortlistAddError) {
+        toast.warning(`${error.partial.added} podcast${error.partial.added === 1 ? ' was' : 's were'} added before it failed.`)
+      }
       toast.error(error instanceof Error ? error.message : 'The podcasts could not be added.')
     },
   })
@@ -493,6 +497,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   aria-label="Search podcasts"
+                  maxLength={120}
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
                   placeholder="Search a show, host, topic, or ideal conversation"
@@ -804,7 +809,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             <div className="rounded-xl bg-muted/50 p-4">
               <p className="text-sm font-medium">What happens next</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{addTarget === 'prospect'
-                ? 'The shows appear on the prospect’s dashboard for you to review and order before it is sent. A published dashboard is unpublished so the change is not made under the reader.'
+                ? 'The shows are added to the prospect’s dashboard hidden, so nothing changes under a reader. Open the prospect’s New tab to review and show them.'
                 : 'The shows appear in the client’s Podcasts section for review, research, contact selection, and campaign preparation. This action does not send outreach.'}</p>
             </div>
           </div>

@@ -427,7 +427,6 @@ describe('WorkspaceOutreachSuite', () => {
     expect(within(scope).getByRole('radio', { name: /other replies/i })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByPlaceholderText('Search conversations')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Filter by client' })).toHaveTextContent('All clients')
-    expect(screen.getByRole('combobox', { name: 'Filter by client campaign' })).toHaveTextContent('All campaigns')
     expect(screen.getByLabelText('Conversation filters')).toHaveTextContent('Needs reply')
     expect(screen.getByRole('heading', { name: 'Conversations' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Conversation thread' })).toBeInTheDocument()

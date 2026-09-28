@@ -8,7 +8,6 @@ import {
   addClientShortlistPodcasts,
   ensureClientShortlistEpisodes,
   generateClientShortlistPitch,
-  getClientAutopilot,
   getClientShortlist,
   getClientShortlistResearchDocument,
   runClientShortlistEmailSearch,
@@ -17,15 +16,13 @@ import {
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
 } from '@/services/clientShortlist'
-import { getClientInstantlyCampaignLinks, getClientSdrPrompts, getWorkspaceCampaign, getWorkspaceResearchPromptOverrides, prepareWorkspaceCampaignPodcast, removeWorkspaceCampaignLead } from '@/services/workspaceCampaigns'
+import { getClientInstantlyCampaignLinks, getClientSdrPrompts, getWorkspaceCampaign, getWorkspaceResearchPromptOverrides, prepareWorkspaceCampaignPodcast, removeWorkspaceCampaignLead, saveWorkspaceCampaignPitch } from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({
   addClientShortlistPodcasts: vi.fn(),
   ensureClientShortlistEpisodes: vi.fn().mockResolvedValue({ episodes: [], last_posted_at: null, episodes_fetched_at: null }),
   generateClientShortlistPitch: vi.fn(),
   getClientShortlistResearchDocument: vi.fn(),
-  getClientAutopilot: vi.fn(),
-  setClientAutopilot: vi.fn(),
   getClientShortlist: vi.fn(),
   runClientShortlistEmailSearch: vi.fn(),
   runClientShortlistResearch: vi.fn(),
@@ -40,6 +37,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   getClientInstantlyCampaignLinks: vi.fn(),
   prepareWorkspaceCampaignPodcast: vi.fn(),
   removeWorkspaceCampaignLead: vi.fn(),
+  saveWorkspaceCampaignPitch: vi.fn(),
   getWorkspaceResearchPromptOverrides: vi.fn().mockResolvedValue({}),
   getClientSdrPrompts: vi.fn().mockResolvedValue({}),
   setClientSdrPrompt: vi.fn().mockResolvedValue(undefined),
@@ -144,7 +142,6 @@ describe('ClientShortlistEditor', () => {
       body: 'Research-backed pitch body',
     } as never)
     vi.mocked(getClientShortlistResearchDocument).mockResolvedValue(null)
-    vi.mocked(getClientAutopilot).mockResolvedValue(null)
     vi.mocked(getClientShortlist).mockResolvedValue({
       client: { id: clientId, name: 'Taylor Client' },
       podcasts: [
@@ -173,6 +170,7 @@ describe('ClientShortlistEditor', () => {
         }),
       ],
     })
+    vi.mocked(saveWorkspaceCampaignPitch).mockResolvedValue({} as never)
     vi.mocked(searchClientPodcastCatalog).mockResolvedValue([])
     vi.mocked(addClientShortlistPodcasts).mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['podcast-new'] })
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast())
@@ -955,6 +953,16 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByRole('button', { name: 'Send to Client Campaign' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Save edits' }))
     expect(screen.getByText('All edits saved')).toBeInTheDocument()
+    // Saved means persisted, not held in this tab until it is closed.
+    await waitFor(() => expect(saveWorkspaceCampaignPitch).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId,
+      clientId,
+      shortlistPodcastId: '33333333-3333-4333-8333-333333333333',
+      subject: 'A tailored Founder Stories idea',
+      pitchBody: 'Hey Example,\n\nHere is the revised opening pitch.',
+      followUpOneSubject: 'Re: A tailored Founder Stories idea',
+      followUpTwoSubject: 'Re: A tailored Founder Stories idea',
+    })))
 
     const sendToCampaign = screen.getByRole('button', { name: 'Send to Client Campaign' })
     await waitFor(() => expect(sendToCampaign).toBeEnabled())
@@ -1568,6 +1576,55 @@ describe('ClientShortlistEditor', () => {
       workspaceId,
       clientId,
       [expect.objectContaining({ podcast_id: 'podcast-new', podcast_name: 'The New Show' })],
+    ))
+  })
+
+  it('keeps a podcast ticked under an earlier search in the add', async () => {
+    const catalogRow = (id: string, name: string) => ({
+      podcast_id: id,
+      podcast_name: name,
+      podcast_description: null,
+      podcast_image_url: null,
+      podcast_url: `https://example.com/${id}`,
+      publisher_name: 'New Media',
+      itunes_rating: 4.6,
+      episode_count: 42,
+      audience_size: 8_000,
+      last_posted_at: '2026-07-21T00:00:00.000Z',
+      podcast_categories: null,
+      language: 'en',
+      region: 'US',
+      podcast_email: null,
+      rss_feed: null,
+      already_added: false,
+      existing_visibility: null,
+    })
+    vi.mocked(searchClientPodcastCatalog).mockImplementation(async (_workspace, _client, query) => (
+      query === 'first' ? [catalogRow('podcast-first', 'The First Show')] : [catalogRow('podcast-second', 'The Second Show')]
+    ))
+    renderEditor()
+    await screen.findByRole('heading', { name: 'Client podcast list' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Quick add' }))
+    const search = screen.getByLabelText('Search the podcast catalog')
+    fireEvent.change(search, { target: { value: 'first' } })
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The First Show' }))
+    expect(screen.getByRole('button', { name: 'Add 1 selected' })).toBeInTheDocument()
+
+    // The count and the add used to intersect ticks with the CURRENT results,
+    // so a show ticked under the previous search silently fell out of both.
+    fireEvent.change(search, { target: { value: 'second' } })
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The Second Show' }))
+    expect(screen.queryByText('The First Show')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 selected' }))
+
+    await waitFor(() => expect(addClientShortlistPodcasts).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      [
+        expect.objectContaining({ podcast_id: 'podcast-first' }),
+        expect.objectContaining({ podcast_id: 'podcast-second' }),
+      ],
     ))
   })
 

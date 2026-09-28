@@ -6,9 +6,11 @@ import {
   verifyPortalPassword,
 } from '../_shared/portalSecurity.ts'
 import { safeWorkspaceBranding } from '../_shared/portalBranding.ts'
+import { createAdminClient } from '../_shared/workspaceAuth.ts'
+import { corsHeaders as platformCorsHeaders, ensureWorkspaceOriginAllowed, getCorsHeaders } from '../_shared/cors.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
+const fallbackCorsHeaders = {
+  'Access-Control-Allow-Origin': platformCorsHeaders['Access-Control-Allow-Origin'],
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Cache-Control': 'no-store',
 }
@@ -19,6 +21,17 @@ interface LoginRequest {
 }
 
 serve(async (req) => {
+  // Public dashboards and the portal are served from tenant custom domains,
+  // so the allowed origin is per request: the platform allowlist plus the
+  // active custom hostnames, warmed here because this may be the first call
+  // that origin ever makes.
+  let corsHeaders: Record<string, string> = { ...fallbackCorsHeaders }
+  try {
+    await ensureWorkspaceOriginAllowed(createAdminClient(), req)
+    corsHeaders = { ...getCorsHeaders(req), 'Cache-Control': 'no-store' }
+  } catch {
+    // Fall back to the platform origin rather than failing the request.
+  }
   console.log('[LOGIN] ========== FUNCTION INVOKED ==========')
   console.log('[LOGIN] Method:', req.method)
   console.log('[LOGIN] URL:', req.url)

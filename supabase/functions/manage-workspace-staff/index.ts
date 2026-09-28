@@ -584,6 +584,49 @@ function staffViewDto(value: unknown): StaffViewDto {
   };
 }
 
+/**
+ * Whether an address can be invited is the only fact a tenant may learn.
+ *
+ * The distinct refusals (a platform administrator, staff at another agency,
+ * an unrelated Auth account) answered a question an agency admin has no
+ * business asking about a stranger's email: the invite form was an oracle
+ * for who is a customer elsewhere. A tenant actor gets one answer, unless the
+ * address already has a live membership on this workspace, which their own
+ * roster shows them anyway.
+ */
+async function withoutInviteOracle(
+  admin: AdminClient,
+  error: unknown,
+  input: { platformAdmin: boolean; workspaceId: string; email: string },
+): Promise<unknown> {
+  if (input.platformAdmin || !(error instanceof HttpError)) return error;
+  if (
+    !["PLATFORM_ADMIN_PROTECTED", "STAFF_ACCOUNT_EXISTS", "AUTH_ACCOUNT_EXISTS"]
+      .includes(error.code)
+  ) {
+    return error;
+  }
+  const { data } = await admin
+    .from("workspace_memberships")
+    .select("id")
+    .eq("workspace_id", input.workspaceId)
+    .eq("email_normalized", input.email)
+    .neq("status", "revoked")
+    .limit(1);
+  if ((data ?? []).length > 0) {
+    return new HttpError(
+      409,
+      "STAFF_ACCOUNT_EXISTS",
+      "This email already has access to this workspace",
+    );
+  }
+  return new HttpError(
+    409,
+    "CANNOT_INVITE_ADDRESS",
+    "This address cannot be invited to this workspace. Contact us if you think that is wrong",
+  );
+}
+
 function rpcFailure(
   error: RpcError,
   fallbackCode: string,
@@ -3793,24 +3836,28 @@ serve(async (req) => {
       const email = requireEmail(body.email);
       const fullName = optionalString(body.full_name, "full_name", 120);
       const role = requireInviteRole(body.role);
-      const provisioning = await beginStaffInvite(admin, {
-        workspaceId,
-        email,
-        fullName,
-        role,
-        actorUserId: user.id,
-        tokenIssuedAt,
-      });
-      const invited = await deliverStaffInvite(admin, {
-        workspaceId,
-        membershipId: provisioning.id,
-        actorUserId: user.id,
-        tokenIssuedAt,
-      });
-      return jsonResponse(req, METHODS, 201, {
-        success: true,
-        member: memberDto(invited, false),
-      });
+      try {
+        const provisioning = await beginStaffInvite(admin, {
+          workspaceId,
+          email,
+          fullName,
+          role,
+          actorUserId: user.id,
+          tokenIssuedAt,
+        });
+        const invited = await deliverStaffInvite(admin, {
+          workspaceId,
+          membershipId: provisioning.id,
+          actorUserId: user.id,
+          tokenIssuedAt,
+        });
+        return jsonResponse(req, METHODS, 201, {
+          success: true,
+          member: memberDto(invited, false),
+        });
+      } catch (error) {
+        throw await withoutInviteOracle(admin, error, { platformAdmin, workspaceId, email });
+      }
     }
 
     if (action === "create_password") {
@@ -3824,26 +3871,30 @@ serve(async (req) => {
       const email = requireEmail(body.email);
       const fullName = optionalString(body.full_name, "full_name", 120);
       const role = requireInviteRole(body.role);
-      const provisioning = await beginStaffPasswordAccount(admin, {
-        workspaceId,
-        email,
-        fullName,
-        role,
-        actorUserId: user.id,
-        tokenIssuedAt,
-      });
-      const issued = await issueStaffTemporaryPassword(admin, {
-        workspaceId,
-        membershipId: provisioning.id,
-        actorUserId: user.id,
-        tokenIssuedAt,
-      });
-      return jsonResponse(req, METHODS, 201, {
-        success: true,
-        member: memberDto(issued.membership, false),
-        email: issued.membership.email_normalized,
-        temporary_password: issued.temporaryPassword,
-      });
+      try {
+        const provisioning = await beginStaffPasswordAccount(admin, {
+          workspaceId,
+          email,
+          fullName,
+          role,
+          actorUserId: user.id,
+          tokenIssuedAt,
+        });
+        const issued = await issueStaffTemporaryPassword(admin, {
+          workspaceId,
+          membershipId: provisioning.id,
+          actorUserId: user.id,
+          tokenIssuedAt,
+        });
+        return jsonResponse(req, METHODS, 201, {
+          success: true,
+          member: memberDto(issued.membership, false),
+          email: issued.membership.email_normalized,
+          temporary_password: issued.temporaryPassword,
+        });
+      } catch (error) {
+        throw await withoutInviteOracle(admin, error, { platformAdmin, workspaceId, email });
+      }
     }
 
     if (action === "retry_invite") {

@@ -232,6 +232,52 @@ describe('WorkspaceProspectDashboards finder link', () => {
   })
 })
 
+describe('WorkspaceProspectDashboards stale build', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'owner@example.com' },
+      workspace: {
+        id: workspaceId,
+        name: 'Tenant Workspace',
+        slug: 'tenant-workspace',
+        status: 'active',
+        is_default: false,
+      },
+      membership: { role: 'owner' },
+      signOut: vi.fn(),
+    } as never)
+  })
+
+  function mockBuilding(buildStartedAt: string) {
+    const building: WorkspaceProspect = { ...prospect, lifecycle_status: 'matching', build_started_at: buildStartedAt }
+    mockedList.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboards: [building] })
+    mockedDetail.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboard: building, podcasts: [] })
+  }
+
+  // A build that died server-side left the row in 'matching', so the page
+  // spun forever with the Build button disabled and no way out.
+  it('lets the operator build again when a build started long ago never finished', async () => {
+    mockBuilding(new Date(Date.now() - 20 * 60 * 1000).toISOString())
+    renderPage()
+
+    expect(await screen.findByText(/previous build did not finish/i)).toBeInTheDocument()
+    const buttons = screen.getAllByRole('button', { name: 'Build shortlist' })
+    expect(buttons.length).toBeGreaterThan(0)
+    for (const button of buttons) expect(button).toBeEnabled()
+  })
+
+  it('keeps a recent build in progress', async () => {
+    mockBuilding(new Date(Date.now() - 60 * 1000).toISOString())
+    renderPage()
+
+    const buttons = await screen.findAllByRole('button', { name: 'Build shortlist' })
+    expect(buttons.length).toBeGreaterThan(0)
+    for (const button of buttons) expect(button).toBeDisabled()
+    expect(screen.queryByText(/previous build did not finish/i)).not.toBeInTheDocument()
+  })
+})
+
 function shortlistPodcast(index: number, overrides: Partial<ProspectShortlistPodcast> = {}): ProspectShortlistPodcast {
   return {
     id: `podcast-row-${index}`,

@@ -4,6 +4,8 @@ import { createPortalSessionStore } from '@/lib/portalSessionStore'
 import type { Client } from './clients'
 import type { Booking } from './bookings'
 
+export { isPortalAuthError } from '@/lib/portalAuthError'
+
 export interface ClientPortalSession {
   session_token: string
   expires_at: string
@@ -163,18 +165,14 @@ export async function getClientBookings(clientId: string): Promise<ClientPortalD
     body: requestBody
   })
 
-  if (error) {
-    console.error('[getClientBookings] Failed to fetch bookings:', error)
-    throw new Error(error.message || 'Failed to fetch bookings')
-  }
+  if (error) throw await toFunctionError(error, 'Your bookings could not be loaded.')
 
-  if (data.error) {
-    console.error('[getClientBookings] Edge Function returned error:', data.error)
-    throw new Error(data.error || 'Failed to fetch bookings')
-  }
+  // A 2xx with an error body, or no body at all, is still a failed load.
+  if (!data || typeof data !== 'object') throw new Error('Your bookings could not be loaded.')
+  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : 'Your bookings could not be loaded.')
 
   return {
-    bookings: data.bookings,
+    bookings: Array.isArray(data.bookings) ? data.bookings : [],
   }
 }
 
@@ -364,13 +362,19 @@ export async function getClientPortalActivity(clientId: string, limit = 50) {
  * Enable or disable portal access for a client (Admin use only)
  */
 export async function updatePortalAccess(clientId: string, enabled: boolean): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('clients')
     .update({ portal_access_enabled: enabled })
     .eq('id', clientId)
+    .select('id')
 
   if (error) {
     throw new Error(`Failed to update portal access: ${error.message}`)
+  }
+  // Row-level security answers a write it refuses with zero rows, not an
+  // error, so a client in another workspace looked updated when it was not.
+  if (!data || data.length === 0) {
+    throw new Error('This client belongs to another workspace and cannot be changed here')
   }
 }
 

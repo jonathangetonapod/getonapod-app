@@ -99,6 +99,17 @@ describe('WorkspaceUniversity', () => {
     expect(frame).toHaveAttribute('src', 'https://www.loom.com/embed/abc123def456')
   })
 
+  // The platform view ignored a failed workspace read and rendered the
+  // lessons under a shell titled "Client workspace".
+  it('shows the unavailable state when the viewed workspace cannot be read', async () => {
+    mockedAdminWorkspace.mockRejectedValue(new Error('Workspace not found'))
+    mockedLessons.mockResolvedValue({ lessons: [lesson()], watched_lesson_ids: [], can_manage: false })
+    renderPage(platformWorkspaceId)
+
+    expect(await screen.findByText(/Workspace unavailable/)).toBeInTheDocument()
+    expect(screen.queryByText('Add your first client')).not.toBeInTheDocument()
+  })
+
   it('offers no authoring controls unless the server says so', async () => {
     mockedLessons.mockResolvedValue({ lessons: [lesson()], watched_lesson_ids: [], can_manage: false })
     renderPage()

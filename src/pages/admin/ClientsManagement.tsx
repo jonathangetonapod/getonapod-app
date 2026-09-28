@@ -17,6 +17,7 @@ import { Search, Plus, Users, TrendingUp, CheckCircle2, Clock, Loader2, ChevronL
 import { Link, useNavigate } from 'react-router-dom'
 import { getClients, createClient, deleteClient } from '@/services/clients'
 import { getBookings, getClientBookingStats } from '@/services/bookings'
+import { parseLocalDate } from '@/lib/localDate'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
 
 export default function ClientsManagement() {
@@ -71,6 +72,13 @@ export default function ClientsManagement() {
         website: '',
         status: 'active',
         notes: ''
+      })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create client',
+        variant: 'destructive',
       })
     }
   })
@@ -200,8 +208,8 @@ export default function ClientsManagement() {
 
   // Filter bookings by selected month
   const bookingsInSelectedMonth = allBookings.filter(booking => {
-    if (!booking.scheduled_date) return false
-    const bookingDate = new Date(booking.scheduled_date)
+    const bookingDate = parseLocalDate(booking.scheduled_date)
+    if (!bookingDate) return false
     return bookingDate.getMonth() === selectedMonth && bookingDate.getFullYear() === selectedYear
   })
 
@@ -213,7 +221,7 @@ export default function ClientsManagement() {
     // Get last booking in the selected month
     const lastBookingInMonth = clientBookingsInMonth
       .filter(b => b.scheduled_date)
-      .sort((a, b) => new Date(b.scheduled_date!).getTime() - new Date(a.scheduled_date!).getTime())[0]
+      .sort((a, b) => (parseLocalDate(b.scheduled_date)?.getTime() ?? 0) - (parseLocalDate(a.scheduled_date)?.getTime() ?? 0))[0]
 
     return {
       ...client,
@@ -234,7 +242,7 @@ export default function ClientsManagement() {
     // Get last booking overall
     const lastBooking = clientBookings
       .filter(b => b.scheduled_date)
-      .sort((a, b) => new Date(b.scheduled_date!).getTime() - new Date(a.scheduled_date!).getTime())[0]
+      .sort((a, b) => (parseLocalDate(b.scheduled_date)?.getTime() ?? 0) - (parseLocalDate(a.scheduled_date)?.getTime() ?? 0))[0]
 
     return {
       ...client,
@@ -320,10 +328,13 @@ export default function ClientsManagement() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - date.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    // scheduled_date is a DATE column, so measure whole days from local midnight.
+    const date = parseLocalDate(dateString)
+    if (!date) return 'No bookings'
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const diffTime = Math.abs(today.getTime() - date.getTime())
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
 
     if (diffDays === 0) return 'Today'
     if (diffDays === 1) return '1 day ago'
@@ -352,14 +363,14 @@ export default function ClientsManagement() {
           <CardContent className="pt-4 sm:pt-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2 sm:gap-4">
-                <Button variant="outline" size="icon" onClick={goToPreviousMonth} className="h-8 w-8 sm:h-10 sm:w-10">
+                <Button variant="outline" size="icon" onClick={goToPreviousMonth} className="h-8 w-8 sm:h-10 sm:w-10" aria-label="Previous month">
                   <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
                 </Button>
                 <div className="text-center min-w-[160px] sm:min-w-[200px]">
                   <h3 className="text-lg sm:text-2xl font-bold">{monthNames[selectedMonth]} {selectedYear}</h3>
                   <p className="text-xs sm:text-sm text-muted-foreground">Monthly Overview</p>
                 </div>
-                <Button variant="outline" size="icon" onClick={goToNextMonth} className="h-8 w-8 sm:h-10 sm:w-10">
+                <Button variant="outline" size="icon" onClick={goToNextMonth} className="h-8 w-8 sm:h-10 sm:w-10" aria-label="Next month">
                   <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
                 </Button>
               </div>
@@ -546,6 +557,7 @@ export default function ClientsManagement() {
                             setClientToDelete({ id: client.id, name: client.name })
                           }}
                           className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          aria-label={`Delete ${client.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -697,6 +709,7 @@ export default function ClientsManagement() {
                                 setClientToDelete({ id: client.id, name: client.name })
                               }}
                               className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              aria-label={`Delete ${client.name}`}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>

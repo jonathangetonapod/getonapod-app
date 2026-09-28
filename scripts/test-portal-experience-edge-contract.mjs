@@ -10,7 +10,10 @@ const portalService = readFileSync('src/services/clientPortal.ts', 'utf8')
 
 // Auth: a valid client-scoped portal session, or the explicit
 // platform-admin impersonation path — never workspace auth.
-assert.match(edge, /if \(req\.method === 'OPTIONS'\) return optionsResponse\(req, METHODS\)/u)
+// The portal is served from tenant custom domains, so the preflight warms the
+// origin allowlist before answering with the shared CORS handling.
+assert.match(edge, /if \(req\.method === 'OPTIONS'\) \{[\s\S]{0,400}?ensureWorkspaceOriginAllowed\(createAdminClient\(\), req\)[\s\S]{0,100}?return optionsResponse\(req, METHODS\)/u)
+assert.match(edge, /ensureWorkspaceOriginAllowed\(admin, req\)/u)
 assert.match(edge, /requireOnlyKeys\(body, \['clientId', 'sessionToken', 'addon_request', 'calendar_event', 'delete_event_id', 'notifications_enabled'\]\)/u)
 // Add-on requests are recorded before any notification is attempted, and the
 // notification failure never fails the request.

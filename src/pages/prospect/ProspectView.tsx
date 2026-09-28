@@ -705,17 +705,37 @@ function ProspectViewContent() {
           dashboard_slug: slug,
           podcast_id: podcastId,
           status,
-          notes: notes !== undefined ? notes : (currentNotes || null)
+          notes: notes !== undefined ? notes : (selectedPodcast?.podcast_id === podcastId && currentNotes.trim() ? currentNotes : (feedbackMap.get(podcastId)?.notes ?? null))
         })
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
+        // Error bodies are not always JSON; a parser error would hide the real message.
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || 'Failed to save feedback')
       }
 
-      // Invalidate dashboard cache to refresh the feedback data
-      queryClient.invalidateQueries({ queryKey: ['prospect-dashboard', slug] })
+      const result = await response.json().catch(() => ({})) as { feedback?: Partial<PodcastFeedback> }
+
+      // Patch the cached feedback instead of refetching: get-prospect-dashboard
+      // records a view on every call, so a refetch would inflate view_count.
+      queryClient.setQueryData<typeof dashboardResponse>(['prospect-dashboard', slug], (current) => {
+        if (!current) return current
+        const savedFeedback: PodcastFeedback = {
+          // The public dashboard payload carries no id; the saved row's own
+          // values fill these, and a cached row keeps what it already had.
+          id: result.feedback?.id ?? existingFeedback?.id ?? `${slug}:${podcastId}`,
+          prospect_dashboard_id: result.feedback?.prospect_dashboard_id ?? existingFeedback?.prospect_dashboard_id ?? '',
+          podcast_id: podcastId,
+          podcast_name: existingFeedback?.podcast_name ?? null,
+          status: result.feedback?.status ?? status,
+          notes: result.feedback?.notes ?? null,
+          created_at: result.feedback?.created_at ?? existingFeedback?.created_at ?? new Date().toISOString(),
+          updated_at: result.feedback?.updated_at ?? new Date().toISOString(),
+        }
+        const rest = (current.feedback ?? []).filter((feedback) => feedback.podcast_id !== podcastId)
+        return { ...current, feedback: [...rest, savedFeedback] }
+      })
 
       // Trigger confetti for new approvals
       if (isNewApproval) {
@@ -1340,9 +1360,14 @@ function ProspectViewContent() {
             <Card
               className="border-0 shadow-xl bg-gradient-to-br from-green-50/80 to-emerald-50/80 dark:from-green-950/50 dark:to-emerald-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
               style={{ animationDelay: '100ms' }}
-              onClick={() => setSelectedPodcast(highestReachPodcast)}
             >
-              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPodcast(highestReachPodcast)}
+                  className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4"
+                  aria-label={`Open ${highestReachPodcast.podcast_name} details`}
+                >
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {highestReachPodcast.podcast_image_url ? (
                     <img src={highestReachPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
@@ -1357,6 +1382,7 @@ function ProspectViewContent() {
                   <p className="font-semibold truncate text-sm sm:text-base">{highestReachPodcast.podcast_name}</p>
                   <p className="text-xs sm:text-sm text-muted-foreground">{formatNumber(highestReachPodcast.audience_size)} listeners</p>
                 </div>
+                </button>
               </CardContent>
             </Card>
           )}
@@ -1366,9 +1392,14 @@ function ProspectViewContent() {
             <Card
               className="border-0 shadow-xl bg-gradient-to-br from-amber-50/80 to-yellow-50/80 dark:from-amber-950/50 dark:to-yellow-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
               style={{ animationDelay: '200ms' }}
-              onClick={() => setSelectedPodcast(topRatedPodcast)}
             >
-              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPodcast(topRatedPodcast)}
+                  className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4"
+                  aria-label={`Open ${topRatedPodcast.podcast_name} details`}
+                >
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {topRatedPodcast.podcast_image_url ? (
                     <img src={topRatedPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
@@ -1386,6 +1417,7 @@ function ProspectViewContent() {
                     {Number(topRatedPodcast.itunes_rating).toFixed(1)} rating
                   </p>
                 </div>
+                </button>
               </CardContent>
             </Card>
           )}
@@ -1395,9 +1427,14 @@ function ProspectViewContent() {
             <Card
               className="border-0 shadow-xl bg-gradient-to-br from-purple-50/80 to-violet-50/80 dark:from-purple-950/50 dark:to-violet-950/50 backdrop-blur-sm cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 active:scale-[0.98] animate-fade-in-up min-w-[280px] sm:min-w-0 flex-shrink-0 sm:flex-shrink"
               style={{ animationDelay: '300ms' }}
-              onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
             >
-              <CardContent className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
+              <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPodcast(mostEpisodesPodcast)}
+                  className="flex w-full items-center gap-3 p-3 text-left sm:gap-4 sm:p-4"
+                  aria-label={`Open ${mostEpisodesPodcast.podcast_name} details`}
+                >
                 <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
                   {mostEpisodesPodcast.podcast_image_url ? (
                     <img src={mostEpisodesPodcast.podcast_image_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
@@ -1412,6 +1449,7 @@ function ProspectViewContent() {
                   <p className="font-semibold truncate text-sm sm:text-base">{mostEpisodesPodcast.podcast_name}</p>
                   <p className="text-xs sm:text-sm text-muted-foreground">{mostEpisodesPodcast.episode_count} episodes</p>
                 </div>
+                </button>
               </CardContent>
             </Card>
           )}
@@ -1558,6 +1596,7 @@ function ProspectViewContent() {
           <div className="flex items-center gap-2">
             <Mic className="h-4 w-4 text-muted-foreground" />
             <select
+              aria-label="Filter by episode count"
               value={episodeFilter}
               onChange={(e) => setEpisodeFilter(e.target.value)}
               className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -1574,6 +1613,7 @@ function ProspectViewContent() {
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
             <select
+              aria-label="Filter by audience size"
               value={audienceFilter}
               onChange={(e) => setAudienceFilter(e.target.value)}
               className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -1593,6 +1633,7 @@ function ProspectViewContent() {
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
             <select
+              aria-label="Sort podcasts"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="px-3 py-1.5 rounded-lg text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -1710,9 +1751,14 @@ function ProspectViewContent() {
                 selectedPodcast?.podcast_id === podcast.podcast_id && "ring-2 ring-primary shadow-xl"
               )}
               style={{ animationDelay: `${Math.min(index, 10) * 30}ms` }}
-              onClick={() => setSelectedPodcast(podcast)}
             >
               <CardContent className="p-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPodcast(podcast)}
+                  className="block w-full text-left"
+                  aria-label={`Open ${podcast.podcast_name} details`}
+                >
                 {/* Image */}
                 <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
                   {podcast.podcast_image_url ? (
@@ -1805,7 +1851,7 @@ function ProspectViewContent() {
                 </div>
 
                 {/* Content */}
-                <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+                <div className="p-3 pb-0 sm:p-4 sm:pb-0 space-y-2 sm:space-y-3">
                   <h3 className="font-semibold text-sm sm:text-base line-clamp-2 group-hover:text-primary transition-colors">
                     {podcast.podcast_name}
                   </h3>
@@ -1873,8 +1919,12 @@ function ProspectViewContent() {
                     </div>
                   )}
 
-                  {/* Quick Actions & View Details */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                </div>
+                </button>
+
+                {/* Quick Actions & View Details */}
+                <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+                  <div className="flex items-center justify-between mt-2 sm:mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                     {/* Quick Approve/Reject Buttons */}
                     <div className="flex items-center gap-1">
                       <button
@@ -1890,6 +1940,7 @@ function ProspectViewContent() {
                             : "hover:bg-green-100 dark:hover:bg-green-900/30 text-slate-400 hover:text-green-600"
                         )}
                         title={feedbackMap.get(podcast.podcast_id)?.status === 'approved' ? "Click to unselect" : "Approve"}
+                        disabled={isSavingFeedback}
                       >
                         <ThumbsUp className="h-4 w-4" />
                       </button>
@@ -1906,6 +1957,7 @@ function ProspectViewContent() {
                             : "hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600"
                         )}
                         title={feedbackMap.get(podcast.podcast_id)?.status === 'rejected' ? "Click to unselect" : "Reject"}
+                        disabled={isSavingFeedback}
                       >
                         <ThumbsDown className="h-4 w-4" />
                       </button>
@@ -2348,6 +2400,7 @@ function ProspectViewContent() {
         <SheetContent className="!w-full sm:!max-w-xl p-0 overflow-hidden overflow-x-hidden border-l-0 shadow-2xl">
           {selectedPodcast && (
             <div className="flex flex-col h-[90vh] sm:h-full">
+              <SheetTitle className="sr-only">{selectedPodcast.podcast_name}</SheetTitle>
               {/* Hero Header with Image */}
               <div className="relative h-44 sm:h-64 overflow-hidden flex-shrink-0">
                 {selectedPodcast.podcast_image_url ? (
@@ -2374,6 +2427,7 @@ function ProspectViewContent() {
                   size="icon"
                   className="absolute top-3 right-3 sm:top-4 sm:right-4 h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-sm border border-white/20"
                   onClick={() => setSelectedPodcast(null)}
+                  aria-label="Close"
                 >
                   <X className="h-5 w-5" />
                 </Button>
@@ -2517,10 +2571,7 @@ function ProspectViewContent() {
                             ))}
                           </ul>
                         ) : (
-                          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-sm">Analyzing fit...</span>
-                          </div>
+                          <p className="text-sm text-amber-800 dark:text-amber-200">No fit analysis yet. Your team will add one.</p>
                         )}
                       </div>
 
@@ -2565,10 +2616,7 @@ function ProspectViewContent() {
                             ))}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-sm">Generating pitch ideas...</span>
-                          </div>
+                          <p className="text-sm text-purple-800 dark:text-purple-200">No pitch ideas yet. They will appear once the fit analysis is ready.</p>
                         )}
                       </div>
                     </>
@@ -2983,10 +3031,11 @@ function ProspectViewContent() {
 
                     {/* Notes Section */}
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label htmlFor="prospect-podcast-notes" className="text-xs font-medium text-muted-foreground">
                         Add a note (optional)
                       </label>
                       <Textarea
+                        id="prospect-podcast-notes"
                         placeholder="Any thoughts or questions about this podcast..."
                         value={currentNotes}
                         onChange={(e) => setCurrentNotes(e.target.value)}
@@ -3156,6 +3205,8 @@ function ProspectViewContent() {
               {[0, 1, 2, 3, 4].map((step) => (
                 <button
                   key={step}
+                  type="button"
+                  aria-label={`Go to step ${step + 1}`}
                   onClick={() => setTutorialStep(step)}
                   className={cn(
                     "w-2 h-2 rounded-full transition-all",

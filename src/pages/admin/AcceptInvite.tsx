@@ -14,6 +14,9 @@ const ROLE_WORDS: Record<string, string> = {
   member: 'a member',
 }
 
+const isSamePasswordError = (error: { code?: string; message?: string }) =>
+  error.code === 'same_password' || /different from the old password/iu.test(error.message ?? '')
+
 const AcceptInvite = () => {
   const {
     accountState,
@@ -81,7 +84,9 @@ const AcceptInvite = () => {
         password,
         data: fullName.trim() ? { full_name: fullName.trim() } : undefined,
       })
-      if (passwordError) throw passwordError
+      // If the invite call failed last time, the password is already set and a
+      // retry with the same one gets same_password back. That is not a failure.
+      if (passwordError && !isSamePasswordError(passwordError)) throw passwordError
 
       const { error: acceptanceError } = await supabase.functions.invoke('accept-workspace-invite', {
         body: { membership_id: membership.id },

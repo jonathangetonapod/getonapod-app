@@ -89,6 +89,22 @@ describe('GuestResourcesManagement legacy template editor', () => {
     }))
   })
 
+  it('shows an error state with Retry instead of "no resources" when the load fails', async () => {
+    mockedList.mockRejectedValueOnce(new Error('Network down'))
+    renderPage()
+
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText('Could not load resources')).toBeInTheDocument()
+    expect(within(alert).getByText('Network down')).toBeInTheDocument()
+    expect(screen.queryByText('No resources yet')).not.toBeInTheDocument()
+
+    mockedList.mockResolvedValueOnce([])
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+
+    await screen.findByText('No resources yet')
+    expect(mockedList).toHaveBeenCalledTimes(2)
+  })
+
   it('blocks credential-bearing URLs before calling the service', async () => {
     renderPage()
     const addButtons = await screen.findAllByRole('button', { name: 'Add Resource' })

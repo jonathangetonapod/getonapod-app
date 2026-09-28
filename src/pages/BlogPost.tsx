@@ -27,35 +27,51 @@ export default function BlogPost() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (slug) {
-      loadPost(slug)
-    }
-  }, [slug])
+    if (!slug) return
+    // A reader who moves to another post before this one arrives must not
+    // have the old one land on top of the new.
+    let stale = false
 
-  const loadPost = async (postSlug: string) => {
-    setIsLoading(true)
-    try {
-      const postData = await getPostBySlug(postSlug)
+    const load = async () => {
+      setIsLoading(true)
+      let postData: BlogPostType
+      try {
+        postData = await getPostBySlug(slug)
+      } catch (error) {
+        if (stale) return
+        // Only a missing article sends the reader away.
+        console.error('Failed to load post:', error)
+        toast({
+          title: 'Post not found',
+          description: 'The blog post you are looking for does not exist.',
+          variant: 'destructive',
+        })
+        navigate('/blog')
+        setIsLoading(false)
+        return
+      }
+      if (stale) return
       setPost(postData)
-
-      // Increment view count
-      await incrementViewCount(postData.id)
-
-      // Load related posts
-      const related = await getRelatedPosts(postData, 3)
-      setRelatedPosts(related)
-    } catch (error) {
-      console.error('Failed to load post:', error)
-      toast({
-        title: 'Post not found',
-        description: 'The blog post you are looking for does not exist.',
-        variant: 'destructive',
-      })
-      navigate('/blog')
-    } finally {
       setIsLoading(false)
+
+      // Neither of these is the article. A view that could not be counted or
+      // a related list that did not load is logged and otherwise left alone.
+      incrementViewCount(postData.id).catch((error) => {
+        console.error('Failed to count the view:', error)
+      })
+      try {
+        const related = (await getRelatedPosts(postData, 3)) ?? []
+        if (!stale) setRelatedPosts(related)
+      } catch (error) {
+        console.error('Failed to load related posts:', error)
+      }
     }
-  }
+
+    void load()
+    return () => {
+      stale = true
+    }
+  }, [slug, navigate, toast])
 
   const handleShare = async () => {
     if (navigator.share && post) {

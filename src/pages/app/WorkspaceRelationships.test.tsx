@@ -327,6 +327,33 @@ describe('WorkspaceRelationships', () => {
     expect(screen.getByLabelText('Sort relationships')).toBeInTheDocument()
   })
 
+  // A new relationship has no outreach, so it sorts last; opening it after
+  // creation ran the detail request for a card that never rendered because
+  // the row sat on a page the operator was not looking at.
+  it('moves to the page of a newly added relationship so its card is on screen', async () => {
+    mockedList.mockResolvedValue(Array.from({ length: 30 }, (_, index) => ({
+      ...relationship,
+      podcast_id: `show-${index + 1}`,
+      podcast_name: `Relationship Show ${String(index + 1).padStart(2, '0')}`,
+      host_name: `Host ${index + 1}`,
+      contact_email: `host-${index + 1}@example.com`,
+    })))
+    mockedCreate.mockResolvedValue({ podcast_id: 'show-30', created: true })
+
+    renderPage()
+    expect(await screen.findByText('Relationship Show 01')).toBeInTheDocument()
+    expect(screen.queryByText('Relationship Show 30')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add relationship' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Podcast or show'), { target: { value: 'Relationship Show 30' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add relationship' }))
+
+    expect(await screen.findByRole('heading', { name: 'Relationship Show 30' })).toBeInTheDocument()
+    expect(screen.getByText('Showing 26–30 of 30 relationships')).toBeInTheDocument()
+    expect(screen.queryByText('Relationship Show 01')).not.toBeInTheDocument()
+  })
+
   it('gives ordinary members relationship context without mutation controls', async () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },

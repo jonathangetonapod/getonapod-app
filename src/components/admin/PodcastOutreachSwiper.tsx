@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Check,
   X,
@@ -43,6 +43,15 @@ interface CachedPodcast {
   demographics: Record<string, unknown> | null
 }
 
+// The shortcuts listen on window, so keep them out of text fields elsewhere on
+// the page and out of any open dialog (including this component's own).
+const isShortcutTarget = (target: EventTarget | null) => {
+  if (!(target instanceof Element)) return true
+  if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return false
+  if (target.closest('[role="dialog"]')) return false
+  return true
+}
+
 interface PodcastOutreachSwiperProps {
   podcasts: CachedPodcast[]
   currentIndex: number
@@ -71,6 +80,7 @@ export function PodcastOutreachSwiper({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!currentPodcast || sendingWebhook) return
+      if (!isShortcutTarget(e.target)) return
 
       switch (e.key) {
         case 'ArrowLeft':
@@ -86,7 +96,6 @@ export function PodcastOutreachSwiper({
           e.preventDefault()
           onCheckmark(currentPodcast)
           break
-        case 'Escape':
         case 'x':
         case 'X':
           e.preventDefault()
@@ -240,7 +249,7 @@ export function PodcastOutreachSwiper({
             >
               <X className="h-8 w-8 text-red-500" />
               <span className="text-sm font-semibold">Skip</span>
-              <span className="text-xs text-muted-foreground">Press X or Esc</span>
+              <span className="text-xs text-muted-foreground">Press X</span>
             </Button>
 
             <Button
@@ -268,7 +277,7 @@ export function PodcastOutreachSwiper({
 
           {/* Navigation Hint */}
           <div className="text-center text-xs text-muted-foreground pt-2 border-t">
-            💡 Use ← → arrow keys to navigate, Space/Enter to approve, X/Esc to skip
+            💡 Use ← → arrow keys to navigate, Space/Enter to approve, X to skip
           </div>
         </CardContent>
       </Card>
@@ -281,6 +290,7 @@ export function PodcastOutreachSwiper({
         onClick={onPrevious}
         disabled={currentIndex === 0 || sendingWebhook}
         className="absolute left-4 top-1/2 transform -translate-y-1/2 h-12 w-12 rounded-full"
+        aria-label="Previous podcast"
       >
         <ChevronLeft className="h-6 w-6" />
       </Button>
@@ -292,6 +302,7 @@ export function PodcastOutreachSwiper({
         onClick={onNext}
         disabled={currentIndex === podcasts.length - 1 || sendingWebhook}
         className="absolute right-4 top-1/2 transform -translate-y-1/2 h-12 w-12 rounded-full"
+        aria-label="Next podcast"
       >
         <ChevronRight className="h-6 w-6" />
       </Button>
@@ -304,6 +315,9 @@ export function PodcastOutreachSwiper({
               <Sparkles className="h-5 w-5 text-purple-500" />
               AI Fit Analysis: {currentPodcast?.podcast_name}
             </DialogTitle>
+            <DialogDescription>
+              Why this podcast fits and suggested pitch angles.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6 pt-4">

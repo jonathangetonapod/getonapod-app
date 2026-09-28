@@ -102,17 +102,19 @@ async function getGoogleAccessToken(): Promise<string> {
 }
 
 /**
- * Delete a single podcast row from Google Sheet by podcast_id in column E.
- * Returns true if deleted, false if not found.
+ * Delete every matching podcast row from the Google Sheet in one request.
+ * Column E holds the Podscan podcast id. The rows are read once and deleted
+ * bottom-up in a single batchUpdate, because deleting top-down (or in
+ * parallel, as this used to) shifts every later index and removes rows nobody
+ * asked for. Returns the ids that were found on the sheet.
  */
-async function deletePodcastFromSheet(
+async function deletePodcastsFromSheet(
   accessToken: string,
   spreadsheetId: string,
   sheetId: number,
   sheetName: string,
-  podcastId: string
-): Promise<boolean> {
-  // Read column E (Podscan Podcast ID) to find the row
+  podcastIds: string[]
+): Promise<Set<string>> {
   const sheetResponse = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!E:E`,
     {
@@ -128,23 +130,24 @@ async function deletePodcastFromSheet(
   }
 
   const sheetData = await sheetResponse.json()
-  const rows = sheetData.values || []
-
-  // Find the row index (0-based) that contains the podcast ID
-  let rowIndex = -1
+  const rows: string[][] = sheetData.values || []
+  const wanted = new Set(podcastIds)
+  const found = new Set<string>()
+  const rowIndices: number[] = []
   for (let i = 0; i < rows.length; i++) {
-    if (rows[i][0] === podcastId) {
-      rowIndex = i
-      break
+    const id = rows[i]?.[0]
+    if (typeof id === 'string' && wanted.has(id)) {
+      found.add(id)
+      rowIndices.push(i)
     }
   }
 
-  if (rowIndex === -1) {
-    console.log(`[Batch Delete] Podcast ID not found in sheet: ${podcastId}`)
-    return false
+  if (rowIndices.length === 0) {
+    console.log('[Batch Delete] None of the podcast IDs were found in the sheet')
+    return found
   }
 
-  // Delete the row using batchUpdate
+  rowIndices.sort((left, right) => right - left)
   const deleteResponse = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
     {
@@ -154,35 +157,31 @@ async function deletePodcastFromSheet(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [
-          {
-            deleteDimension: {
-              range: {
-                sheetId: sheetId,
-                dimension: 'ROWS',
-                startIndex: rowIndex,
-                endIndex: rowIndex + 1,
-              },
+        requests: rowIndices.map((rowIndex) => ({
+          deleteDimension: {
+            range: {
+              sheetId: sheetId,
+              dimension: 'ROWS',
+              startIndex: rowIndex,
+              endIndex: rowIndex + 1,
             },
           },
-        ],
+        })),
       }),
     }
   )
 
   if (!deleteResponse.ok) {
     const errorText = await deleteResponse.text()
-    throw new Error(`Failed to delete row: ${errorText}`)
+    throw new Error(`Failed to delete rows: ${errorText}`)
   }
 
-  console.log(`[Batch Delete] Deleted podcast ${podcastId} from sheet row ${rowIndex + 1}`)
-  return true
+  console.log(`[Batch Delete] Deleted ${rowIndices.length} rows from the sheet`)
+  return found
 }
 
 /**
- * Process a batch of podcast deletions concurrently.
- * Each podcast is deleted from the sheet one at a time (sequentially) because
- * row indices shift after each deletion. DB deletes are batched.
+ * Delete the sheet rows in one bottom-up batch, then the database rows.
  */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -241,59 +240,48 @@ serve(async (req) => {
 
     console.log(`[Batch Delete] Using sheet: ${sheetName} with ID: ${sheetId}`)
 
-    // Process in batches of 5 concurrent
+    // The sheet first, all rows in one request. A failure here is recorded
+    // and the database rows are still removed, as before.
+    try {
+      await deletePodcastsFromSheet(accessToken, spreadsheet_id, sheetId, sheetName, podcast_ids)
+    } catch (sheetError) {
+      console.warn('[Batch Delete] Sheet delete failed:', sheetError)
+      errors.push(`Sheet: ${sheetError instanceof Error ? sheetError.message : String(sheetError)}`)
+    }
+
     const BATCH_SIZE = 5
     for (let i = 0; i < podcast_ids.length; i += BATCH_SIZE) {
       const batch = podcast_ids.slice(i, i + BATCH_SIZE)
 
       const batchResults = await Promise.allSettled(
         batch.map(async (podcastId: string) => {
-          try {
-            // 1. Delete from Google Sheet (sequential per podcast since rows shift)
-            try {
-              await deletePodcastFromSheet(accessToken, spreadsheet_id, sheetId, sheetName, podcastId)
-            } catch (sheetError) {
-              console.warn(`[Batch Delete] Sheet delete failed for ${podcastId}:`, sheetError)
-              // Continue with DB deletes even if sheet delete fails
-            }
+          const failures: string[] = []
 
-            // 2. Delete from prospect_dashboard_podcasts
-            const { error: podcastError } = await supabase
-              .from('prospect_dashboard_podcasts')
-              .delete()
-              .eq('prospect_dashboard_id', prospect_id)
-              .eq('podcast_id', podcastId)
+          const { error: podcastError } = await supabase
+            .from('prospect_dashboard_podcasts')
+            .delete()
+            .eq('prospect_dashboard_id', prospect_id)
+            .eq('podcast_id', podcastId)
+          if (podcastError) failures.push(`podcast: ${podcastError.message}`)
 
-            if (podcastError) {
-              console.warn(`[Batch Delete] DB podcast delete failed for ${podcastId}:`, podcastError)
-            }
+          const { error: feedbackError } = await supabase
+            .from('prospect_podcast_feedback')
+            .delete()
+            .eq('prospect_dashboard_id', prospect_id)
+            .eq('podcast_id', podcastId)
+          if (feedbackError) failures.push(`feedback: ${feedbackError.message}`)
 
-            // 3. Delete from prospect_podcast_feedback
-            const { error: feedbackError } = await supabase
-              .from('prospect_podcast_feedback')
-              .delete()
-              .eq('prospect_dashboard_id', prospect_id)
-              .eq('podcast_id', podcastId)
+          const { error: analysisError } = await supabase
+            .from('prospect_podcast_analyses')
+            .delete()
+            .eq('prospect_dashboard_id', prospect_id)
+            .eq('podcast_id', podcastId)
+          if (analysisError) failures.push(`analysis: ${analysisError.message}`)
 
-            if (feedbackError) {
-              console.warn(`[Batch Delete] DB feedback delete failed for ${podcastId}:`, feedbackError)
-            }
-
-            // 4. Delete from prospect_podcast_analyses
-            const { error: analysisError } = await supabase
-              .from('prospect_podcast_analyses')
-              .delete()
-              .eq('prospect_dashboard_id', prospect_id)
-              .eq('podcast_id', podcastId)
-
-            if (analysisError) {
-              console.warn(`[Batch Delete] DB analysis delete failed for ${podcastId}:`, analysisError)
-            }
-
-            return podcastId
-          } catch (err) {
-            throw new Error(`Failed to delete podcast ${podcastId}: ${err instanceof Error ? err.message : String(err)}`)
+          if (failures.length > 0) {
+            throw new Error(`Failed to delete podcast ${podcastId}: ${failures.join('; ')}`)
           }
+          return podcastId
         })
       )
 

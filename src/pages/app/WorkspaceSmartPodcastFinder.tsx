@@ -609,7 +609,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               </Select>
               <Button
                 onClick={() => void runScan()}
-                disabled={!selectedClient || scanning || contextQuery.isLoading}
+                disabled={!selectedClient || scanning || contextQuery.isLoading || contextQuery.isError}
                 className="sm:w-auto"
               >
                 {scanning
@@ -834,7 +834,13 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                   </Button>
                 </div>
               </div>
-            {selectedClient && !contextQuery.isLoading && !clientBio && (
+            {selectedClient && contextQuery.isError && (
+              <p className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+                {selectedClient.name}’s profile could not be loaded.
+                <button type="button" className="font-medium underline underline-offset-2" onClick={() => void contextQuery.refetch()}>Retry</button>
+              </p>
+            )}
+            {selectedClient && !contextQuery.isLoading && !contextQuery.isError && !clientBio && (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
                 {selectedClient.name} has no profile bio yet, so the AI has nothing to match against.{' '}
                 <Link className="font-semibold underline underline-offset-2" to={`${baseHref}/clients/${selectedClient.id}`}>

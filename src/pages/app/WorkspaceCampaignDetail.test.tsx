@@ -11,6 +11,8 @@ import {
   getWorkspaceCampaignSendingStatus,
   getWorkspaceTargetLeadStatus,
   setWorkspaceCampaignRunning,
+  syncWorkspaceCampaign,
+  updateWorkspaceCampaignSettings,
   type WorkspaceCampaignDetailResponse,
   type WorkspaceClientCampaign,
 } from '@/services/workspaceCampaigns'
@@ -24,6 +26,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   getWorkspaceTargetLeadStatus: vi.fn(),
   saveWorkspaceCampaign: vi.fn(),
   setWorkspaceCampaignRunning: vi.fn(),
+  syncWorkspaceCampaign: vi.fn(),
   updateWorkspaceCampaignSettings: vi.fn(),
 }))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
@@ -300,7 +303,12 @@ describe('WorkspaceCampaignDetail', () => {
 
   it('places campaign controls at the top and bottom of Options and swaps pause to resume', async () => {
     mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
-    mockedRunning.mockResolvedValueOnce({ ...activeCampaign, status: 'paused' })
+    // The refetch after the change reads the row the server now holds; the
+    // optimistic preview is dropped once it lands, so a later sync can move it.
+    mockedRunning.mockImplementationOnce(async () => {
+      mockedCampaign.mockResolvedValue({ ...campaignState, campaign: { ...activeCampaign, status: 'paused' } })
+      return { ...activeCampaign, status: 'paused' }
+    })
     renderPage()
 
     expect(await screen.findByText('Campaign active')).toBeInTheDocument()
@@ -319,7 +327,10 @@ describe('WorkspaceCampaignDetail', () => {
   it('turns a draft campaign launch action into a red pause action', async () => {
     const draftCampaign = { ...activeCampaign, status: 'draft' as const, instantly_campaign_status: 0 }
     mockedCampaign.mockResolvedValue({ ...campaignState, campaign: draftCampaign })
-    mockedRunning.mockResolvedValueOnce({ ...activeCampaign, status: 'active' })
+    mockedRunning.mockImplementationOnce(async () => {
+      mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+      return { ...activeCampaign, status: 'active' }
+    })
     renderPage()
 
     expect(await screen.findByText('Campaign inactive · Not launched')).toBeInTheDocument()
@@ -585,6 +596,84 @@ function withStagedLead() {
 
     fireEvent.click(screen.getByRole('button', { name: /Final follow-up/ }))
     expect(await screen.findByText('A reviewed final follow-up.')).toBeInTheDocument()
+  })
+
+  // The background sync invalidates the campaign on arrival, and the settings
+  // drafts used to be re-seeded from every refetch: an edit made in the first
+  // seconds on the page was wiped under the operator's cursor.
+  it('keeps an edited setting through a background refetch while untouched ones follow the server', async () => {
+    const connected = {
+      ...campaignState.integration,
+      connected: true,
+      status: 'connected' as const,
+      accounts: [{ email: 'active@example.com', first_name: 'Active', last_name: 'Sender', status: 1, warmup_status: 1, daily_limit: 40 }],
+      active_account_count: 1,
+    }
+    // Stale on arrival, so the page syncs in the background and refetches.
+    const staleCampaign = { ...activeCampaign, last_synced_at: '2026-01-01T00:00:00Z' }
+    mockedCampaign
+      .mockResolvedValueOnce({ ...campaignState, integration: connected, campaign: staleCampaign })
+      .mockResolvedValue({
+        ...campaignState,
+        integration: connected,
+        campaign: { ...staleCampaign, name: 'Renamed in Instantly', last_synced_at: '2026-08-01T12:00:00Z' },
+      })
+    let finishSync: () => void = () => {}
+    vi.mocked(syncWorkspaceCampaign).mockImplementation(() => new Promise((resolve) => {
+      finishSync = () => resolve(undefined as never)
+    }))
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
+    const limit = await screen.findByLabelText('Daily lead limit')
+    expect(limit).toHaveValue(30)
+    fireEvent.change(limit, { target: { value: '45' } })
+
+    finishSync()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Options' }), { button: 0 })
+    await waitFor(() => expect(screen.getByLabelText('Campaign name')).toHaveValue('Renamed in Instantly'))
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Schedule' }), { button: 0 })
+    expect(await screen.findByLabelText('Daily lead limit')).toHaveValue(45)
+  })
+
+  // An emptied number field used to snap straight back to 1, so typing 25
+  // produced 125. The field holds what was typed; the save parses it.
+  it('lets a count be cleared and retyped, and saves it as a number', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+    vi.mocked(updateWorkspaceCampaignSettings).mockResolvedValue(activeCampaign)
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
+    const limit = await screen.findByLabelText('Daily lead limit')
+    fireEvent.change(limit, { target: { value: '' } })
+    expect(limit).toHaveValue(null)
+    fireEvent.change(limit, { target: { value: '25' } })
+    expect(limit).toHaveValue(25)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
+    await waitFor(() => expect(updateWorkspaceCampaignSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ dailyLimit: 25, followUpOneDelayDays: 6, followUpTwoDelayDays: 7 }),
+    ))
+  })
+
+  // Every save button posts the same payload, so a schedule that cannot be
+  // saved from Schedule cannot be saved from Options or Sequences either.
+  it('disables every save while the schedule is invalid', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
+    fireEvent.change(await screen.findByLabelText('Window opens'), { target: { value: '18:00' } })
+    fireEvent.change(screen.getByLabelText('Window closes'), { target: { value: '09:00' } })
+    expect(screen.getByRole('button', { name: 'Save schedule' })).toBeDisabled()
+    expect(screen.getByText('The window has to close after it opens.')).toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Options' }), { button: 0 })
+    expect(await screen.findByRole('button', { name: 'Save settings' })).toBeDisabled()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sequences' }), { button: 0 })
+    expect(await screen.findByRole('button', { name: 'Save cadence' })).toBeDisabled()
+    expect(screen.getByText(/The sending schedule is not valid/)).toBeInTheDocument()
   })
 
   // The wait belongs on the connector between two steps, where the delay

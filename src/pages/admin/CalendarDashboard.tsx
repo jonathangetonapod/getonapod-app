@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/admin/DashboardLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -18,6 +18,7 @@ import { getClients } from '@/services/clients'
 import { getBookings, getBookingsByMonth, updateBooking, deleteBooking } from '@/services/bookings'
 import { createCalendarEventFromBooking, openGoogleCalendar } from '@/lib/googleCalendar'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { formatLocalDateKey, parseLocalDate } from '@/lib/localDate'
 import { toast } from 'sonner'
 
 const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -86,6 +87,9 @@ export default function CalendarDashboard() {
       // Invalidate all booking queries to refresh all views
       queryClient.invalidateQueries({ queryKey: ['bookings'] })
       setEditingBooking(null)
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to save booking')
     }
   })
 
@@ -98,6 +102,9 @@ export default function CalendarDashboard() {
       setDeletingBooking(null)
       setSelectedDay(null)
       setEditingBooking(null)
+    },
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete booking')
     }
   })
 
@@ -133,10 +140,16 @@ export default function CalendarDashboard() {
         return
       }
 
+      // Empty strings are rejected by the DATE columns, so blank fields go up as null.
       updateBookingMutation.mutate({
         id: editingBooking.id,
         updates: {
           ...editBookingForm,
+          scheduled_date: editBookingForm.scheduled_date || null,
+          recording_date: editBookingForm.recording_date || null,
+          publish_date: editBookingForm.publish_date || null,
+          host_name: editBookingForm.host_name.trim() || null,
+          notes: editBookingForm.notes.trim() || null,
           podcast_url: podcastUrl,
           episode_url: episodeUrl,
         }
@@ -174,7 +187,7 @@ export default function CalendarDashboard() {
 
   // Get bookings for a specific date (show conversation_started, booked, recorded, published - not in_progress)
   const getBookingsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0]
+    const dateStr = formatLocalDateKey(date)
     return monthBookings.filter(b => {
       const matchesDate = b.scheduled_date === dateStr
       const isVisibleStatus = b.status === 'conversation_started' || b.status === 'booked' || b.status === 'recorded' || b.status === 'published'
@@ -267,9 +280,10 @@ export default function CalendarDashboard() {
       in_progress: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
       recorded: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
       published: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      cancelled: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200',
     }
     return (
-      <Badge className={styles[status as keyof typeof styles]}>
+      <Badge className={styles[status as keyof typeof styles] ?? styles.cancelled}>
         {status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
       </Badge>
     )
@@ -421,10 +435,10 @@ export default function CalendarDashboard() {
                 <Button variant="outline" size="sm" onClick={goToToday}>
                   Today
                 </Button>
-                <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
+                <Button variant="outline" size="icon" onClick={goToPreviousMonth} aria-label="Previous month">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="icon" onClick={goToNextMonth}>
+                <Button variant="outline" size="icon" onClick={goToNextMonth} aria-label="Next month">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -620,7 +634,7 @@ export default function CalendarDashboard() {
                 const isExpanded = expandedClients.has(client.id)
                 const clientBookings = allBookings
                   .filter(b => b.client_id === client.id)
-                  .sort((a, b) => new Date(b.scheduled_date || '').getTime() - new Date(a.scheduled_date || '').getTime())
+                  .sort((a, b) => (parseLocalDate(b.scheduled_date)?.getTime() ?? 0) - (parseLocalDate(a.scheduled_date)?.getTime() ?? 0))
                 const completionRate = stats.total > 0 ? (stats.published / stats.total) * 100 : 0
 
                 return (
@@ -643,6 +657,8 @@ export default function CalendarDashboard() {
                           variant="ghost"
                           size="sm"
                           onClick={() => toggleClientExpanded(client.id)}
+                          aria-label={isExpanded ? `Collapse ${client.name}` : `Expand ${client.name}`}
+                          aria-expanded={isExpanded}
                         >
                           {isExpanded ? (
                             <ChevronUp className="h-4 w-4" />
@@ -724,11 +740,11 @@ export default function CalendarDashboard() {
                                 <div className="flex-1 min-w-0">
                                   <p className="font-medium truncate">{booking.podcast_name}</p>
                                   <p className="text-sm text-muted-foreground">
-                                    {booking.scheduled_date ? new Date(booking.scheduled_date).toLocaleDateString('en-US', {
+                                    {parseLocalDate(booking.scheduled_date)?.toLocaleDateString('en-US', {
                                       month: 'short',
                                       day: 'numeric',
                                       year: 'numeric'
-                                    }) : 'No date set'}
+                                    }) ?? 'No date set'}
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -747,6 +763,7 @@ export default function CalendarDashboard() {
                                         }
                                       }}
                                       title="Add to Google Calendar"
+                                      aria-label={`Add ${booking.podcast_name} to Google Calendar`}
                                     >
                                       <CalendarPlus className="h-4 w-4" />
                                     </Button>
@@ -908,10 +925,12 @@ export default function CalendarDashboard() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="conversation_started">Conversation Started</SelectItem>
                         <SelectItem value="in_progress">In Progress</SelectItem>
                         <SelectItem value="booked">Booked</SelectItem>
                         <SelectItem value="recorded">Recorded</SelectItem>
                         <SelectItem value="published">Published</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
                     <Input
@@ -1009,6 +1028,7 @@ export default function CalendarDashboard() {
                                       }
                                     }}
                                     title="Add to Google Calendar"
+                                    aria-label={`Add ${booking.podcast_name} to Google Calendar`}
                                   >
                                     <CalendarPlus className="h-4 w-4" />
                                   </Button>
@@ -1018,6 +1038,7 @@ export default function CalendarDashboard() {
                                   size="sm"
                                   onClick={() => handleDeleteBooking(booking)}
                                   className="text-destructive hover:text-destructive"
+                                  aria-label={`Delete ${booking.podcast_name}`}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1069,6 +1090,7 @@ export default function CalendarDashboard() {
                 day: 'numeric'
               })}
             </DialogTitle>
+            <DialogDescription>Bookings scheduled on this day.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {selectedDay?.bookings.map(booking => (
@@ -1124,25 +1146,21 @@ export default function CalendarDashboard() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Recording Date</p>
                     <p className="text-sm">
-                      {booking.recording_date
-                        ? new Date(booking.recording_date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })
-                        : 'Not set'}
+                      {parseLocalDate(booking.recording_date)?.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      }) ?? 'Not set'}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Publish Date</p>
                     <p className="text-sm">
-                      {booking.publish_date
-                        ? new Date(booking.publish_date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })
-                        : 'Not set'}
+                      {parseLocalDate(booking.publish_date)?.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      }) ?? 'Not set'}
                     </p>
                   </div>
                   <div>
@@ -1230,6 +1248,7 @@ export default function CalendarDashboard() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Podcast Booking</DialogTitle>
+            <DialogDescription>Update the booking's dates, status and details.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -1391,11 +1410,11 @@ export default function CalendarDashboard() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Podcast</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this podcast booking? This action cannot be undone.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete this podcast booking? This action cannot be undone.
-            </p>
             {deletingBooking && (
               <div className="p-3 bg-muted rounded-lg">
                 <p className="font-medium">{deletingBooking.podcast_name}</p>

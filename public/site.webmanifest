@@ -1,7 +1,7 @@
 {
   "name": "Get On A Pod",
   "short_name": "GOAP",
-  "description": "Done-for-you podcast and stage booking. You bring the story \u2014 we get you the room.",
+  "description": "Done-for-you podcast guesting. You bring the story, we get you on the show.",
   "theme_color": "#201f1d",
   "background_color": "#f3f2f2",
   "display": "standalone",

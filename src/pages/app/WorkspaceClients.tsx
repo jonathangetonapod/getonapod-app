@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Bot, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
@@ -26,6 +26,7 @@ import { getAdminWorkspaceView, type AdminWorkspaceView } from '@/services/admin
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 
+const DUPLICATE_SUBMIT = 'Already saving.'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const emptyClient: WorkspaceClientInput = {
@@ -122,17 +123,27 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
     ? selectedWorkspaceBaseHref(selectedWorkspaceId)
     : MY_WORKSPACE_BASE_HREF
 
+  // Enter-key repeat fires the form submit synchronously, before the
+  // button's disabled state re-renders, so a create could POST twice and
+  // duplicate the client (no unique constraint upstream). A ref, not
+  // saveMutation.isPending: the mutationFn closes over the render it was
+  // created in, where isPending is still false.
+  const saveInFlight = useRef(false)
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // Enter-key repeat fires the form submit synchronously, before the
-      // button's disabled state re-renders — without this a create could
-      // POST twice and duplicate the client (no unique constraint upstream).
-      if (saveMutation.isPending) throw new Error('Already saving.')
+      if (saveInFlight.current) throw new Error(DUPLICATE_SUBMIT)
+      saveInFlight.current = true
       if (!workspaceId) throw new Error('Workspace is unavailable.')
       if (!form.name.trim()) throw new Error('Client name is required.')
       return editing
         ? updateWorkspaceClient(workspaceId, editing.id, form)
         : createWorkspaceClient(workspaceId, form)
+    },
+    onSettled: (_data, error) => {
+      // The refused duplicate settles too; only the save that set the flag
+      // clears it, once its success handler has closed the dialog.
+      if (error instanceof Error && error.message === DUPLICATE_SUBMIT) return
+      saveInFlight.current = false
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: activeQueryKey })
@@ -141,7 +152,11 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
       setForm(emptyClient)
       toast.success(editing ? 'Client updated.' : 'Client added.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to save client.'),
+    onError: (error) => {
+      // The refused repeat is not news; the first submit is still saving.
+      if (error instanceof Error && error.message === DUPLICATE_SUBMIT) return
+      toast.error(error instanceof Error ? error.message : 'Unable to save client.')
+    },
   })
 
   const deleteMutation = useMutation({
@@ -352,9 +367,9 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
               <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-name">Client name</Label><Input id="client-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
               <div className="space-y-2"><Label htmlFor="client-email">Email</Label><Input id="client-email" type="email" value={form.email || ''} onChange={(event) => setForm({ ...form, email: event.target.value })} /></div>
               <div className="space-y-2"><Label htmlFor="client-contact">Contact person</Label><Input id="client-contact" value={form.contact_person || ''} onChange={(event) => setForm({ ...form, contact_person: event.target.value })} /></div>
-              <div className="space-y-2"><Label htmlFor="client-website">Website</Label><Input id="client-website" type="url" value={form.website || ''} onChange={(event) => setForm({ ...form, website: event.target.value })} /></div>
-              <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={(value: WorkspaceClientInput['status']) => setForm({ ...form, status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="paused">Paused</SelectItem><SelectItem value="churned">Churned</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-linkedin">LinkedIn URL</Label><Input id="client-linkedin" type="url" value={form.linkedin_url || ''} onChange={(event) => setForm({ ...form, linkedin_url: event.target.value })} /></div>
+              <div className="space-y-2"><Label htmlFor="client-website">Website</Label><Input id="client-website" type="text" inputMode="url" value={form.website || ''} onChange={(event) => setForm({ ...form, website: event.target.value })} /></div>
+              <div className="space-y-2"><Label htmlFor="client-status">Status</Label><Select value={form.status} onValueChange={(value: WorkspaceClientInput['status']) => setForm({ ...form, status: value })}><SelectTrigger id="client-status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="paused">Paused</SelectItem><SelectItem value="churned">Churned</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-linkedin">LinkedIn URL</Label><Input id="client-linkedin" type="text" inputMode="url" value={form.linkedin_url || ''} onChange={(event) => setForm({ ...form, linkedin_url: event.target.value })} /></div>
               <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-notes">Notes</Label><Textarea id="client-notes" value={form.notes || ''} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
             </div>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="submit" disabled={saveMutation.isPending}>{saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editing ? 'Save changes' : 'Add client'}</Button></DialogFooter>

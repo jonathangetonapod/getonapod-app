@@ -50,9 +50,17 @@ const ACTION_LABEL: Record<AccessRequestStatus, string> = {
   declined: 'Decline',
 }
 
-/** Their company if they gave one, otherwise their own name. */
+/** The longest workspace name manage-workspace-users accepts. */
+const WORKSPACE_NAME_MAX = 120
+
+/**
+ * Their company if they gave one, otherwise their own name. The form takes a
+ * longer company than a workspace name may be, so it is cut to fit rather
+ * than letting the invitation be refused for a name nobody chose.
+ */
 function workspaceNameFor(request: JoinRequest): string {
-  return request.company?.trim() || request.full_name.trim()
+  const name = request.company?.trim() || request.full_name.trim()
+  return name.slice(0, WORKSPACE_NAME_MAX).trim()
 }
 
 function waitedFor(iso: string): string {

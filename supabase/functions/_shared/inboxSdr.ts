@@ -70,8 +70,18 @@ const WEEKDAY_INDEX: Record<string, number> = {
  * disagree with the campaign in both directions — holding a nudge during a
  * window the campaign was sending in, or releasing one outside it.
  */
+/**
+ * Instantly's Pacific entry is America/Dawson, and the IANA rules have kept
+ * the Yukon on UTC-7 all year since 2020. The campaign means Pacific, so the
+ * nudge window is read on that clock. Mirrors clockZoneFor in the app.
+ */
+const CLOCK_ZONES: Record<string, string> = {
+  'America/Dawson': 'America/Los_Angeles',
+}
+
 export function withinSendWindow(timezone: string, window?: CampaignSendWindow | null): boolean {
-  const zone = window?.timezone || timezone
+  const listed = window?.timezone || timezone
+  const zone = CLOCK_ZONES[listed] ?? listed
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: zone,
@@ -418,7 +428,10 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
     referenceId: clientId,
     clientId,
     actorUserId: input.actorUserId,
-    idempotencyKey: retryWindowKey(['inbox_reply_package', workspaceId, clientId, input.referenceKind]),
+    // Keyed to the host too: per client alone, the second and third replies a
+    // tick drafted inside the window replayed the first one's charge and ran
+    // the model for free.
+    idempotencyKey: retryWindowKey(['inbox_reply_package', workspaceId, clientId, input.referenceKind, input.leadEmail ?? null]),
     byoKeyUsed: usedByoKey,
   })
   try {

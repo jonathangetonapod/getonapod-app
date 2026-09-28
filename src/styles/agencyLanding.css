@@ -95,7 +95,17 @@
 .gp-nav a { color: var(--muted); text-decoration: none; }
 .gp-nav a:hover { color: var(--ink); }
 .gp-masthead-actions { display: flex; align-items: center; gap: 0.75rem; }
-@media (max-width: 860px) { .gp-nav { display: none; } }
+/* On a narrow screen the four section links take a row of their own under
+   the mark, scrolling sideways rather than disappearing. */
+@media (max-width: 860px) {
+  .gp-masthead-in { height: auto; flex-wrap: wrap; padding-block: 0.7rem 0.15rem; row-gap: 0.15rem; }
+  .gp-nav {
+    order: 3; flex-basis: 100%; gap: 1.25rem;
+    overflow-x: auto; white-space: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .gp-nav::-webkit-scrollbar { display: none; }
+  .gp-nav a { flex: none; padding-block: 0.6rem; }
+}
 
 /* ---------- buttons ---------- */
 .gp-btn {

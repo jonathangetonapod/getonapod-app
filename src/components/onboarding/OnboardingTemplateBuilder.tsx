@@ -344,7 +344,21 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
       if (!draft.definition.intro_title.trim() || !draft.definition.intro_body.trim() || !draft.definition.completion_message.trim()) {
         throw new Error('Complete the client intro title, intro text, and completion message.')
       }
-      const questions = draft.definition.sections.flatMap((section) => {
+      // Empty choice lines are an editing artifact, not a choice.
+      const sections = draft.definition.sections.map((section) => ({
+        ...section,
+        questions: section.questions.map((question) => (
+          question.options
+            ? {
+                ...question,
+                options: question.options
+                  .map((option) => ({ ...option, label: option.label.trim() }))
+                  .filter((option) => option.label),
+              }
+            : question
+        )),
+      }))
+      const questions = sections.flatMap((section) => {
         if (!section.title.trim()) throw new Error('Every section needs a title.')
         return section.questions
       })
@@ -353,7 +367,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
       }
       if (questions.some((question) => (
         question.type === 'single_select' || question.type === 'multi_select'
-      ) && (!question.options?.length || question.options.some((option) => !option.label.trim())))) {
+      ) && !question.options?.length)) {
         throw new Error('Every select question needs at least one labeled option.')
       }
       const mappings = questions
@@ -363,7 +377,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
         throw new Error('Each client field can be mapped only once.')
       }
       setBuilderError(null)
-      onSave({ ...draft, reminder_days: [] }, publish, makeDefault)
+      onSave({ ...draft, definition: { ...draft.definition, sections }, reminder_days: [] }, publish, makeDefault)
     } catch (error) {
       setBuilderError(error instanceof Error ? error.message : 'The template is invalid.')
     }
@@ -749,10 +763,15 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                                         value={optionsText}
                                         placeholder={'One choice per line\nExample choice'}
                                         onChange={(event) => updateQuestion(activeSectionIndex, questionIndex, {
-                                          options: event.target.value.split('\n').map((label, index) => ({
+                                          // Blank lines stay while typing: the value is
+                                          // rebuilt from the options, so dropping the empty
+                                          // line Enter just created snapped the newline away
+                                          // and made a second choice impossible to type.
+                                          // Blank labels are stripped when the template is saved.
+                                          options: event.target.value.split('\n').slice(0, 50).map((label, index) => ({
                                             id: question.options?.[index]?.id ?? generatedId('option'),
                                             label,
-                                          })).filter((option) => option.label.trim()).slice(0, 50),
+                                          })),
                                         })}
                                       />
                                       <p className="text-xs text-muted-foreground">Add one choice per line, up to 50 choices.</p>

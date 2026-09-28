@@ -12,6 +12,7 @@ import {
   requirePlatformAdmin,
   requireUuid,
 } from '../_shared/workspaceAuth.ts'
+import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 
 const METHODS = ['POST'] as const
 
@@ -56,7 +57,13 @@ function stringList(value: unknown, maxItems: number, maxLength: number): string
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+  if (req.method === 'OPTIONS') {
+    // Portal pages are served from tenant custom domains too, and the
+    // preflight is the first request that origin ever makes, so it has to
+    // warm the allowlist itself or the domain never works.
+    await ensureWorkspaceOriginAllowed(createAdminClient(), req)
+    return optionsResponse(req, METHODS)
+  }
 
   try {
     if (req.method !== 'POST') {
@@ -70,6 +77,7 @@ serve(async (req) => {
       ? null
       : requireUuid(body.sessionToken, 'sessionToken')
     const admin = createAdminClient()
+    await ensureWorkspaceOriginAllowed(admin, req)
 
     if (sessionToken) {
       const sessionTokenHash = await hashPortalSessionToken(sessionToken)

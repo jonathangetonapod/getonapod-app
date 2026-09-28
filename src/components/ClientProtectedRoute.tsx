@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Loader2, ShieldX } from 'lucide-react'
@@ -11,6 +12,10 @@ interface ClientProtectedRouteProps {
 export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) => {
   const { client, loading, isImpersonating } = useClientPortal()
   const location = useLocation()
+  // Remember that a session existed on this page, so losing it (expiry, a 401)
+  // can be told apart from arriving with no session at all.
+  const hadClient = useRef(false)
+  if (client) hadClient.current = true
 
   if (loading) {
     return (
@@ -26,7 +31,7 @@ export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) =>
   // Allow access if client exists (either authenticated or admin impersonating)
   if (!client) {
     // Redirect to portal login, preserving the attempted URL
-    return <Navigate to="/portal/login" state={{ from: location }} replace />
+    return <Navigate to="/portal/login" state={{ from: location, sessionExpired: hadClient.current }} replace />
   }
 
   return <>{children}</>

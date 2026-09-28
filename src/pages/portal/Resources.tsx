@@ -73,6 +73,123 @@ const typeInfo = {
   link: { icon: ExternalLink, label: 'External Link' },
 }
 
+interface ResourceItemProps {
+  resource: PortalGuestResource
+  onAction: (resource: PortalGuestResource) => void
+}
+
+// Defined at module scope so cards keep their identity across renders; an inline
+// component would remount every card and drop focus after a dialog closes.
+const ResourceCard = ({ resource, onAction }: ResourceItemProps) => {
+  const CategoryIcon = categoryInfo[resource.category].icon
+  const TypeIcon = typeInfo[resource.type].icon
+
+  return (
+    <Card
+      className="hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      onClick={() => onAction(resource)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onAction(resource)
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`${typeInfo[resource.type].label}: ${resource.title}`}
+    >
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <Badge className={categoryInfo[resource.category].color}>
+                <CategoryIcon className="h-3 w-3 mr-1" />
+                {categoryInfo[resource.category].label}
+              </Badge>
+              {resource.featured && (
+                <Badge variant="secondary">
+                  <Star className="h-3 w-3 mr-1 fill-current" />
+                  Featured
+                </Badge>
+              )}
+            </div>
+            <CardTitle className="text-lg line-clamp-2">{resource.title}</CardTitle>
+          </div>
+          <TypeIcon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col">
+        <CardDescription className="line-clamp-3 flex-1">
+          {resource.description}
+        </CardDescription>
+        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {new Date(resource.published_at).toLocaleDateString()}
+          </span>
+          <span className="font-medium text-primary">
+            {resource.type === 'article' ? 'Read More' :
+             resource.type === 'video' ? 'Watch' :
+             resource.type === 'download' ? 'Download' : 'Visit'}
+            <ExternalLink className="h-3 w-3 inline ml-1" />
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+const ResourceListItem = ({ resource, onAction }: ResourceItemProps) => {
+  const CategoryIcon = categoryInfo[resource.category].icon
+  const TypeIcon = typeInfo[resource.type].icon
+
+  return (
+    <Card
+      className="hover:shadow-md transition-shadow cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      onClick={() => onAction(resource)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onAction(resource)
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`${typeInfo[resource.type].label}: ${resource.title}`}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
+            <TypeIcon className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge className={`${categoryInfo[resource.category].color} text-xs`}>
+                <CategoryIcon className="h-3 w-3 mr-1" />
+                {categoryInfo[resource.category].label}
+              </Badge>
+              {resource.featured && (
+                <Badge variant="secondary" className="text-xs">
+                  <Star className="h-3 w-3 mr-1 fill-current" />
+                  Featured
+                </Badge>
+              )}
+            </div>
+            <h3 className="font-semibold text-base mb-1">{resource.title}</h3>
+            <p className="text-sm text-muted-foreground line-clamp-2">{resource.description}</p>
+          </div>
+          <div className="flex-shrink-0 text-sm text-primary font-medium">
+            {resource.type === 'article' ? 'Read' :
+             resource.type === 'video' ? 'Watch' :
+             resource.type === 'download' ? 'Download' : 'Visit'}
+            <ExternalLink className="h-3 w-3 inline ml-1" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function PortalResources() {
   const { isPlatformAdmin } = useAuth()
   const { client, session, isImpersonating, logout } = useClientPortal()
@@ -146,116 +263,6 @@ export default function PortalResources() {
     } else if (resource.type === 'article') {
       handleViewResource(resource)
     }
-  }
-
-  const ResourceCard = ({ resource }: { resource: PortalGuestResource }) => {
-    const CategoryIcon = categoryInfo[resource.category].icon
-    const TypeIcon = typeInfo[resource.type].icon
-
-    return (
-      <Card
-        className="hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        onClick={() => handleResourceAction(resource)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            handleResourceAction(resource)
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-label={`${typeInfo[resource.type].label}: ${resource.title}`}
-      >
-        <CardHeader>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <Badge className={categoryInfo[resource.category].color}>
-                  <CategoryIcon className="h-3 w-3 mr-1" />
-                  {categoryInfo[resource.category].label}
-                </Badge>
-                {resource.featured && (
-                  <Badge variant="secondary">
-                    <Star className="h-3 w-3 mr-1 fill-current" />
-                    Featured
-                  </Badge>
-                )}
-              </div>
-              <CardTitle className="text-lg line-clamp-2">{resource.title}</CardTitle>
-            </div>
-            <TypeIcon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-          </div>
-        </CardHeader>
-        <CardContent className="flex-1 flex flex-col">
-          <CardDescription className="line-clamp-3 flex-1">
-            {resource.description}
-          </CardDescription>
-          <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {new Date(resource.published_at).toLocaleDateString()}
-            </span>
-            <span className="font-medium text-primary">
-              {resource.type === 'article' ? 'Read More' :
-               resource.type === 'video' ? 'Watch' :
-               resource.type === 'download' ? 'Download' : 'Visit'}
-              <ExternalLink className="h-3 w-3 inline ml-1" />
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const ResourceListItem = ({ resource }: { resource: PortalGuestResource }) => {
-    const CategoryIcon = categoryInfo[resource.category].icon
-    const TypeIcon = typeInfo[resource.type].icon
-
-    return (
-      <Card
-        className="hover:shadow-md transition-shadow cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        onClick={() => handleResourceAction(resource)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            handleResourceAction(resource)
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-label={`${typeInfo[resource.type].label}: ${resource.title}`}
-      >
-        <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
-              <TypeIcon className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Badge className={`${categoryInfo[resource.category].color} text-xs`}>
-                  <CategoryIcon className="h-3 w-3 mr-1" />
-                  {categoryInfo[resource.category].label}
-                </Badge>
-                {resource.featured && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Star className="h-3 w-3 mr-1 fill-current" />
-                    Featured
-                  </Badge>
-                )}
-              </div>
-              <h3 className="font-semibold text-base mb-1">{resource.title}</h3>
-              <p className="text-sm text-muted-foreground line-clamp-2">{resource.description}</p>
-            </div>
-            <div className="flex-shrink-0 text-sm text-primary font-medium">
-              {resource.type === 'article' ? 'Read' :
-               resource.type === 'video' ? 'Watch' :
-               resource.type === 'download' ? 'Download' : 'Visit'}
-              <ExternalLink className="h-3 w-3 inline ml-1" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
   }
 
   if (isLoading) {
@@ -354,13 +361,13 @@ export default function PortalResources() {
             {viewMode === 'grid' ? (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {featuredResources.map(resource => (
-                  <ResourceCard key={resource.id} resource={resource} />
+                  <ResourceCard key={resource.id} resource={resource} onAction={handleResourceAction} />
                 ))}
               </div>
             ) : (
               <div className="space-y-3">
                 {featuredResources.map(resource => (
-                  <ResourceListItem key={resource.id} resource={resource} />
+                  <ResourceListItem key={resource.id} resource={resource} onAction={handleResourceAction} />
                 ))}
               </div>
             )}
@@ -376,13 +383,13 @@ export default function PortalResources() {
             {viewMode === 'grid' ? (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {regularResources.map(resource => (
-                  <ResourceCard key={resource.id} resource={resource} />
+                  <ResourceCard key={resource.id} resource={resource} onAction={handleResourceAction} />
                 ))}
               </div>
             ) : (
               <div className="space-y-3">
                 {regularResources.map(resource => (
-                  <ResourceListItem key={resource.id} resource={resource} />
+                  <ResourceListItem key={resource.id} resource={resource} onAction={handleResourceAction} />
                 ))}
               </div>
             )}

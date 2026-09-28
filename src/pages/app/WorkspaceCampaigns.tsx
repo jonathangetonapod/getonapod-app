@@ -62,7 +62,7 @@ import {
   type WorkspaceInstantlyIntegration,
 } from '@/services/workspaceCampaigns'
 import { type WorkspaceClient } from '@/services/clients'
-import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, toInstantlyTimezone } from '@/lib/instantlyTimezones'
+import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, instantlyTimezoneLabel, toInstantlyTimezone } from '@/lib/instantlyTimezones'
 import { describeSyncFreshness } from '@/lib/syncFreshness'
 
 type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed'
@@ -361,7 +361,9 @@ const WorkspaceCampaigns = ({
   const [campaignTimezoneDraft, setCampaignTimezoneDraft] = useState(() => (
     defaultInstantlyTimezone()
   ))
-  const [campaignDailyLimit, setCampaignDailyLimit] = useState(30)
+  // Held as typed: coercing on every keystroke snapped an emptied field back
+  // to 1, so typing 25 produced 125. Parsed and checked on save.
+  const [campaignDailyLimit, setCampaignDailyLimit] = useState('30')
   const [selectedSenderAccounts, setSelectedSenderAccounts] = useState<Set<string>>(new Set())
   const [connectionOpen, setConnectionOpen] = useState(false)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
@@ -547,7 +549,7 @@ const WorkspaceCampaigns = ({
     setSelectedProviderCampaignId('new')
     setCampaignName('')
     setCampaignTimezoneDraft(defaultInstantlyTimezone())
-    setCampaignDailyLimit(30)
+    setCampaignDailyLimit('30')
     setSelectedSenderAccounts(new Set())
   }
 
@@ -561,7 +563,7 @@ const WorkspaceCampaigns = ({
     // and daily limit, and a new campaign inherited a sending window from a
     // completely unrelated client.
     setCampaignTimezoneDraft(defaultInstantlyTimezone())
-    setCampaignDailyLimit(30)
+    setCampaignDailyLimit('30')
     setSelectedSenderAccounts(new Set())
   }
 
@@ -570,7 +572,7 @@ const WorkspaceCampaigns = ({
     if (providerCampaignId === 'new') {
       setCampaignName(selectedClient ? `${selectedClient.name} Podcast Outreach` : '')
       setCampaignTimezoneDraft(defaultInstantlyTimezone())
-      setCampaignDailyLimit(30)
+      setCampaignDailyLimit('30')
       setSelectedSenderAccounts(new Set())
       return
     }
@@ -578,7 +580,7 @@ const WorkspaceCampaigns = ({
     if (!providerCampaign) return
     setCampaignName(providerCampaign.name)
     setCampaignTimezoneDraft(toInstantlyTimezone(providerCampaign.timezone))
-    setCampaignDailyLimit(providerCampaign.daily_limit)
+    setCampaignDailyLimit(String(providerCampaign.daily_limit))
     setSelectedSenderAccounts(new Set(providerCampaign.sender_accounts))
   }
 
@@ -595,7 +597,8 @@ const WorkspaceCampaigns = ({
       toast.error('That Instantly campaign is no longer available to assign. Reopen the campaign picker and choose again.')
       return
     }
-    if (!Number.isInteger(campaignDailyLimit) || campaignDailyLimit < 1 || campaignDailyLimit > 1000) {
+    const dailyLimit = campaignDailyLimit.trim() === '' ? Number.NaN : Number(campaignDailyLimit)
+    if (!Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 1000) {
       toast.error('Daily limit must be a whole number between 1 and 1000.')
       return
     }
@@ -608,7 +611,7 @@ const WorkspaceCampaigns = ({
       clientId: selectedClientId,
       name: campaignName.trim(),
       timezone: campaignTimezoneDraft,
-      dailyLimit: campaignDailyLimit,
+      dailyLimit,
       senderAccounts: Array.from(selectedSenderAccounts),
       shortlistPodcastIds: [],
       providerCampaignId: selectedProviderCampaign?.id || null,
@@ -802,7 +805,7 @@ const WorkspaceCampaigns = ({
               </Select>
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns…" className="pl-9" />
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search campaigns…" aria-label="Search campaigns" className="pl-9" />
               </div>
             </div>
             <div className="flex max-w-full gap-2 overflow-x-auto pb-1 lg:pb-0" aria-label="Campaign status filters">
@@ -1036,12 +1039,12 @@ const WorkspaceCampaigns = ({
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {INSTANTLY_TIMEZONES.map((zone) => (
-                      <option key={zone} value={zone}>{zone.replace(/_/g, ' ')}</option>
+                      <option key={zone} value={zone}>{instantlyTimezoneLabel(zone)}</option>
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
-                    When this campaign may email. Instantly has no New York or Los Angeles —
-                    America/Detroit and America/Dawson are those clocks.
+                    When this campaign may email. Instantly has no New York or Los Angeles.
+                    America/Detroit is Eastern Time and America/Dawson is its Pacific Time entry.
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1052,7 +1055,7 @@ const WorkspaceCampaigns = ({
                     min={1}
                     max={1000}
                     value={campaignDailyLimit}
-                    onChange={(event) => setCampaignDailyLimit(Number(event.target.value) || 1)}
+                    onChange={(event) => setCampaignDailyLimit(event.target.value)}
                     disabled={!selectedClient}
                   />
                 </div>

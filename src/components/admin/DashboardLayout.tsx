@@ -109,6 +109,7 @@ const SortableNavItem = ({ item, isActive, onNavigate }: SortableNavItemProps) =
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+        aria-label={`Reorder ${item.name}`}
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
@@ -198,6 +199,18 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     }
   }
 
+  // Nested pages such as /admin/clients/:id belong to their section, and the
+  // longest matching href wins so a parent never shadows a more specific item.
+  const activeNavId = (() => {
+    const { pathname } = location
+    let best: NavItem | null = null
+    for (const item of navItems) {
+      const matches = pathname === item.href || pathname.startsWith(`${item.href}/`)
+      if (matches && (!best || item.href.length > best.href.length)) best = item
+    }
+    return best?.id ?? null
+  })()
+
   const handleSignOut = async () => {
     try {
       await signOut()
@@ -235,6 +248,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               size="icon"
               className="lg:hidden"
               onClick={() => setSidebarOpen(false)}
+              aria-label="Close navigation"
             >
               <X className="h-5 w-5" />
             </Button>
@@ -255,7 +269,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                   <SortableNavItem
                     key={item.id}
                     item={item}
-                    isActive={location.pathname === item.href}
+                    isActive={item.id === activeNavId}
                     onNavigate={() => setSidebarOpen(false)}
                   />
                 ))}
@@ -302,6 +316,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
             size="icon"
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden"
+            aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </Button>

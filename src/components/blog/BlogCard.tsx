@@ -25,8 +25,11 @@ export function BlogCard({ post }: BlogCardProps) {
               src={post.featured_image_url}
               alt={post.featured_image_alt || post.title}
               className="w-full h-full object-cover transition-transform group-hover:scale-105"
+              loading="lazy"
+              decoding="async"
               onError={(e) => {
-                e.currentTarget.src = 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800&auto=format&fit=crop'
+                // Our own image, so a broken upload never depends on a third party.
+                e.currentTarget.src = '/og-image.png'
               }}
             />
           </div>

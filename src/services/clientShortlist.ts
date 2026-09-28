@@ -187,10 +187,29 @@ export interface ClientShortlistAddResult {
   podcast_ids: string[]
 }
 
+/** Actions that only read, so their fallback must not claim a save failed. */
+const READ_ACTIONS = new Set(['list', 'catalog-search', 'prompt-preview', 'research-inspect', 'autopilot-get'])
+
 async function invokeClientShortlist<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('workspace-client-shortlist', { body })
-  if (error) throw await toFunctionError(error, 'The client podcast list could not be updated.')
+  if (error) {
+    const fallback = READ_ACTIONS.has(String(body.action))
+      ? 'The client podcast list could not be loaded.'
+      : 'The client podcast list could not be updated.'
+    throw await toFunctionError(error, fallback)
+  }
   return data as T
+}
+
+/** Feed text arrives entity-encoded; every read of a podcast decodes it the same way. */
+function decodeShortlistPodcast<T extends Pick<ClientShortlistPodcast, 'podcast_name' | 'podcast_description'>>(podcast: T): T {
+  return {
+    ...podcast,
+    podcast_name: typeof podcast.podcast_name === 'string' ? decodeFeedText(podcast.podcast_name) : podcast.podcast_name,
+    podcast_description: podcast.podcast_description
+      ? decodeFeedText(podcast.podcast_description)
+      : podcast.podcast_description,
+  }
 }
 
 /** The real value of every registry field for one podcast, for the editor. */
@@ -238,13 +257,7 @@ export async function getClientShortlist(
     workspace_id: workspaceId,
     client_id: clientId,
   })
-  data.podcasts = (data.podcasts || []).map((podcast) => ({
-    ...podcast,
-    podcast_name: decodeFeedText(podcast.podcast_name),
-    podcast_description: podcast.podcast_description
-      ? decodeFeedText(podcast.podcast_description)
-      : podcast.podcast_description,
-  }))
+  data.podcasts = (data.podcasts || []).map(decodeShortlistPodcast)
   return data
 }
 
@@ -327,6 +340,12 @@ export async function updateClientShortlistPodcast(
     operator_notes?: string | null
     feedback_status?: ClientShortlistFeedbackStatus
   },
+  /**
+   * The row as the caller already has it. The update action returns a
+   * narrower projection than list (no relationship, email unlock or episodes),
+   * so replacing a list row with it wholesale blanked those columns.
+   */
+  existing?: ClientShortlistPodcast,
 ): Promise<ClientShortlistPodcast> {
   const data = await invokeClientShortlist<{ podcast: ClientShortlistPodcast }>({
     action: 'update',
@@ -335,7 +354,8 @@ export async function updateClientShortlistPodcast(
     podcast_id: podcastId,
     changes,
   })
-  return data.podcast
+  const decoded = decodeShortlistPodcast(data?.podcast ?? ({} as ClientShortlistPodcast))
+  return existing ? { ...existing, ...decoded } : decoded
 }
 
 export async function reorderClientShortlistFeatured(

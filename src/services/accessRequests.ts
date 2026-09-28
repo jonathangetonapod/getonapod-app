@@ -14,6 +14,8 @@ export interface AccessRequestInput {
   notes?: string
 }
 
+const SEND_FAILED = 'Your request could not be sent. Please try again.'
+
 /**
  * Ask for a workspace invite.
  *
@@ -37,7 +39,16 @@ export async function requestWorkspaceAccess(input: AccessRequestInput): Promise
     },
   })
 
-  if (error) throw await toFunctionError(error, 'Your request could not be sent. Please try again.')
+  if (!error) return
+
+  // A refusal comes back with a Response, and the message inside it is the
+  // reason. When there is no Response the request never reached the function
+  // (the SDK's FunctionsFetchError, a dropped connection, a blocked origin) and
+  // its wording, "Failed to send a request to the Edge Function", is meant for
+  // a developer. The person at the form gets the plain version.
+  const context = (error as { context?: unknown }).context
+  if (!(context instanceof Response)) throw new Error(SEND_FAILED)
+  throw await toFunctionError(error, SEND_FAILED)
 }
 
 /** Where a request has got to. The column constrains these four. */

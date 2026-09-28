@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 import { cn } from '@/lib/utils'
 import { safeExternalUrl } from '@/lib/externalUrl'
 
@@ -67,6 +68,10 @@ export function PortalLayout({ children }: PortalLayoutProps) {
     },
   ]
 
+  // Without this the marketing title from index.html shows on white-label pages.
+  const sectionLabel = navItems.find((item) => location.pathname.startsWith(item.path))?.label ?? 'Client Portal'
+  const documentTitle = branding?.name ? `${sectionLabel} · ${branding.name}` : sectionLabel
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -78,6 +83,9 @@ export function PortalLayout({ children }: PortalLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      <Helmet>
+        <title>{documentTitle}</title>
+      </Helmet>
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">

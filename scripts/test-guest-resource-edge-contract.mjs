@@ -13,11 +13,17 @@ const forwardMigration = readFileSync(
   'utf8',
 )
 
+// The portal function answers requests from tenant custom domains, so its
+// preflight warms the origin allowlist first; the staff function is only ever
+// called from the platform app.
+assert.match(portal, /if \(req\.method === "OPTIONS"\) \{[\s\S]{0,400}?ensureWorkspaceOriginAllowed\(createAdminClient\(\), req\);[\s\S]{0,100}?return optionsResponse\(req, METHODS\);/u, 'get-guest-resources must warm the tenant origin allowlist in its shared CORS preflight handling')
+assert.match(portal, /ensureWorkspaceOriginAllowed\(admin, req\);/u, 'get-guest-resources must warm the tenant origin allowlist before handling')
+assert.match(management, /if \(req\.method === "OPTIONS"\) return optionsResponse\(req, METHODS\)/u, 'workspace-guest-resources must use shared CORS preflight handling')
+
 for (const [name, source] of [
   ['get-guest-resources', portal],
   ['workspace-guest-resources', management],
 ]) {
-  assert.match(source, /if \(req\.method === "OPTIONS"\) return optionsResponse\(req, METHODS\)/u, `${name} must use shared CORS preflight handling`)
   assert.match(source, /return errorResponse\(req, METHODS, error\)/u, `${name} must use shared no-store/CORS error handling`)
   assert.match(source, /requireOnlyKeys\(/u, `${name} must reject unknown request fields`)
 }

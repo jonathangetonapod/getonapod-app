@@ -137,8 +137,10 @@ export async function getBookingsByDate(date: string) {
  * Get bookings for a specific month
  */
 export async function getBookingsByMonth(year: number, month: number) {
-  const startDate = new Date(year, month, 1).toISOString().split('T')[0]
-  const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0]
+  // scheduled_date is a calendar date. Going through a local Date and back to
+  // ISO shifted the range by the viewer's offset and dropped the last day east of UTC.
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+  const endDate = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10)
 
   const { data, error } = await supabase
     .from('bookings')

@@ -41,6 +41,31 @@ export default function PageSEO({
   const canonicalUrl = toAbsoluteUrl(path)
   const imageUrl = toAbsoluteUrl(image)
   const robots = noindex ? 'noindex, nofollow' : 'index, follow'
+  const appName = whiteLabel ? brandName || 'Client onboarding' : SITE_NAME
+
+  // react-helmet-async reads only the direct children of <Helmet>. A Fragment
+  // between them is skipped along with everything inside it, so the social
+  // tags are a flat list spread in as siblings, never grouped in a wrapper.
+  const socialTags = whiteLabel
+    ? []
+    : [
+        <meta key="og:type" property="og:type" content={type} />,
+        <meta key="og:url" property="og:url" content={canonicalUrl} />,
+        <meta key="og:title" property="og:title" content={title} />,
+        <meta key="og:description" property="og:description" content={description} />,
+        <meta key="og:image" property="og:image" content={imageUrl} />,
+        <meta key="og:image:alt" property="og:image:alt" content={imageAlt} />,
+        <meta key="og:image:width" property="og:image:width" content="1200" />,
+        <meta key="og:image:height" property="og:image:height" content="630" />,
+        <meta key="og:site_name" property="og:site_name" content={SITE_NAME} />,
+        <meta key="og:locale" property="og:locale" content="en_US" />,
+        <meta key="twitter:card" name="twitter:card" content="summary_large_image" />,
+        <meta key="twitter:url" name="twitter:url" content={canonicalUrl} />,
+        <meta key="twitter:title" name="twitter:title" content={title} />,
+        <meta key="twitter:description" name="twitter:description" content={description} />,
+        <meta key="twitter:image" name="twitter:image" content={imageUrl} />,
+        <meta key="twitter:image:alt" name="twitter:image:alt" content={imageAlt} />,
+      ]
 
   return (
     <Helmet>
@@ -52,31 +77,12 @@ export default function PageSEO({
       <meta name="googlebot" content={robots} />
       {noindex ? <meta name="referrer" content="no-referrer" /> : null}
       <meta name="theme-color" content={themeColor} />
-      <meta name="application-name" content={whiteLabel ? brandName || 'Client onboarding' : SITE_NAME} />
-      <meta name="apple-mobile-web-app-title" content={whiteLabel ? brandName || 'Client onboarding' : SITE_NAME} />
+      <meta name="application-name" content={appName} />
+      <meta name="apple-mobile-web-app-title" content={appName} />
       {whiteLabel && favicon ? <link rel="icon" href={favicon} /> : null}
       {whiteLabel && favicon ? <link rel="apple-touch-icon" href={favicon} /> : null}
       {!whiteLabel ? <link rel="canonical" href={canonicalUrl} /> : null}
-
-      {!whiteLabel ? <>
-        <meta property="og:type" content={type} />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        <meta property="og:image" content={imageUrl} />
-        <meta property="og:image:alt" content={imageAlt} />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-        <meta property="og:site_name" content={SITE_NAME} />
-        <meta property="og:locale" content="en_US" />
-
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:url" content={canonicalUrl} />
-        <meta name="twitter:title" content={title} />
-        <meta name="twitter:description" content={description} />
-        <meta name="twitter:image" content={imageUrl} />
-        <meta name="twitter:image:alt" content={imageAlt} />
-      </> : null}
+      {socialTags}
     </Helmet>
   )
 }

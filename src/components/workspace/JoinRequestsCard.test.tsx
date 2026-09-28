@@ -125,6 +125,24 @@ describe('JoinRequestsCard', () => {
     expect(move).toHaveBeenCalledWith('r1', 'invited')
   })
 
+  // The form takes a 160-character company; a workspace name stops at 120.
+  // Sending the long one unchanged had the invitation refused outright.
+  it('cuts a long company name down to what a workspace name may be', async () => {
+    const company = `${'Northwind '.repeat(15)}Media Group`
+    expect(company.length).toBeGreaterThan(120)
+    list.mockResolvedValue([request({ company })])
+    renderCard()
+
+    fireEvent.click(await screen.findByRole('button', { name: /send invitation/iu }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /send invitation/iu }))
+
+    await waitFor(() => expect(sendInvite).toHaveBeenCalled())
+    const sent = sendInvite.mock.calls[0][0].workspace_name
+    expect(sent.length).toBeLessThanOrEqual(120)
+    expect(sent).toBe(company.slice(0, 120).trim())
+  })
+
   // Marking it invited when no email left the building is the lie the old
   // "Mark invited" button could tell.
   it('does not record an invitation that failed to send', async () => {

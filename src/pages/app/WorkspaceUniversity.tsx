@@ -136,7 +136,7 @@ const WorkspaceUniversity = ({ platformWorkspaceId }: Props) => {
     staleTime: 60_000,
     retry: false,
   })
-  const lessons = lessonsQuery.data?.lessons ?? []
+  const lessons = useMemo(() => lessonsQuery.data?.lessons ?? [], [lessonsQuery.data?.lessons])
   const canManage = lessonsQuery.data?.can_manage === true
   const watchedIds = useMemo(
     () => new Set(lessonsQuery.data?.watched_lesson_ids ?? []),
@@ -285,12 +285,14 @@ const WorkspaceUniversity = ({ platformWorkspaceId }: Props) => {
   const moduleSegment = (metaId: UniversityCategory, segment: string | null): string | null =>
     isPlatformWorkspace && metaId === 'billing' ? null : segment
 
-  if (isPlatformWorkspace && !validWorkspaceId) {
+  if (isPlatformWorkspace && (!validWorkspaceId || selectedWorkspaceQuery.isError)) {
     return (
       <WorkspaceLayout platformWorkspace={platformWorkspace}>
         <Card>
           <CardContent className="p-10 text-center text-sm text-muted-foreground">
-            Workspace unavailable — check the address and try again.
+            {validWorkspaceId
+              ? 'Workspace unavailable. It may have been removed, or you may not have access to it.'
+              : 'Workspace unavailable. Check the address and try again.'}
           </CardContent>
         </Card>
       </WorkspaceLayout>

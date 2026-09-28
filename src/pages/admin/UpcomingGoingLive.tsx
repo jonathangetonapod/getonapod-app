@@ -7,6 +7,7 @@ import { Calendar, Rocket } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getBookings } from '@/services/bookings'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { parseLocalDate } from '@/lib/localDate'
 import { useState } from 'react'
 
 type TimeRange = 7 | 14 | 30 | 60 | 90 | 180
@@ -23,20 +24,22 @@ export default function UpcomingGoingLive() {
 
   const allBookings = bookingsData?.bookings || []
 
-  // Calculate date range
-  const now = new Date()
-  const futureDate = new Date()
+  // Calculate date range. publish_date is a DATE column, so compare from
+  // local midnight today or an episode going live today would already be "past".
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const futureDate = new Date(today)
   futureDate.setDate(futureDate.getDate() + timeRange)
 
   // Filter upcoming publications (all statuses with publish date)
   const upcomingPublications = allBookings
     .filter(booking => {
-      if (!booking.publish_date) return false
-      const publishDate = new Date(booking.publish_date)
-      return publishDate >= now &&
+      const publishDate = parseLocalDate(booking.publish_date)
+      if (!publishDate) return false
+      return publishDate >= today &&
              publishDate <= futureDate
     })
-    .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
+    .sort((a, b) => parseLocalDate(a.publish_date)!.getTime() - parseLocalDate(b.publish_date)!.getTime())
 
   // Stats
   const totalUpcoming = upcomingPublications.length
@@ -60,12 +63,8 @@ export default function UpcomingGoingLive() {
   }
 
   const formatDate = (dateString: string) => {
-    // Parse date in local timezone to avoid timezone shifts
-    const [year, month, day] = dateString.split('T')[0].split('-')
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const date = parseLocalDate(dateString)
+    if (!date) return 'Invalid date'
 
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -78,15 +77,6 @@ export default function UpcomingGoingLive() {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
-    })
-  }
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
     })
   }
 
@@ -226,9 +216,6 @@ export default function UpcomingGoingLive() {
                     {/* Date Column */}
                     <div className="flex-shrink-0 text-center min-w-[100px]">
                       <div className="text-lg font-bold">{formatDate(booking.publish_date!)}</div>
-                      {booking.publish_date && (
-                        <div className="text-xs text-muted-foreground">{formatTime(booking.publish_date)}</div>
-                      )}
                     </div>
 
                     {/* Main Content */}

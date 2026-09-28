@@ -364,10 +364,16 @@ serve(async (req) => {
       // Recording the id is not the same as recording a subscription: it only
       // says which Stripe customer this workspace is, so the next portal
       // session opens on the same history.
+      // Upsert, not update: the profile row is created lazily by metering, so
+      // a workspace that has never spent a credit has none yet, and an update
+      // then matched nothing, lost the customer id, and minted a new Stripe
+      // customer on every visit.
       const { error: writeError } = await admin
         .from('workspace_billing_profiles')
-        .update({ stripe_customer_id: customerId, updated_at: new Date().toISOString() })
-        .eq('workspace_id', workspaceId)
+        .upsert(
+          { workspace_id: workspaceId, stripe_customer_id: customerId, updated_at: new Date().toISOString() },
+          { onConflict: 'workspace_id' },
+        )
       if (writeError) {
         throw new HttpError(503, 'BILLING_UNAVAILABLE', 'The billing customer could not be recorded')
       }

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HelmetProvider } from 'react-helmet-async'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Login from './Login'
@@ -163,6 +163,44 @@ describe('Login', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
       'Could not reach the server. Check your connection and try again.',
     ))
+  })
+
+  // A deep link like /app/clients?client=abc was bounced to sign-in and came
+  // back without its query, landing on the list instead of the client.
+  it('returns to the attempted path with its query after sign-in', async () => {
+    auth.user = { email: 'dana@example.com' }
+    auth.accountState = 'active'
+    const Landing = () => <p>Landed on {useLocation().pathname + useLocation().search}</p>
+    render(
+      <HelmetProvider>
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: { pathname: '/app/clients', search: '?client=abc' } } }]}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/app/clients" element={<Landing />} />
+          </Routes>
+        </MemoryRouter>
+      </HelmetProvider>,
+    )
+
+    expect(await screen.findByText('Landed on /app/clients?client=abc')).toBeInTheDocument()
+  })
+
+  // The OAuth round trip drops router state, so the destination is parked in
+  // sessionStorage for the callback page to pick up.
+  it('stashes the attempted path before starting Google sign-in', async () => {
+    sessionStorage.removeItem('goap.post-login-path')
+    render(
+      <HelmetProvider>
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: { pathname: '/admin/clients', search: '?client=abc' } } }]}>
+          <Login />
+        </MemoryRouter>
+      </HelmetProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/iu }))
+
+    await waitFor(() => expect(auth.signInWithGoogle).toHaveBeenCalled())
+    expect(sessionStorage.getItem('goap.post-login-path')).toBe('/admin/clients?client=abc')
+    sessionStorage.removeItem('goap.post-login-path')
   })
 
   it('explains a suspended account rather than looping the sign-in form', () => {

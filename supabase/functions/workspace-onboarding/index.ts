@@ -14,7 +14,7 @@ import {
   requireUuid,
   workspaceCredentialIsFresh,
 } from '../_shared/workspaceAuth.ts'
-import { chargeCredits, logOperationCost, retryWindowKey } from '../_shared/billing.ts'
+import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 import {
@@ -595,7 +595,7 @@ serve(async (req) => {
       const definition = validateOnboardingDefinition(detail.definition)
       const answers = responseRecord(detail.answers, 'answers')
       const anthropicKey = await resolveAiKey(admin, workspaceId, 'anthropic')
-      await chargeCredits(admin, {
+      const draftCharge = await chargeCredits(admin, {
         workspaceId,
         operationType: 'pitch_profile',
         referenceKind: 'onboarding_instance',
@@ -625,6 +625,16 @@ serve(async (req) => {
           throw new HttpError(409, 'ONBOARDING_CHANGED', 'The submission changed before its AI draft was ready')
         }
       } catch (error) {
+        // The charge came before the model call; a draft that never landed
+        // gives a fresh charge back. A replayed debit belongs to an earlier
+        // attempt and stays.
+        if (!draftCharge.replayed) {
+          await refundCredits(admin, {
+            workspaceId,
+            entryId: draftCharge.entryId,
+            reason: 'onboarding pitch profile draft failed after the charge',
+          })
+        }
         if (error instanceof HttpError) throw error
         await admin.rpc('set_workspace_onboarding_ai_profile_v1', {
           p_instance_id: instanceId,

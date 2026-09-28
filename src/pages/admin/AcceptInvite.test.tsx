@@ -102,6 +102,22 @@ describe('AcceptInvite', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
+  // A failed invite call leaves the password already set. Retrying with the
+  // same one gets GoTrue's same_password 422, which must not block the accept.
+  it('continues to accept the invitation when the password is already set', async () => {
+    updateUser.mockResolvedValue({
+      error: { code: 'same_password', message: 'New password should be different from the old password.' },
+    } as never)
+    renderPage()
+    fill('Correct-Horse-9!')
+    fireEvent.click(screen.getByRole('button', { name: /accept invitation/iu }))
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('accept-workspace-invite', {
+      body: { membership_id: 'membership-1' },
+    }))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   // The temporary password people are mailed starts Tmp-. Re-entering it here
   // would leave the account on a credential that was sent over email.
   it('refuses the temporary password format', async () => {

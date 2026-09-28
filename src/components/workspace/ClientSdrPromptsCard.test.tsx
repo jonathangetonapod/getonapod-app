@@ -143,6 +143,48 @@ describe('ClientSdrPromptsCard inbox model', () => {
     expect(mockedModels).not.toHaveBeenCalled()
   })
 
+  // A failed load used to render shipped defaults labelled "Workspace
+  // default", and a save would have written them over the real prompt.
+  it('shows an error with a retry instead of shipped defaults when the client prompts fail to load', async () => {
+    mockedPrompts.mockRejectedValueOnce(new Error('The prompts could not be read.'))
+    renderCard()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The prompts could not be read.')
+    expect(screen.queryByText('Workspace default')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Edit Reply instructions/i })).not.toBeInTheDocument()
+
+    mockedPrompts.mockResolvedValueOnce({})
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('button', { name: /Edit Reply instructions/i })).toBeInTheDocument()
+  })
+
+  it('shows the error when the workspace layer fails, since the fallback text is unknown', async () => {
+    mockedOverrides.mockRejectedValueOnce(new Error('Workspace prompts unavailable.'))
+    renderCard()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Workspace prompts unavailable.')
+    expect(screen.queryByText('Workspace default')).not.toBeInTheDocument()
+  })
+
+  it('asks before resetting a custom prompt to the workspace default', async () => {
+    mockedPrompts.mockResolvedValue({ inbox_reply: { content: 'Custom reply prompt', updated_at: null } } as never)
+    renderCard()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Reset Reply instructions/i }))
+    expect(vi.mocked(resetClientSdrPrompt)).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent('Reset Reply instructions to the workspace default?')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep custom prompt' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(vi.mocked(resetClientSdrPrompt)).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /Reset Reply instructions/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset prompt' }))
+    await waitFor(() => expect(vi.mocked(resetClientSdrPrompt)).toHaveBeenCalledWith(workspaceId, clientId, 'inbox_reply'))
+  })
+
   it('reads the model list only once an inbox stage is open', async () => {
     renderCard()
     // The card lands closed; most visits never touch the model.

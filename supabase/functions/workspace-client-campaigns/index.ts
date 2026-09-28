@@ -42,6 +42,7 @@ import {
   requireString,
   requireUuid,
   requireWorkspaceFeatureAccess,
+  secretsMatch,
   type WorkspaceFeatureAccess,
   writeAudit,
 } from "../_shared/workspaceAuth.ts";
@@ -838,7 +839,7 @@ function campaignTimezone(value: unknown): string {
     400,
     "CAMPAIGN_TIMEZONE_UNSUPPORTED",
     substitute
-      ? `Instantly does not offer ${timezone}. Use ${substitute}, which is the same clock.`
+      ? `Instantly does not offer ${timezone}. Use ${substitute}, its entry for that clock.`
       : `Instantly does not offer ${timezone} as a sending timezone. Choose one from the list.`,
   );
 }
@@ -3057,7 +3058,8 @@ serve(async (req) => {
     // (so the gateway's JWT check passes) plus a shared secret only the
     // scheduler knows. No user session is involved and no user input is read.
     const syncSecret = Deno.env.get("CAMPAIGN_SYNC_SECRET")?.trim();
-    if (syncSecret && req.headers.get("x-campaign-sync-secret") === syncSecret) {
+    const presentedSyncSecret = req.headers.get("x-campaign-sync-secret") ?? "";
+    if (syncSecret && presentedSyncSecret && await secretsMatch(presentedSyncSecret, syncSecret)) {
       const admin = createAdminClient();
       const { data: connections } = await admin
         .from("workspace_instantly_integrations")
@@ -4518,6 +4520,11 @@ serve(async (req) => {
         ? null
         : requireUuid(body.client_id, "client_id");
       const replyToId = requireString(body.reply_to_id, "reply_to_id", { max: 120 });
+      // The id lands inside a PostgREST filter below; a comma or parenthesis
+      // in it would rewrite the send-once claim.
+      if (!/^[A-Za-z0-9_-]+$/u.test(replyToId)) {
+        throw new HttpError(400, "INVALID_FIELD", "reply_to_id is invalid");
+      }
       const eaccount = requireString(body.eaccount, "eaccount", { max: 320 });
       const subject = requireString(body.subject, "subject", { max: 300 });
       const message = requireString(body.message, "message", { max: 8_000 });
@@ -5648,8 +5655,14 @@ serve(async (req) => {
       ]);
       requireCampaignManager(access);
       const name = requireString(body.name, "name", { max: 180 });
-      const timezone = campaignTimezone(body.timezone);
-      const limit = dailyLimit(body.daily_limit);
+      // The client card creates campaigns with only a name and senders; null
+      // here used to fail as "timezone must be a string" on every click.
+      const timezone = body.timezone === null || body.timezone === undefined
+        ? DEFAULT_CAMPAIGN_TIMEZONE
+        : campaignTimezone(body.timezone);
+      const limit = body.daily_limit === null || body.daily_limit === undefined
+        ? 30
+        : dailyLimit(body.daily_limit);
       const senderAccounts = emailList(body.sender_accounts);
       if (senderAccounts.length === 0) {
         throw new HttpError(
@@ -6470,8 +6483,10 @@ serve(async (req) => {
           .admin
           .from("workspace_client_campaigns")
           .select("id,client_id")
+          .eq("workspace_id", workspaceId)
           .eq("instantly_campaign_id", requestedProviderCampaignId)
           .neq("id", campaign.id)
+          .limit(1)
           .maybeSingle();
         if (mappingError) {
           throw new HttpError(

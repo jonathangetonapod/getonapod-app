@@ -7,9 +7,14 @@ import {
   requirePlatformAdminOrService,
 } from '../_shared/workspaceAuth.ts'
 
-/** Escape special Supabase/PostgREST filter characters in user input */
-function sanitizeSearch(input: string): string {
-  return input.replace(/[%_\\]/g, '\\$&')
+/**
+ * Escape a search term for a PostgREST .or() filter. Wildcards are escaped for
+ * ILIKE, and the whole value is double-quoted so a comma, parenthesis or dot
+ * in the term is data rather than filter syntax.
+ */
+function orFilterValue(input: string): string {
+  const term = input.replace(/[%_\\]/g, '\\$&')
+  return '"%' + term.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '%"'
 }
 
 const corsHeaders = {
@@ -144,8 +149,8 @@ serve(async (req) => {
     }
 
     if (search) {
-      const safe = sanitizeSearch(search)
-      query = query.or(`title.ilike.%${safe}%,content.ilike.%${safe}%,excerpt.ilike.%${safe}%`)
+      const safe = orFilterValue(search)
+      query = query.or(`title.ilike.${safe},content.ilike.${safe},excerpt.ilike.${safe}`)
     }
 
     query = query

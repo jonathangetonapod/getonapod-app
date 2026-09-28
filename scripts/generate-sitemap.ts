@@ -75,6 +75,8 @@ async function generateSitemap() {
     { url: '/resources', priority: '0.8', changefreq: 'weekly' },
     { url: '/course', priority: '0.8', changefreq: 'monthly' },
     { url: '/what-to-expect', priority: '0.8', changefreq: 'monthly' },
+    { url: '/privacy', priority: '0.3', changefreq: 'yearly' },
+    { url: '/terms', priority: '0.3', changefreq: 'yearly' },
   ]
 
   // Generate XML

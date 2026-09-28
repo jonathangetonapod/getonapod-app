@@ -2,14 +2,11 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { useClientPortal } from '@/contexts/ClientPortalContext'
+import { isPortalAuthError } from '@/lib/portalAuthError'
 import { getPortalExperience } from '@/services/clientPortal'
 
 /** A data error that means the portal session is no longer valid. */
-export function isPortalAuthError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  const named = error as { name?: string; status?: number }
-  return named.name === 'INVALID_PORTAL_SESSION' || named.status === 401
-}
+export { isPortalAuthError } from '@/lib/portalAuthError'
 
 /**
  * Shared portal overview query — dashboard, calendar, outreach, and add-ons

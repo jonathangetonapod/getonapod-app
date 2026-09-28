@@ -6,7 +6,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-import { createAdminClient, writeAudit } from '../_shared/workspaceAuth.ts'
+import { createAdminClient, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
@@ -130,7 +130,8 @@ async function searchPodscan(query: string): Promise<CandidatePodcast[]> {
 serve(async (req) => {
   if (req.method !== 'POST') return json(405, { error: 'METHOD_NOT_ALLOWED' })
   const secret = Deno.env.get('AUTOPILOT_TICK_SECRET')?.trim()
-  if (!secret || req.headers.get('x-autopilot-secret') !== secret) {
+  const presentedSecret = req.headers.get('x-autopilot-secret') ?? ''
+  if (!secret || !presentedSecret || !(await secretsMatch(presentedSecret, secret))) {
     return json(401, { error: 'UNAUTHORIZED' })
   }
 

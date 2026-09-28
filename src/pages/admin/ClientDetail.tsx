@@ -71,6 +71,7 @@ import type { PodcastOutreachAction } from '@/services/podcastCache'
 import { PodcastOutreachSwiper } from '@/components/admin/PodcastOutreachSwiper'
 import { supabase } from '@/lib/supabase'
 import { openExternalUrl, safeExternalUrl } from '@/lib/externalUrl'
+import { parseLocalDate } from '@/lib/localDate'
 import { cn } from '@/lib/utils'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -126,6 +127,10 @@ export default function ClientDetail() {
   const [expandedFeedbackSection, setExpandedFeedbackSection] = useState<'approved' | 'rejected' | 'notes' | null>(null)
   const [deletingPodcastId, setDeletingPodcastId] = useState<string | null>(null)
   const [deletingAllRejected, setDeletingAllRejected] = useState(false)
+  // Dashboard deletions wait for confirmation: one podcast, or every rejected one.
+  const [pendingDashboardDelete, setPendingDashboardDelete] = useState<
+    { kind: 'one'; podcastId: string; podcastName: string | null } | { kind: 'all-rejected' } | null
+  >(null)
   // Podcast Outreach state
   const [webhookUrl, setWebhookUrl] = useState('')
   const [outreachModeActive, setOutreachModeActive] = useState(false)
@@ -343,6 +348,13 @@ export default function ClientDetail() {
       queryClient.invalidateQueries({ queryKey: ['client', id] })
       queryClient.invalidateQueries({ queryKey: ['clients'] })
       setIsEditClientModalOpen(false)
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Failed to Update Client',
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: 'destructive'
+      })
     }
   })
 
@@ -381,8 +393,8 @@ export default function ClientDetail() {
 
   // For stats, only count bookings with scheduled dates in the selected month
   const bookingsInSelectedMonth = bookings.filter(booking => {
-    if (!booking.scheduled_date) return false
-    const bookingDate = new Date(booking.scheduled_date)
+    const bookingDate = parseLocalDate(booking.scheduled_date)
+    if (!bookingDate) return false
     return bookingDate.getMonth() === selectedMonth && bookingDate.getFullYear() === selectedYear
   })
 
@@ -393,35 +405,37 @@ export default function ClientDetail() {
   const totalCount = bookingsInSelectedMonth.length
   const completionRate = totalCount > 0 ? (publishedCount / totalCount) * 100 : 0
 
-  // Calculate upcoming recordings (filtered by time range)
+  // Calculate upcoming recordings (filtered by time range). The date columns
+  // have no time, so "upcoming" starts at local midnight today.
   const now = new Date()
-  const futureDateFromNow = new Date()
+  now.setHours(0, 0, 0, 0)
+  const futureDateFromNow = new Date(now)
   futureDateFromNow.setDate(futureDateFromNow.getDate() + upcomingTimeRange)
 
   const upcomingRecordings = bookings
     .filter(booking => {
-      if (!booking.recording_date) return false
-      const recordingDate = new Date(booking.recording_date)
+      const recordingDate = parseLocalDate(booking.recording_date)
+      if (!recordingDate) return false
       return recordingDate >= now &&
              recordingDate <= futureDateFromNow &&
              (booking.status === 'conversation_started' ||
               booking.status === 'booked' ||
               booking.status === 'in_progress')
     })
-    .sort((a, b) => new Date(a.recording_date!).getTime() - new Date(b.recording_date!).getTime())
+    .sort((a, b) => parseLocalDate(a.recording_date)!.getTime() - parseLocalDate(b.recording_date)!.getTime())
 
   // Calculate upcoming going live (filtered by time range, all statuses with publish date)
-  const goingLiveFutureDate = new Date()
+  const goingLiveFutureDate = new Date(now)
   goingLiveFutureDate.setDate(goingLiveFutureDate.getDate() + goingLiveTimeRange)
 
   const upcomingGoingLive = bookings
     .filter(booking => {
-      if (!booking.publish_date) return false
-      const publishDate = new Date(booking.publish_date)
+      const publishDate = parseLocalDate(booking.publish_date)
+      if (!publishDate) return false
       return publishDate >= now &&
              publishDate <= goingLiveFutureDate
     })
-    .sort((a, b) => new Date(a.publish_date!).getTime() - new Date(b.publish_date!).getTime())
+    .sort((a, b) => parseLocalDate(a.publish_date)!.getTime() - parseLocalDate(b.publish_date)!.getTime())
 
   // Initialize editMediaKitUrl when client data loads
   useEffect(() => {
@@ -601,11 +615,30 @@ export default function ClientDetail() {
 
   const handleUpdateClient = () => {
     if (!editClientForm.name || !id) return
+    // Blank optional fields go up as null. A DB trigger revokes portal access on
+    // any email change, so '' must not be written where the row holds null.
+    const nullIfBlank = (value: string) => value.trim() || null
     updateClientMutation.mutate({
       id,
-      updates: editClientForm
+      updates: {
+        name: editClientForm.name.trim(),
+        status: editClientForm.status,
+        email: nullIfBlank(editClientForm.email),
+        contact_person: nullIfBlank(editClientForm.contact_person),
+        linkedin_url: nullIfBlank(editClientForm.linkedin_url),
+        website: nullIfBlank(editClientForm.website),
+        notes: nullIfBlank(editClientForm.notes),
+        bio: nullIfBlank(editClientForm.bio),
+        google_sheet_url: nullIfBlank(editClientForm.google_sheet_url),
+        media_kit_url: nullIfBlank(editClientForm.media_kit_url),
+        prospect_dashboard_slug: nullIfBlank(editClientForm.prospect_dashboard_slug),
+        bison_campaign_id: nullIfBlank(editClientForm.bison_campaign_id),
+      }
     })
   }
+
+  const emailWillChange = isEditClientModalOpen && !!client
+    && (editClientForm.email.trim() || null) !== (client.email || null)
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -739,12 +772,17 @@ export default function ClientDetail() {
       if (enteredUrl && !mediaKitUrl) {
         throw new Error('Media kit URL must use http or https')
       }
-      const { error } = await supabase
+      // RLS silently updates 0 rows for another workspace's client, so check the returned rows.
+      const { data: updatedRows, error } = await supabase
         .from('clients')
         .update({ media_kit_url: mediaKitUrl })
         .eq('id', id)
+        .select('id')
 
       if (error) throw error
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('This client belongs to another workspace and cannot be edited here.')
+      }
 
       // Refresh client data
       queryClient.invalidateQueries({ queryKey: ['client', id] })
@@ -810,12 +848,17 @@ export default function ClientDetail() {
       const mediaKitUrl = typeof data.docUrl === 'string' ? safeExternalUrl(data.docUrl) : null
       if (!mediaKitUrl) throw new Error('The generated media kit URL is invalid')
 
-      // Save the URL to the client record
-      const { error: saveError } = await supabase
+      // Save the URL to the client record. RLS silently updates 0 rows for
+      // another workspace's client, so check the returned rows.
+      const { data: savedRows, error: saveError } = await supabase
         .from('clients')
         .update({ media_kit_url: mediaKitUrl })
         .eq('id', id)
+        .select('id')
       if (saveError) throw saveError
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error('This client belongs to another workspace and cannot be edited here.')
+      }
 
       setEditMediaKitUrl(mediaKitUrl)
       queryClient.invalidateQueries({ queryKey: ['client', id] })
@@ -1541,12 +1584,17 @@ export default function ClientDetail() {
 
     setSavingWebhookUrl(true)
     try {
-      const { error } = await supabase
+      // RLS silently updates 0 rows for another workspace's client, so check the returned rows.
+      const { data: updatedRows, error } = await supabase
         .from('clients')
         .update({ outreach_webhook_url: webhookUrl || null })
         .eq('id', client.id)
+        .select('id')
 
       if (error) throw error
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('This client belongs to another workspace and cannot be edited here.')
+      }
 
       queryClient.invalidateQueries({ queryKey: ['client', id] })
       toast({
@@ -1603,17 +1651,14 @@ export default function ClientDetail() {
         throw new Error(result.error || 'Failed to send webhook')
       }
 
-      await refetchOutreachActions()
+      const { data: refreshedActions } = await refetchOutreachActions()
 
       toast({
         title: 'Webhook Sent',
         description: `Successfully sent ${podcast.podcast_name} to outreach webhook`
       })
 
-      // Move to next podcast
-      if (currentPodcastIndex < availablePodcasts.length - 1) {
-        setCurrentPodcastIndex(currentPodcastIndex + 1)
-      }
+      clampPodcastIndex(refreshedActions)
     } catch (error) {
       toast({
         title: 'Webhook Failed',
@@ -1641,17 +1686,14 @@ export default function ClientDetail() {
 
       if (error) throw error
 
-      await refetchOutreachActions()
+      const { data: refreshedActions } = await refetchOutreachActions()
 
       toast({
         title: 'Podcast Skipped',
         description: `Skipped ${podcast.podcast_name}`
       })
 
-      // Move to next podcast
-      if (currentPodcastIndex < availablePodcasts.length - 1) {
-        setCurrentPodcastIndex(currentPodcastIndex + 1)
-      }
+      clampPodcastIndex(refreshedActions)
     } catch (error) {
       toast({
         title: 'Error',
@@ -1670,9 +1712,9 @@ export default function ClientDetail() {
 
   // Calculate available podcasts and stats
   const actionedPodcastIds = new Set(outreachActions.map(action => action.podcast_id))
-  const availablePodcasts = cachedPodcasts.filter(p => {
+  const isAvailableForOutreach = (p: (typeof cachedPodcasts)[number], actioned: Set<string>) => {
     // Filter out already actioned podcasts
-    if (actionedPodcastIds.has(p.podcast_id)) return false
+    if (actioned.has(p.podcast_id)) return false
 
     // Filter by minimum audience size
     if (minAudienceSize > 0) {
@@ -1680,7 +1722,16 @@ export default function ClientDetail() {
     }
 
     return true
-  })
+  }
+  const availablePodcasts = cachedPodcasts.filter(p => isAvailableForOutreach(p, actionedPodcastIds))
+
+  // After an action the current podcast leaves the list, so the same index
+  // already points at the next one. Only clamp it against the refetched list.
+  function clampPodcastIndex(refreshedActions: PodcastOutreachAction[] | undefined) {
+    const actioned = new Set((refreshedActions ?? outreachActions).map(action => action.podcast_id))
+    const remaining = cachedPodcasts.filter(p => isAvailableForOutreach(p, actioned)).length
+    setCurrentPodcastIndex(index => Math.max(0, Math.min(index, remaining - 1)))
+  }
   const outreachStats = {
     total: cachedPodcasts.length,
     sent: outreachActions.filter(a => a.action === 'sent').length,
@@ -1732,7 +1783,12 @@ export default function ClientDetail() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('en-US', {
+    // Date-only values (booking DATE columns) are local days; timestamps keep their instant.
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateString)
+      ? parseLocalDate(dateString)
+      : new Date(dateString)
+    if (!date || Number.isNaN(date.getTime())) return '-'
+    return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric'
@@ -2026,6 +2082,7 @@ export default function ClientDetail() {
                   <div className="flex gap-2">
                     <Input
                       placeholder="Paste media kit URL..."
+                      aria-label="Media kit URL"
                       value={editMediaKitUrl}
                       onChange={(e) => setEditMediaKitUrl(e.target.value)}
                       className="text-sm"
@@ -2270,6 +2327,7 @@ export default function ClientDetail() {
                       <div className="flex items-center gap-2">
                         <Input
                           type={showPassword ? 'text' : 'password'}
+                          aria-label="Portal password"
                           placeholder={client.password_set_at ? 'Enter a new password' : 'Enter password'}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
@@ -2367,7 +2425,7 @@ export default function ClientDetail() {
                         <code className="flex-1 text-xs truncate">
                           {window.location.origin}/client/{client.dashboard_slug}
                         </code>
-                        <Button size="icon" variant="ghost" onClick={handleCopyDashboardUrl}>
+                        <Button size="icon" variant="ghost" onClick={handleCopyDashboardUrl} aria-label="Copy dashboard URL">
                           <Copy className="h-4 w-4" />
                         </Button>
                       </div>
@@ -2611,7 +2669,7 @@ export default function ClientDetail() {
                               variant="outline"
                               size="sm"
                               className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
-                              onClick={deleteAllRejectedPodcasts}
+                              onClick={() => setPendingDashboardDelete({ kind: 'all-rejected' })}
                               disabled={deletingAllRejected}
                             >
                               {deletingAllRejected ? (
@@ -2642,8 +2700,9 @@ export default function ClientDetail() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
-                                    onClick={() => deletePodcastFromDashboard(fb.podcast_id, fb.podcast_name)}
+                                    onClick={() => setPendingDashboardDelete({ kind: 'one', podcastId: fb.podcast_id, podcastName: fb.podcast_name })}
                                     disabled={deletingPodcastId === fb.podcast_id}
+                                    aria-label={`Remove ${fb.podcast_name || 'podcast'} from dashboard`}
                                   >
                                     {deletingPodcastId === fb.podcast_id ? (
                                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -2837,6 +2896,7 @@ export default function ClientDetail() {
                           variant="ghost"
                           size="sm"
                           onClick={() => setExpandedOutreachSection(null)}
+                          aria-label="Close section"
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -2883,6 +2943,7 @@ export default function ClientDetail() {
                           variant="ghost"
                           size="sm"
                           onClick={() => setExpandedOutreachSection(null)}
+                          aria-label="Close section"
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -2998,7 +3059,7 @@ export default function ClientDetail() {
                               variant="outline"
                               size="sm"
                               className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
-                              onClick={deleteAllRejectedPodcasts}
+                              onClick={() => setPendingDashboardDelete({ kind: 'all-rejected' })}
                               disabled={deletingAllRejected}
                             >
                               {deletingAllRejected ? (
@@ -3029,8 +3090,9 @@ export default function ClientDetail() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-6 w-6 text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30 flex-shrink-0"
-                                    onClick={() => deletePodcastFromDashboard(fb.podcast_id, fb.podcast_name)}
+                                    onClick={() => setPendingDashboardDelete({ kind: 'one', podcastId: fb.podcast_id, podcastName: fb.podcast_name })}
                                     disabled={deletingPodcastId === fb.podcast_id}
+                                    aria-label={`Remove ${fb.podcast_name || 'podcast'} from dashboard`}
                                   >
                                     {deletingPodcastId === fb.podcast_id ? (
                                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -3161,13 +3223,13 @@ export default function ClientDetail() {
               <div className="flex items-center justify-between">
                 <CardTitle>Progress Overview</CardTitle>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
+                  <Button variant="outline" size="icon" onClick={goToPreviousMonth} aria-label="Previous month">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <div className="text-center min-w-[150px]">
                     <p className="text-sm font-semibold">{monthNames[selectedMonth]} {selectedYear}</p>
                   </div>
-                  <Button variant="outline" size="icon" onClick={goToNextMonth}>
+                  <Button variant="outline" size="icon" onClick={goToNextMonth} aria-label="Next month">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                   <Button variant="outline" size="sm" onClick={goToThisMonth}>
@@ -3492,6 +3554,7 @@ export default function ClientDetail() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEditBooking(booking)}
+                            aria-label={`Edit ${booking.podcast_name}`}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -3500,6 +3563,7 @@ export default function ClientDetail() {
                             size="sm"
                             onClick={() => handleDeleteBooking(booking)}
                             className="text-destructive hover:text-destructive"
+                            aria-label={`Delete ${booking.podcast_name}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -3718,6 +3782,11 @@ export default function ClientDetail() {
                 value={editClientForm.email}
                 onChange={(e) => setEditClientForm({ ...editClientForm, email: e.target.value })}
               />
+              {emailWillChange && (
+                <p className="text-xs text-amber-600" role="status">
+                  Changing the email revokes the client's portal access and password.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-contact">Contact Person</Label>
@@ -3916,6 +3985,7 @@ export default function ClientDetail() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit Podcast Booking</DialogTitle>
+            <DialogDescription>Update the booking's dates, status and details.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto pr-2 flex-1">
             <div className="space-y-2">
@@ -4071,11 +4141,11 @@ export default function ClientDetail() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Podcast</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this podcast booking? This action cannot be undone.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete this podcast booking? This action cannot be undone.
-            </p>
             {deletingBooking && (
               <div className="p-3 bg-muted rounded-lg">
                 <p className="font-medium">{deletingBooking.podcast_name}</p>
@@ -4274,6 +4344,45 @@ export default function ClientDetail() {
               ) : (
                 'Delete Client'
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dashboard Podcast Delete Confirmation */}
+      <AlertDialog
+        open={pendingDashboardDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDashboardDelete(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingDashboardDelete?.kind === 'all-rejected' ? 'Delete all rejected podcasts?' : 'Remove this podcast?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDashboardDelete?.kind === 'all-rejected' ? (
+                <>Every rejected podcast will be removed from the client's dashboard and sheet. This action cannot be undone.</>
+              ) : (
+                <><strong>{pendingDashboardDelete?.kind === 'one' ? pendingDashboardDelete.podcastName || 'This podcast' : ''}</strong> will be removed from the client's dashboard and sheet. This action cannot be undone.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                const pending = pendingDashboardDelete
+                setPendingDashboardDelete(null)
+                if (!pending) return
+                if (pending.kind === 'all-rejected') {
+                  void deleteAllRejectedPodcasts()
+                } else {
+                  void deletePodcastFromDashboard(pending.podcastId, pending.podcastName)
+                }
+              }}
+            >
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

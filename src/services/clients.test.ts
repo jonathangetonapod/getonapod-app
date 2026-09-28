@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  deleteClient,
   getClients,
+  removeClientPhoto,
   getWorkspaceClientDetail,
   getWorkspaceClientSdrContext,
   getWorkspaceResearchContext,
@@ -10,12 +12,13 @@ import {
   updateWorkspaceClientSdrProfile,
 } from '@/services/clients'
 
-const { from, invoke } = vi.hoisted(() => ({ from: vi.fn(), invoke: vi.fn() }))
+const { from, invoke, storageFrom } = vi.hoisted(() => ({ from: vi.fn(), invoke: vi.fn(), storageFrom: vi.fn() }))
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from,
     functions: { invoke },
+    storage: { from: storageFrom },
   },
 }))
 
@@ -82,6 +85,98 @@ describe('getClients', () => {
     await expect(getClients({ workspaceId, status: 'active' })).rejects.toThrow(
       'The selected workspace response did not match the client scope.',
     )
+  })
+})
+
+describe('getClients search', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // A comma or parenthesis in the box used to be read as PostgREST filter
+  // syntax and the whole request came back 400.
+  it('quotes the search term so filter punctuation is matched, not parsed', async () => {
+    const terminalQuery = Promise.resolve({ data: [], error: null, count: 0 })
+    const builder = { select: vi.fn(), eq: vi.fn(), or: vi.fn(), order: vi.fn() }
+    builder.select.mockReturnValue(builder)
+    builder.eq.mockReturnValue(builder)
+    builder.or.mockReturnValue(builder)
+    builder.order.mockReturnValue(terminalQuery)
+    from.mockReturnValue(builder)
+
+    await getClients({ search: 'Acme, Inc. (west) "quoted" back\\slash' })
+
+    expect(builder.or).toHaveBeenCalledWith(
+      'name.ilike."%Acme, Inc. (west) \\"quoted\\" back\\\\slash%",email.ilike."%Acme, Inc. (west) \\"quoted\\" back\\\\slash%"',
+    )
+  })
+})
+
+describe('deleteClient', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const deleteBuilder = (result: { data: unknown; error: unknown }) => {
+    const builder = { delete: vi.fn(), eq: vi.fn(), select: vi.fn() }
+    builder.delete.mockReturnValue(builder)
+    builder.eq.mockReturnValue(builder)
+    builder.select.mockReturnValue(Promise.resolve(result))
+    from.mockReturnValue(builder)
+    return builder
+  }
+
+  it('resolves when a row was actually deleted', async () => {
+    const builder = deleteBuilder({ data: [{ id: 'client-1' }], error: null })
+    await expect(deleteClient('client-1')).resolves.toBeUndefined()
+    expect(builder.select).toHaveBeenCalledWith('id')
+  })
+
+  // RLS hides rows rather than refusing, so zero rows is the only signal.
+  it('throws when nothing was deleted instead of reporting success', async () => {
+    deleteBuilder({ data: [], error: null })
+    await expect(deleteClient('client-1')).rejects.toThrow(/not found|permission/)
+  })
+})
+
+describe('removeClientPhoto', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const clientId = 'client-1'
+  const photoUrl = `https://example.supabase.co/storage/v1/object/public/client-assets/client-photos/${clientId}-photo.png`
+
+  const updateBuilder = (result: { data: unknown; error: unknown }) => {
+    const builder = { update: vi.fn(), eq: vi.fn(), select: vi.fn(), single: vi.fn() }
+    builder.update.mockReturnValue(builder)
+    builder.eq.mockReturnValue(builder)
+    builder.select.mockReturnValue(builder)
+    builder.single.mockReturnValue(Promise.resolve(result))
+    from.mockReturnValue(builder)
+    return builder
+  }
+
+  it('clears the column before removing the object', async () => {
+    const order: string[] = []
+    const builder = updateBuilder({ data: { id: clientId, photo_url: null }, error: null })
+    builder.single.mockImplementation(async () => {
+      order.push('update')
+      return { data: { id: clientId, photo_url: null }, error: null }
+    })
+    const remove = vi.fn(async () => {
+      order.push('remove')
+      return { error: null }
+    })
+    storageFrom.mockReturnValue({ remove })
+
+    await expect(removeClientPhoto(clientId, photoUrl)).resolves.toEqual({ id: clientId, photo_url: null })
+    expect(order).toEqual(['update', 'remove'])
+    expect(remove).toHaveBeenCalledWith([`client-photos/${clientId}-photo.png`])
+  })
+
+  // If the row cannot be updated the object must stay, or the client shows a broken image.
+  it('leaves the object alone when the row update fails', async () => {
+    updateBuilder({ data: null, error: { message: 'denied' } })
+    const remove = vi.fn()
+    storageFrom.mockReturnValue({ remove })
+
+    await expect(removeClientPhoto(clientId, photoUrl)).rejects.toThrow('Failed to clear client photo URL: denied')
+    expect(remove).not.toHaveBeenCalled()
   })
 })
 

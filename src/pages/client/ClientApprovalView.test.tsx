@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ClientApprovalView from '@/pages/client/ClientApprovalView'
 
 vi.mock('canvas-confetti', () => ({ default: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
+import { toast } from 'sonner'
 
 const dashboard = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -88,13 +90,13 @@ function jsonResponse(body: unknown) {
   })
 }
 
-function renderDashboard() {
+function renderDashboard({ preview = false }: { preview?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <HelmetProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter
-          initialEntries={['/client/dallas-fontaine-a0fd037530f8577cc03eb87b?preview=1']}
+          initialEntries={['/client/dallas-fontaine-a0fd037530f8577cc03eb87b' + (preview ? '?preview=1' : '')]}
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
           <Routes>
@@ -208,6 +210,37 @@ describe('ClientApprovalView', () => {
     const review = screen.getByRole('dialog', { name: 'Focused review' })
     expect(within(review).getByRole('heading', { name: 'The Clear Leader' })).toBeInTheDocument()
     expect(within(review).getByText(/My picks · Match 1 of 1/iu)).toBeInTheDocument()
+  })
+
+  // A card-level click sends no notes; the saved note must survive it rather
+  // than being overwritten with null.
+  it('keeps the saved note when a card-level choice is made', async () => {
+    feedback[0] = { ...feedback[0], status: null, notes: 'Keep the intro short' }
+    renderDashboard()
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Interested' })[0])
+
+    await waitFor(() => {
+      const upsert = vi.mocked(fetch).mock.calls
+        .map((call) => JSON.parse(String((call[1] as RequestInit | undefined)?.body || '{}')) as { action?: string; podcast_id?: string; notes?: string | null })
+        .find((body) => body.action === 'feedback_upsert' && body.podcast_id === 'show-one')
+      expect(upsert?.notes).toBe('Keep the intro short')
+    })
+  })
+
+  it('does not save choices in admin preview', async () => {
+    renderDashboard({ preview: true })
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+    expect(screen.getByRole('status')).toHaveTextContent(/admin preview/iu)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Interested' })[0])
+
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('Preview only. Choices are not saved.'))
+    const upserts = vi.mocked(fetch).mock.calls
+      .map((call) => JSON.parse(String((call[1] as RequestInit | undefined)?.body || '{}')) as { action?: string })
+      .filter((body) => body.action === 'feedback_upsert')
+    expect(upserts).toHaveLength(0)
   })
 
   it('uses the active Explore all filters for focused review', async () => {

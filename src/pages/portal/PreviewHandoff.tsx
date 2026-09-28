@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
+import type { Client } from '@/services/clients'
+import { useClientPortal } from '@/contexts/ClientPortalContext'
 
 // Owner-side portal preview entry. The workspace app opens this route in a
 // new tab with a freshly minted (server-side, audited, 1-hour) portal session
@@ -8,9 +10,11 @@ import { Loader2 } from 'lucide-react'
 // scrubbed before entering the portal shell.
 const PreviewHandoff = () => {
   const navigate = useNavigate()
+  const { adoptSession } = useClientPortal()
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     try {
       const params = new URLSearchParams(window.location.hash.replace(/^#/u, ''))
       const sessionToken = params.get('session') || ''
@@ -25,16 +29,21 @@ const PreviewHandoff = () => {
         setFailed(true)
         return
       }
-      window.sessionStorage.setItem('client_portal_session', JSON.stringify({
-        session_token: sessionToken,
-        expires_at: expiresAt,
-        client_id: client.id,
-      }))
-      window.sessionStorage.setItem('client_portal_client', JSON.stringify(client))
       window.history.replaceState(null, '', '/portal/preview')
-      navigate('/portal/dashboard', { replace: true })
+      // Through the provider, so the portal shell already holds the session
+      // when the dashboard mounts; writing storage directly raced the
+      // provider's own restore and landed on the login form.
+      void adoptSession(
+        { session_token: sessionToken, expires_at: expiresAt, client_id: client.id },
+        { id: client.id, name: client.name } as Client,
+      ).then(() => {
+        if (!cancelled) navigate('/portal/dashboard', { replace: true })
+      })
     } catch {
       setFailed(true)
+    }
+    return () => {
+      cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

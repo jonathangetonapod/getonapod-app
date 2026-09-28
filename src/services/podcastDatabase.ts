@@ -1,5 +1,13 @@
 import { supabase } from '@/lib/supabase'
 
+/**
+ * A value for a PostgREST filter string. Quoting it keeps a comma, dot or
+ * parenthesis typed into the search box from being read as filter syntax.
+ */
+function postgrestLiteral(value: string): string {
+  return `"${value.replace(/["\\]/gu, (char) => `\\${char}`)}"`
+}
+
 export interface PodcastFilters {
   search?: string
   category?: string  // Deprecated: use categories instead
@@ -77,7 +85,8 @@ export async function getPodcasts({
   // Apply filters
   if (filters.search) {
     // Search across name, host, publisher, and description
-    query = query.or(`podcast_name.ilike.%${filters.search}%,host_name.ilike.%${filters.search}%,publisher_name.ilike.%${filters.search}%,podcast_description.ilike.%${filters.search}%`)
+    const term = postgrestLiteral(`%${filters.search}%`)
+    query = query.or(`podcast_name.ilike.${term},host_name.ilike.${term},publisher_name.ilike.${term},podcast_description.ilike.${term}`)
   }
 
   // Category filtering (supports both single and multi-select)

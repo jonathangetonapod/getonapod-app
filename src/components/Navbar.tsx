@@ -87,6 +87,8 @@ const Navbar = () => {
                 className="rounded-full border border-[#0d1b2a]/10 bg-[#fffdf9] p-2 text-[#0d1b2a] lg:hidden"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 aria-label="Toggle navigation"
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="site-nav-menu"
               >
                 {isMobileMenuOpen ? (
                   <X className="h-5 w-5" />
@@ -97,7 +99,7 @@ const Navbar = () => {
             </div>
 
             {isMobileMenuOpen && (
-              <div className="border-t border-[#0d1b2a]/10 bg-[#fffdf9]/94 px-5 py-4 lg:hidden">
+              <div id="site-nav-menu" className="border-t border-[#0d1b2a]/10 bg-[#fffdf9]/94 px-5 py-4 lg:hidden">
                 <div className="flex flex-col gap-1">
                   {navLinks.map((link) =>
                     link.href.includes('#') ? (

@@ -95,6 +95,9 @@ serve(async (req) => {
         .select('id,role,status')
         .eq('workspace_id', workspaceId)
         .eq('user_id', context.user.id)
+        // A revoked row keeps its user_id and can sit beside the live one;
+        // without this filter that pair made maybeSingle() fail.
+        .neq('status', 'revoked')
         .maybeSingle()
 
       if (membershipError) {
@@ -149,47 +152,11 @@ serve(async (req) => {
     const reason = optionalString(body.reason, 'reason', 500)
 
     // ---------------------------------------------------------------------
-    // 1. Stripe. Abort on failure.
-    // ---------------------------------------------------------------------
-    const { data: billing } = await admin
-      .from('workspace_billing_profiles')
-      .select('stripe_subscription_id')
-      .eq('workspace_id', workspaceId)
-      .maybeSingle()
-
-    const subscriptionId = typeof billing?.stripe_subscription_id === 'string'
-      ? billing.stripe_subscription_id.trim()
-      : ''
-
-    if (subscriptionId) {
-      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim()
-      if (!stripeKey) {
-        throw new HttpError(
-          503,
-          'BILLING_UNAVAILABLE',
-          'Billing is not configured, so the subscription cannot be ended. Nothing was deleted',
-        )
-      }
-
-      // Cancels now rather than at period end: the workspace stops working the
-      // moment this returns, so billing for the remainder would be for nothing.
-      const cancelled = await fetch(
-        `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
-        { method: 'DELETE', headers: { Authorization: `Bearer ${stripeKey}` } },
-      ).catch(() => null)
-
-      // A subscription Stripe no longer has is already in the state we want.
-      if (!cancelled || (!cancelled.ok && cancelled.status !== 404)) {
-        throw new HttpError(
-          502,
-          'SUBSCRIPTION_CANCEL_FAILED',
-          'The subscription could not be ended, so nothing was deleted. Try again',
-        )
-      }
-    }
-
-    // ---------------------------------------------------------------------
-    // 2. Instantly. Abort on failure.
+    // 1. Instantly. Abort on failure.
+    //
+    // Sending is paused before billing is cancelled because a pause can be
+    // undone and a cancellation cannot: with the order reversed, an Instantly
+    // failure left the subscription gone while the workspace stayed live.
     // ---------------------------------------------------------------------
     const { data: integration } = await admin
       .from('workspace_instantly_integrations')
@@ -243,6 +210,46 @@ serve(async (req) => {
             )
           }
         }
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // 2. Stripe. Abort on failure.
+    // ---------------------------------------------------------------------
+    const { data: billing } = await admin
+      .from('workspace_billing_profiles')
+      .select('stripe_subscription_id')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+
+    const subscriptionId = typeof billing?.stripe_subscription_id === 'string'
+      ? billing.stripe_subscription_id.trim()
+      : ''
+
+    if (subscriptionId) {
+      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim()
+      if (!stripeKey) {
+        throw new HttpError(
+          503,
+          'BILLING_UNAVAILABLE',
+          'Billing is not configured, so the subscription cannot be ended. Nothing was deleted; sending was paused and can be resumed from each campaign',
+        )
+      }
+
+      // Cancels now rather than at period end: the workspace stops working the
+      // moment this returns, so billing for the remainder would be for nothing.
+      const cancelled = await fetch(
+        `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${stripeKey}` } },
+      ).catch(() => null)
+
+      // A subscription Stripe no longer has is already in the state we want.
+      if (!cancelled || (!cancelled.ok && cancelled.status !== 404)) {
+        throw new HttpError(
+          502,
+          'SUBSCRIPTION_CANCEL_FAILED',
+          'The subscription could not be ended, so nothing was deleted. Sending was paused and can be resumed from each campaign. Try again',
+        )
       }
     }
 

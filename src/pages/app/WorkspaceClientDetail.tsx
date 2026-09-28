@@ -333,6 +333,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   // AI draft. The draft-vs-saved comparison cannot stand in for this — the
   // never-seeded initial draft is empty and always "differs".
   const [sdrDraftDirty, setSdrDraftDirty] = useState(false)
+  const [sdrDiscardOpen, setSdrDiscardOpen] = useState(false)
   const [sdrError, setSdrError] = useState<string | null>(null)
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesExpanded, setNotesExpanded] = useState(false)
@@ -722,8 +723,19 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     setSdrEditorFieldId(fieldId)
   }
 
+  // An AI draft cost credits. Closing the editor around it (outside click,
+  // Escape, Cancel) asks first instead of throwing it away.
+  const requestCloseSdrFieldEditor = () => {
+    if (sdrBusy) return
+    if (sdrDraftDirty) {
+      setSdrDiscardOpen(true)
+      return
+    }
+    closeSdrFieldEditor()
+  }
   const closeSdrFieldEditor = () => {
     if (sdrBusy) return
+    setSdrDiscardOpen(false)
     setSdrDraft(normalizeClientSdrProfile(client.ai_sdr_profile))
     setSdrExpectedUpdatedAt(client.ai_sdr_profile_updated_at)
     setSdrDraftDirty(false)
@@ -1470,16 +1482,22 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
         open={Boolean(activeSdrField)}
         onOpenChange={(open) => {
           if (open) return
-          closeSdrFieldEditor()
+          requestCloseSdrFieldEditor()
         }}
       >
         <DialogContent
           className="grid max-h-[94vh] w-[calc(100%-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl"
           onEscapeKeyDown={(event) => {
-            if (sdrBusy) event.preventDefault()
+            if (sdrBusy || sdrDraftDirty) {
+              event.preventDefault()
+              if (sdrDraftDirty) setSdrDiscardOpen(true)
+            }
           }}
           onPointerDownOutside={(event) => {
-            if (sdrBusy) event.preventDefault()
+            if (sdrBusy || sdrDraftDirty) {
+              event.preventDefault()
+              if (sdrDraftDirty) setSdrDiscardOpen(true)
+            }
           }}
         >
           {activeSdrField && (
@@ -1534,7 +1552,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               <DialogFooter className="gap-2 border-t px-6 py-4 sm:justify-between">
                 <div className="flex items-center gap-2" />
                 <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" disabled={sdrBusy} onClick={closeSdrFieldEditor}>Cancel</Button>
+                  <Button type="button" variant="outline" disabled={sdrBusy} onClick={requestCloseSdrFieldEditor}>Cancel</Button>
                   <Button type="button" disabled={sdrBusy || !sdrDraftChanged} onClick={() => void saveSdrProfile()}>
                     {sdrBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save section
@@ -1877,6 +1895,21 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={sdrDiscardOpen} onOpenChange={setSdrDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved AI draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The drafted sections have not been saved. Closing now throws them away, and drafting again costs credits.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={closeSdrFieldEditor}>Discard draft</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={slugRotateOpen} onOpenChange={(open) => { if (!slugRotateBusy) setSlugRotateOpen(open) }}>
         <AlertDialogContent>

@@ -6,6 +6,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { AuthShell } from '@/components/landing/AuthShell'
 
+// Read back by the auth callback page after Google sign-in; keep the two in step.
+const POST_LOGIN_PATH_KEY = 'goap.post-login-path'
+
 const Login = () => {
   const {
     accountState,
@@ -25,11 +28,14 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [resetRequested, setResetRequested] = useState(false)
   const locationState = location.state as {
-    from?: { pathname?: string }
+    from?: { pathname?: string; search?: string; hash?: string }
     passwordChanged?: boolean
     signInAgain?: boolean
   } | null
+  // Keep the query and hash: ?client= style deep links are part of the destination.
   const attemptedPath = locationState?.from?.pathname
+    ? `${locationState.from.pathname}${locationState.from.search ?? ''}${locationState.from.hash ?? ''}`
+    : undefined
   const passwordChanged = locationState?.passwordChanged === true
   const signInAgain = locationState?.signInAgain === true
 
@@ -61,6 +67,14 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     try {
+      // The OAuth round trip loses router state, so the callback reads it back from here.
+      if (attemptedPath) {
+        try {
+          sessionStorage.setItem(POST_LOGIN_PATH_KEY, attemptedPath)
+        } catch {
+          // Storage can be unavailable; the callback then falls back to the default destination.
+        }
+      }
       await signInWithGoogle()
     } catch (error) {
       console.error('Error signing in:', error)

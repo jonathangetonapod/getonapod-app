@@ -397,4 +397,20 @@ describe('WorkspaceSmartPodcastFinder', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' }))
     expect(vi.mocked(generatePodcastQueries)).not.toHaveBeenCalled()
   })
+
+  // A failed context load has no bio either, so it showed the "add their
+  // profile" banner and blamed the client for what was a request failure.
+  it('says the profile could not be loaded, offers a retry, and blocks the scan', async () => {
+    vi.mocked(getWorkspaceResearchContext).mockRejectedValueOnce(new Error('Network down'))
+    renderFinder()
+
+    expect(await screen.findByText(/profile could not be loaded/)).toBeInTheDocument()
+    expect(screen.queryByText(/has no profile bio yet/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(vi.mocked(getWorkspaceResearchContext)).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeEnabled())
+    expect(screen.queryByText(/profile could not be loaded/)).not.toBeInTheDocument()
+  })
 })

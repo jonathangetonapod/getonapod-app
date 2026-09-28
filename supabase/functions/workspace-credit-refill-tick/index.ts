@@ -122,7 +122,10 @@ serve(async (req) => {
 
     // A workspace whose payments are already failing is the last one to charge
     // again automatically.
-    if (['past_due', 'unpaid', 'canceled', 'cancelled', 'incomplete'].includes(billingStatus)) {
+    // billing_status only ever holds trialing/active/past_due/comped/suspended
+    // (the webhook maps every cancelled or lapsed Stripe state to suspended),
+    // so the Stripe names never matched and a cancelled plan kept refilling.
+    if (['past_due', 'suspended'].includes(billingStatus)) {
       skipped += 1
       continue
     }

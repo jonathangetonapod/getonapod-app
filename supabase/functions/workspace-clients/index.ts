@@ -16,7 +16,7 @@ import {
   workspaceCredentialIsFresh,
   writeAudit,
 } from '../_shared/workspaceAuth.ts'
-import { chargeCredits, logOperationCost, retryWindowKey } from '../_shared/billing.ts'
+import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { notifyBookingConfirmed, notifyEpisodePublished } from '../_shared/clientNotify.ts'
 
@@ -344,7 +344,7 @@ serve(async (req) => {
         throw new HttpError(500, 'SERVER_MISCONFIGURED', 'AI drafting is not configured')
       }
       const usedByoKey = anthropicKey.source === 'workspace'
-      await chargeCredits(admin, {
+      const draftCharge = await chargeCredits(admin, {
         workspaceId,
         operationType: 'pitch_profile',
         referenceKind: 'sdr_profile_draft',
@@ -372,6 +372,17 @@ serve(async (req) => {
           : null,
       }))
 
+      // Credits are taken before the model call so an empty balance never
+      // gets a free ride; a draft that never arrives gives them back, but
+      // only a fresh charge, never an earlier attempt's replayed debit.
+      const refundDraft = async () => {
+        if (draftCharge.replayed) return
+        await refundCredits(admin, {
+          workspaceId,
+          entryId: draftCharge.entryId,
+          reason: 'SDR profile draft failed after the charge',
+        })
+      }
       const usage = { input: 0, output: 0 }
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -392,8 +403,12 @@ serve(async (req) => {
           }],
         }),
         signal: AbortSignal.timeout(45_000),
+      }).catch(async (error: unknown) => {
+        await refundDraft()
+        throw error
       })
       if (!response.ok) {
+        await refundDraft()
         throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft could not be generated. Try again shortly')
       }
       const payloadJson = await response.json() as {
@@ -407,6 +422,7 @@ serve(async (req) => {
       try {
         draft = JSON.parse(text.replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, ''))
       } catch (_error) {
+        await refundDraft()
         throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft came back malformed. Try again')
       }
       const fields: Record<string, string> = {}

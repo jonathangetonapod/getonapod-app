@@ -24,6 +24,8 @@ const Blog = lazyRoute(() => import("./pages/Blog"));
 const BlogPost = lazyRoute(() => import("./pages/BlogPost"));
 const Course = lazyRoute(() => import("./pages/Course"));
 const WhatToExpect = lazyRoute(() => import("./pages/WhatToExpect"));
+const Privacy = lazyRoute(() => import("./pages/Privacy"));
+const Terms = lazyRoute(() => import("./pages/Terms"));
 const AdminLogin = lazyRoute(() => import("./pages/admin/Login"));
 const PodcastDatabase = lazyRoute(() => import("./pages/admin/PodcastDatabase"));
 const AuthCallback = lazyRoute(() => import("./pages/admin/Callback"));
@@ -134,6 +136,8 @@ const App = () => (
             <Route path="/blog/:slug" element={<BlogPost />} />
             <Route path="/course" element={<Course />} />
             <Route path="/what-to-expect" element={<WhatToExpect />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="/onboarding" element={<Navigate to="/" replace />} />
             <Route path="/onboarding/:token" element={<ClientOnboarding />} />
 

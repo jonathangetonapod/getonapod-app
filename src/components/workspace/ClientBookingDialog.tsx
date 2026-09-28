@@ -170,24 +170,33 @@ export const ClientBookingDialog = ({
   }, [open, booking])
 
   const saveMutation = useMutation({
-    mutationFn: () => saveWorkspaceClientBooking(
-      workspaceId,
-      clientId,
-      {
-        podcast_name: form.podcast_name.trim(),
-        host_name: form.host_name.trim() || null,
-        podcast_url: form.podcast_url.trim() || null,
-        status: form.status,
-        scheduled_date: form.scheduled_date || null,
-        recording_date: form.recording_date || null,
-        publish_date: form.publish_date || null,
-        episode_url: form.episode_url.trim() || null,
-        notes: form.notes.trim() || null,
-        prep_sent: form.prep_sent,
-        shortlist_podcast_id: form.shortlist_podcast_id,
-      },
-      booking?.id,
-    ),
+    mutationFn: () => {
+      // Only the dates the chosen stage shows are sent; the rest go out as
+      // null. Sending every field kept a stale recording date on a placement
+      // moved back to Scheduling, with no visible way to clear it.
+      const owned = new Set<DateField>(
+        (STAGES.find((option) => option.value === form.status) ?? STAGES[0]).dates,
+      )
+      const dateOrNull = (field: DateField) => (owned.has(field) ? form[field] || null : null)
+      return saveWorkspaceClientBooking(
+        workspaceId,
+        clientId,
+        {
+          podcast_name: form.podcast_name.trim(),
+          host_name: form.host_name.trim() || null,
+          podcast_url: form.podcast_url.trim() || null,
+          status: form.status,
+          scheduled_date: dateOrNull('scheduled_date'),
+          recording_date: dateOrNull('recording_date'),
+          publish_date: dateOrNull('publish_date'),
+          episode_url: form.status === 'published' ? form.episode_url.trim() || null : null,
+          notes: form.notes.trim() || null,
+          prep_sent: form.prep_sent,
+          shortlist_podcast_id: form.shortlist_podcast_id,
+        },
+        booking?.id,
+      )
+    },
     onSuccess: () => {
       toast.success(isExisting ? 'Placement updated.' : `Logged for ${clientName}.`)
       onSaved()

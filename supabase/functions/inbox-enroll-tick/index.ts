@@ -17,7 +17,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-import { createAdminClient, writeAudit } from '../_shared/workspaceAuth.ts'
+import { createAdminClient, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { HttpError } from '../_shared/httpError.ts'
 import {
   decryptInstantlyApiKey,
@@ -47,7 +47,8 @@ serve(async (req) => {
     return json(405, { error: 'method_not_allowed' })
   }
   const secret = Deno.env.get('ENROLL_TICK_SECRET')?.trim()
-  if (!secret || req.headers.get('x-enroll-secret') !== secret) {
+  const presentedSecret = req.headers.get('x-enroll-secret') ?? ''
+  if (!secret || !presentedSecret || !(await secretsMatch(presentedSecret, secret))) {
     return json(401, { error: 'unauthorized' })
   }
 

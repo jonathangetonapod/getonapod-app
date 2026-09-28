@@ -270,7 +270,12 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   )
   const activePreviewLogoUrl = logoPreviewUrl || agencyLogoUrl
 
+  // The reset reads the list through refs so a background refetch while the
+  // dialog is open (focus, invalidation) cannot wipe what the operator typed.
+  const startDataRef = useRef({ data, publishedTemplates })
+  startDataRef.current = { data, publishedTemplates }
   useEffect(() => {
+    const { data, publishedTemplates } = startDataRef.current
     if (!startOpen || !data) return
     const defaultTemplate = publishedTemplates.find((template) => template.is_default) ?? publishedTemplates[0]
     const requestedClient = clientFilter
@@ -289,7 +294,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       } : {}),
       ...experienceFromTemplate(defaultTemplate, data.workspace.name),
     })
-  }, [clientFilter, data, publishedTemplates, startOpen])
+  }, [clientFilter, startOpen])
 
   const detailQuery = useQuery({
     queryKey: [...queryKey, 'detail', selectedInstanceId || 'none'],
@@ -297,6 +302,14 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     enabled: Boolean(selectedInstanceId && validWorkspaceId),
     retry: false,
   })
+
+  // A failed detail load left the review dialog open on nothing.
+  const detailError = detailQuery.isError ? detailQuery.error : null
+  useEffect(() => {
+    if (!detailError) return
+    toast.error(detailError instanceof Error ? detailError.message : 'Unable to load this onboarding.')
+    setSelectedInstanceId(null)
+  }, [detailError])
 
   useEffect(() => {
     if (
@@ -327,7 +340,16 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const templateMutation = useMutation({
     mutationFn: async ({ draft, publish, makeDefault }: { draft: OnboardingTemplateDraft; publish: boolean; makeDefault: boolean }) => {
       const saved = await saveOnboardingTemplate(workspaceId, draft, editingTemplate?.id)
-      return publish ? publishOnboardingTemplate(workspaceId, saved.id, makeDefault) : saved
+      if (!publish) return saved
+      try {
+        return await publishOnboardingTemplate(workspaceId, saved.id, makeDefault)
+      } catch {
+        // The draft exists now; point the builder at it so a retry updates
+        // it instead of creating a second copy.
+        setEditingTemplate(saved)
+        await refresh()
+        throw new Error('The template was saved as a draft, but publishing failed. Try again.')
+      }
     },
     onSuccess: async () => {
       await refresh()
@@ -768,8 +790,8 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               <section className="space-y-4">
                 <div><h3 className="font-semibold">Client and form</h3><p className="text-sm text-muted-foreground">Create one private intake link for this client. The questions stay pinned to this published template version.</p></div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2"><Label>Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2 sm:col-span-2"><Label>Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-template">Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger id="start-template"><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-client">Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger id="start-client"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
                   {startForm.client_choice === 'new' ? <>
                     <div className="space-y-2"><Label htmlFor="new-client-name">Client or company name</Label><Input id="new-client-name" placeholder="Acme Company" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div>
                     <div className="space-y-2"><Label htmlFor="new-contact">Contact name</Label><Input id="new-contact" placeholder="Jane Smith" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div>

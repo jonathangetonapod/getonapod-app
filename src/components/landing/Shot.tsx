@@ -29,7 +29,10 @@ export const Shot = ({ src, alt, placeholder, ratio, priority = false }: ShotPro
             src={src}
             alt={alt}
             loading={priority ? 'eager' : 'lazy'}
-            fetchPriority={priority ? 'high' : 'auto'}
+            // React 18 only knows the attribute in lowercase; the camelCase
+            // prop draws a warning and is dropped. Spread so TypeScript
+            // accepts the attribute it does not have a type for.
+            {...{ fetchpriority: priority ? 'high' : 'auto' }}
             decoding="async"
             onError={() => setMissing(true)}
           />

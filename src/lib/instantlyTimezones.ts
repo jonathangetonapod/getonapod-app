@@ -59,6 +59,39 @@ const TIMEZONE_SUBSTITUTES: Record<string, string> = {
 
 const SUPPORTED = new Set<string>(INSTANTLY_TIMEZONES)
 
+/**
+ * The clock a listed zone actually keeps, for our own wall-time arithmetic.
+ *
+ * Instantly's list is ordered by offset and its Pacific slot is America/Dawson,
+ * but the Yukon dropped daylight saving in 2020 and the IANA rules now keep
+ * Dawson on UTC-7 all year. Reading Dawson literally put every Pacific
+ * campaign's window an hour early for four months a year, in silence.
+ */
+const CLOCK_ZONES: Record<string, string> = {
+  'America/Dawson': 'America/Los_Angeles',
+}
+
+/** The IANA zone to compute wall time in for an Instantly zone. */
+export function clockZoneFor(timezone: string): string {
+  return CLOCK_ZONES[timezone] ?? timezone
+}
+
+const ZONE_NOTES: Record<string, string> = {
+  'America/Dawson': 'Pacific Time',
+  'America/Detroit': 'Eastern Time',
+  'America/Boise': 'Mountain Time',
+  'America/Creston': 'Arizona, no daylight saving',
+  'Europe/Isle_of_Man': 'UK and Ireland',
+  'Arctic/Longyearbyen': 'Central European Time',
+}
+
+/** What to show for a zone in a picker: the name, and the clock it stands for. */
+export function instantlyTimezoneLabel(timezone: string): string {
+  const name = timezone.replace(/_/g, ' ')
+  const note = ZONE_NOTES[timezone]
+  return note ? `${name} (${note})` : name
+}
+
 export function isInstantlyTimezone(timezone: string): boolean {
   return SUPPORTED.has(timezone)
 }

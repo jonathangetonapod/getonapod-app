@@ -2,9 +2,14 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
-/** Escape special Supabase/PostgREST filter characters in user input */
-function sanitizeSearch(input: string): string {
-  return input.replace(/[%_\\]/g, '\\$&')
+/**
+ * Escape a search term for a PostgREST .or() filter. Wildcards are escaped for
+ * ILIKE, and the whole value is double-quoted so a comma, parenthesis or dot
+ * in the term is data rather than filter syntax.
+ */
+function orFilterValue(input: string): string {
+  const term = input.replace(/[%_\\]/g, '\\$&')
+  return '"%' + term.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '%"'
 }
 
 const VALID_SORT_COLUMNS = [
@@ -65,9 +70,9 @@ serve(async (req) => {
 
     // Full-text search across name, description, publisher
     if (search) {
-      const safe = sanitizeSearch(search)
+      const safe = orFilterValue(search)
       query = query.or(
-        `podcast_name.ilike.%${safe}%,podcast_description.ilike.%${safe}%,publisher_name.ilike.%${safe}%`
+        `podcast_name.ilike.${safe},podcast_description.ilike.${safe},publisher_name.ilike.${safe}`
       )
     }
 

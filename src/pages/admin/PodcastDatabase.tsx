@@ -737,7 +737,7 @@ export default function PodcastDatabase() {
       }
 
       if (filters.hasEmail !== undefined && filters.hasEmail) {
-        query = query.not('email', 'is', null)
+        query = query.not('podscan_email', 'is', null)
       }
 
       if (filters.isActive !== undefined) {
@@ -794,7 +794,9 @@ export default function PodcastDatabase() {
   }, [podcasts, scores, minScoreFilter])
 
   // Handle scoring
-  const handleScoreSelected = async () => {
+  // Callers that just changed the selection pass it explicitly; state set in the
+  // same tick would not be visible here yet.
+  const handleScoreSelected = async (idsToScore: Set<string> = selectedPodcasts) => {
     if (!bioToUse || bioToUse.trim().length === 0) {
       toast.error(
         isProspectMode
@@ -804,7 +806,7 @@ export default function PodcastDatabase() {
       return
     }
 
-    if (selectedPodcasts.size === 0) {
+    if (idsToScore.size === 0) {
       toast.error('Please select at least one podcast to score')
       return
     }
@@ -813,7 +815,7 @@ export default function PodcastDatabase() {
 
     try {
       // Get selected podcasts
-      const podcastsToScore = podcasts.filter(p => selectedPodcasts.has(p.id))
+      const podcastsToScore = podcasts.filter(p => idsToScore.has(p.id))
 
       // Map to scoring format
       const podcastsForScoring: PodcastForScoring[] = podcastsToScore.map(p => ({
@@ -879,14 +881,10 @@ export default function PodcastDatabase() {
       return
     }
 
-    // Select all visible
+    // Select all visible and score that same set
     const allIds = new Set(displayPodcasts.map(p => p.id))
     setSelectedPodcasts(allIds)
-
-    // Wait a tick for state to update, then score
-    setTimeout(() => {
-      handleScoreSelected()
-    }, 100)
+    await handleScoreSelected(allIds)
   }
 
   // Handle export to client sheet
@@ -947,7 +945,7 @@ export default function PodcastDatabase() {
   }
 
   // Handle export to prospect sheet
-  const handleExportToProspectSheet = async () => {
+  const handleExportToProspectSheet = async (idsToExport: Set<string> = selectedPodcasts) => {
     if (isNewProspectMode) {
       if (!prospectName.trim()) {
         toast.error('Please enter a prospect name')
@@ -959,7 +957,7 @@ export default function PodcastDatabase() {
       }
     }
 
-    if (selectedPodcasts.size === 0) {
+    if (idsToExport.size === 0) {
       toast.error('Please select at least one podcast to export')
       return
     }
@@ -979,7 +977,7 @@ export default function PodcastDatabase() {
       const podcastsToExport: PodcastExportData[] = []
 
       podcasts.forEach(podcast => {
-        if (selectedPodcasts.has(podcast.id)) {
+        if (idsToExport.has(podcast.id)) {
           podcastsToExport.push({
             podcast_id: podcast.podscan_id,
             podscan_podcast_id: podcast.podscan_id,
@@ -1127,8 +1125,8 @@ export default function PodcastDatabase() {
     // Update selection to only the QA-approved podcasts (using database row IDs)
     setSelectedPodcasts(approvedDatabaseIds)
     setQaReviewOpen(false)
-    // Trigger the export flow directly
-    setTimeout(() => handleExportToProspectSheet(), 100)
+    // Export that same set; the selection state is not updated yet in this tick
+    void handleExportToProspectSheet(approvedDatabaseIds)
   }
 
   // Handle CSV export
@@ -1451,6 +1449,8 @@ export default function PodcastDatabase() {
                   size="icon"
                   onClick={() => setShowBulkFilters(!showBulkFilters)}
                   className={showBulkFilters ? 'bg-muted' : ''}
+                  aria-label={showBulkFilters ? 'Hide import filters' : 'Show import filters'}
+                  aria-pressed={showBulkFilters}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
                 </Button>
@@ -1990,16 +1990,18 @@ export default function PodcastDatabase() {
               ) : (
                 <>
                   <div>
-                    <Label>Prospect Name</Label>
+                    <Label htmlFor="prospect-name">Prospect Name</Label>
                     <Input
+                      id="prospect-name"
                       value={prospectName}
                       onChange={(e) => setProspectName(e.target.value)}
                       placeholder="Sarah Johnson"
                     />
                   </div>
                   <div>
-                    <Label>Prospect Bio</Label>
+                    <Label htmlFor="prospect-bio">Prospect Bio</Label>
                     <Textarea
+                      id="prospect-bio"
                       value={prospectBio}
                       onChange={(e) => setProspectBio(e.target.value)}
                       placeholder="Brief background about the prospect..."
@@ -2007,8 +2009,9 @@ export default function PodcastDatabase() {
                     />
                   </div>
                   <div>
-                    <Label>Profile Image URL (optional)</Label>
+                    <Label htmlFor="prospect-image-url">Profile Image URL (optional)</Label>
                     <Input
+                      id="prospect-image-url"
                       value={prospectImageUrl}
                       onChange={(e) => setProspectImageUrl(e.target.value)}
                       placeholder="https://..."
@@ -2043,7 +2046,7 @@ export default function PodcastDatabase() {
                 {isMatchMode && bioToUse && (
                   <>
                     <Button
-                      onClick={handleScoreSelected}
+                      onClick={() => handleScoreSelected()}
                       disabled={isScoring || selectedPodcasts.size === 0}
                       variant="secondary"
                       size="sm"
@@ -2163,7 +2166,7 @@ export default function PodcastDatabase() {
                 {searchQuery && (
                   <Badge variant="secondary" className="gap-1">
                     Search: {searchQuery}
-                    <button onClick={() => setSearchQuery('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear search filter" onClick={() => setSearchQuery('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2171,7 +2174,7 @@ export default function PodcastDatabase() {
                 {categoryFilter.length > 0 && categoryFilter.map(cat => (
                   <Badge key={cat} variant="secondary" className="gap-1">
                     Category: {cat}
-                    <button onClick={() => setCategoryFilter(prev => prev.filter(c => c !== cat))} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label={`Remove category filter ${cat}`} onClick={() => setCategoryFilter(prev => prev.filter(c => c !== cat))} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2179,7 +2182,7 @@ export default function PodcastDatabase() {
                 {minAudience && (
                   <Badge variant="secondary" className="gap-1">
                     Min Audience: {Number(minAudience).toLocaleString()}
-                    <button onClick={() => setMinAudience('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear minimum audience filter" onClick={() => setMinAudience('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2187,7 +2190,7 @@ export default function PodcastDatabase() {
                 {maxAudience && (
                   <Badge variant="secondary" className="gap-1">
                     Max Audience: {Number(maxAudience).toLocaleString()}
-                    <button onClick={() => setMaxAudience('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear maximum audience filter" onClick={() => setMaxAudience('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2195,7 +2198,7 @@ export default function PodcastDatabase() {
                 {minRating && (
                   <Badge variant="secondary" className="gap-1">
                     Min Rating: {minRating}★
-                    <button onClick={() => setMinRating('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear minimum rating filter" onClick={() => setMinRating('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2203,7 +2206,7 @@ export default function PodcastDatabase() {
                 {maxRating && (
                   <Badge variant="secondary" className="gap-1">
                     Max Rating: {maxRating}★
-                    <button onClick={() => setMaxRating('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear maximum rating filter" onClick={() => setMaxRating('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2211,7 +2214,7 @@ export default function PodcastDatabase() {
                 {hasEmailFilter && (
                   <Badge variant="secondary" className="gap-1">
                     Has Email
-                    <button onClick={() => setHasEmailFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear has email filter" onClick={() => setHasEmailFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2219,7 +2222,7 @@ export default function PodcastDatabase() {
                 {languageFilter !== 'all' && (
                   <Badge variant="secondary" className="gap-1">
                     Language: {languageFilter}
-                    <button onClick={() => setLanguageFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear language filter" onClick={() => setLanguageFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2227,7 +2230,7 @@ export default function PodcastDatabase() {
                 {regionFilter !== 'all' && (
                   <Badge variant="secondary" className="gap-1">
                     Region: {regionFilter}
-                    <button onClick={() => setRegionFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear region filter" onClick={() => setRegionFilter('all')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2235,7 +2238,7 @@ export default function PodcastDatabase() {
                 {minEpisodes && (
                   <Badge variant="secondary" className="gap-1">
                     Min Episodes: {minEpisodes}
-                    <button onClick={() => setMinEpisodes('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear minimum episodes filter" onClick={() => setMinEpisodes('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2243,7 +2246,7 @@ export default function PodcastDatabase() {
                 {maxEpisodes && (
                   <Badge variant="secondary" className="gap-1">
                     Max Episodes: {maxEpisodes}
-                    <button onClick={() => setMaxEpisodes('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear maximum episodes filter" onClick={() => setMaxEpisodes('')} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2251,7 +2254,7 @@ export default function PodcastDatabase() {
                 {hasGuestsFilter && (
                   <Badge variant="secondary" className="gap-1">
                     Has Guests
-                    <button onClick={() => setHasGuestsFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear has guests filter" onClick={() => setHasGuestsFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2259,7 +2262,7 @@ export default function PodcastDatabase() {
                 {hasSponsorsFilter && (
                   <Badge variant="secondary" className="gap-1">
                     Has Sponsors
-                    <button onClick={() => setHasSponsorsFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear has sponsors filter" onClick={() => setHasSponsorsFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2267,7 +2270,7 @@ export default function PodcastDatabase() {
                 {isActiveFilter && (
                   <Badge variant="secondary" className="gap-1">
                     Active Only
-                    <button onClick={() => setIsActiveFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
+                    <button type="button" aria-label="Clear active only filter" onClick={() => setIsActiveFilter(false)} className="ml-1 hover:bg-background/20 rounded-full p-0.5">
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
@@ -2358,6 +2361,7 @@ export default function PodcastDatabase() {
                 <div className="flex gap-2 ml-auto">
                   <Input
                     placeholder="Preset name..."
+                    aria-label="Preset name"
                     value={presetName}
                     onChange={(e) => setPresetName(e.target.value)}
                     onKeyDown={(e) => {
@@ -2389,6 +2393,7 @@ export default function PodcastDatabase() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search podcasts by name, host, publisher..."
+                  aria-label="Search podcasts"
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value)
@@ -2458,6 +2463,7 @@ export default function PodcastDatabase() {
             <div className="flex gap-2">
               <Input
                 placeholder="Min Audience"
+                aria-label="Minimum audience"
                 value={minAudience}
                 onChange={(e) => setMinAudience(e.target.value)}
                 className="w-[150px]"
@@ -2465,6 +2471,7 @@ export default function PodcastDatabase() {
               />
               <Input
                 placeholder="Min Rating"
+                aria-label="Minimum rating"
                 value={minRating}
                 onChange={(e) => setMinRating(e.target.value)}
                 className="w-[150px]"
@@ -2519,6 +2526,7 @@ export default function PodcastDatabase() {
                   <div className="flex gap-2">
                     <Input
                       placeholder="Max Audience"
+                      aria-label="Maximum audience"
                       value={maxAudience}
                       onChange={(e) => setMaxAudience(e.target.value)}
                       className="w-[150px]"
@@ -2526,6 +2534,7 @@ export default function PodcastDatabase() {
                     />
                     <Input
                       placeholder="Max Rating"
+                      aria-label="Maximum rating"
                       value={maxRating}
                       onChange={(e) => setMaxRating(e.target.value)}
                       className="w-[150px]"
@@ -2539,6 +2548,7 @@ export default function PodcastDatabase() {
                   <div className="flex gap-2">
                     <Input
                       placeholder="Min Episodes"
+                      aria-label="Minimum episodes"
                       value={minEpisodes}
                       onChange={(e) => setMinEpisodes(e.target.value)}
                       className="w-[150px]"
@@ -2546,6 +2556,7 @@ export default function PodcastDatabase() {
                     />
                     <Input
                       placeholder="Max Episodes"
+                      aria-label="Maximum episodes"
                       value={maxEpisodes}
                       onChange={(e) => setMaxEpisodes(e.target.value)}
                       className="w-[150px]"
@@ -2862,7 +2873,7 @@ export default function PodcastDatabase() {
                           <TableCell className={getDensityClass()}>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
+                                <Button variant="ghost" size="sm" aria-label={`More actions for ${podcast.podcast_name}`}>
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -3002,7 +3013,7 @@ export default function PodcastDatabase() {
                     </TooltipProvider>
                   )}
                   {isProspectMode && (
-                    <Button onClick={handleExportToProspectSheet} disabled={isExporting}>
+                    <Button onClick={() => handleExportToProspectSheet()} disabled={isExporting}>
                       {isExporting ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -3264,16 +3275,19 @@ export default function PodcastDatabase() {
           </div>
         </SheetContent>
       </Sheet>
-      {/* QA Review Sheet */}
-      <QAReviewSheet
-        open={qaReviewOpen}
-        onOpenChange={setQaReviewOpen}
-        podcasts={qaSelectedPodcasts}
-        prospectBio={qaBio}
-        prospectName={qaProspectName}
-        idMap={qaIdMap}
-        onConfirm={handleQAConfirm}
-      />
+      {/* QA Review Sheet: mounted only while open so results and approvals
+          from a previous run do not carry over to the next selection */}
+      {qaReviewOpen && (
+        <QAReviewSheet
+          open={qaReviewOpen}
+          onOpenChange={setQaReviewOpen}
+          podcasts={qaSelectedPodcasts}
+          prospectBio={qaBio}
+          prospectName={qaProspectName}
+          idMap={qaIdMap}
+          onConfirm={handleQAConfirm}
+        />
+      )}
     </DashboardLayout>
   )
 }

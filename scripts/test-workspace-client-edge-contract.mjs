@@ -178,7 +178,9 @@ assert.match(shortlistEdge, /episode_transcript_excerpt: captured\?\.transcript 
 assert.match(shortlistEdge, /recent_guest_name: recentGuestName,/u)
 assert.match(shortlistEdge, /episode_transcript: typeof researchDocument\.episode_transcript_excerpt === 'string'/u)
 const autopilotEdge = readFileSync('supabase/functions/client-autopilot-tick/index.ts', 'utf8')
-assert.match(autopilotEdge, /req\.headers\.get\('x-autopilot-secret'\) !== secret/u)
+// Constant-time: a plain !== leaks the secret byte by byte through timing.
+assert.match(autopilotEdge, /secretsMatch\(presentedSecret, secret\)/u)
+assert.doesNotMatch(autopilotEdge, /!== secret/u)
 assert.match(autopilotEdge, /\.eq\('next_run_at', due\.next_run_at\)/u)
 assert.match(autopilotEdge, /entry\.score >= due\.min_score/u)
 assert.match(autopilotEdge, /\.slice\(0, due\.max_weekly_adds\)/u)

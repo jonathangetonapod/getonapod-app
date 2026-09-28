@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import WorkspacePodcastDatabase from '@/pages/app/WorkspacePodcastDatabase'
 import { addClientShortlistPodcasts } from '@/services/clientShortlist'
-import { addWorkspaceProspectPodcasts, getWorkspaceProspects } from '@/services/prospectDashboards'
+import { toast } from 'sonner'
+import { addWorkspaceProspectPodcasts, getWorkspaceProspects, PartialShortlistAddError } from '@/services/prospectDashboards'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { getWorkspaceClients } from '@/services/clients'
 import { getWorkspacePodcastCatalog } from '@/services/workspacePodcastCatalog'
@@ -18,10 +19,12 @@ vi.mock('@/services/workspacePodcastCatalog', () => ({ getWorkspacePodcastCatalo
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
 vi.mock('@/services/clientShortlist', () => ({ addClientShortlistPodcasts: vi.fn() }))
 vi.mock('@/services/hostRelationships', () => ({ listHostRelationships: vi.fn() }))
-vi.mock('@/services/prospectDashboards', () => ({
+vi.mock('@/services/prospectDashboards', async (importOriginal) => ({
+  PartialShortlistAddError: (await importOriginal<typeof import('@/services/prospectDashboards')>()).PartialShortlistAddError,
   getWorkspaceProspects: vi.fn(),
   addWorkspaceProspectPodcasts: vi.fn(),
 }))
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() }) }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedCatalog = vi.mocked(getWorkspacePodcastCatalog)
@@ -201,6 +204,63 @@ describe('WorkspacePodcastDatabase', () => {
     // The prospect shape is narrower on purpose: a dashboard goes to someone
     // who has signed nothing, so the contact address is not gathered for it.
     expect(mockedAddToProspect.mock.calls[0][2][0]).not.toHaveProperty('podcast_email')
+  })
+
+  async function addToProspect() {
+    mockedProspects.mockResolvedValue({
+      workspace: { id: workspaceId, name: 'Northwind', slug: 'northwind' },
+      viewer_role: 'owner',
+      can_manage: true,
+      dashboards: [{ id: 'prospect-1', prospect_name: 'Ada Bell', lifecycle_status: 'published' }],
+    } as never)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The Founder Show' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to client' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'A prospect' }))
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Prospect' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Ada Bell' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to dashboard' }))
+  }
+
+  /*
+   * The dialog promised to unpublish a live dashboard, which the server stopped
+   * doing: the additions land hidden and the page stays up. The copy and the
+   * follow-up toast now say where the shows went instead.
+   */
+  it('tells the operator the shows were added hidden to a live dashboard', async () => {
+    mockedAddToProspect.mockResolvedValue({
+      added: 1, skipped: 0, podcast_ids: ['podcast-one'], unpublished_for_review: false, hidden_pending_review: true,
+    })
+
+    await addToProspect()
+    expect(screen.getByText(/added to the prospect’s dashboard hidden/)).toBeInTheDocument()
+    expect(screen.queryByText(/unpublished/)).not.toBeInTheDocument()
+
+    await waitFor(() => expect(mockedAddToProspect).toHaveBeenCalled())
+    await waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      'Added hidden. Open the prospect’s New tab to show them.',
+      { duration: 8000 },
+    ))
+  })
+
+  // The batch goes over in chunks; a failure part-way used to read as if
+  // nothing had been added at all.
+  it('says how many podcasts landed before a partial failure', async () => {
+    mockedAddToProspect.mockRejectedValue(new PartialShortlistAddError('The second batch timed out.', {
+      added: 3, skipped: 0, podcast_ids: ['a', 'b', 'c'], unpublished_for_review: false,
+    }))
+
+    await addToProspect()
+
+    await waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith('3 podcasts were added before it failed.'))
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('The second batch timed out.')
+  })
+
+  // The catalog function rejects a search longer than 120 characters.
+  it('caps the search box at the length the catalog accepts', async () => {
+    renderPage()
+    expect(await screen.findByLabelText('Search podcasts')).toHaveAttribute('maxlength', '120')
   })
 
   /*

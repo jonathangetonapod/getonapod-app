@@ -18,7 +18,7 @@ import {
   type WorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { generatePodcastSearchEmbedding } from '../_shared/podcastSearch.ts'
-import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
+import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import {
   ensureEpisodesCaptured,
@@ -3092,7 +3092,10 @@ serve(async (req) => {
         clientId,
         actorUserId: authContext.user.id,
         byoKeyUsed,
-        idempotencyKey: `pitch:${shortlistPodcastId}:${angleIndex}`,
+        // A window, not a permanent key: regenerating the same angle later is
+        // a deliberate second run and must be charged, while a double-click
+        // inside the window replays.
+        idempotencyKey: retryWindowKey(['pitch', shortlistPodcastId, String(angleIndex)]),
       })
 
       const usage = { input: 0, output: 0 }

@@ -111,6 +111,9 @@ import { toast } from 'sonner'
 
 const SCOPE_STORAGE_KEY = 'podcast-finder-client-scope-v3'
 const RESULTS_PER_PAGE = 50
+/** workspace-podcast-catalog caps page_size at 48; two pages is the most one keyword is worth. */
+const CATALOG_PASS_PAGE_SIZE = 48
+const CATALOG_PASS_MAX_PAGES = 2
 
 type ResultTab = 'all' | ResearchTier
 type ResultSort = 'priority' | 'relevance' | 'audience' | 'recent'
@@ -1007,19 +1010,27 @@ export default function PodcastFinder({
       for (const query of normalizedQueries) {
         if (stopRequestedRef.current) break
         try {
-          const catalogPage = await withTimeout(
-            getWorkspacePodcastCatalog(selectedWorkspace.id, {
-              search: query.replace(/["*]/gu, ' ').replace(/\s+/gu, ' ').trim(),
-              activity: 'all',
-              pageSize: 100,
-            }),
-            30,
-            'The podcast database',
-          )
-          const catalogPodcasts = catalogPage.items.map(catalogItemToPodcast)
-          rawResults += catalogPodcasts.length
-          collected = mergeResearchResults(collected, catalogPodcasts, 'Podcast database', query)
-          setResults(collected)
+          // The catalog refuses pages over 48, so a keyword takes up to two
+          // pages rather than one oversized request that never succeeds.
+          const search = query.replace(/["*]/gu, ' ').replace(/\s+/gu, ' ').trim()
+          for (let page = 1; page <= CATALOG_PASS_MAX_PAGES; page += 1) {
+            if (stopRequestedRef.current) break
+            const catalogPage = await withTimeout(
+              getWorkspacePodcastCatalog(selectedWorkspace.id, {
+                search,
+                activity: 'all',
+                page,
+                pageSize: CATALOG_PASS_PAGE_SIZE,
+              }),
+              30,
+              'The podcast database',
+            )
+            const catalogPodcasts = catalogPage.items.map(catalogItemToPodcast)
+            rawResults += catalogPodcasts.length
+            collected = mergeResearchResults(collected, catalogPodcasts, 'Podcast database', query)
+            setResults(collected)
+            if (page >= (catalogPage.pagination?.total_pages ?? 1)) break
+          }
         } catch (error) {
           errors += 1
           console.error('Podcast database lookup failed:', error)

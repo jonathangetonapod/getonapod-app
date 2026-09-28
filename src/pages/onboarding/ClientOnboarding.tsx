@@ -142,6 +142,9 @@ const ClientOnboarding = () => {
     enabled: Boolean(token),
     retry: false,
     gcTime: 0,
+    // A focus refetch can race an in-flight save and, through the init effect
+    // below, replace what the client is typing with the older server copy.
+    refetchOnWindowFocus: false,
   })
   const view = onboardingQuery.data
 

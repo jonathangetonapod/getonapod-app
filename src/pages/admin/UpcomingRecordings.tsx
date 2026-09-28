@@ -7,6 +7,7 @@ import { Calendar, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getBookings } from '@/services/bookings'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { parseLocalDate } from '@/lib/localDate'
 import { useState } from 'react'
 
 type TimeRange = 30 | 60 | 90 | 180
@@ -23,23 +24,25 @@ export default function UpcomingRecordings() {
 
   const allBookings = bookingsData?.bookings || []
 
-  // Calculate date range
-  const now = new Date()
-  const futureDate = new Date()
+  // Calculate date range. recording_date is a DATE column, so compare from
+  // local midnight today or a recording later today would already be "past".
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const futureDate = new Date(today)
   futureDate.setDate(futureDate.getDate() + timeRange)
 
   // Filter upcoming bookings
   const upcomingBookings = allBookings
     .filter(booking => {
-      if (!booking.recording_date) return false
-      const recordingDate = new Date(booking.recording_date)
-      return recordingDate >= now &&
+      const recordingDate = parseLocalDate(booking.recording_date)
+      if (!recordingDate) return false
+      return recordingDate >= today &&
              recordingDate <= futureDate &&
              (booking.status === 'conversation_started' ||
               booking.status === 'booked' ||
               booking.status === 'in_progress')
     })
-    .sort((a, b) => new Date(a.recording_date!).getTime() - new Date(b.recording_date!).getTime())
+    .sort((a, b) => parseLocalDate(a.recording_date)!.getTime() - parseLocalDate(b.recording_date)!.getTime())
 
   // Stats
   const totalUpcoming = upcomingBookings.length
@@ -63,12 +66,8 @@ export default function UpcomingRecordings() {
   }
 
   const formatDate = (dateString: string) => {
-    // Parse date in local timezone to avoid timezone shifts
-    const [year, month, day] = dateString.split('T')[0].split('-')
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const date = parseLocalDate(dateString)
+    if (!date) return 'Invalid date'
 
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
@@ -81,15 +80,6 @@ export default function UpcomingRecordings() {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
-    })
-  }
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
     })
   }
 
@@ -215,9 +205,6 @@ export default function UpcomingRecordings() {
                     {/* Date Column */}
                     <div className="flex-shrink-0 text-center min-w-[100px]">
                       <div className="text-lg font-bold">{formatDate(booking.recording_date!)}</div>
-                      {booking.recording_date && (
-                        <div className="text-xs text-muted-foreground">{formatTime(booking.recording_date)}</div>
-                      )}
                     </div>
 
                     {/* Main Content */}

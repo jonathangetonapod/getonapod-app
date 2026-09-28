@@ -38,7 +38,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Switch } from '@/components/ui/switch'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,9 +54,7 @@ import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
 import {
   addClientShortlistPodcasts,
-  getClientAutopilot,
   getClientShortlist,
-  setClientAutopilot,
   runClientShortlistEmailSearch,
   runClientShortlistResearch,
   searchClientPodcastCatalog,
@@ -176,7 +173,10 @@ export function ClientShortlistEditor({
   const [addOpen, setAddOpen] = useState(false)
   const [catalogQuery, setCatalogQuery] = useState('')
   const [debouncedCatalogQuery, setDebouncedCatalogQuery] = useState('')
-  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set())
+  // The podcast objects, not just ids: a tick made under an earlier search
+  // has to survive the results changing, or the count and the add both
+  // silently drop it.
+  const [selectedCatalog, setSelectedCatalog] = useState<Map<string, ClientShortlistCatalogPodcast>>(new Map())
   const [pendingPodcastId, setPendingPodcastId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<ClientShortlistPodcast | null>(null)
@@ -252,35 +252,6 @@ export function ClientShortlistEditor({
     rejected: podcasts.filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'rejected').length,
     notReviewed: podcasts.filter((podcast) => podcast.visibility === 'visible' && !podcast.feedback_status).length,
   }), [podcasts])
-  const autopilotQuery = useQuery({
-    queryKey: ['client-autopilot', workspaceId, clientId],
-    queryFn: () => getClientAutopilot(workspaceId, clientId),
-    enabled: viewerRole !== 'member',
-    retry: false,
-    staleTime: 60_000,
-  })
-  const autopilot = autopilotQuery.data ?? null
-  const [autopilotSaving, setAutopilotSaving] = useState(false)
-  const toggleAutopilot = async (enabled: boolean) => {
-    if (autopilotSaving) return
-    setAutopilotSaving(true)
-    try {
-      const saved = await setClientAutopilot(workspaceId, clientId, {
-        enabled,
-        max_weekly_adds: autopilot?.max_weekly_adds,
-        min_score: autopilot?.min_score,
-      })
-      queryClient.setQueryData(['client-autopilot', workspaceId, clientId], saved)
-      toast.success(enabled
-        ? `Weekly autopilot is on — up to ${saved.max_weekly_adds} high-fit podcasts will be added automatically, starting within the next ten minutes.`
-        : 'Weekly autopilot is off for this client.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Autopilot could not be updated.')
-    } finally {
-      setAutopilotSaving(false)
-    }
-  }
-
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     const matching = podcasts.filter((podcast) => {
@@ -314,7 +285,7 @@ export function ClientShortlistEditor({
   useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages])
   const visiblePage = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const catalogResults = catalogSearchQuery.data || []
-  const selectedCatalog = catalogResults.filter((podcast) => selectedCatalogIds.has(podcast.podcast_id) && !podcast.already_added)
+  const selectedCatalogPodcasts = Array.from(selectedCatalog.values())
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: shortlistQueryKey })
@@ -352,15 +323,15 @@ export function ClientShortlistEditor({
   }
 
   const addSelectedCatalog = async () => {
-    if (selectedCatalog.length === 0) return
+    if (selectedCatalogPodcasts.length === 0) return
     setIsAdding(true)
     try {
-      const result = await addClientShortlistPodcasts(workspaceId, clientId, selectedCatalog)
+      const result = await addClientShortlistPodcasts(workspaceId, clientId, selectedCatalogPodcasts)
       await Promise.all([
         refresh(),
         queryClient.invalidateQueries({ queryKey: ['client-shortlist-catalog', workspaceId, clientId] }),
       ])
-      setSelectedCatalogIds(new Set())
+      setSelectedCatalog(new Map())
       if (result.added === 0) {
         toast.info('Those podcasts are already in this client’s history.')
       } else if (result.skipped > 0) {
@@ -456,7 +427,7 @@ export function ClientShortlistEditor({
           <div><CardTitle>All podcasts</CardTitle><CardDescription>Search, filter, feature, hide, archive, or restore shows from one place.</CardDescription></div>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
-              <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search podcasts or publishers…" className="pl-9" /></div>
+              <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search podcasts or publishers…" aria-label="Search podcasts or publishers" className="pl-9" /></div>
               <select
                 aria-label="Sort podcasts"
                 value={sort}
@@ -586,7 +557,7 @@ export function ClientShortlistEditor({
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader><SheetTitle>Add podcasts</SheetTitle><SheetDescription>Search the existing podcast catalog and add shows without leaving this client.</SheetDescription></SheetHeader>
           <div className="mt-6 space-y-5">
-            <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input autoFocus value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search by podcast or publisher…" className="pl-9" /></div>
+            <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input autoFocus value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search by podcast or publisher…" aria-label="Search the podcast catalog" className="pl-9" /></div>
             {debouncedCatalogQuery.length < 2 ? (
               <div className="rounded-xl border border-dashed p-8 text-center"><Library className="mx-auto h-9 w-9 text-muted-foreground/50" /><p className="mt-3 font-medium">Search the shared podcast catalog</p><p className="text-sm text-muted-foreground">Enter at least two characters to find shows already researched by the platform.</p></div>
             ) : catalogSearchQuery.isLoading ? (
@@ -599,7 +570,7 @@ export function ClientShortlistEditor({
               <div className="space-y-2">
                 {catalogResults.map((podcast: ClientShortlistCatalogPodcast) => (
                   <label key={podcast.podcast_id} className={cn('flex items-center gap-3 rounded-xl border p-3', podcast.already_added ? 'bg-muted/40 opacity-70' : 'cursor-pointer hover:bg-muted/30')}>
-                    <Checkbox checked={selectedCatalogIds.has(podcast.podcast_id)} disabled={podcast.already_added} onCheckedChange={(checked) => setSelectedCatalogIds((current) => { const next = new Set(current); if (checked) next.add(podcast.podcast_id); else next.delete(podcast.podcast_id); return next })} aria-label={`Select ${podcast.podcast_name}`} />
+                    <Checkbox checked={selectedCatalog.has(podcast.podcast_id)} disabled={podcast.already_added} onCheckedChange={(checked) => setSelectedCatalog((current) => { const next = new Map(current); if (checked && !podcast.already_added) next.set(podcast.podcast_id, podcast); else next.delete(podcast.podcast_id); return next })} aria-label={`Select ${podcast.podcast_name}`} />
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">{podcast.podcast_image_url ? <img src={podcast.podcast_image_url} alt="" className="h-full w-full object-cover" /> : <Radio className="h-5 w-5 text-muted-foreground" />}</div>
                     <div className="min-w-0 flex-1"><p className="truncate font-medium">{podcast.podcast_name}</p><p className="truncate text-xs text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'} · {compactNumber(podcast.audience_size)} estimated listeners</p></div>
                     {podcast.already_added && <Badge variant="outline">{podcast.existing_visibility === 'archived' ? 'Archived' : 'Already added'}</Badge>}
@@ -608,7 +579,7 @@ export function ClientShortlistEditor({
               </div>
             )}
             <div className="sticky bottom-0 space-y-3 border-t bg-background pt-4">
-              <Button className="w-full" disabled={selectedCatalog.length === 0 || isAdding} onClick={() => void addSelectedCatalog()}>{isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListPlus className="mr-2 h-4 w-4" />}Add {selectedCatalog.length || ''} selected</Button>
+              <Button className="w-full" disabled={selectedCatalogPodcasts.length === 0 || isAdding} onClick={() => void addSelectedCatalog()}>{isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListPlus className="mr-2 h-4 w-4" />}Add {selectedCatalogPodcasts.length || ''} selected</Button>
               <Button asChild variant="outline" className="w-full"><Link to={databaseHref}>Browse with filters<Database className="ml-2 h-3.5 w-3.5" /></Link></Button>
               <Button asChild variant="outline" className="w-full"><Link to={finderHref}>Run fresh weekly discovery<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button>
             </div>

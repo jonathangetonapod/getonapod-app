@@ -1,56 +1,71 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
-import { Filter, Search, Loader2 } from 'lucide-react';
+import { Filter, Search } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BlogCard } from '@/components/blog/BlogCard';
 import { getAllPosts, getAllCategories, type BlogPost, type BlogCategory } from '@/services/blog';
-import { useToast } from '@/hooks/use-toast';
 import PageSEO from '@/components/seo/PageSEO';
+
+/** How long the search box waits after the last keystroke before asking the database. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 const Blog = () => {
   const { ref, isVisible } = useScrollAnimation<HTMLDivElement>();
-  const { toast } = useToast();
 
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [categories, setCategories] = useState<BlogCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  // Bumped by Retry so the load effect runs again with the same filters.
+  const [attempt, setAttempt] = useState(0);
+  // The id of the newest request. An older one that finishes later must not
+  // overwrite what the newer one returned.
+  const latestRequest = useRef(0);
 
-  // Load data on mount and when filters change
   useEffect(() => {
-    loadData();
-  }, [selectedCategory, searchQuery]);
+    const timer = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const [postsData, categoriesData] = await Promise.all([
-        getAllPosts({
-          status: 'published',
-          category: selectedCategory === 'all' ? undefined : selectedCategory,
-          search: searchQuery || undefined,
-        }),
-        getAllCategories(),
-      ]);
-      setPosts(postsData);
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error('Failed to load blog posts:', error);
-      toast({
-        title: 'Articles did not load',
-        description: 'Refresh the page to try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Load on mount and whenever a filter settles.
+  useEffect(() => {
+    const requestId = ++latestRequest.current;
+    const isCurrent = () => requestId === latestRequest.current;
+
+    const load = async () => {
+      setIsLoading(true);
+      setLoadFailed(false);
+      try {
+        const [postsData, categoriesData] = await Promise.all([
+          getAllPosts({
+            status: 'published',
+            category: selectedCategory === 'all' ? undefined : selectedCategory,
+            search: debouncedSearch || undefined,
+          }),
+          getAllCategories(),
+        ]);
+        if (!isCurrent()) return;
+        setPosts(postsData);
+        setCategories(categoriesData);
+      } catch (error) {
+        if (!isCurrent()) return;
+        console.error('Failed to load blog posts:', error);
+        setLoadFailed(true);
+      } finally {
+        if (isCurrent()) setIsLoading(false);
+      }
+    };
+
+    void load();
+  }, [selectedCategory, debouncedSearch, attempt]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -62,7 +77,7 @@ const Blog = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="pt-28 pb-16 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
+      <section className="pt-44 pb-16 sm:pt-40 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
         <div className="container mx-auto">
           <div className="max-w-3xl mx-auto text-center">
             <Badge className="mb-4">The Get On A Pod Blog</Badge>
@@ -85,7 +100,8 @@ const Blog = () => {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  type="text"
+                  type="search"
+                  aria-label="Search articles"
                   placeholder="Search articles..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -171,11 +187,23 @@ const Blog = () => {
                   </div>
                 ))}
               </div>
+            ) : loadFailed ? (
+              /* The request failed: not the same as there being nothing to show. */
+              <div className="text-center py-20" role="alert">
+                <p className="text-xl text-muted-foreground">Articles did not load.</p>
+                <Button
+                  variant="outline"
+                  className="mt-6 min-h-[44px]"
+                  onClick={() => setAttempt((count) => count + 1)}
+                >
+                  Retry
+                </Button>
+              </div>
             ) : posts.length === 0 ? (
               /* No Results */
               <div className="text-center py-20">
                 <p className="text-xl text-muted-foreground">
-                  {searchQuery || selectedCategory !== 'all'
+                  {debouncedSearch || selectedCategory !== 'all'
                     ? 'No articles found. Try adjusting your filters.'
                     : 'No articles published yet. Check back soon.'}
                 </p>

@@ -91,7 +91,7 @@ export default function GuestResourcesManagement() {
   const fileUrlRequired = formData.type === 'download'
 
   // Fetch resources
-  const { data: resources, isLoading } = useQuery({
+  const { data: resources, isLoading, isError, error: resourcesError, refetch: refetchResources } = useQuery({
     queryKey: ['admin-guest-resources'],
     queryFn: () => getGuestResources(),
   })
@@ -269,6 +269,21 @@ export default function GuestResourcesManagement() {
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  // A failed load must not read as an empty catalog.
+  if (isError) {
+    return (
+      <DashboardLayout>
+        <div role="alert" className="text-center py-12">
+          <h3 className="text-lg font-semibold mb-2">Could not load resources</h3>
+          <p className="text-muted-foreground mb-4">
+            {resourcesError instanceof Error ? resourcesError.message : 'Unknown error'}
+          </p>
+          <Button onClick={() => refetchResources()}>Retry</Button>
         </div>
       </DashboardLayout>
     )

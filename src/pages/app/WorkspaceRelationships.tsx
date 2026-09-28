@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -306,6 +306,34 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     relationshipPageStart,
     relationshipPageStart + RELATIONSHIPS_PER_PAGE,
   )
+
+  // Opening a row that the current page, search, or filter hides showed
+  // nothing: the card only renders inside the visible slice, while the detail
+  // request still ran for it. A freshly added relationship sorts last (it has
+  // no outreach yet) and a "going quiet" chip can point past the active
+  // filter. Widen the view once per opened row until it is on screen; paging
+  // away afterwards is left alone.
+  const revealedPodcastIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!openPodcastId) {
+      revealedPodcastIdRef.current = null
+      return
+    }
+    if (revealedPodcastIdRef.current === openPodcastId) return
+    if (!relationships.some((row) => row.podcast_id === openPodcastId)) return
+    if (visibleRelationships.some((row) => row.podcast_id === openPodcastId)) {
+      revealedPodcastIdRef.current = openPodcastId
+      return
+    }
+    const index = sorted.findIndex((row) => row.podcast_id === openPodcastId)
+    if (index === -1) {
+      setSearch('')
+      setRelationshipFilter('all')
+      return
+    }
+    revealedPodcastIdRef.current = openPodcastId
+    setRelationshipPage(Math.floor(index / RELATIONSHIPS_PER_PAGE) + 1)
+  }, [openPodcastId, relationships, sorted, visibleRelationships])
 
   // Live and warm relationships are the ones worth acting on; count them so
   // the header answers "what do we have" before any scrolling.

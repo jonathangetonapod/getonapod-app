@@ -32,6 +32,7 @@ export default function PortalLogin() {
   const [searchParams] = useSearchParams()
   const brandingSlug = searchParams.get('b') || ''
   const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true
+  const sessionExpired = (location.state as { sessionExpired?: boolean } | null)?.sessionExpired === true
   const forgotHref = brandingSlug ? `/portal/forgot?b=${encodeURIComponent(brandingSlug)}` : '/portal/forgot'
 
   useEffect(() => {
@@ -125,6 +126,11 @@ export default function PortalLogin() {
           {passwordReset && (
             <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
               Password updated. Sign in with your new password.
+            </p>
+          )}
+          {sessionExpired && !passwordReset && (
+            <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+              Your session ended. Sign in again to continue.
             </p>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">

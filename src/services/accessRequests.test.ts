@@ -65,6 +65,26 @@ describe('requestWorkspaceAccess', () => {
       audience: 'agency',
     })).rejects.toThrow(/already come from here today/u)
   })
+
+  // The SDK's FunctionsFetchError carries no Response, only the underlying
+  // network error. Its message is for a developer, not for the form.
+  it('says plainly that the request was not sent when it never reached the function', async () => {
+    invoke.mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error('Failed to send a request to the Edge Function'), {
+        name: 'FunctionsFetchError',
+        context: new TypeError('fetch failed'),
+      }),
+    } as never)
+
+    const attempt = requestWorkspaceAccess({
+      fullName: 'Dana Reyes',
+      email: 'dana@example.com',
+      audience: 'agency',
+    })
+    await expect(attempt).rejects.toThrow('Your request could not be sent. Please try again.')
+    await expect(attempt).rejects.not.toThrow(/Edge Function/u)
+  })
 })
 
 describe('the admin queue', () => {

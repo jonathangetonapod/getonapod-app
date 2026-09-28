@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
@@ -45,7 +45,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
-import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, toInstantlyTimezone } from '@/lib/instantlyTimezones'
+import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, instantlyTimezoneLabel, toInstantlyTimezone } from '@/lib/instantlyTimezones'
 import { describeNextSend, explainNextSend, projectNextSend } from '@/lib/nextSend'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -335,6 +335,12 @@ const SEND_DAY_OPTIONS = [
   { index: 6, label: 'Sat' },
 ] as const
 
+/** A count typed into a number field, floored at one; blank or junk reads as one. */
+function countOrOne(value: string): number {
+  const parsed = Math.floor(Number(value))
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1
+}
+
 function formatSendDays(days: number[]): string {
   const labels = SEND_DAY_OPTIONS.filter((day) => days.includes(day.index)).map((day) => day.label)
   if (labels.length === 0) return 'no days'
@@ -427,7 +433,9 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   )), [data?.shortlist.podcasts, persistedPodcastIds])
   const [settingsName, setSettingsName] = useState('')
   const [settingsTimezone, setSettingsTimezone] = useState(defaultInstantlyTimezone())
-  const [settingsDailyLimit, setSettingsDailyLimit] = useState(30)
+  // The three counts are held as typed: coercing on every keystroke snapped
+  // an emptied field back to 1, so typing 25 produced 125. Parsed on save.
+  const [settingsDailyLimit, setSettingsDailyLimit] = useState('30')
   const [settingsSenders, setSettingsSenders] = useState<Set<string>>(new Set())
   // Instantly indexes days from Sunday, and this app used to write 0-4 under
   // the name "Weekdays" — which sent on Sunday and never on Friday. The picker
@@ -435,8 +443,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [settingsSendDays, setSettingsSendDays] = useState<number[]>([1, 2, 3, 4, 5])
   const [settingsWindowStart, setSettingsWindowStart] = useState('09:00')
   const [settingsWindowEnd, setSettingsWindowEnd] = useState('17:00')
-  const [settingsFollowUpOne, setSettingsFollowUpOne] = useState(6)
-  const [settingsFollowUpTwo, setSettingsFollowUpTwo] = useState(7)
+  const [settingsFollowUpOne, setSettingsFollowUpOne] = useState('6')
+  const [settingsFollowUpTwo, setSettingsFollowUpTwo] = useState('7')
+  const followUpOneDays = countOrOne(settingsFollowUpOne)
+  const followUpTwoDays = countOrOne(settingsFollowUpTwo)
   const [campaignRunningPreview, setCampaignRunningPreview] = useState<boolean | null>(null)
   // Which row in Podcasts is showing its live delivery detail. Delivery
   // questions belong beside the delivery columns, not on the messages tab.
@@ -563,15 +573,15 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
       // The wait that precedes this step, edited on the connector above it.
       waitBefore: null as null | {
         id: string
-        value: number
-        set: (days: number) => void
+        value: string
+        set: (days: string) => void
       },
     },
     {
       label: 'Step 2',
       title: 'First follow-up',
-      timing: `${settingsFollowUpOne} day${settingsFollowUpOne === 1 ? '' : 's'} after step 1`,
-      landsOn: `Day ${settingsFollowUpOne}`,
+      timing: `${followUpOneDays} day${followUpOneDays === 1 ? '' : 's'} after step 1`,
+      landsOn: `Day ${followUpOneDays}`,
       subject: null,
       body: previewTarget?.follow_up_1_body ?? null,
       repliesInThread: true,
@@ -584,8 +594,8 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     {
       label: 'Step 3',
       title: 'Final follow-up',
-      timing: `${settingsFollowUpTwo} day${settingsFollowUpTwo === 1 ? '' : 's'} after step 2`,
-      landsOn: `Day ${settingsFollowUpOne + settingsFollowUpTwo}`,
+      timing: `${followUpTwoDays} day${followUpTwoDays === 1 ? '' : 's'} after step 2`,
+      landsOn: `Day ${followUpOneDays + followUpTwoDays}`,
       subject: null,
       body: previewTarget?.follow_up_2_body ?? null,
       repliesInThread: true,
@@ -595,20 +605,57 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
         set: setSettingsFollowUpTwo,
       },
     },
-  ], [previewTarget, settingsFollowUpOne, settingsFollowUpTwo])
+  ], [followUpOneDays, followUpTwoDays, previewTarget, settingsFollowUpOne, settingsFollowUpTwo])
   const activeStep = sequenceSteps[sequenceStep] ?? sequenceSteps[0]
 
+  /*
+   * Seed the settings drafts from the server, once per server change.
+   *
+   * Keyed on the campaign object, this re-ran on every refetch: the background
+   * sync above invalidates the query on arrival, so an edit made in Schedule
+   * or Options was wiped seconds after the page opened. Now the seed is
+   * fingerprinted on the nine fields it writes, and a draft the operator has
+   * already changed is left alone even when the server row moves.
+   */
+  const settingsSeed = useMemo(() => ({
+    name: campaign?.name || (client ? `${client.name} Podcast Outreach` : ''),
+    timezone: toInstantlyTimezone(campaign?.timezone),
+    dailyLimit: String(campaign?.daily_limit || 30),
+    senders: campaign?.sender_accounts || [],
+    sendDays: campaign?.send_days?.length ? campaign.send_days : [1, 2, 3, 4, 5],
+    windowStart: campaign?.send_window_start || '09:00',
+    windowEnd: campaign?.send_window_end || '17:00',
+    followUpOne: String(campaign?.follow_up_one_delay_days || 6),
+    followUpTwo: String(campaign?.follow_up_two_delay_days || 7),
+  }), [campaign, client])
+  const settingsSeedFingerprint = JSON.stringify(settingsSeed)
+  const seededSettingsRef = useRef<typeof settingsSeed | null>(null)
   useEffect(() => {
-    setSettingsName(campaign?.name || (client ? `${client.name} Podcast Outreach` : ''))
-    setSettingsTimezone(toInstantlyTimezone(campaign?.timezone))
-    setSettingsDailyLimit(campaign?.daily_limit || 30)
-    setSettingsSenders(new Set(campaign?.sender_accounts || []))
-    setSettingsSendDays(campaign?.send_days?.length ? campaign.send_days : [1, 2, 3, 4, 5])
-    setSettingsWindowStart(campaign?.send_window_start || '09:00')
-    setSettingsWindowEnd(campaign?.send_window_end || '17:00')
-    setSettingsFollowUpOne(campaign?.follow_up_one_delay_days || 6)
-    setSettingsFollowUpTwo(campaign?.follow_up_two_delay_days || 7)
-  }, [campaign, client])
+    const previous = seededSettingsRef.current
+    if (previous && JSON.stringify(previous) === settingsSeedFingerprint) return
+    seededSettingsRef.current = settingsSeed
+    // A field still equal to the last seed carries no edit and follows the
+    // server; one the operator changed keeps their value.
+    const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right)
+    const keep = <T,>(current: T, lastSeed: T | undefined, next: T): T =>
+      previous && !same(current, lastSeed) ? current : next
+    setSettingsName((current) => keep(current, previous?.name, settingsSeed.name))
+    setSettingsTimezone((current) => keep(current, previous?.timezone, settingsSeed.timezone))
+    setSettingsDailyLimit((current) => keep(current, previous?.dailyLimit, settingsSeed.dailyLimit))
+    setSettingsSenders((current) => (
+      previous && !same([...current].sort(), [...previous.senders].sort())
+        ? current
+        : new Set(settingsSeed.senders)
+    ))
+    setSettingsSendDays((current) => keep(current, previous?.sendDays, settingsSeed.sendDays))
+    setSettingsWindowStart((current) => keep(current, previous?.windowStart, settingsSeed.windowStart))
+    setSettingsWindowEnd((current) => keep(current, previous?.windowEnd, settingsSeed.windowEnd))
+    setSettingsFollowUpOne((current) => keep(current, previous?.followUpOne, settingsSeed.followUpOne))
+    setSettingsFollowUpTwo((current) => keep(current, previous?.followUpTwo, settingsSeed.followUpTwo))
+    // The fingerprint is the seed; listing the object too would only re-run
+    // this for an identical seed built on a new render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsSeedFingerprint])
 
   const refreshCampaignData = async () => {
     await Promise.all([
@@ -624,6 +671,9 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
       setConfirmActivateOpen(false)
       setCampaignRunningPreview(result.status === 'active')
       await refreshCampaignData()
+      // The refetched row now carries the status; holding the preview past
+      // this point would pin the header to it through every later sync.
+      setCampaignRunningPreview(null)
       toast.success(running ? campaign?.status === 'draft' ? 'Campaign launched.' : 'Campaign resumed.' : 'Campaign paused.')
     },
     onError: (error) => {
@@ -640,13 +690,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
         clientId,
         name: settingsName.trim(),
         timezone: settingsTimezone.trim(),
-        dailyLimit: settingsDailyLimit,
+        dailyLimit: countOrOne(settingsDailyLimit),
         senderAccounts: Array.from(settingsSenders),
         sendDays: settingsSendDays,
         sendWindowStart: settingsWindowStart,
         sendWindowEnd: settingsWindowEnd,
-        followUpOneDelayDays: settingsFollowUpOne,
-        followUpTwoDelayDays: settingsFollowUpTwo,
+        followUpOneDelayDays: followUpOneDays,
+        followUpTwoDelayDays: followUpTwoDays,
       }
       return campaign
         ? await updateWorkspaceCampaignSettings(common)
@@ -758,6 +808,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const podcastReplyRate = emailedPodcastCount > 0 ? Math.round((repliedPodcastCount / emailedPodcastCount) * 100) : 0
   const providerAccounts = integration?.accounts || []
   const canManageCampaign = Boolean(campaignState?.can_manage_campaigns)
+  // All four save buttons post the same payload, so an invalid schedule has
+  // to stop every one of them, not only the button on the Schedule tab.
+  const scheduleInvalid = settingsSendDays.length === 0 || settingsWindowStart >= settingsWindowEnd
+  const settingsSaveDisabled = !canManageCampaign || !settingsName.trim() || scheduleInvalid || settingsMutation.isPending
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
@@ -1025,7 +1079,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                               min={1}
                               max={60}
                               value={step.waitBefore.value}
-                              onChange={(event) => step.waitBefore?.set(Number(event.target.value) || 1)}
+                              onChange={(event) => step.waitBefore?.set(event.target.value)}
                               disabled={!canManageCampaign}
                               className="h-8 w-16"
                             />
@@ -1049,10 +1103,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       </div>
                     )
                   })}
-                  <Button size="sm" className="w-full" disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>
+                  <Button size="sm" className="w-full" disabled={settingsSaveDisabled} onClick={() => settingsMutation.mutate()}>
                     {settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save cadence
                   </Button>
-                  <p className="text-xs text-muted-foreground">Which days and hours the campaign may send in are on Schedule.</p>
+                  {scheduleInvalid ? (
+                    <p className="text-xs font-medium text-destructive">The sending schedule is not valid. Fix it on Schedule before saving.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Which days and hours the campaign may send in are on Schedule.</p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1187,14 +1245,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {INSTANTLY_TIMEZONES.map((zone) => (
-                          <option key={zone} value={zone}>{zone.replace(/_/g, ' ')}</option>
+                          <option key={zone} value={zone}>{instantlyTimezoneLabel(zone)}</option>
                         ))}
                       </select>
-                      <p className="text-xs text-muted-foreground">Only the zones Instantly offers. It has no New York or Los Angeles; America/Detroit and America/Dawson are the same clocks. The window below is read in this zone.</p>
+                      <p className="text-xs text-muted-foreground">Only the zones Instantly offers. It has no New York or Los Angeles; America/Detroit is Eastern Time and America/Dawson is its Pacific Time entry. The window below is read in this zone.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="campaign-detail-limit">Daily lead limit</Label>
-                      <Input id="campaign-detail-limit" type="number" min={1} max={1000} value={settingsDailyLimit} onChange={(event) => setSettingsDailyLimit(Number(event.target.value) || 1)} disabled={!canManageCampaign} />
+                      <Input id="campaign-detail-limit" type="number" min={1} max={1000} value={settingsDailyLimit} onChange={(event) => setSettingsDailyLimit(event.target.value)} disabled={!canManageCampaign} />
                       <p className="text-xs text-muted-foreground">The most new podcast hosts this campaign may email in a day, across every sending account.</p>
                     </div>
                   </div>
@@ -1242,7 +1300,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       <Input id="campaign-detail-window-end" type="time" value={settingsWindowEnd} onChange={(event) => setSettingsWindowEnd(event.target.value)} disabled={!canManageCampaign} />
                     </div>
                   </div>
-                  <Button disabled={!canManageCampaign || !settingsName.trim() || settingsSendDays.length === 0 || settingsWindowStart >= settingsWindowEnd || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save schedule</Button>
+                  {settingsSendDays.length > 0 && settingsWindowStart >= settingsWindowEnd && (
+                    <p className="text-xs font-medium text-destructive">The window has to close after it opens.</p>
+                  )}
+                  <Button disabled={settingsSaveDisabled} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save schedule</Button>
                 </CardContent>
               </Card>
               <Card>
@@ -1380,7 +1441,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               <div className="flex flex-col gap-3 rounded-2xl border bg-muted/15 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="max-w-xl text-xs leading-5 text-muted-foreground">Save name and mailbox changes before changing campaign status. Pausing stops new sends; resuming continues the existing campaign.</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button variant="outline" disabled={!canManageCampaign || !settingsName.trim() || settingsMutation.isPending} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save settings</Button>
+                  <Button variant="outline" disabled={settingsSaveDisabled} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save settings</Button>
                   {campaign?.instantly_campaign_id && canManageCampaign && (
                     <Button variant={campaignIsRunning ? 'destructive' : 'default'} disabled={runningMutation.isPending} onClick={() => (campaignIsRunning ? runningMutation.mutate(false) : setConfirmActivateOpen(true))}>
                       {runningMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : campaignIsRunning ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaignRunningAction}
@@ -1454,7 +1515,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             <div className="flex items-center gap-2" />
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" onClick={() => setMailboxPickerOpen(false)}>Cancel</Button>
-              <Button type="button" disabled={!canManageCampaign || settingsMutation.isPending} onClick={() => { settingsMutation.mutate(); setMailboxPickerOpen(false) }}>
+              <Button type="button" disabled={settingsSaveDisabled} onClick={() => { settingsMutation.mutate(); setMailboxPickerOpen(false) }}>
                 {settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save accounts
               </Button>
             </div>

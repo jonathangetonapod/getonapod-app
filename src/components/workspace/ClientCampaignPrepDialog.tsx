@@ -75,6 +75,7 @@ import {
   getWorkspaceCampaign,
   prepareWorkspaceCampaignPodcast,
   removeWorkspaceCampaignLead,
+  saveWorkspaceCampaignPitch,
 } from '@/services/workspaceCampaigns'
 import {
   getWorkspacePromptModels,
@@ -1067,8 +1068,12 @@ export function ClientCampaignPrepDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [promptOverridesQuery.data, clientPromptsQuery.data, selectedPromptId, promptTouched])
 
+  // Which podcast the form was last seeded for, so the seed runs once per
+  // open rather than on every identity change of the polled podcast object.
+  const seededForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!open) {
+      seededForRef.current = null
       setActiveStep('email')
       setEmailRoute('podcast')
       setShowPodcastDetails(false)
@@ -1096,6 +1101,11 @@ export function ClientCampaignPrepDialog({
       setPrepareError(null)
     }
     if (!open || !podcast || campaignQuery.isLoading) return
+    // The shortlist polls every two seconds while research runs, and each
+    // tick is a new podcast object. Re-seeding on every one wiped a contact
+    // email typed by hand and reset the draft under the operator's cursor.
+    if (seededForRef.current === podcast.id) return
+    seededForRef.current = podcast.id
     const initial = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio })
     const savedContactEmail = target?.contact_email?.trim() || ''
     setHostName(storedEmailUnlock?.host_name || target?.host_name || podcast.publisher_name || '')
@@ -1125,7 +1135,18 @@ export function ClientCampaignPrepDialog({
     }
     setDraft(nextDraft)
     setSavedDraft(nextDraft)
-  }, [campaignQuery.isLoading, clientBio, clientName, emailAlreadyUnlocked, emailSearchRunning, open, podcast, publicPodcastEmail, storedEmailUnlock?.host_name, target, unlockedEmail])
+    // Seeded once per open and podcast; the rest of these only matter on that
+    // first pass, and re-running for them is exactly what wiped typed input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignQuery.isLoading, open, podcast?.id])
+
+  // A search finishing is the one later change worth adopting: the direct
+  // address it found replaces whatever placeholder the field held meanwhile.
+  useEffect(() => {
+    if (!open || !emailAlreadyUnlocked || !unlockedEmail) return
+    setContactEmail(unlockedEmail)
+    setEmailRoute('waterfall')
+  }, [open, emailAlreadyUnlocked, unlockedEmail])
 
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -1212,6 +1233,13 @@ export function ClientCampaignPrepDialog({
   }
   const choosePitchAngle = (angleIndex: number) => {
     if (!relationshipCanProceed) return
+    // Same guard as regeneration: choosing a sequence loads it over the draft
+    // AND over savedDraft, so an unsaved hand-edit would be gone for good.
+    if (draftHasUnsavedEdits) {
+      toast.info('Save or discard your pitch edits first. Choosing a sequence replaces the written one.')
+      setActiveStep('pitch')
+      return
+    }
     setSelectedAngleIndex(angleIndex)
     if (!podcast) return
     const nextDraft = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio, angleIndex })
@@ -1261,9 +1289,39 @@ export function ClientCampaignPrepDialog({
   const activeSequenceEmailStep = sequenceEmailSteps.find((step) => step.id === activeSequenceEmail) || sequenceEmailSteps[0]
   const draftHasUnsavedEdits = (Object.keys(draft) as Array<keyof PodcastCampaignSequenceDraft>)
     .some((field) => draft[field] !== savedDraft[field])
+  // "Save edits" used to copy draft into savedDraft and say it was saved,
+  // while nothing left the browser; reopening the dialog lost every edit.
+  const savePitchMutation = useMutation({
+    mutationFn: ({ next }: { next: PodcastCampaignSequenceDraft; previous: PodcastCampaignSequenceDraft }) => {
+      if (!podcast) throw new Error('Choose a podcast first.')
+      return saveWorkspaceCampaignPitch({
+        workspaceId,
+        clientId,
+        shortlistPodcastId: podcast.id,
+        subject: next.subject,
+        pitchBody: next.pitchBody,
+        followUpOneSubject: buildThreadReplySubject(next.subject),
+        followUpOneBody: next.followUpOneBody,
+        followUpTwoSubject: buildThreadReplySubject(next.subject),
+        followUpTwoBody: next.followUpTwoBody,
+      })
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: campaignQueryKey })
+      toast.success('Pitch edits saved.')
+    },
+    onError: (error, { previous }) => {
+      // Back to unsaved, so the footer and the send button tell the truth.
+      setSavedDraft(previous)
+      toast.error(error instanceof Error ? error.message : 'The pitch edits could not be saved.')
+    },
+  })
   const saveDraftEdits = () => {
-    setSavedDraft({ ...draft })
-    toast.success('Pitch edits saved in this workspace.')
+    if (!podcast || savePitchMutation.isPending) return
+    const previous = savedDraft
+    const next = { ...draft }
+    setSavedDraft(next)
+    savePitchMutation.mutate({ next, previous })
   }
 
   const prepareMutation = useMutation({
@@ -1442,8 +1500,10 @@ export function ClientCampaignPrepDialog({
     || !mappedCampaign
     || locked
     || !relationshipCanProceed
+    || !emailReady
     || !sequenceComplete
     || draftHasUnsavedEdits
+    || savePitchMutation.isPending
     || prepareMutation.isPending
 
   return (
@@ -2346,7 +2406,7 @@ export function ClientCampaignPrepDialog({
                     <div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Finalize the selected pitch</h3><p className="mt-1 text-sm text-muted-foreground">Edit the chosen opening pitch and two follow-ups, then save the finished sequence for outreach.</p></div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="outline" className={draftHasUnsavedEdits ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}>{draftHasUnsavedEdits ? 'Unsaved edits' : 'All edits saved'}</Badge>
-                      <Button type="button" variant="outline" disabled={!draftHasUnsavedEdits} onClick={saveDraftEdits}><Save className="mr-2 h-4 w-4" />Save edits</Button>
+                      <Button type="button" variant="outline" disabled={!draftHasUnsavedEdits || savePitchMutation.isPending} onClick={saveDraftEdits}>{savePitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save edits</Button>
                     </div>
                   </div>
 
@@ -2514,7 +2574,9 @@ export function ClientCampaignPrepDialog({
                   : researchFailed
                     ? 'Research paused before the pitch could be prepared. Completed stages are saved.'
                     : 'Research is saved to this podcast and used to shape the pitch.')}
-                {activeStep === 'pitch' && (draftHasUnsavedEdits
+                {activeStep === 'pitch' && (!emailReady
+                  ? 'No valid contact email is set. Go back to Find email and choose or enter one before sending.'
+                  : draftHasUnsavedEdits
                   ? 'You have unsaved edits. Save them before sending this sequence to Client Campaign.'
                   : alreadyStaged && !submitWillSend
                     ? `${hostName.trim() || 'This host'} is already a lead in ${chosenCampaign?.name || campaign?.name || 'the campaign'}. Sending again replaces the sequence on that lead rather than adding a second one, and the campaign is paused so nothing goes out.`

@@ -13,7 +13,6 @@ import {
   Inbox,
   Loader2,
   MailOpen,
-  Megaphone,
   Globe,
   MessageSquare,
   Mic2,
@@ -785,6 +784,8 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
       toast.error(error instanceof Error ? error.message : 'The conversation state could not be saved.')
     },
   })
+  // Leaving the page inside the debounce window dropped the last edit.
+  useEffect(() => () => persistDraftEdit.flush(), [persistDraftEdit])
   const openThread = (threadId: string) => {
     persistDraftEdit.flush()
     setSelectedThreadId(threadId)
@@ -811,6 +812,10 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
     const next = new URLSearchParams(searchParams)
     if (clientId === 'all-clients') next.delete('client')
     else next.set('client', clientId)
+    // The deep-linked thread belongs to the client being left; carried over,
+    // the link fallback kept it open under the new client with an empty draft.
+    next.delete('thread')
+    hydratedLinkRef.current = null
     setSearchParams(next, { replace: true })
     // Switching clients closes the previous client's open conversation, and
     // drops any bulk selection made against it: archiving rows the operator
@@ -903,15 +908,6 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                   </span>
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-          <Select defaultValue="all-campaigns">
-            <SelectTrigger aria-label="Filter by client campaign" className="h-7 w-40 shrink-0 gap-1.5 bg-background px-2.5 text-xs">
-              <Megaphone className="h-3.5 w-3.5 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all-campaigns">All campaigns</SelectItem>
             </SelectContent>
           </Select>
           <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true" />

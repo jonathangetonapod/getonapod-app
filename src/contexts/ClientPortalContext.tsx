@@ -8,6 +8,7 @@ import {
   logout as apiLogout,
   sessionStorage as portalSessionStorage
 } from '@/services/clientPortal'
+import { isPortalAuthError } from '@/lib/portalAuthError'
 import { setUser as setSentryUser } from '@/lib/sentry'
 import { useAuth } from '@/contexts/AuthContext'
 import { queryClient } from '@/lib/queryClient'
@@ -19,6 +20,8 @@ interface ClientPortalContextType {
   loading: boolean
   isImpersonating: boolean
   loginWithPassword: (email: string, password: string) => Promise<void>
+  /** Enter with a session minted elsewhere (the owner-side portal preview). */
+  adoptSession: (session: ClientPortalSession, client: Client) => Promise<void>
   impersonateClient: (client: Client) => void
   exitImpersonation: () => void
   logout: () => Promise<void>
@@ -143,8 +146,18 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
         })
       } catch (error) {
         console.error('[ClientPortal] Session validation failed:', error)
-        portalSessionStorage.clear()
         if (requestId !== requestGeneration.current) return
+        // Only a rejected session is gone. A network fault or a server error
+        // on load used to destroy a valid 24-hour session; the stored one is
+        // kept, and the first portal request that the server refuses signs
+        // the client out through the pages' own auth-error handling.
+        if (!isPortalAuthError(error)) {
+          setSession(storedSession)
+          setClient(storedClient)
+          setBranding(null)
+          return
+        }
+        portalSessionStorage.clear()
         setSentryUser(null)
         setClient(null)
         setSession(null)
@@ -198,6 +211,39 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
       if (requestId === requestGeneration.current) setLoading(false)
     }
   }
+
+  const adoptSession = useCallback(async (newSession: ClientPortalSession, newClient: Client) => {
+    // Written through the provider rather than behind its back: the preview
+    // handoff used to write storage and navigate, and lost the race whenever
+    // the mount-time restore had already settled on "no session".
+    const requestId = ++requestGeneration.current
+    portalSessionStorage.clear()
+    clearStoredImpersonation()
+    queryClient.clear()
+    portalSessionStorage.save(newSession, newClient)
+    setSession(newSession)
+    setClient(newClient)
+    setBranding(null)
+    setIsImpersonating(false)
+    setLoading(false)
+    try {
+      const validation = await apiValidateSession(newSession.session_token)
+      if (requestId !== requestGeneration.current) return
+      setClient(validation.client)
+      setBranding(validation.branding)
+      setSentryUser({
+        id: validation.client.id,
+        email: validation.client.email || undefined,
+        name: validation.client.name,
+      })
+    } catch (error) {
+      console.error('[ClientPortal] Adopted session validation failed:', error)
+      if (requestId !== requestGeneration.current || !isPortalAuthError(error)) return
+      portalSessionStorage.clear()
+      setSession(null)
+      setClient(null)
+    }
+  }, [])
 
   const logout = useCallback(async () => {
     requestGeneration.current += 1
@@ -286,6 +332,7 @@ export const ClientPortalProvider = ({ children }: { children: React.ReactNode }
         loading,
         isImpersonating,
         loginWithPassword,
+        adoptSession,
         impersonateClient,
         exitImpersonation,
         logout

@@ -150,5 +150,8 @@ assert.match(refill, /off_session: 'true'/u)
 assert.doesNotMatch(refill, /grant_workspace_credits_v1/u)
 // Opt-in, one a day, and never a workspace already failing payment.
 assert.match(refill, /auto-refill:\$\{workspaceId\}:\$\{today\}/u)
-assert.match(refill, /'past_due', 'unpaid', 'canceled', 'cancelled', 'incomplete'/u)
+assert.match(refill, /\['past_due', 'suspended'\]\.includes\(billingStatus\)/u)
+// The Stripe status names never appear in billing_status, so matching on them
+// skipped nobody.
+assert.doesNotMatch(refill, /'canceled', 'cancelled'/u)
 

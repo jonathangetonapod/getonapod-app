@@ -197,6 +197,22 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(expectedNavigation.length)
   })
 
+  // Both hrefs prefix /app/settings/billing, so Settings lit up next to
+  // Billing whenever the operator was on the billing page.
+  it('marks only the most specific item active on a nested route', () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/app/settings/billing']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <WorkspaceLayout><div>Module content</div></WorkspaceLayout>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Billing & credits' })).toHaveAttribute('aria-current', 'page')
+    expect(within(navigation).getByRole('link', { name: 'Settings' })).not.toHaveAttribute('aria-current')
+  })
+
   it('enables settings for an admin and keeps it unavailable to a member', () => {
     mockedUseAuth.mockReturnValue({
       user: { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', email: 'admin@example.com' },

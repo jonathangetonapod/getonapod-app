@@ -1,15 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import {
+  createAdminClient,
   errorResponse,
   parseJsonObject,
   requireOnlyKeys,
 } from '../_shared/workspaceAuth.ts'
+import { corsHeaders as platformCorsHeaders, ensureWorkspaceOriginAllowed, getCorsHeaders } from '../_shared/cors.ts'
 
 const METHODS = ['POST'] as const
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
+const fallbackCorsHeaders = {
+  'Access-Control-Allow-Origin': platformCorsHeaders['Access-Control-Allow-Origin'],
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Cache-Control': 'no-store',
   'Vary': 'Origin',
@@ -22,6 +24,17 @@ function normalizeDashboardSlug(value: unknown): string | null {
 }
 
 serve(async (req) => {
+  // Public dashboards and the portal are served from tenant custom domains,
+  // so the allowed origin is per request: the platform allowlist plus the
+  // active custom hostnames, warmed here because this may be the first call
+  // that origin ever makes.
+  let corsHeaders: Record<string, string> = { ...fallbackCorsHeaders }
+  try {
+    await ensureWorkspaceOriginAllowed(createAdminClient(), req)
+    corsHeaders = { ...getCorsHeaders(req), 'Cache-Control': 'no-store' }
+  } catch {
+    // Fall back to the platform origin rather than failing the request.
+  }
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }

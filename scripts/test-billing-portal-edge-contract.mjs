@@ -15,7 +15,7 @@ assert.match(portal, /requireOnlyKeys\(body, \['action', 'workspace_id'\]\)/u)
 // the sole column this function writes is which Stripe customer it is talking
 // to. Asserted on the update payloads themselves, because reading plan_key and
 // naming it in an audit entry are both fine.
-const portalUpdates = [...portal.matchAll(/\.update\(\{([^}]*)\}\)/gsu)].map((match) => match[1])
+const portalUpdates = [...portal.matchAll(/\.(?:update|upsert)\(\s*\{([^}]*)\}/gsu)].map((match) => match[1])
 assert.ok(
   portalUpdates.some((payload) => /stripe_customer_id: customerId/u.test(payload)),
   'the portal records which Stripe customer a workspace is',

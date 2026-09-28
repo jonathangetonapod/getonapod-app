@@ -352,14 +352,35 @@ export const ClientInstantlyCampaignsCard = ({
             </div>
             <div className="space-y-2">
               <Label>Sending accounts</Label>
-              <InstantlyAccountPicker
-                accounts={mailboxesQuery.data?.accounts ?? []}
-                connected={Boolean(mailboxesQuery.data?.connected)}
-                selected={newSenders}
-                onChange={setNewSenders}
-                disabled={createMutation.isPending}
-                defaultClientId={clientId}
-              />
+              {/* While the mailboxes are still loading, or failed to, there is
+                  no answer about the connection yet. Handing the picker an
+                  empty result told the operator to connect Instantly when it
+                  already was. */}
+              {mailboxesQuery.isLoading ? (
+                <div className="flex min-h-24 items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />Loading sending accounts…
+                </div>
+              ) : mailboxesQuery.isError ? (
+                <div className="flex min-h-24 flex-col items-center justify-center gap-3 text-center">
+                  <p className="text-sm text-destructive">
+                    {mailboxesQuery.error instanceof Error
+                      ? mailboxesQuery.error.message
+                      : 'Sending accounts could not be loaded.'}
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void mailboxesQuery.refetch()}>
+                    <RefreshCw className="mr-2 h-4 w-4" />Try again
+                  </Button>
+                </div>
+              ) : (
+                <InstantlyAccountPicker
+                  accounts={mailboxesQuery.data?.accounts ?? []}
+                  connected={Boolean(mailboxesQuery.data?.connected)}
+                  selected={newSenders}
+                  onChange={setNewSenders}
+                  disabled={createMutation.isPending}
+                  defaultClientId={clientId}
+                />
+              )}
             </div>
           </div>
           <DialogFooter>

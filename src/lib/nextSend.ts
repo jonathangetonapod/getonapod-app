@@ -12,6 +12,8 @@
  * estimate, which is why every reason below reads as one.
  */
 
+import { clockZoneFor } from '@/lib/instantlyTimezones'
+
 export interface NextSendInputs {
   /** Provider lead status: 1 active, 2 paused, 3 completed, negatives ended. */
   leadStatus: number | null
@@ -64,6 +66,56 @@ function weekdayInZone(date: Date, timezone: string): number {
   }
 }
 
+/** The zone's clock at an instant, as if it were UTC; null when the zone is unknown. */
+function zoneClockAsUtc(date: Date, timezone: string): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hourCycle: 'h23',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+    }).formatToParts(date)
+    const read = (type: string) => Number(parts.find((part) => part.type === type)?.value)
+    const value = Date.UTC(read('year'), read('month') - 1, read('day'), read('hour'), read('minute'), read('second'))
+    return Number.isNaN(value) ? null : value
+  } catch {
+    return null
+  }
+}
+
+/** Minutes the zone is ahead of UTC at this instant. */
+function zoneOffsetMinutes(date: Date, timezone: string): number | null {
+  const clock = zoneClockAsUtc(date, timezone)
+  if (clock === null) return null
+  // The formatted clock drops milliseconds; rounding absorbs them.
+  return Math.round((clock - date.getTime()) / 60_000)
+}
+
+/**
+ * The instant the window opens on the zone's calendar day that `candidate`
+ * falls on. The weekday was chosen on that calendar, so the window has to be
+ * placed on it too: a 09:00 window in Melbourne is the previous UTC evening,
+ * and anchoring to UTC midnight lands the send on the wrong day.
+ */
+function windowStartInZone(candidate: Date, timezone: string, minutes: number): Date {
+  const clock = zoneClockAsUtc(candidate, timezone)
+  const offset = zoneOffsetMinutes(candidate, timezone)
+  if (clock === null || offset === null) {
+    const midnight = new Date(candidate)
+    midnight.setUTCHours(0, 0, 0, 0)
+    return new Date(midnight.getTime() + minutes * 60_000)
+  }
+  const wall = new Date(clock)
+  wall.setUTCHours(0, 0, 0, 0)
+  const wallAsUtc = wall.getTime() + minutes * 60_000
+  let guess = wallAsUtc - offset * 60_000
+  // The offset can change between the candidate and the window on a DST
+  // switch day; re-reading it at the guess corrects that in one step.
+  const offsetAtGuess = zoneOffsetMinutes(new Date(guess), timezone)
+  if (offsetAtGuess !== null && offsetAtGuess !== offset) guess = wallAsUtc - offsetAtGuess * 60_000
+  return new Date(guess)
+}
+
 export function projectNextSend(input: NextSendInputs, now: Date = new Date()): NextSendProjection {
   if (input.leadStatus === 3) return { kind: 'none', summary: 'Sequence finished', reason: 'The sequence has finished for this host.' }
   if (input.leadStatus === -1) return { kind: 'none', summary: 'Bounced', reason: 'The address bounced, so nothing further will be sent.' }
@@ -86,18 +138,19 @@ export function projectNextSend(input: NextSendInputs, now: Date = new Date()): 
 
   const from = earliest.getTime() > now.getTime() ? earliest : now
   const days = new Set(input.sendDays)
+  // Instantly's Pacific entry is America/Dawson, which the IANA rules now
+  // keep on a different clock; the campaign means Pacific.
+  const timezone = clockZoneFor(input.timezone)
   // Walk forward to the first day the campaign may send on. Two weeks is past
   // any weekly schedule; beyond that the day set is empty, handled above.
   for (let offset = 0; offset < 14; offset += 1) {
     const candidate = new Date(from.getTime() + offset * 86_400_000)
-    if (!days.has(weekdayInZone(candidate, input.timezone))) continue
+    if (!days.has(weekdayInZone(candidate, timezone))) continue
     if (offset === 0) return { kind: 'due', at: from, approximate: true }
     // A later day opens at the start of the window rather than at this hour.
-    const midnight = new Date(candidate)
-    midnight.setUTCHours(0, 0, 0, 0)
     return {
       kind: 'due',
-      at: new Date(midnight.getTime() + windowMinutes(input.windowStart) * 60_000),
+      at: windowStartInZone(candidate, timezone, windowMinutes(input.windowStart)),
       approximate: true,
     }
   }

@@ -498,7 +498,7 @@ export const MailboxesTable = ({
               variant="ghost"
               size="sm"
               className="text-muted-foreground"
-              onClick={() => setVisibleCount((current) => current + 50)}
+              onClick={() => setVisibleCount((current) => current + MAILBOX_PAGE_SIZE)}
             >
               Show more ({accounts.length - visibleCount} remaining)
             </Button>

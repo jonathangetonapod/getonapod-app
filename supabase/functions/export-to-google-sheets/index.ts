@@ -62,6 +62,16 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    if (podcasts.length > 500) {
+      return new Response(
+        JSON.stringify({ error: 'Export at most 500 podcasts per request' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    // The podcasts table is the catalog every tenant reads contact details
+    // from. A workspace member may fill a gap in it, but must never overwrite
+    // another tenant's copy of a show, and never supply the contact email.
+    const trustedCatalogWriter = !workspaceId
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -359,13 +369,13 @@ serve(async (req) => {
               audience_size: podcast.audience_size || null,
               language: podcast.language || null,
               region: podcast.region || null,
-              podscan_email: podcast.podcast_email || null,
+              ...(trustedCatalogWriter ? { podscan_email: podcast.podcast_email || null } : {}),
               rss_url: podcast.rss_feed || null,
               podcast_categories: podcast.podcast_categories || null,
               podscan_last_fetched_at: updatedAt,
             }, {
               onConflict: 'podscan_id',
-              ignoreDuplicates: false,
+              ignoreDuplicates: !trustedCatalogWriter,
             }),
           supabase
             .from('client_dashboard_podcasts')

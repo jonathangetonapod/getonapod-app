@@ -336,6 +336,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const { isPlatformAdmin, membership, signOut, user, workspace } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const matchesPath = (href: string) => location.pathname === href || location.pathname.startsWith(`${href}/`)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
   const workspaceDisplayName = isPlatformAdmin && !platformWorkspace && workspace?.is_default
@@ -605,7 +606,12 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 <ul className="space-y-1">
                   {visibleNavItems.map((item) => {
                     const href = `${baseHref}/${item.segment}`
-                    const isActive = location.pathname === href || location.pathname.startsWith(`${href}/`)
+                    // Only the most specific matching item is active, so
+                    // Settings does not light up alongside Billing on
+                    // /settings/billing.
+                    const isActive = matchesPath(href) && !visibleNavItems.some((other) => (
+                      other !== item && other.segment.length > item.segment.length && matchesPath(`${baseHref}/${other.segment}`)
+                    ))
                     const isSettings = item.id === 'settings'
                     const isBilling = item.id === 'billing'
                     const managesWorkspace = Boolean(

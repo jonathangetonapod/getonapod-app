@@ -58,6 +58,56 @@ describe('clientShortlist service', () => {
     ])
   })
 
+  it('decodes the updated row and keeps the list-only fields the update omits', async () => {
+    const existing = {
+      id: 'podcast-one',
+      podcast_name: 'Founders &amp; Friends',
+      podcast_description: 'Old copy',
+      is_featured: false,
+      host_name: 'Sam',
+      prior_outreach_at: '2026-07-01T00:00:00.000Z',
+      email_unlock: { status: 'unlocked' },
+      agency_relationship: { kind: 'prior' },
+      recent_episodes: [{ title: 'Ep 1' }],
+    } as never
+    invoke.mockResolvedValueOnce({
+      data: { podcast: { id: 'podcast-one', podcast_name: 'Founders &amp; Friends', podcast_description: 'New &amp; improved', is_featured: true } },
+      error: null,
+    } as never)
+
+    const result = await updateClientShortlistPodcast(workspaceId, clientId, 'podcast-one', { is_featured: true }, existing)
+
+    expect(result).toMatchObject({
+      is_featured: true,
+      podcast_name: 'Founders & Friends',
+      podcast_description: 'New & improved',
+      host_name: 'Sam',
+      prior_outreach_at: '2026-07-01T00:00:00.000Z',
+      email_unlock: { status: 'unlocked' },
+      agency_relationship: { kind: 'prior' },
+      recent_episodes: [{ title: 'Ep 1' }],
+    })
+  })
+
+  it('still returns the decoded update alone when no prior row is supplied', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { podcast: { id: 'podcast-one', podcast_name: 'A &amp; B', podcast_description: null, is_featured: true } },
+      error: null,
+    } as never)
+
+    await expect(updateClientShortlistPodcast(workspaceId, clientId, 'podcast-one', { is_featured: true }))
+      .resolves.toEqual({ id: 'podcast-one', podcast_name: 'A & B', podcast_description: null, is_featured: true })
+  })
+
+  it('describes a failed read as a load failure, not a save failure', async () => {
+    invoke.mockResolvedValueOnce({ data: null, error: new Error('') } as never)
+    await expect(getClientShortlist(workspaceId, clientId)).rejects.toThrow(/could not be loaded/)
+
+    invoke.mockResolvedValueOnce({ data: null, error: new Error('') } as never)
+    await expect(updateClientShortlistPodcast(workspaceId, clientId, 'podcast-one', { is_featured: true }))
+      .rejects.toThrow(/could not be updated/)
+  })
+
   it('starts a research run scoped to one shortlist podcast and returns progress', async () => {
     const progress = {
       status: 'completed',

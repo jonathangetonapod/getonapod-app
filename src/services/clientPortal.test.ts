@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   completePortalPasswordReset,
+  getClientBookings,
   getPortalExperience,
   loginWithPassword,
   requestPortalPasswordReset,
@@ -171,6 +172,38 @@ describe('clientPortal experience overview', () => {
     await expect(getPortalExperience('44444444-4444-4444-8444-444444444444'))
       .rejects.toThrow('Portal session does not match the requested client.')
     expect(mockedInvoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('getClientBookings', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.sessionStorage.clear()
+  })
+
+  it('reads the function error body instead of the SDK wrapper message', async () => {
+    const context = new Response(JSON.stringify({ error: 'Session expired', code: 'SESSION_EXPIRED' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    mockedInvoke.mockResolvedValue({ data: null, error: Object.assign(new Error('Edge Function returned a non-2xx status code'), { context }) } as never)
+
+    await expect(getClientBookings('22222222-2222-4222-8222-222222222222'))
+      .rejects.toThrow('Session expired (SESSION_EXPIRED)')
+  })
+
+  it('fails cleanly when the function returns no body at all', async () => {
+    mockedInvoke.mockResolvedValue({ data: null, error: null } as never)
+
+    await expect(getClientBookings('22222222-2222-4222-8222-222222222222'))
+      .rejects.toThrow('Your bookings could not be loaded.')
+  })
+
+  it('returns the bookings list on success', async () => {
+    mockedInvoke.mockResolvedValue({ data: { bookings: [{ id: 'b1' }] }, error: null } as never)
+
+    await expect(getClientBookings('22222222-2222-4222-8222-222222222222'))
+      .resolves.toEqual({ bookings: [{ id: 'b1' }] })
   })
 })
 

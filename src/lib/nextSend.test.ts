@@ -14,6 +14,21 @@ const base = {
 const wed = new Date('2026-08-05T14:00:00Z')
 
 describe('projectNextSend', () => {
+  // Instantly's Pacific entry is America/Dawson; the Yukon has kept UTC-7 all
+  // year since 2020, so in January a literal reading opens the window an hour
+  // early. The campaign means Pacific: 09:00 PST is 17:00Z.
+  it('opens the window on the Pacific clock for the Dawson entry', () => {
+    const friday = new Date('2026-01-09T20:00:00Z')
+    const result = projectNextSend({
+      ...base,
+      timezone: 'America/Dawson',
+      lastContactAt: '2026-01-09T20:00:00Z',
+      followUpOneDelayDays: 1,
+    }, friday)
+    expect(result.kind).toBe('due')
+    if (result.kind === 'due') expect(result.at.toISOString()).toBe('2026-01-12T17:00:00.000Z')
+  })
+
   // Instantly reports none of these as "nothing more will send", so the reason
   // has to be derived and stated rather than left as an empty cell.
   it('says nothing further is coming when the sequence is over', () => {
@@ -56,6 +71,40 @@ describe('projectNextSend', () => {
     expect(result.kind).toBe('due')
     // 11 Aug is a Tuesday; the next Monday is the 17th.
     if (result.kind === 'due') expect(result.at.toISOString().slice(0, 10)).toBe('2026-08-17')
+  })
+
+  // The weekday is chosen on the campaign's calendar, so the window has to
+  // open on that calendar too. Anchored to UTC midnight, a 09:00 Melbourne
+  // window came out as 19:00 the previous evening, on a Sunday.
+  it('opens the window on the zone\'s day, not the UTC one', () => {
+    // Thu 6 Aug 09:30 AEST, two days later is Sat 8 Aug; next sending day is
+    // Mon 10 Aug at 09:00 AEST, which is Sunday 23:00 UTC.
+    const result = projectNextSend(
+      { ...base, timezone: 'Australia/Melbourne', lastContactAt: '2026-08-05T23:30:00Z', followUpOneDelayDays: 2 },
+      wed,
+    )
+    expect(result.kind).toBe('due')
+    if (result.kind === 'due') expect(result.at.toISOString()).toBe('2026-08-09T23:00:00.000Z')
+  })
+
+  it('places a Detroit window at 09:00 EDT', () => {
+    const result = projectNextSend(
+      { ...base, sendDays: [1], lastContactAt: '2026-08-05T14:00:00Z' },
+      wed,
+    )
+    expect(result.kind).toBe('due')
+    if (result.kind === 'due') expect(result.at.toISOString()).toBe('2026-08-17T13:00:00.000Z')
+  })
+
+  // On 1 Nov 2026 Detroit leaves DST at 02:00. A candidate at 01:30 EDT is
+  // four hours behind UTC, but the 09:00 window that same day is five behind.
+  it('uses the offset in force when the window opens on a DST switch day', () => {
+    const result = projectNextSend(
+      { ...base, sendDays: [0], lastContactAt: '2026-10-29T05:30:00Z', followUpOneDelayDays: 2 },
+      new Date('2026-10-29T12:00:00Z'),
+    )
+    expect(result.kind).toBe('due')
+    if (result.kind === 'due') expect(result.at.toISOString()).toBe('2026-11-01T14:00:00.000Z')
   })
 
   // The provider gives no forward-looking field at all, so this is arithmetic

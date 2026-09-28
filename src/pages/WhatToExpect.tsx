@@ -228,13 +228,13 @@ const WhatToExpect = () => {
   return (
     <div className="homepage-shell min-h-screen bg-transparent">
       <PageSEO
-        title="What happens after you sign up, week by week | Get On A Pod"
+        title="What happens after you join, week by week | Get On A Pod"
         description="How Get On A Pod runs a podcast guesting campaign, from the positioning interview to the published episode: what you approve, when pitches go out and when you record."
         path="/what-to-expect"
       />
       <Navbar />
 
-      <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-24 sm:pt-32 md:pb-16 md:pt-36">
+      <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-44 sm:pt-40 md:pb-16 md:pt-36">
         <div className="absolute inset-x-0 top-0 h-px bg-[#0d1b2a]/8" />
         <div className="absolute left-0 top-20 h-[260px] w-[260px] rounded-full bg-[#b46a3c]/10 blur-3xl sm:h-[380px] sm:w-[380px]" />
         <div className="absolute right-0 top-14 h-[220px] w-[220px] rounded-full bg-[#d9c6b3]/45 blur-3xl sm:h-[360px] sm:w-[360px]" />
@@ -250,7 +250,7 @@ const WhatToExpect = () => {
               </div>
 
               <h1 className="mt-6 max-w-4xl font-editorial text-[clamp(3rem,10vw,6rem)] leading-[0.92] tracking-[-0.045em] text-[#0d1b2a] text-balance">
-                What happens after you sign up, week by week.
+                What happens after you join, week by week.
               </h1>
 
               <p className="mt-6 max-w-2xl text-base leading-8 text-[#54473d] sm:text-lg md:text-xl">
@@ -400,7 +400,7 @@ const WhatToExpect = () => {
                   className="rounded-[30px] border border-[#0d1b2a]/8 bg-[#fffdf9]/94 p-5 shadow-[0_18px_40px_rgba(13,27,42,0.08)] sm:p-6"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-[#b46a3c]/16 bg-[#fff3e8] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[#b46a3c]">
+                    <span className="rounded-full border border-[#b46a3c]/16 bg-[#fff3e8] px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-[#8e4a1f]">
                       Step {step.number}
                     </span>
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#7a6554]">

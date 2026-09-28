@@ -59,6 +59,9 @@ serve(async (req) => {
       if (message.includes('suspend')) {
         throw new HttpError(403, 'ACCOUNT_SUSPENDED', 'This account is suspended')
       }
+      if (message.includes('not active')) {
+        throw new HttpError(409, 'WORKSPACE_INACTIVE', 'This workspace is not accepting members right now')
+      }
       if (message.includes('pending') || message.includes('status')) {
         throw new HttpError(409, 'INVITE_NOT_PENDING', 'This invitation cannot be accepted')
       }

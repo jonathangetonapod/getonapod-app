@@ -3,6 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
+// Written by the sign-in page before the Google round trip; the same key is spelled
+// there, since a shared export from either component file would break Fast Refresh.
+const POST_LOGIN_PATH_KEY = 'goap.post-login-path'
+
+// Only same-origin app paths are honored, so a stored value can never send
+// someone off-site or to a page that is not behind sign-in.
+const readPostLoginPath = (): string | null => {
+  try {
+    const stored = sessionStorage.getItem(POST_LOGIN_PATH_KEY)
+    sessionStorage.removeItem(POST_LOGIN_PATH_KEY)
+    if (!stored) return null
+    const isAppPath = /^\/(app|admin)(\/|\?|#|$)/u.test(stored)
+    return isAppPath && !stored.startsWith('//') ? stored : null
+  } catch {
+    return null
+  }
+}
+
 const AuthCallback = () => {
   const { accountState } = useAuth()
   const navigate = useNavigate()
@@ -14,7 +32,7 @@ const AuthCallback = () => {
     } else if (accountState === 'password_change_required' || accountState === 'reauthentication_required') {
       navigate('/change-password', { replace: true })
     } else if (accountState === 'active') {
-      navigate('/app/clients', { replace: true })
+      navigate(readPostLoginPath() ?? '/app/clients', { replace: true })
     } else {
       navigate('/admin/login', { replace: true })
     }

@@ -70,6 +70,9 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PROSPECT_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_PROSPECT_PHOTO_BYTES = 5 * 1024 * 1024
+// A build that died server-side leaves the row in 'matching' forever; past
+// this age it is treated as abandoned so the operator can build again.
+const BUILD_STALE_AFTER_MS = 10 * 60 * 1000
 
 interface WorkspaceProspectDashboardsProps {
   platformWorkspaceId?: string
@@ -288,7 +291,7 @@ function ProspectProfileDialog({
                           : <UserRound className="h-8 w-8 text-muted-foreground" />}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <Label>Prospect photo</Label>
+                        <Label htmlFor="prospect-photo-upload">Prospect photo</Label>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">Upload a square JPEG, PNG, or WebP image up to 5 MB.</p>
                         {editing ? (
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -399,7 +402,7 @@ function ProspectProfileDialog({
                     <Input id="prospect-website" type="url" value={form.website} onChange={(event) => onChange({ ...form, website: event.target.value })} placeholder="https://company.com" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Call to action</Label>
+                    <Label htmlFor="prospect-cta-type">Call to action</Label>
                     <Select value={form.ctaType} onValueChange={(ctaType: ProspectCtaType) => onChange({
                       ...form,
                       ctaType,
@@ -411,7 +414,7 @@ function ProspectProfileDialog({
                             ? 'No next step'
                             : 'Reply to this email',
                     })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger id="prospect-cta-type"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="reply">Reply to the email</SelectItem>
                         <SelectItem value="book_call">Book a call</SelectItem>
@@ -735,7 +738,13 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
       toast.success(result.created ? 'Prospect draft created.' : 'Prospect profile updated.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The prospect profile could not be saved.'),
+    onError: (error) => {
+      // A 409 means someone else saved first; refetch so the next attempt
+      // carries the current updated_at. The form and its edits stay open.
+      void queryClient.invalidateQueries({ queryKey: detailQueryKey })
+      void queryClient.invalidateQueries({ queryKey: listQueryKey })
+      toast.error(error instanceof Error ? error.message : 'The prospect profile could not be saved.')
+    },
   })
 
   const photoMutation = useMutation({
@@ -754,7 +763,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
       }))
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
       toast.success(wasPublished
-        ? `Photo ${photo ? 'updated' : 'removed'}. The dashboard moved to Review before the public image changed.`
+        ? `Photo ${photo ? 'updated' : 'removed'}. The change is waiting for review; the live page is unchanged.`
         : `Prospect photo ${photo ? 'updated' : 'removed'}.`)
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The prospect photo could not be changed.'),
@@ -770,7 +779,12 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
       setShortlistView('featured')
       toast.success('Shortlist built. Review the matches before publishing.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The shortlist could not be built.'),
+    onError: (error) => {
+      // The server records 'failed' and build_error on the row; fetch them.
+      void queryClient.invalidateQueries({ queryKey: listQueryKey })
+      void queryClient.invalidateQueries({ queryKey: detailQueryKey })
+      toast.error(error instanceof Error ? error.message : 'The shortlist could not be built.')
+    },
   })
 
   const publicationMutation = useMutation({
@@ -993,7 +1007,10 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     ['review', 'failed'].includes(prospect.lifecycle_status) || Boolean(prospect.pending_review_at)
   )).length
   const totalViews = prospects.reduce((total, prospect) => total + (prospect.view_count || 0), 0)
-  const building = buildMutation.isPending || ['matching', 'analyzing'].includes(selected?.lifecycle_status || '')
+  const buildInProgress = ['matching', 'analyzing'].includes(selected?.lifecycle_status || '')
+  const buildStartedAt = selected?.build_started_at || selected?.updated_at || null
+  const buildStale = buildInProgress && Boolean(buildStartedAt) && Date.now() - Date.parse(buildStartedAt) > BUILD_STALE_AFTER_MS
+  const building = buildMutation.isPending || (buildInProgress && !buildStale)
   const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending
   const nextActionKind = !selected?.readiness.profile_ready
     ? 'profile'
@@ -1254,6 +1271,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                             </div>
                           )}
                           {selected.build_error && <Alert variant="destructive" className="mt-4"><AlertTitle>Build needs attention</AlertTitle><AlertDescription>{selected.build_error}</AlertDescription></Alert>}
+                          {buildStale && <p className="mt-4 text-sm text-muted-foreground">The previous build did not finish. Build the shortlist again to retry.</p>}
                         </div>
 
                         <div className="rounded-xl border bg-muted/30 p-3">

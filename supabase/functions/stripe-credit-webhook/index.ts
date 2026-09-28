@@ -31,15 +31,17 @@ async function verifyStripeSignature(
   secret: string,
 ): Promise<boolean> {
   if (!header) return false
-  const parts = new Map(
-    header.split(',').flatMap((part) => {
-      const [key, value] = part.split('=', 2)
-      return key && value ? [[key.trim(), value.trim()] as const] : []
-    }),
-  )
-  const timestamp = parts.get('t')
-  const signature = parts.get('v1')
-  if (!timestamp || !signature) return false
+  let timestamp = ''
+  // During a secret rollover Stripe signs with both secrets and sends two v1
+  // values; keeping only the last one rejected valid events until it ended.
+  const signatures: string[] = []
+  for (const part of header.split(',')) {
+    const [key, value] = part.split('=', 2)
+    if (!key || !value) continue
+    if (key.trim() === 't') timestamp = value.trim()
+    if (key.trim() === 'v1') signatures.push(value.trim())
+  }
+  if (!timestamp || signatures.length === 0) return false
   const age = Math.abs(Date.now() / 1000 - Number(timestamp))
   if (!Number.isFinite(age) || age > SIGNATURE_TOLERANCE_SECONDS) return false
 
@@ -58,7 +60,11 @@ async function verifyStripeSignature(
   const expected = [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
-  return timingSafeEqual(expected, signature)
+  let matched = false
+  for (const signature of signatures) {
+    if (timingSafeEqual(expected, signature)) matched = true
+  }
+  return matched
 }
 
 serve(async (req) => {

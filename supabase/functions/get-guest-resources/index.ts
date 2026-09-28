@@ -19,6 +19,7 @@ import {
   requireUuid,
   workspaceCredentialIsFresh,
 } from "../_shared/workspaceAuth.ts";
+import { ensureWorkspaceOriginAllowed } from "../_shared/cors.ts"
 
 const METHODS = ["POST"] as const;
 const RESOURCE_CATEGORIES = [
@@ -249,7 +250,13 @@ function catalogRpcError(error: { code?: string; message?: string }): never {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse(req, METHODS);
+  if (req.method === "OPTIONS") {
+    // Portal pages are served from tenant custom domains too, and the
+    // preflight is the first request that origin ever makes, so it has to
+    // warm the allowlist itself or the domain never works.
+    await ensureWorkspaceOriginAllowed(createAdminClient(), req);
+    return optionsResponse(req, METHODS);
+  }
 
   try {
     if (req.method !== "POST") {
@@ -284,6 +291,7 @@ serve(async (req) => {
     const limit = paginationInteger(body.limit, "limit", 50, 1, 100);
     const offset = paginationInteger(body.offset, "offset", 0, 0, 1_000_000);
     const admin = createAdminClient();
+    await ensureWorkspaceOriginAllowed(admin, req);
     let sessionTokenHash: string | null = null;
 
     if (sessionToken) {

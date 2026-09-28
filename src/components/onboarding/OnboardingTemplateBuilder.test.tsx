@@ -150,4 +150,54 @@ describe('OnboardingTemplateBuilder', () => {
     expect(savedDraft.definition.sections[0].questions[1].mapping).toBeNull()
     expect(savedDraft.reminder_days).toEqual([])
   })
+
+  // The choices textarea rebuilt its value from the parsed options, and the
+  // parser dropped blank lines, so the newline Enter had just typed snapped
+  // away before a second choice could be started.
+  it('keeps the newline between answer choices while typing and drops blank lines on save', () => {
+    const onSave = vi.fn()
+    render(
+      <OnboardingTemplateBuilder
+        open
+        template={{
+          ...template,
+          definition: {
+            ...template.definition,
+            sections: [{
+              id: 'section_select',
+              title: 'Preferences',
+              description: '',
+              questions: [{
+                id: 'question_format',
+                type: 'single_select',
+                label: 'Preferred format',
+                description: '',
+                required: true,
+                placeholder: '',
+                mapping: null,
+                options: [{ id: 'option_first', label: 'Interview' }],
+              }],
+            }],
+          },
+        }}
+        workspaceName="Iveth Gonzalez"
+        workspaceLogoUrl={null}
+        saving={false}
+        onOpenChange={vi.fn()}
+        onSave={onSave}
+      />,
+    )
+
+    const choices = screen.getByLabelText('Answer choices') as HTMLTextAreaElement
+    fireEvent.change(choices, { target: { value: 'Interview\n' } })
+    expect(choices.value).toBe('Interview\n')
+    fireEvent.change(choices, { target: { value: 'Interview\nPanel\n\n' } })
+    expect(choices.value).toBe('Interview\nPanel\n\n')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(onSave).toHaveBeenCalledTimes(1)
+    const [savedDraft] = onSave.mock.calls[0]
+    expect(savedDraft.definition.sections[0].questions[0].options.map((option: { label: string }) => option.label))
+      .toEqual(['Interview', 'Panel'])
+  })
 })

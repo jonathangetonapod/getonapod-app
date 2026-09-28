@@ -25,23 +25,25 @@ const Footer = () => {
           <div className="grid gap-8 sm:grid-cols-2">
             <div>
               <h4 className="text-sm font-semibold text-[#0d1b2a]">Navigate</h4>
-              <nav className="mt-3 flex flex-col gap-2">
-                <a href="/#how" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">How it works</a>
-                <a href="/#pricing" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Pricing</a>
-                <a href="/#faq" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">FAQ</a>
-                <Link to="/what-to-expect" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">What to expect</Link>
+              <nav className="mt-3 flex flex-col sm:gap-2">
+                <a href="/#how" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">How it works</a>
+                <a href="/#pricing" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Pricing</a>
+                <a href="/#faq" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">FAQ</a>
+                <Link to="/what-to-expect" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">What to expect</Link>
+                <Link to="/privacy" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Privacy</Link>
+                <Link to="/terms" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Terms</Link>
               </nav>
             </div>
 
             <div>
               <h4 className="text-sm font-semibold text-[#0d1b2a]">Access</h4>
-              <nav className="mt-3 flex flex-col gap-2">
-                <a href="/#shows" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">The shows</a>
-                <Link to="/platform" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">For agencies</Link>
-                <Link to="/resources" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Resources</Link>
-                <Link to="/blog" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Blog</Link>
-                <Link to="/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Workspace sign-in</Link>
-                <Link to="/portal/login" className="text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a]">Client portal sign-in</Link>
+              <nav className="mt-3 flex flex-col sm:gap-2">
+                <a href="/#shows" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">The shows</a>
+                <Link to="/platform" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">For agencies</Link>
+                <Link to="/resources" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Resources</Link>
+                <Link to="/blog" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Blog</Link>
+                <Link to="/login" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Workspace sign-in</Link>
+                <Link to="/portal/login" className="py-3 text-sm text-[#4c5d73] transition-colors hover:text-[#0d1b2a] sm:py-0">Client portal sign-in</Link>
               </nav>
             </div>
           </div>

@@ -76,6 +76,10 @@ serve(async (req) => {
       .from('workspace_memberships')
       .select(ACCOUNT_MEMBERSHIP_COLUMNS)
       .eq('user_id', user.id)
+      // Revocation keeps user_id so a fresh invitation is not blocked, which
+      // means a revoked row and the re-invited live row coexist. The revoked
+      // one is history, not a state this account is in.
+      .neq('status', 'revoked')
       .limit(2)
 
     if (userMembershipError) {
@@ -110,7 +114,32 @@ serve(async (req) => {
     }
 
     if (memberships.length > 1) {
-      throw new HttpError(409, 'MULTIPLE_WORKSPACES', 'The account has an ambiguous workspace assignment')
+      // A platform administrator's membership on the default workspace is the
+      // anchor for platform access, read separately by the SQL helper. The
+      // same person may also own a sub-agency, and that is the workspace this
+      // account lives in; refusing the pair as ambiguous locked them out of
+      // both.
+      let resolved: MembershipRow | null = null
+      if (platformAdmin) {
+        const { data: workspaceRows, error: workspaceRowsError } = await admin
+          .from('workspaces')
+          .select('id,is_default')
+          .in('id', memberships.map((membership) => membership.workspace_id))
+        if (workspaceRowsError) {
+          throw new HttpError(500, 'CONTEXT_UNAVAILABLE', 'Account context is unavailable')
+        }
+        const defaultIds = new Set(
+          ((workspaceRows ?? []) as Array<{ id: string; is_default: boolean }>)
+            .filter((row) => row.is_default === true)
+            .map((row) => row.id),
+        )
+        const own = memberships.filter((membership) => !defaultIds.has(membership.workspace_id))
+        if (own.length === 1) resolved = own[0]
+      }
+      if (!resolved) {
+        throw new HttpError(409, 'MULTIPLE_WORKSPACES', 'The account has an ambiguous workspace assignment')
+      }
+      memberships = [resolved]
     }
 
     const membership = memberships[0] ?? null

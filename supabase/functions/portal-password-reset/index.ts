@@ -10,6 +10,7 @@ import {
   requireOnlyKeys,
   requireString,
 } from '../_shared/workspaceAuth.ts'
+import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 import { hashPortalPassword, hashPortalSessionToken } from '../_shared/portalSecurity.ts'
 import { safeWorkspaceBranding } from '../_shared/portalBranding.ts'
 import { portalResetUrl, sendPortalResetEmail } from '../_shared/portalResetEmail.ts'
@@ -45,7 +46,13 @@ function requirePortalPassword(value: unknown): string {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+  if (req.method === 'OPTIONS') {
+    // Portal pages are served from tenant custom domains too, and the
+    // preflight is the first request that origin ever makes, so it has to
+    // warm the allowlist itself or the domain never works.
+    await ensureWorkspaceOriginAllowed(createAdminClient(), req)
+    return optionsResponse(req, METHODS)
+  }
 
   try {
     if (req.method !== 'POST') {
@@ -55,6 +62,7 @@ serve(async (req) => {
     const body = await parseJsonObject(req, 2_048)
     const action = typeof body.action === 'string' ? body.action : ''
     const admin = createAdminClient()
+    await ensureWorkspaceOriginAllowed(admin, req)
     const { ip, userAgent } = requestNetworkContext(req)
 
     if (action === 'request') {

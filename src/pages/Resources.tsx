@@ -43,22 +43,22 @@ const categoryInfo: Record<
   technical_setup: {
     label: 'Technical setup',
     icon: Mic,
-    tone: 'border-[#d6c7ee] bg-[#f6efff] text-[#7a4bc2]',
+    tone: 'border-[#d6c7ee] bg-[#f6efff] text-[#5d3597]',
   },
   best_practices: {
     label: 'Best practices',
     icon: Star,
-    tone: 'border-[#c7e8d5] bg-[#eefaf2] text-[#27925a]',
+    tone: 'border-[#c7e8d5] bg-[#eefaf2] text-[#1f7448]',
   },
   promotion: {
     label: 'Promotion',
     icon: TrendingUp,
-    tone: 'border-[#f1d6b2] bg-[#fff6eb] text-[#c87a26]',
+    tone: 'border-[#f1d6b2] bg-[#fff6eb] text-[#8a5b1e]',
   },
   examples: {
     label: 'Examples',
     icon: Video,
-    tone: 'border-[#f0c7d8] bg-[#fff1f7] text-[#c44b78]',
+    tone: 'border-[#f0c7d8] bg-[#fff1f7] text-[#9c3a5f]',
   },
   templates: {
     label: 'Templates',
@@ -101,7 +101,7 @@ export default function Resources() {
   const [activeCategory, setActiveCategory] = useState<'all' | ResourceCategory>('all')
   const [viewingResource, setViewingResource] = useState<GuestResource | null>(null)
 
-  const { data: resources = [], isLoading } = useQuery({
+  const { data: resources = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['public-guest-resources'],
     queryFn: () => getGuestResources(),
   })
@@ -179,7 +179,7 @@ export default function Resources() {
                 {typeInfo[resource.type].label}
               </Badge>
               {resource.featured && (
-                <Badge variant="outline" className="rounded-full border-[#f0d7aa] bg-[#fff7ea] text-[#b7791f]">
+                <Badge variant="outline" className="rounded-full border-[#f0d7aa] bg-[#fff7ea] text-[#8a5b1e]">
                   Featured
                 </Badge>
               )}
@@ -235,7 +235,7 @@ export default function Resources() {
 
       <Navbar />
 
-      <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-24 md:pb-16 md:pt-32">
+      <section className="paper-noise relative overflow-hidden px-4 pb-12 pt-44 sm:pt-40 md:pb-16 md:pt-36">
         <div className="absolute left-0 top-16 h-[260px] w-[260px] rounded-full bg-[#2d6df6]/8 blur-3xl sm:h-[380px] sm:w-[380px]" />
         <div className="absolute right-0 top-10 h-[220px] w-[220px] rounded-full bg-[#dce7f5]/70 blur-3xl sm:h-[340px] sm:w-[340px]" />
 
@@ -353,6 +353,7 @@ export default function Resources() {
                 <Input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
+                  aria-label="Search resources"
                   placeholder="Search resources by title or topic..."
                   className="h-12 border-[#0d1b2a]/10 bg-[#f8fbff] pl-11"
                 />
@@ -412,6 +413,21 @@ export default function Resources() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : isError ? (
+            // A failed load is not an empty library; say so and offer a retry.
+            <div className="rounded-[32px] border border-[#0d1b2a]/8 bg-white/88 p-8 text-center shadow-[0_16px_34px_rgba(13,27,42,0.08)] sm:p-10" role="alert">
+              <h2 className="font-display text-3xl font-semibold tracking-[-0.04em] text-[#0d1b2a]">
+                The resources could not be loaded.
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl text-base leading-8 text-[#4c5d73]">
+                Something went wrong on our side. Try again in a moment.
+              </p>
+              <div className="mt-7 flex justify-center">
+                <Button variant="hero" className="rounded-full px-7" onClick={() => refetch()}>
+                  Retry
+                </Button>
+              </div>
             </div>
           ) : filteredResources.length === 0 ? (
             <div className="rounded-[32px] border border-[#0d1b2a]/8 bg-white/88 p-8 text-center shadow-[0_16px_34px_rgba(13,27,42,0.08)] sm:p-10">

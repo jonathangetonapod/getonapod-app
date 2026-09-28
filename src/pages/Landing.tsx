@@ -235,7 +235,7 @@ const Quotes = () => {
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false) }}
       >
         <div className="dfy-carousel-head">
-          <span className="dfy-kicker">Six founders, in their own words</span>
+          <span className="dfy-kicker">Clients, in their own words</span>
           {count > 1 ? (
             <div className="dfy-carousel-controls">
               <span className="dfy-carousel-count dfy-tnum" aria-hidden="true">{twoDigits(index + 1)} / {twoDigits(count)}</span>
@@ -367,6 +367,8 @@ const Landing = () => {
       <PageSEO
         title="Get booked on podcasts your customers listen to | Get On A Pod"
         description={HERO.lead}
+        path="/"
+        keywords="podcast guesting service, done-for-you podcast booking, podcast guest booking, thought leadership, founder marketing"
       />
       <a className="dfy-skip" href="#main">Skip to content</a>
 

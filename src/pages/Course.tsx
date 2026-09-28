@@ -60,7 +60,7 @@ const Course = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="pt-24 pb-12 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
+      <section className="pt-44 pb-12 sm:pt-40 md:pt-36 md:pb-24 bg-gradient-to-b from-primary/5 to-background px-4">
         <div className="container mx-auto">
           <div className="max-w-3xl mx-auto text-center">
             <Badge className="mb-4">Coming Soon</Badge>

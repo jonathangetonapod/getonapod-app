@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, MessageSquareText, Pencil, RotateCcw } from 'lucide-react'
+import { Loader2, MessageSquareText, Pencil, RefreshCw, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
@@ -125,6 +135,9 @@ export const ClientSdrPromptsCard = ({
   const queryClient = useQueryClient()
   const [drafts, setDrafts] = useState<Partial<Record<ResearchPromptId, string>>>({})
   const [expanded, setExpanded] = useState<ResearchPromptId | null>(null)
+  // Reset is confirmed: it deletes the client's own prompt, and the text it
+  // falls back to is not shown until the row is opened again.
+  const [resetTarget, setResetTarget] = useState<ResearchPromptId | null>(null)
   const promptsKey = ['client-sdr-prompts', workspaceId, clientId] as const
 
   const promptsQuery = useQuery({
@@ -217,7 +230,9 @@ export const ClientSdrPromptsCard = ({
     // Wait for the workspace layer too: seeding from the shipped default
     // while the house style was still loading marked every prompt "Unsaved"
     // against text nobody typed.
-    if (!promptsQuery.data || promptOverridesQuery.isLoading) return
+    // Success, not merely "not loading": a failed workspace read would seed
+    // shipped text that a later successful retry could no longer replace.
+    if (!promptsQuery.data || !promptOverridesQuery.isSuccess) return
     setDrafts((current) => {
       const next = { ...current }
       for (const prompt of PROMPT_GROUPS.flatMap((group) => group.prompts)) {
@@ -255,6 +270,21 @@ export const ClientSdrPromptsCard = ({
   })
 
   const activePrompt = PROMPT_GROUPS.flatMap((group) => group.prompts).find((item) => item.id === expanded) ?? null
+  const resetPrompt = PROMPT_GROUPS.flatMap((group) => group.prompts).find((item) => item.id === resetTarget) ?? null
+  /*
+   * Either layer failing to load is a hard stop. With the client layer down
+   * the card rendered shipped defaults labelled "Workspace default", and a
+   * save would have written those over the real prompt.
+   */
+  const loadError = promptsQuery.isError
+    ? promptsQuery.error
+    : promptOverridesQuery.isError
+      ? promptOverridesQuery.error
+      : null
+  const retryLoad = () => {
+    if (promptsQuery.isError) void promptsQuery.refetch()
+    if (promptOverridesQuery.isError) void promptOverridesQuery.refetch()
+  }
 
   return (
     <>
@@ -270,9 +300,18 @@ export const ClientSdrPromptsCard = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
-        {promptsQuery.isLoading ? (
+        {promptsQuery.isLoading || promptOverridesQuery.isLoading ? (
           <div className="flex min-h-24 items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />Loading prompts…
+          </div>
+        ) : loadError ? (
+          <div className="flex min-h-24 flex-col items-center justify-center gap-3 text-center" role="alert">
+            <p className="text-sm text-destructive">
+              {loadError instanceof Error ? loadError.message : 'The prompts could not be loaded.'}
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={retryLoad}>
+              <RefreshCw className="mr-2 h-4 w-4" />Retry
+            </Button>
           </div>
         ) : (
           PROMPT_GROUPS.map((group) => (
@@ -306,8 +345,9 @@ export const ClientSdrPromptsCard = ({
                       </button>
                       <div className="flex shrink-0 items-center gap-2">
                         {canManage && saved && (
-                          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => resetMutation.mutate(prompt.id)}>
+                          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setResetTarget(prompt.id)}>
                             <RotateCcw className="mr-2 h-3.5 w-3.5" />Reset
+                            <span className="sr-only"> {prompt.title}</span>
                           </Button>
                         )}
                         {canManage && (
@@ -438,7 +478,7 @@ export const ClientSdrPromptsCard = ({
                 <DialogFooter className="gap-2 border-t px-6 py-4 sm:justify-between">
                   <div className="flex items-center gap-2">
                     {canManage && saved && (
-                      <Button type="button" variant="ghost" disabled={busy} onClick={() => resetMutation.mutate(prompt.id)}>
+                      <Button type="button" variant="ghost" disabled={busy} onClick={() => setResetTarget(prompt.id)}>
                         <RotateCcw className="mr-2 h-4 w-4" />Reset to workspace default
                       </Button>
                     )}
@@ -457,6 +497,28 @@ export const ClientSdrPromptsCard = ({
           })()}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(resetPrompt)} onOpenChange={(next) => { if (!next) setResetTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset {resetPrompt?.title ?? 'this prompt'} to the workspace default?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {clientName}’s own version of this prompt is deleted and the workspace house style applies again. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep custom prompt</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (resetTarget) resetMutation.mutate(resetTarget)
+                setResetTarget(null)
+              }}
+            >
+              Reset prompt
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

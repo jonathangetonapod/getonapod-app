@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   INSTANTLY_TIMEZONES,
+  clockZoneFor,
   defaultInstantlyTimezone,
+  instantlyTimezoneLabel,
   isInstantlyTimezone,
   toInstantlyTimezone,
 } from '@/lib/instantlyTimezones'
@@ -32,6 +34,19 @@ describe('instantlyTimezones', () => {
     expect(toInstantlyTimezone('Mars/Olympus_Mons')).toBe('America/Detroit')
     expect(toInstantlyTimezone(null)).toBe('America/Detroit')
     expect(toInstantlyTimezone('')).toBe('America/Detroit')
+  })
+
+  // Instantly's Pacific slot is America/Dawson, and the Yukon dropped daylight
+  // saving in 2020; read literally it is an hour off for four months a year.
+  it('computes wall time for the Pacific entry on the Pacific clock', () => {
+    expect(clockZoneFor('America/Dawson')).toBe('America/Los_Angeles')
+    expect(clockZoneFor('America/Detroit')).toBe('America/Detroit')
+  })
+
+  it('labels the substitute zones with the clock they stand for', () => {
+    expect(instantlyTimezoneLabel('America/Dawson')).toBe('America/Dawson (Pacific Time)')
+    expect(instantlyTimezoneLabel('America/Detroit')).toBe('America/Detroit (Eastern Time)')
+    expect(instantlyTimezoneLabel('Asia/Kolkata')).toBe('Asia/Kolkata')
   })
 
   it('always defaults to something Instantly will take', () => {

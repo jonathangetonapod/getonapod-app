@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { defaultInstantlyTimezone } from '@/lib/instantlyTimezones'
 
 export type WorkspaceCampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'attention'
 export type WorkspaceCampaignTargetStatus = 'draft' | 'ready' | 'launching' | 'in_outreach' | 'replied' | 'completed' | 'failed'
@@ -1023,6 +1024,9 @@ export async function setClientInstantlyCampaignLinks(
  * attributes its replies to the client but can never receive a pitch, because
  * it carries copy of its own.
  */
+/** Instantly's own default when a campaign is created without a limit. */
+const DEFAULT_INSTANTLY_DAILY_LIMIT = 30
+
 export async function createClientInstantlyCampaign(input: {
   workspaceId: string
   clientId: string
@@ -1037,8 +1041,9 @@ export async function createClientInstantlyCampaign(input: {
     client_id: input.clientId,
     name: input.name,
     sender_accounts: input.senderAccounts,
-    timezone: input.timezone ?? null,
-    daily_limit: input.dailyLimit ?? null,
+    // The function requires both; a null would 400 before the campaign exists.
+    timezone: input.timezone ?? defaultInstantlyTimezone(),
+    daily_limit: input.dailyLimit ?? DEFAULT_INSTANTLY_DAILY_LIMIT,
   }, 'The campaign could not be created in Instantly.')
   return data.link
 }

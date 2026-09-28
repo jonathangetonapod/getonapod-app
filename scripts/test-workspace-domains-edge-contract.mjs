@@ -388,7 +388,10 @@ assert.match(admin, /hostname === 'getonapod\.com' \|\| hostname\.endsWith\('\.g
 // by an agency's client meeting a browser warning on the agency's own address.
 assert.match(config, /\[functions\.workspace-domain-tick\]\s+verify_jwt = false/u)
 assert.match(tick, /Deno\.env\.get\('DOMAIN_TICK_SECRET'\)/u)
-assert.match(tick, /req\.headers\.get\('x-domain-tick-secret'\) !== secret/u)
+// Constant-time: a plain !== leaks the secret byte by byte through timing.
+assert.match(tick, /req\.headers\.get\('x-domain-tick-secret'\)/u)
+assert.match(tick, /secretsMatch\(presentedSecret, secret\)/u)
+assert.doesNotMatch(tick, /!== secret/u)
 // The same check the button runs, not a second copy that drifts — and the
 // drift would be invisible precisely because nobody watches this path.
 assert.match(tick, /import \{ checkDomain, DOMAIN_CHECK_COLUMNS \} from '\.\.\/_shared\/domainCheck\.ts'/u)

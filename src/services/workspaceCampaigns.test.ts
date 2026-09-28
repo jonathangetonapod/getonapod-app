@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { supabase } from '@/lib/supabase'
+import { defaultInstantlyTimezone } from '@/lib/instantlyTimezones'
 import {
   addWorkspaceCampaignPodcasts,
   connectWorkspaceInstantly,
+  createClientInstantlyCampaign,
   draftWorkspaceInboxReply,
   getClientInstantlyCampaignLinks,
   setClientInstantlyCampaignLinks,
@@ -410,6 +412,47 @@ describe('client instantly campaign links', () => {
       },
     })
     expect(result).toEqual(links)
+  })
+
+  it('creates a campaign with a real timezone and daily limit when the caller omits them', async () => {
+    const link = { instantly_campaign_id: '66666666-6666-4666-8666-666666666666', campaign_name: 'Autumn Tour', created_at: null }
+    invoke.mockResolvedValueOnce({ data: { link }, error: null } as never)
+
+    const result = await createClientInstantlyCampaign({
+      workspaceId,
+      clientId,
+      name: 'Autumn Tour',
+      senderAccounts: ['host@agency.com'],
+    })
+
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: {
+        action: 'client-links-create',
+        workspace_id: workspaceId,
+        client_id: clientId,
+        name: 'Autumn Tour',
+        sender_accounts: ['host@agency.com'],
+        timezone: defaultInstantlyTimezone(),
+        daily_limit: 30,
+      },
+    })
+    expect(typeof (invoke.mock.calls[0][1] as { body: { timezone: unknown } }).body.timezone).toBe('string')
+    expect(result).toEqual(link)
+  })
+
+  it('passes the caller\'s timezone and daily limit through unchanged', async () => {
+    invoke.mockResolvedValueOnce({ data: { link: { instantly_campaign_id: 'x', campaign_name: 'x', created_at: null } }, error: null } as never)
+
+    await createClientInstantlyCampaign({
+      workspaceId,
+      clientId,
+      name: 'Autumn Tour',
+      senderAccounts: ['host@agency.com'],
+      timezone: 'Australia/Melbourne',
+      dailyLimit: 50,
+    })
+
+    expect(invoke.mock.calls[0][1].body).toMatchObject({ timezone: 'Australia/Melbourne', daily_limit: 50 })
   })
 })
 

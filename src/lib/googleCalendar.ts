@@ -5,13 +5,19 @@
  * with event details pre-filled.
  */
 
+import { googleCalendarUrl } from '@/lib/calendarLinks'
+
 interface CalendarEventDetails {
   title: string
   startTime: Date
   endTime: Date
   description?: string
   location?: string
+  /** Set when the source was a calendar day; the event is then all-day on it. */
+  day?: string
 }
+
+const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/u
 
 /**
  * Formats a date for Google Calendar URL
@@ -25,6 +31,16 @@ function formatDateForGoogleCalendar(date: Date): string {
  * Generates a Google Calendar URL for adding an event
  */
 export function generateGoogleCalendarUrl(event: CalendarEventDetails): string {
+  if (event.day) {
+    const allDay = googleCalendarUrl({
+      title: event.title,
+      day: event.day,
+      details: event.description,
+      location: event.location,
+    })
+    if (allDay) return allDay
+  }
+
   const baseUrl = 'https://calendar.google.com/calendar/render'
 
   const params = new URLSearchParams({
@@ -71,7 +87,12 @@ export function createCalendarEventFromBooking(booking: {
     return null
   }
 
-  const startTime = new Date(eventDate)
+  // Booking dates are DATE columns. Parsing one with new Date() gives UTC
+  // midnight, which west of UTC is the evening before, so a day stays a day.
+  const day = DAY_ONLY.test(eventDate) ? eventDate : undefined
+  const startTime = day
+    ? new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)))
+    : new Date(eventDate)
 
   // Default to 1 hour duration
   const endTime = new Date(startTime)
@@ -96,6 +117,7 @@ export function createCalendarEventFromBooking(booking: {
     title: `Podcast Recording: ${booking.podcast_name}`,
     startTime,
     endTime,
+    day,
     description: descriptionParts.join('\n'),
     location: booking.podcast_url || undefined,
   }

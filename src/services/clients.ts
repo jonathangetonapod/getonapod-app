@@ -1,5 +1,13 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+
+/**
+ * A value for a PostgREST filter string. Quoting it keeps a comma, dot or
+ * parenthesis typed into the search box from being read as filter syntax.
+ */
+function postgrestLiteral(value: string): string {
+  return `"${value.replace(/["\\]/gu, (char) => `\\${char}`)}"`
+}
 import {
   clientSdrProfileReadiness,
   isClientSdrProfile,
@@ -765,7 +773,8 @@ export async function getClients(options?: {
 
   // Search by name or email
   if (options?.search) {
-    query = query.or(`name.ilike.%${options.search}%,email.ilike.%${options.search}%`)
+    const term = postgrestLiteral(`%${options.search}%`)
+    query = query.or(`name.ilike.${term},email.ilike.${term}`)
   }
 
   // Order by name
@@ -859,13 +868,18 @@ export async function updateClient(clientId: string, updates: Partial<Client>) {
  * Delete a client
  */
 export async function deleteClient(clientId: string) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('clients')
     .delete()
     .eq('id', clientId)
+    .select('id')
 
   if (error) {
     throw new Error(`Failed to delete client: ${error.message}`)
+  }
+  // RLS filters silently, so a row nobody may delete comes back as zero rows, not an error.
+  if (!data || data.length === 0) {
+    throw new Error('Client not found or you do not have permission to delete it.')
   }
 }
 
@@ -1074,17 +1088,8 @@ export async function removeClientPhoto(clientId: string, photoUrl: string) {
     throw new Error('Invalid photo path')
   }
 
-  // Delete from storage
-  const { error: deleteError } = await supabase.storage
-    .from('client-assets')
-    .remove([filePath])
-
-  if (deleteError) {
-    console.error('Failed to delete photo from storage:', deleteError)
-    // Continue anyway to clear the URL
-  }
-
-  // Clear photo URL in database
+  // Clear the column first. Removing the object first left a broken image on
+  // the client when the row update then failed.
   const { data, error } = await supabase
     .from('clients')
     .update({ photo_url: null })
@@ -1094,6 +1099,15 @@ export async function removeClientPhoto(clientId: string, photoUrl: string) {
 
   if (error) {
     throw new Error(`Failed to clear client photo URL: ${error.message}`)
+  }
+
+  const { error: deleteError } = await supabase.storage
+    .from('client-assets')
+    .remove([filePath])
+
+  if (deleteError) {
+    // The client no longer points at it; an orphaned object is a storage cost, not a broken page.
+    console.error('Failed to delete photo from storage:', deleteError)
   }
 
   return data as Client

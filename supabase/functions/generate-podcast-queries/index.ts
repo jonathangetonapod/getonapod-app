@@ -351,7 +351,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
         max_tokens: 100,
         temperature: 0.9,
         messages: [{ role: 'user', content: prompt }],
-      }).catch((error) => {
+      }).catch((error: unknown) => {
         console.warn('Query regeneration provider was unavailable; using deterministic strategy', error)
         return null
       })
@@ -485,7 +485,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       max_tokens: Math.min(4000, 400 + (queryCount * 80)),
       temperature: 0.8,
       messages: [{ role: 'user', content: prompt }],
-    }).catch((error) => {
+    }).catch((error: unknown) => {
       console.warn('Query generation provider was unavailable; using deterministic strategy', error)
       return null
     })
@@ -579,10 +579,10 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
         console.log('Matched array content:', arrayContent)
 
         // Split by "," pattern (quote-comma-quote between array elements)
-        const rawQueries = arrayContent.split('","')
+        const rawQueries: string[] = arrayContent.split('","')
 
         // Clean up: remove leading/trailing quotes and whitespace
-        const queries = rawQueries.map(q =>
+        const queries = rawQueries.map((q: string) =>
           // Only the JSON string delimiters come off. Stripping a leading and
           // trailing quote unconditionally mangled exactly what this path is
           // for: "a" OR "b" became a" OR "b, which is invalid Podscan syntax.
@@ -597,7 +597,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
           .filter((entry: unknown): entry is string => typeof entry === 'string' && entry.trim() !== '')
           .map((entry: string) => entry.trim())
           .filter((entry: string) => !avoidSet.has(entry.toLowerCase()))
-        const recovered = Array.from(new Map(usable.map((entry) => [entry.toLowerCase(), entry])).values())
+        const recovered: string[] = Array.from(new Map(usable.map((entry: string): [string, string] => [entry.toLowerCase(), entry])).values())
           .slice(0, queryCount)
         if (recovered.length > 0) {
           // Recovery is not an excuse to ignore the count: top up like the
